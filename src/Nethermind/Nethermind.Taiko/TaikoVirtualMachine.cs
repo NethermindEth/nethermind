@@ -113,6 +113,6 @@ public sealed class TaikoEthereumVirtualMachine(
     ISpecProvider? specProvider,
     IL1OriginStore l1OriginStore,
     ILogManager? logManager
-) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine<EthereumGasPolicy>
+) : TaikoVirtualMachine(blockHashProvider, specProvider, l1OriginStore, logManager), IVirtualMachine
 {
 }

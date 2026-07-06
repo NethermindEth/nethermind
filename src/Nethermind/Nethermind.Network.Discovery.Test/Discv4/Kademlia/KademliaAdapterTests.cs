@@ -38,6 +38,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             SendEnrRequest
         }
 
+        /// <summary>
+        /// Request timeout for tests whose mocks answer inline, where timeouts act only as a failsafe.
+        /// </summary>
+        /// <remarks>
+        /// Must stay well above CI scheduling jitter: a timed-out request can be cancelled before it is even sent,
+        /// and a timed-out ENR refresh is skipped silently, flaking the refresh assertions on slow runners.
+        /// </remarks>
+        private const int FailsafeRequestTimeoutMs = 10_000;
+
+        /// <summary>
+        /// Request timeout for tests that assert timeout behavior and need requests to expire quickly.
+        /// </summary>
+        private const int ExpiringRequestTimeoutMs = 100;
+
         private IKademliaAdapter _adapter = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
@@ -49,6 +63,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private ITimestamper _timestamper = null!;
         private IMsgSender _msgSender = null!;
         private INodeStatsManager _nodeStatsManager = null!;
+        private INodeRecordProvider _nodeRecordProvider = null!;
         private Node _testNode = null!;
         private PublicKey _testPublicKey = null!;
 
@@ -112,8 +127,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             builder.WithDiscovery(TestItem.PrivateKeyB);
             _receiverSerializationManager = builder.TestObject;
 
-            INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
-            nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(_selfNodeRecord));
+            _nodeRecordProvider = Substitute.For<INodeRecordProvider>();
+            _nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(_selfNodeRecord));
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
@@ -121,24 +136,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
             processExitSource.Token.Returns(_ => _shutdownCts.Token);
 
-            _adapter = new KademliaAdapter(
-                new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
-                new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
-                new DiscoveryConfig
-                {
-                    EnrTimeout = 100,
-                    PingTimeout = 100,
-                    SendNodeTimeout = 100,
-                    BondWaitTime = 1,
-                },
-                _kademliaConfig,
-                nodeRecordProvider,
-                _nodeStatsManager,
-                _timestamper,
-                processExitSource,
-                _logManager
-            );
-            _adapter.MsgSender = _msgSender;
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, processExitSource);
+        }
+
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, IProcessExitSource? processExitSource = null) => new(
+            new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
+            new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
+            new DiscoveryConfig
+            {
+                EnrTimeout = requestTimeoutMs,
+                PingTimeout = requestTimeoutMs,
+                SendNodeTimeout = requestTimeoutMs,
+                BondWaitTime = 1,
+            },
+            _kademliaConfig,
+            _nodeRecordProvider,
+            _nodeStatsManager,
+            _timestamper,
+            processExitSource ?? Substitute.For<IProcessExitSource>(),
+            _logManager)
+        {
+            MsgSender = _msgSender,
+        };
+
+        private async Task UseExpiringRequestTimeouts()
+        {
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
         }
 
         [Test]
@@ -293,6 +317,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task SendEnrRequest_should_reject_unsolicited_response_with_wrong_keccak(CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
             ConfigureBondCallback();
 
             _msgSender
@@ -362,6 +387,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Timed_out_response_handler_should_not_consume_later_unsolicited_message(CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
             ConfigureBondCallback();
 
             PingMsg pingMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address);
@@ -406,6 +432,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Request_timeout_should_return_no_response_and_record_failure_once(NoResponseRequest request, CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
             if (request is not NoResponseRequest.Ping)
             {
                 ConfigureBondCallback();
@@ -421,6 +448,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task FindNeighbours_should_not_send_find_node_when_bond_ping_times_out(CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
+
             Node[]? result = await _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, token);
 
             Assert.That(result, Is.Null);

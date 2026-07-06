@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,58 @@ public abstract class NodesManager(string path, ILogger logger)
 
     protected readonly ILogger _logger = logger;
     protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes = [];
+
+    // Refcount of managed nodes per IP so membership can be queried in O(1) on hot paths.
+    // A count rather than a set because several nodes can share one IP (different ports/keys).
+    // The comparer folds IPv4-mapped IPv6 onto plain IPv4 so both forms share a slot.
+    private readonly ConcurrentDictionary<IPAddress, int> _ipCounts = new(NormalizingIpAddressComparer.Instance);
+
+    // Guards the (_nodes, _ipCounts) pair so a node is never present in one but missing from the other.
+    private readonly Lock _indexLock = new();
+
+    /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
+    public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
+
+    /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
+    protected bool TryAddNode(NetworkNode node)
+    {
+        lock (_indexLock)
+        {
+            if (!_nodes.TryAdd(node.NodeId, node)) return false;
+            _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            return true;
+        }
+    }
+
+    /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
+    protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
+    {
+        lock (_indexLock)
+        {
+            _nodes = nodes;
+            _ipCounts.Clear();
+            foreach (KeyValuePair<PublicKey, NetworkNode> kvp in nodes)
+            {
+                _ipCounts.AddOrUpdate(kvp.Value.HostIp, 1, static (_, count) => count + 1);
+            }
+        }
+    }
+
+    private void UnindexIp(NetworkNode node)
+    {
+        IPAddress key = node.HostIp;
+        while (_ipCounts.TryGetValue(key, out int count))
+        {
+            if (count > 1)
+            {
+                if (_ipCounts.TryUpdate(key, count - 1, count)) return;
+            }
+            else if (_ipCounts.TryRemove(new KeyValuePair<IPAddress, int>(key, count)))
+            {
+                return;
+            }
+        }
+    }
 
     private void EnsureFile(string resource)
     {
@@ -145,9 +198,16 @@ public abstract class NodesManager(string path, ILogger logger)
     /// </summary>
     protected bool TryRemoveNode(PublicKey nodeId)
     {
-        if (!_nodes.TryRemove(nodeId, out NetworkNode? removed))
-            return false;
+        NetworkNode? removed;
+        lock (_indexLock)
+        {
+            if (!_nodes.TryRemove(nodeId, out removed))
+                return false;
 
+            UnindexIp(removed);
+        }
+
+        // Fire outside the lock so downstream handlers (e.g. PeerPool) don't run under it.
         NodeRemoved?.Invoke(this, new ExplicitNodeRemovalEventArgs(new Node(removed)));
         return true;
     }
