@@ -9,6 +9,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -23,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -53,7 +53,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     private ILogger _logger;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
-    protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
@@ -72,7 +71,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
-        _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
@@ -89,11 +87,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-            if (_txPoolConfig.BlobsSupport.SupportsReorgs())
-            {
-                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.BlockTree!, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
-                _api.DisposeStack.Push(processedTransactionsDbCleaner);
-            }
         }
 
         return Task.CompletedTask;
@@ -210,7 +203,12 @@ public class MergePluginModule : Module
 
             .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
-            .AddModule(new BaseMergePluginModule());
+            .AddModule(new BaseMergePluginModule())
+
+            // Activate the blob-tx cleaner once the block tree is up so its constructor can subscribe to
+            // BlocksFinalized (container owns disposal). The block tree is passed as a resolve parameter, so
+            // the cleaner does not re-resolve it — which would recurse into this same activation hook.
+            .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>();
 }
 
 /// <summary>
@@ -237,6 +235,11 @@ public class BaseMergePluginModule : Module
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+
+            // Registered here for reuse; only activated (via ResolveOnServiceActivation) by the merge/AuRa-merge
+            // modules. Optimism/Taiko never resolve it. Self-disables unless blob-tx reorg support is enabled.
+            .AddSingleton<ProcessedTransactionsDbCleaner>()
+
             // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
             .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Api.Steps;
@@ -104,6 +105,10 @@ namespace Nethermind.Merge.AuRa
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
+
+                // See MergePluginModule: activate the blob-tx cleaner (registered in BaseMergePluginModule)
+                // once the block tree is up. It self-disables unless blob-tx reorg support is enabled.
+                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
                 ;
     }
 }
