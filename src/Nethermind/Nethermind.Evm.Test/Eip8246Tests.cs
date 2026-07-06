@@ -18,16 +18,12 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EIP-8246: Remove SELFDESTRUCT Burn. With the EIP active, the residual burn cases left by
-/// EIP-6780 are removed: a self-targeting SELFDESTRUCT moves no ETH, and accounts marked for
-/// destruction keep their balance while their code/storage are cleared and nonce reset to 0.
-/// A resulting zero-balance account is still removed as empty per EIP-161.
+/// EIP-8246: Remove SELFDESTRUCT Burn — destroyed accounts keep their balance while code/storage
+/// clear and the nonce resets; a resulting zero-balance account is still removed per EIP-161.
 /// </summary>
 /// <remarks>
-/// The first fixture argument toggles EIP-8246 (the <c>false</c> fixtures keep the pre-8246,
-/// EIP-6780-only baseline). The second toggles EIP-8037 + EIP-7708, which routes destruction
-/// through the deferred <c>FinalizeDestroyedAccount</c> path (as in Amsterdam) instead of the
-/// inline path; every scenario therefore runs against both finalization paths.
+/// Fixture args: EIP-8246 on/off, and EIP-8037+7708 on/off (the latter selects the deferred
+/// Amsterdam-style finalization path over the inline one).
 /// </remarks>
 [TestFixture(true, false)]
 [TestFixture(false, false)]
@@ -206,11 +202,8 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
     [Test]
     public void Create2_redeploy_to_same_address_unblocked_after_self_destruct()
     {
-        // A factory CREATE2s a child whose init code self-destructs to itself, so the child is
-        // created and destroyed within the same transaction. The factory is called twice and
-        // hits the same CREATE2 address both times. Under EIP-8246 the child survives as a
-        // nonce-0, code-less, balance-only account; because the nonce is reset, the second
-        // CREATE2 is not blocked and its endowment accumulates onto the preserved balance.
+        // The child self-destructs in its own creation tx; EIP-8246 preserves it as a nonce-0,
+        // code-less account, so a second CREATE2 to the same address is not blocked.
         UInt256 endowment = 1.Ether;
 
         Address factory = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
