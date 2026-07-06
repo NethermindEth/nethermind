@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -62,6 +63,15 @@ public class TrieNodeCacheTests
     {
         FlatDbConfig config = new() { TrieCacheMemoryBudget = 1 };
         Assert.DoesNotThrow(() => new TrieNodeCache(config, LimboLogs.Instance));
+    }
+
+    [Test]
+    public void Adaptive_capacity_can_grow_and_shrink_within_bounds()
+    {
+        _cache.SetCapacity(2 * MemorySizes.MiB);
+
+        Assert.That(_cache.Capacity, Is.EqualTo(2 * MemorySizes.MiB));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _cache.SetCapacity(_cache.MaximumCapacity + 1));
     }
 
     [Test]

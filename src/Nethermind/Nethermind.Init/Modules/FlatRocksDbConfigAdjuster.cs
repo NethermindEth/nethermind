@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -18,6 +19,7 @@ namespace Nethermind.Init.Modules;
 internal class FlatRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IFlatDbConfig flatDbConfig,
+    IAdaptiveCacheManager adaptiveCacheManager,
     IDisposableStack disposeStack,
     ILogManager logManager)
     : IRocksDbConfigFactory
@@ -45,7 +47,8 @@ internal class FlatRocksDbConfigAdjuster(
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to account");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity, "FlatDB account block cache");
+                adaptiveCacheManager.Register(cacheWrapper);
                 cacheHandle = cacheWrapper.Handle;
                 disposeStack.Push(cacheWrapper);
             }
@@ -54,7 +57,8 @@ internal class FlatRocksDbConfigAdjuster(
             {
                 ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to storage");
-                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+                HyperClockCacheWrapper cacheWrapper = new(cacheCapacity, "FlatDB storage block cache");
+                adaptiveCacheManager.Register(cacheWrapper);
                 cacheHandle = cacheWrapper.Handle;
                 disposeStack.Push(cacheWrapper);
             }

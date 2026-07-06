@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Memory;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
@@ -20,6 +21,7 @@ namespace Nethermind.Runner.Test
     {
         private const ulong GB = 1000 * 1000 * 1000;
         private const ulong MB = 1000 * 1000;
+        private const long AdaptiveMB = 1000 * 1000;
 
         private IDbConfig _dbConfig;
         private ISyncConfig _syncConfig;
@@ -137,6 +139,76 @@ namespace Nethermind.Runner.Test
             {
                 _mallocHelper.DidNotReceive().MallOpt(Arg.Any<MallocHelper.Option>(), Arg.Any<int>());
             }
+        }
+
+        [Test]
+        public void Adaptive_cache_budget_reclaims_capacity_from_least_utilized_cache()
+        {
+            using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
+            TestAdaptiveCache underused = new("underused", 400 * AdaptiveMB, 100 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache saturated = new("saturated", 400 * AdaptiveMB, 400 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            manager.Register(underused);
+            manager.Register(saturated);
+
+            manager.Rebalance(800 * AdaptiveMB);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(underused.Capacity, Is.EqualTo(200 * AdaptiveMB));
+                Assert.That(saturated.Capacity, Is.EqualTo(400 * AdaptiveMB));
+            }
+        }
+
+        [Test]
+        public void Adaptive_cache_budget_grows_most_constrained_cache_when_memory_is_available()
+        {
+            using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
+            TestAdaptiveCache saturated = new("saturated", 100 * AdaptiveMB, 90 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache idle = new("idle", 100 * AdaptiveMB, 10 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
+            manager.Register(saturated);
+            manager.Register(idle);
+
+            manager.Rebalance(700 * AdaptiveMB);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(saturated.Capacity, Is.EqualTo(200 * AdaptiveMB));
+                Assert.That(idle.Capacity, Is.EqualTo(100 * AdaptiveMB));
+            }
+        }
+
+        [Test]
+        public void Adaptive_cache_budget_shrinks_all_caches_under_memory_pressure()
+        {
+            using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
+            TestAdaptiveCache first = new("first", 400 * AdaptiveMB, 400 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache second = new("second", 100 * AdaptiveMB, 100 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            manager.Register(first);
+            manager.Register(second);
+
+            manager.Rebalance(900 * AdaptiveMB);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.Capacity, Is.EqualTo(300 * AdaptiveMB));
+                Assert.That(second.Capacity, Is.EqualTo(75 * AdaptiveMB));
+            }
+        }
+
+        private sealed class TestAdaptiveCache(
+            string name,
+            long capacity,
+            long usage,
+            long minimumCapacity,
+            long maximumCapacity) : IAdaptiveCache
+        {
+            public string Name { get; } = name;
+            public long Capacity { get; private set; } = capacity;
+            public long Usage { get; } = usage;
+            public long MinimumCapacity { get; } = minimumCapacity;
+            public long MaximumCapacity { get; } = maximumCapacity;
+
+            public void SetCapacity(long newCapacity) => Capacity = newCapacity;
         }
     }
 }

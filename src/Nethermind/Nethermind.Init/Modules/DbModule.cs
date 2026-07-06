@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -36,6 +37,7 @@ public class DbModule(
     protected override void Load(ContainerBuilder builder)
     {
         builder
+            .AddSingleton<IAdaptiveCacheManager, AdaptiveCacheManager>()
             .AddSingleton<IRocksDbConfigFactory, RocksDbConfigFactory>()
             .AddSingleton<IDbFactory, RocksDbFactory>()
             .AddSingleton<IDbProvider, DbProvider>()
@@ -70,7 +72,12 @@ public class DbModule(
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
 
-            .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
+            .AddSingleton<HyperClockCacheWrapper, IDbConfig, IAdaptiveCacheManager>((dbConfig, adaptiveCacheManager) =>
+            {
+                HyperClockCacheWrapper cache = new(dbConfig.SharedBlockCacheSize, "RocksDB shared block cache");
+                adaptiveCacheManager.Register(cache);
+                return cache;
+            })
             ;
 
         switch (initConfig.DiagnosticMode)

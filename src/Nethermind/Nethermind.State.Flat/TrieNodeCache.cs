@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -18,7 +19,7 @@ namespace Nethermind.State.Flat;
 /// The use of sharding is so that when memory target is exceeded, whole shard which is grouped by tree path is cleared.
 /// This improve block cache hit rate as trie nodes of similar subtree tend to be clustered together.
 /// </summary>
-public sealed class TrieNodeCache : ITrieNodeCache
+public sealed class TrieNodeCache : ITrieNodeCache, IAdaptiveCache
 {
     private const int EstimatedSizePerNode = 700;
     private const double UtilRatio = 0.25;
@@ -27,13 +28,23 @@ public sealed class TrieNodeCache : ITrieNodeCache
     private readonly ILogger _logger;
     private readonly TrieNode?[][] _cacheShards;
     private readonly long[] _shardMemoryUsages;
-    private readonly long _maxCacheMemoryThreshold;
+    private long _maxCacheMemoryThreshold;
+    private readonly long _minimumCacheMemoryThreshold;
+    private readonly long _maximumCacheMemoryThreshold;
     private readonly int _bucketSize;
     private readonly int _bucketMask;
 
     private int _nextShardToClear = 0;
 
     public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
+        : this(flatDbConfig, logManager, null)
+    {
+    }
+
+    public TrieNodeCache(
+        IFlatDbConfig flatDbConfig,
+        ILogManager logManager,
+        IAdaptiveCacheManager? adaptiveCacheManager)
     {
         _logger = logManager.GetClassLogger<TrieNodeCache>();
 
@@ -52,6 +63,24 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         _shardMemoryUsages = new long[ShardCount];
         _maxCacheMemoryThreshold = maxCacheMemoryThreshold;
+        _minimumCacheMemoryThreshold = Math.Min(maxCacheMemoryThreshold, 16 * 1024 * 1024);
+        _maximumCacheMemoryThreshold = maxCacheMemoryThreshold > long.MaxValue / 4
+            ? long.MaxValue
+            : maxCacheMemoryThreshold * 4;
+        adaptiveCacheManager?.Register(this);
+    }
+
+    public string Name => "FlatDB trie node cache";
+    public long Capacity => Volatile.Read(ref _maxCacheMemoryThreshold);
+    public long Usage => GetMemoryUsage();
+    public long MinimumCapacity => _minimumCacheMemoryThreshold;
+    public long MaximumCapacity => _maximumCacheMemoryThreshold;
+
+    public void SetCapacity(long capacity)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, MinimumCapacity);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, MaximumCapacity);
+        Volatile.Write(ref _maxCacheMemoryThreshold, capacity);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -98,7 +127,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     public void Add(TransientResource transientResource)
     {
-        if (_maxCacheMemoryThreshold == 0)
+        long maxCacheMemoryThreshold = Volatile.Read(ref _maxCacheMemoryThreshold);
+        if (maxCacheMemoryThreshold == 0)
         {
             for (int i = 0; i < ShardCount; i++)
             {
@@ -143,7 +173,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         long prevMemory = currentTotalMemory;
         bool wasPruned = false;
 
-        while (currentTotalMemory > _maxCacheMemoryThreshold)
+        while (currentTotalMemory > maxCacheMemoryThreshold)
         {
             wasPruned = true;
             int shardToClear = _nextShardToClear;
@@ -167,6 +197,16 @@ public sealed class TrieNodeCache : ITrieNodeCache
         if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
+    }
+
+    private long GetMemoryUsage()
+    {
+        long usage = 0;
+        for (int i = 0; i < ShardCount; i++)
+        {
+            usage += Volatile.Read(ref _shardMemoryUsages[i]);
+        }
+        return usage;
     }
 
     /// <summary>

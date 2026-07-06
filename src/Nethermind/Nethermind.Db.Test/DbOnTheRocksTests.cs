@@ -238,6 +238,30 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void HyperClockCache_capacity_can_be_changed_at_runtime()
+        {
+            const ulong initialCapacity = 32 * 1024 * 1024;
+            const long grownCapacity = 64 * 1024 * 1024;
+            using HyperClockCacheWrapper cache = new(initialCapacity);
+
+            cache.SetCapacity(grownCapacity);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Capacity, Is.EqualTo(grownCapacity));
+                Assert.That((long)Native.Instance.rocksdb_cache_get_capacity(cache.Handle), Is.EqualTo(grownCapacity));
+            }
+
+            cache.SetCapacity((long)initialCapacity / 2);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Capacity, Is.EqualTo((long)initialCapacity / 2));
+                Assert.That((long)Native.Instance.rocksdb_cache_get_capacity(cache.Handle), Is.EqualTo((long)initialCapacity / 2));
+            }
+        }
+
+        [Test]
         public void Corrupted_exception_on_open_would_create_marker()
         {
             IDbConfig config = new DbConfig();
