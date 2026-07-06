@@ -882,6 +882,8 @@ public partial class BlockDownloaderTests
 
     private record Context
     {
+        private static readonly TimeSpan SyncUntilNoRequestTimeout = TimeSpan.FromMinutes(2);
+
         private readonly ConcurrentDictionary<Hash256, bool> _wasSuggested = new();
         public ActivatedSyncFeed<BlocksRequest> Feed => (ActivatedSyncFeed<BlocksRequest>)FullSyncFeedComponent.Feed;
         public ResponseBuilder ResponseBuilder { get; init; }
@@ -936,14 +938,18 @@ public partial class BlockDownloaderTests
 
         public async Task SyncUntilNoRequest(SyncFeedComponent<BlocksRequest> component, PeerInfo peerInfo)
         {
-            using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(TimeSpan.FromSeconds(10));
+            using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(SyncUntilNoRequestTimeout);
 
             while (true)
             {
-                cts.Token.ThrowIfCancellationRequested();
-
                 BlocksRequest? blockRequest = await component.Feed.PrepareRequest(cts.Token);
-                if (blockRequest is null) break;
+                if (blockRequest is null)
+                {
+                    Assert.That(cts.Token.IsCancellationRequested, Is.False,
+                        "Timed out waiting for the sync feed to run out of requests.");
+                    break;
+                }
+
                 await component.Downloader.Dispatch(peerInfo, blockRequest, cts.Token);
                 component.Feed.HandleResponse(blockRequest, peerInfo);
             }

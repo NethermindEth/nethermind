@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
 using Nethermind.JsonRpc;
@@ -39,6 +40,8 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
 using System.Text.Json;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Core.Collections;
 
 namespace Ethereum.Test.Base;
 
@@ -135,7 +138,8 @@ public abstract class BlockchainTestBase
             // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
             // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
             .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
-            .AddSingleton<ITxPool>(NullTxPool.Instance);
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>();
 
         // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
         // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
@@ -146,6 +150,12 @@ public abstract class BlockchainTestBase
             containerBuilder.AddModule(new TestMergeModule(configProvider));
         }
 
+        // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.
+        if (tracer is not null)
+        {
+            containerBuilder.AddSingleton<IBlockTracer>(tracer);
+        }
+
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
@@ -154,11 +164,6 @@ public abstract class BlockchainTestBase
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
-
-        if (tracer is not null)
-        {
-            blockchainProcessor.Tracers.Add(tracer);
-        }
 
         try
         {
@@ -212,6 +217,7 @@ public abstract class BlockchainTestBase
                 genesisBlock.DisposeAccountChanges();
             }
 
+            List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
             {
                 // blockchain test
@@ -223,7 +229,7 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
+                engineWitnessDifferences = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
             }
             else
             {
@@ -254,14 +260,23 @@ public abstract class BlockchainTestBase
                 differences = RunAssertions(test, headBlock, stateProvider);
             }
 
+            // zkEVM witness assertions. Engine-path diffs were gathered while driving
+            // engine_newPayloadWithWitness; the RLP path regenerates the witness post-hoc here.
+            differences.AddRange(engineWitnessDifferences);
+            if (test.Blocks is not null && HasAnyExecutionWitness(test))
+            {
+                IWitnessGeneratingBlockProcessingEnvFactory witnessFactory =
+                    container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+                VerifyWitnesses(test, blockTree, witnessFactory, differences);
+            }
+
             bool testPassed = differences.Count == 0;
 
             // Write test end marker if using streaming tracer (JSONL format)
-            // This must be done BEFORE removing tracer and BEFORE Assert to ensure marker is written even on failure
+            // This must be done BEFORE Assert to ensure the marker is written even on failure
             if (tracer is not null)
             {
                 tracer.TestFinished(test.Name, testPassed, test.Network, stopwatch?.Elapsed, headBlock?.StateRoot);
-                blockchainProcessor.Tracers.Remove(tracer);
             }
 
             Assert.That(differences, Is.Empty, "differences");
@@ -335,9 +350,10 @@ public abstract class BlockchainTestBase
         .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
             ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
+    private async static Task<List<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        if (newPayloads is null || newPayloads.Length == 0) return;
+        List<string> witnessDifferences = [];
+        if (newPayloads is null || newPayloads.Length == 0) return witnessDifferences;
 
         int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
         AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
@@ -348,15 +364,43 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
+            // Only an unmutated, expected-VALID reference witness exercises engine_newPayloadWithWitness; EIP-8025
+            // mutated payloads go through the plain endpoint (their witness is a corrupted reference useful for stateless exec).
+            bool expectWitness = enginePayload.ExecutionWitness is not null
+                && enginePayload.ExecutionWitnessMutated != true
+                && validationError is null;
+
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            string npMethod = expectWitness ? "engine_newPayloadWithWitness" : "engine_newPayloadV" + newPayloadVersion;
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext, npMethod, paramsJson);
 
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (TryGetRpcError(npResponse, out int errorCode, out string? errorMessage))
             {
                 AssertExpectedRpcError(errorCode, errorMessage, validationError, newPayloadVersion);
+            }
+            else if (expectWitness)
+            {
+                using NewPayloadWithWitnessV1Result witnessResult = GetWitnessResult(npResponse, newPayloadVersion);
+                PayloadStatusV1 payloadStatus = new() { Status = witnessResult.Status, ValidationError = witnessResult.ValidationError, LatestValidHash = witnessResult.LatestValidHash };
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion);
+
+                if (payloadStatus.Status == PayloadStatus.Valid)
+                {
+                    Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                    if (witnessResult.ExecutionWitness is null)
+                    {
+                        witnessDifferences.Add($"witness (block {blockHash}): engine_newPayloadWithWitness returned VALID but no witness");
+                    }
+                    else
+                    {
+                        CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
+                    }
+
+                    AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                }
             }
             else
             {
@@ -370,7 +414,17 @@ public abstract class BlockchainTestBase
                 }
             }
         }
+
+        return witnessDifferences;
     }
+
+    private static NewPayloadWithWitnessV1Result GetWitnessResult(JsonRpcResponse response, int payloadVersion) =>
+        response switch
+        {
+            ResultWrapper<NewPayloadWithWitnessV1Result> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
+            JsonRpcSuccessResponse { Result: NewPayloadWithWitnessV1Result result } => result,
+            _ => throw new AssertionException($"engine_newPayloadWithWitness (V{payloadVersion}) returned unexpected response type {response.GetType().FullName}")
+        };
 
     private static bool TryGetRpcError(JsonRpcResponse response, out int errorCode, out string? errorMessage)
     {
@@ -744,5 +798,98 @@ public abstract class BlockchainTestBase
         }
 
         return differences;
+    }
+
+    /// <summary>Returns true when any test block carries an EELS-produced executionWitness.</summary>
+    private static bool HasAnyExecutionWitness(BlockchainTest test)
+    {
+        if (test.Blocks is null) return false;
+        foreach (TestBlockJson b in test.Blocks)
+        {
+            if (b.ExecutionWitness is not null) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Regenerates each block's witness by re-executing it in the witness-generating sandbox and compares it to the fixture reference.</summary>
+    private static void VerifyWitnesses(
+        BlockchainTest test,
+        IBlockTree blockTree,
+        IWitnessGeneratingBlockProcessingEnvFactory factory,
+        List<string> differences)
+    {
+        if (test.Blocks is null) return;
+        foreach (TestBlockJson testBlockJson in test.Blocks)
+        {
+            ExecutionWitnessJson? expected = testBlockJson.ExecutionWitness;
+            if (expected is null) continue;
+            if (testBlockJson.ExecutionWitnessMutated == true) continue;
+            if (testBlockJson.ExpectException is not null) continue;
+            if (testBlockJson.BlockHeader is null) continue;
+
+            Hash256 blockHash = new(testBlockJson.BlockHeader.Hash);
+            Block? block = blockTree.FindBlock(blockHash);
+            if (block is null)
+            {
+                differences.Add($"witness: block {blockHash} missing from tree");
+                continue;
+            }
+            BlockHeader? parent = blockTree.FindHeader(block.ParentHash!);
+            if (parent is null)
+            {
+                differences.Add($"witness: parent of {blockHash} missing from tree");
+                continue;
+            }
+
+            // The collector re-processes the block directly, bypassing the pipeline's sender recovery, so a block
+            // reloaded from the DB has RLP-decoded txs with no sender. Recover here, as BlockchainBridge does.
+            if (block.Transactions.Length > 0)
+            {
+                EthereumEcdsa ecdsa = new(test.ChainId);
+                foreach (Transaction tx in block.Transactions)
+                    tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+            }
+
+            using IWitnessGeneratingBlockProcessingEnvScope scope = factory.CreateScope();
+            IExistingBlockWitnessCollector collector = scope.Env.CreateExistingBlockWitnessCollector();
+            using Witness actual = collector.GetWitnessForExistingBlock(parent, block);
+
+            CompareWitnesses(blockHash, expected, actual, differences);
+        }
+    }
+
+    private static void CompareWitnesses(
+        Hash256 blockHash,
+        ExecutionWitnessJson expected,
+        Witness actual,
+        List<string> differences)
+    {
+        ComputeDiff(blockHash, "state", expected.State, actual.State, differences);
+        ComputeDiff(blockHash, "codes", expected.Codes, actual.Codes, differences);
+        ComputeDiff(blockHash, "headers", expected.Headers, actual.Headers, differences);
+    }
+
+    private static void ComputeDiff(
+        Hash256 blockHash,
+        string section,
+        string[]? expected,
+        IOwnedReadOnlyList<byte[]> actual,
+        List<string> differences)
+    {
+        int expectedCount = expected?.Length ?? 0;
+        if (expectedCount != actual.Count)
+            differences.Add($"witness {section} (block {blockHash}): count mismatch: expected {expectedCount}, produced {actual.Count}");
+
+        int common = expectedCount < actual.Count ? expectedCount : actual.Count;
+        for (int i = 0; i < common; i++)
+        {
+            byte[] e = Bytes.FromHexString(expected![i]);
+            if (!e.AsSpan().SequenceEqual(actual[i]))
+                differences.Add($"witness {section} (block {blockHash}) at index {i}: expected 0x{e.ToHexString()}, produced 0x{actual[i].ToHexString()}");
+        }
+        for (int i = common; i < expectedCount; i++)
+            differences.Add($"witness {section} (block {blockHash}) at index {i}: expected 0x{Bytes.FromHexString(expected![i]).ToHexString()}, none produced");
+        for (int i = common; i < actual.Count; i++)
+            differences.Add($"witness {section} (block {blockHash}) at index {i}: produced 0x{actual[i].ToHexString()}, none expected");
     }
 }

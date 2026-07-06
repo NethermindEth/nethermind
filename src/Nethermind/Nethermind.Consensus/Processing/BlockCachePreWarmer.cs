@@ -226,7 +226,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
                             }
                         }
                         finally
@@ -277,7 +277,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -289,8 +290,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
-            // No eager tx.AccessList warmup: the Warmup below already warms the state actually accessed;
-            // loading a (possibly hugely over-declared) EIP-2930 list only warms slots never read.
+            // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
+            if (blockState.Spec.UseTxAccessLists)
+            {
+                worldState.WarmUp(tx.AccessList, cancellationToken);
+            }
+
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");

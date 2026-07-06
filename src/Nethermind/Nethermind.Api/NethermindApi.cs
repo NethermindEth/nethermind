@@ -51,7 +51,6 @@ namespace Nethermind.Api
         private Dependencies _dependencies = dependencies;
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
-        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
