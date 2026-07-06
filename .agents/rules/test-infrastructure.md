@@ -4,17 +4,16 @@ This is the single rule for all test and benchmark projects. It applies to any `
 
 ## TestBlockchain (`Nethermind.Core.Test/Blockchain/TestBlockchain.cs`)
 
-Legacy wrapper around DI. Prefer direct `ContainerBuilder` + production modules for new tests. If you do use `TestBlockchain`, always dispose with `using`:
+Legacy wrapper around DI. Prefer direct `ContainerBuilder` + production modules for new tests. `TestBlockchain.Build` is `protected` — construct via a subclass factory such as `BasicTestBlockchain.Create(...)`, and always dispose with `using`:
 
 ```csharp
 // Basic usage — always use `using` for disposal
-using TestBlockchain chain = await TestBlockchain.ForMainnet().Build();
+using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
 
-// With customization
-using TestBlockchain chain = await TestBlockchain.ForMainnet()
-    .Build(builder => builder
-        .AddSingleton<ISpecProvider>(mySpecProvider)
-        .AddDecorator<ISpecProvider>((ctx, sp) => WrapSpecProvider(sp)));
+// With customization — pass a container configurer
+using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+    .AddSingleton<ISpecProvider>(mySpecProvider)
+    .AddDecorator<ISpecProvider>((ctx, sp) => WrapSpecProvider(sp)));
 ```
 
 **Provides**: `BlockTree`, `StateReader`, `TxPool`, `BlockProcessor`, `MainProcessingContext`, and 30+ other components — all wired via `PseudoNethermindModule`.
@@ -27,7 +26,7 @@ Multi-instance setup for sync testing. Reference for setting up full component s
 
 ## Benchmark setup
 
-For benchmarks, use production DI modules with `DiagnosticMode.MemDb` overrides — see the canonical container setup in [di-patterns.md](di-patterns.md) "Test setup pattern". `Nethermind.Evm.Benchmark` uses the `TestNethermindModule` convenience wrapper (wires `PseudoNethermindModule` + `TestEnvironmentModule` in one module). Don't manually construct `WorldState`, `TrieStore`, `BlockProcessor` etc.
+For benchmarks, use production DI modules with in-memory DB overrides (`TestEnvironmentModule` swaps `IDbFactory` for `MemDbFactory`) — see the canonical container setup in [di-patterns.md](di-patterns.md) "Test setup pattern". `Nethermind.Evm.Benchmark` uses the `TestNethermindModule` convenience wrapper (wires `PseudoNethermindModule` + `TestEnvironmentModule` in one module). Don't manually construct `WorldState`, `TrieStore`, `BlockProcessor` etc.
 
 ## DI anti-pattern — never manually new up infrastructure
 
@@ -38,9 +37,15 @@ ITransactionProcessor txProcessor = new TransactionProcessor(specProvider, world
 IBlockProcessor blockProcessor = new BlockProcessor(..., txProcessor, worldState, ...);
 ```
 
-**Correct** — direct DI with targeted overrides: `PseudoNethermindModule` for unit tests, full `NethermindModule` for benchmarks; the canonical snippets are in [di-patterns.md](di-patterns.md) "Test setup pattern".
+**Correct** — direct DI with targeted overrides: `PseudoNethermindModule` + `TestEnvironmentModule` (or the `TestNethermindModule` wrapper) for both unit tests and benchmarks; the canonical snippet is in [di-patterns.md](di-patterns.md) "Test setup pattern".
 
 The rule: **if production modules already wire a component, use them — don't construct it yourself**.
+
+## Running tests (.NET 10 / Microsoft.Testing.Platform)
+
+- `dotnet test --project <path>.csproj -c release -- --filter "FullyQualifiedName~Name"`
+- Do NOT pass `--nologo` or `-v q` — MTP treats unknown arguments as filter tokens and reports **zero tests ran**, which reads as a false green. Verify the output names the tests it executed.
+- Run test projects sequentially, or `dotnet build` once up front — parallel `dotnet test` invocations collide on locked DLLs.
 
 ## Test guidelines
 

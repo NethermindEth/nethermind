@@ -6,11 +6,10 @@ allowed-tools:
   - Bash(gh workflow run *)
   - Bash(gh release *)
   - Bash(gh api repos/NethermindEth/*)
+  - Bash(MSYS_NO_PATHCONV=1 gh *)
   - Bash(git branch *)
   - Bash(git log *)
   - Bash(git status *)
-  - Bash(cd *)
-  - Bash(ls *)
   - Bash(mkdir *)
   - Bash(find *)
   - Bash(unzip *)
@@ -18,7 +17,6 @@ allowed-tools:
   - Bash(tar *)
   - Bash(wc *)
   - Bash(sleep *)
-  - Bash(until *)
   - Bash(date *)
   - Bash(bash *)
   - Bash(sed *)
@@ -27,6 +25,11 @@ allowed-tools:
   - Bash(sort *)
   - Bash(head *)
   - Bash(tail *)
+  - Bash(tr *)
+  - Bash(xargs *)
+  - Bash(base64 *)
+  - Bash(echo *)
+  - Bash(printf *)
   - Read
   - Grep
   - Glob
@@ -167,6 +170,8 @@ Map network to genesis filename:
 - `jochemnet` → `generator-amsterdam-jochemnet.json`
 - `mainnet` → (no genesis_file flag)
 
+The genesis filename embeds the fork name. For a fork other than `amsterdam`, list the release assets (Step 0a command) and pick the matching `generator-<fork>-<network>.json` instead of the mapping above.
+
 ### Step 0e: Confirm with user
 
 Before proceeding, show the resolved configuration:
@@ -273,6 +278,8 @@ Report the run URL to the user immediately after triggering.
 
 **THIS PHASE IS MANDATORY. Always run it in full, even if the workflow reported success. Never skip or abbreviate it. A "success" workflow conclusion does NOT mean the blocks processed correctly — Nethermind exceptions can occur mid-run without failing the workflow.**
 
+All snippets in this phase are working-directory-independent (absolute paths, no `cd`). Keep them that way: the Bash tool's working directory persists across tool calls while variables do not — rely on neither.
+
 ### 4a. Exception scan (NEVER SKIP)
 
 Fetch job logs: `gh run view --job=<job-id> --repo NethermindEth/gas-benchmarks --log`
@@ -305,28 +312,29 @@ Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtim
 mkdir -p /tmp/gb-results
 gh run download <run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-results
-cd /tmp/gb-results && unzip -o *.zip
+for z in /tmp/gb-results/*.zip; do unzip -o "$z" -d /tmp/gb-results; done
 ```
 
 **Step 2 — Extract per-test timings from result files:**
 Each test produces a `nethermind_results_1_<test-name>.txt` file containing the `engine_newPayloadV<N>` timing (the actual block processing time). The newPayload version is fork-dependent — detect it from the files rather than hardcoding:
 
 ```bash
-cd /tmp/gb-results/results
-NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
+R=/tmp/gb-results/results
+NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" "$R"/nethermind_results_1_*.txt | head -1)
 [ -n "$NP" ] || { echo "No engine_newPayloadV<N> timing found in result files" >&2; exit 1; }
-ls nethermind_results_1_*.txt | while IFS= read -r f; do
+for f in "$R"/nethermind_results_1_*.txt; do
   ms=$(grep -A3 "$NP:" "$f" | grep "Average:" | awk '{print $2}')
-  name=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
+  name="${f##*/}"; name="${name#nethermind_results_1_}"; name="${name%.txt}"
   echo "$ms $name"
 done | sort -rn
 ```
 
-**Step 3 — Compute aggregates** (re-derive `NP` — shell state does not persist between tool calls):
+**Step 3 — Compute aggregates** (re-derive `R` and `NP` — variables do not persist between tool calls):
 ```bash
-NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
+R=/tmp/gb-results/results
+NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" "$R"/nethermind_results_1_*.txt | head -1)
 [ -n "$NP" ] || { echo "No engine_newPayloadV<N> timing found in result files" >&2; exit 1; }
-ls nethermind_results_1_*.txt | while IFS= read -r f; do
+for f in "$R"/nethermind_results_1_*.txt; do
   ms=$(grep -A3 "$NP:" "$f" | grep "Average:" | awk '{print $2}')
   [ -n "$ms" ] && echo "$ms"
 done | awk '{sum+=$1; vals[NR]=$1; n=NR} END {
@@ -347,20 +355,20 @@ gh run download <pr-run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-pr
 gh run download <base-run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-base
-cd /tmp/gb-pr && unzip -o *.zip
-cd /tmp/gb-base && unzip -o *.zip
+for z in /tmp/gb-pr/*.zip; do unzip -o "$z" -d /tmp/gb-pr; done
+for z in /tmp/gb-base/*.zip; do unzip -o "$z" -d /tmp/gb-base; done
 
 # Compare per-test (sorted by delta); detect the newPayload version PER RUN — the two runs may target different forks
-cd /tmp/gb-pr/results
-PR_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
-BASE_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" /tmp/gb-base/results/nethermind_results_1_*.txt | head -1)
+PR=/tmp/gb-pr/results; BASE=/tmp/gb-base/results
+PR_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" "$PR"/nethermind_results_1_*.txt | head -1)
+BASE_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" "$BASE"/nethermind_results_1_*.txt | head -1)
 [ -n "$PR_NP" ] && [ -n "$BASE_NP" ] || { echo "newPayload timing not found in one of the runs" >&2; exit 1; }
-ls nethermind_results_1_*.txt | while IFS= read -r f; do
+for f in "$PR"/nethermind_results_1_*.txt; do
   pr_ms=$(grep -A3 "$PR_NP:" "$f" | grep "Average:" | awk '{print $2}')
-  base_ms=$(grep -A3 "$BASE_NP:" "/tmp/gb-base/results/$f" 2>/dev/null \
+  base_ms=$(grep -A3 "$BASE_NP:" "$BASE/${f##*/}" 2>/dev/null \
     | grep "Average:" | awk '{print $2}')
   if [ -n "$pr_ms" ] && [ -n "$base_ms" ]; then
-    short=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
+    short="${f##*/}"; short="${short#nethermind_results_1_}"; short="${short%.txt}"
     delta=$(awk "BEGIN{printf \"%.1f\", (($pr_ms-$base_ms)/$base_ms)*100}")
     echo "$delta|$pr_ms|$base_ms|$short"
   fi
@@ -409,7 +417,7 @@ If present:
    find /tmp/dottrace-<run-id> -name "*.xml" -not -name "*pattern*" -not -name "*conversion*"
    ```
 
-3. **Top hotspots** — show the top 20 functions by OwnTime (self-time excluding callees):
+3. **Top hotspots** — show the top 20 functions by OwnTime (self-time excluding callees). The script path is relative to the nethermind repo root (the Bash tool's default working directory — Phase 4 snippets never change it):
    ```
    bash scripts/dottrace-report.sh top <report.xml> 20
    ```

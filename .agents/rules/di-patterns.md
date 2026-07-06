@@ -16,11 +16,13 @@ Nethermind uses Autofac for DI with a custom DSL defined in `Nethermind.Core/Con
 | `WorldStateModule` | `IWorldStateManager`, `IStateReader`, trie store, node storage | New state backend or pruning strategy |
 | `BlockProcessingModule` | `ITransactionProcessor`, `IBlockProcessor`, `IVirtualMachine`, validators | New transaction type or block processing hook |
 | `BlockTreeModule` | `IBlockTree`, `IBlockStore`, `IHeaderStore`, `IReceiptStorage` | New chain storage or receipt backend |
-| `NetworkModule` | Message serializers (Eth62–Eth69, Snap, Witness), RLPx host | New protocol version or message type |
+| `NetworkModule` | devp2p message serializers and protocol handlers (eth, snap), RLPx host | New protocol version or message type |
 | `DiscoveryModule` | Peer discovery, `INodeSource` | Discovery protocol changes |
 | `RpcModules` | JSON-RPC modules (`Eth`, `Debug`, `Admin`, etc.) | New RPC method module |
 | `PrewarmerModule` | State prewarming for block production | Prewarmer tuning |
 | `BuiltInStepsModule` | Node initialization step chain | New startup step |
+
+The table is not exhaustive — list `Nethermind.Init/Modules/` for the current set (e.g. flat-state, pruning, and monitoring modules are registered there too).
 
 ## WorldState Architecture
 
@@ -93,23 +95,16 @@ builder
 
 ## Test setup pattern (preferred: direct DI)
 
-This is the canonical container setup — test-infrastructure.md references it rather than repeating it. Unit tests use `PseudoNethermindModule` (full production wiring without init steps); benchmarks use the full `NethermindModule` with MemDb overrides.
+This is the canonical container setup — test-infrastructure.md references it rather than repeating it. Both unit tests and benchmarks use `PseudoNethermindModule` (wraps the full production `NethermindModule` without running init steps) plus `TestEnvironmentModule` (MemDb via `MemDbFactory`, test logging, in-process channels):
 
 ```csharp
-// Unit tests
 IContainer container = new ContainerBuilder()
     .AddModule(new PseudoNethermindModule(spec, configProvider, logManager))
     .AddModule(new TestEnvironmentModule(nodeKey, null))
     .Build();
-
-// Benchmarks
-IContainer container = new ContainerBuilder()
-    .AddModule(new NethermindModule(spec, configProvider, logManager))
-    .AddModule(new TestEnvironmentModule(nodeKey, null))  // wires MemDb, test logging
-    .Build();
 ```
 
-`TestNethermindModule` is a convenience wrapper that combines `PseudoNethermindModule` + `TestEnvironmentModule` in one module (used by `Nethermind.Evm.Benchmark`).
+`TestNethermindModule` combines both in one module with a `TestSpecProvider` default — the preferred shorthand, and what `Nethermind.Evm.Benchmark` uses (`new TestNethermindModule(Osaka.Instance)`).
 
 ## Anti-pattern
 - Using the form `.Add<IFoo>(ctx => new Foo(ctx.Resolve<Dep1>(), ctx.Resolve<Dep2>()))` is an anti-pattern. It will cause changes to the wiring when `Foo` adds new dependencies, which increases review load.
