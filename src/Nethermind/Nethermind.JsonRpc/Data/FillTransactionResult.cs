@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Data;
@@ -12,6 +11,6 @@ namespace Nethermind.JsonRpc.Data;
 /// </summary>
 public class FillTransactionResult
 {
-    [JsonPropertyName("tx")]
+    // Serialized as "tx" via the camelCase naming policy - no explicit attribute needed.
     public required TransactionForRpc Tx { get; init; }
 }
