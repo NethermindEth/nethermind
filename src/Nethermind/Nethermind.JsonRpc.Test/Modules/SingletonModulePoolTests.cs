@@ -69,7 +69,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     new SyncConfig(),
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),
-                    Substitute.For<IHistoryPruner>()));
+                    Substitute.For<IHistoryPruner>()),
+                new BlockForRpcFactory());
             return Task.CompletedTask;
         }
 

@@ -291,6 +291,47 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
         }
 
+        [Test]
+        public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
+        {
+            await using Context ctx = new(maxActivePeers: 20);
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
+
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
+
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static and trusted peers do not inflate the limit");
+        }
+
+        // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
+        // applied when a session completes the P2P Hello exchange.
+        [TestCase(11, 10, true)]
+        [TestCase(10, 10, false)]
+        [TestCase(9, 10, false)]
+        public async Task On_max_active_peer_limit(int activePeerCount, int maxActivePeer, bool shouldDisconnect)
+        {
+            await using Context ctx = new(maxActivePeers: maxActivePeer);
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < activePeerCount; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            if (shouldDisconnect)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+        }
+
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test

@@ -143,10 +143,5 @@ namespace Nethermind.Blockchain.Find
         }
 
         public ulong GetLowestBlock();
-
-        /// <summary>
-        /// Highest state persisted
-        /// </summary>
-        ulong? BestPersistedState { get; set; }
     }
 }

@@ -130,7 +130,8 @@ public class BlockAccessListSequentialValidationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching);
         return (stateProvider, balManager);
     }
 

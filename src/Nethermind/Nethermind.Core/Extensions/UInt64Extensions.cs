@@ -20,7 +20,7 @@ public static class UInt64Extensions
     {
         // Min 7 bytes as we still want a byte if the value is 0.
         int start = Math.Min(BitOperations.LeadingZeroCount(value) / sizeof(ulong), sizeof(ulong) - 1);
-        buffer = BitConverter.IsLittleEndian ? BinaryPrimitives.ReverseEndianness(value) : value;
+        buffer = BinaryPrimitives.ReverseEndianness(value);
         ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref buffer, 1));
         return span[start..];
     }

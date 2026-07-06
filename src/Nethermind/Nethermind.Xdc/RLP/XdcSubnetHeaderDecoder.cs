@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,14 +29,14 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
             header.Validator = decoderContext.DecodeByteArray();
         }
 
-        header.Validators = decoderContext.DecodeByteArray();
+        header.Validators = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
 
         if (!IsForSealing(rlpBehaviors))
         {
-            header.NextValidators = decoderContext.DecodeByteArray();
+            header.NextValidators = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
         }
 
-        header.Penalties = decoderContext.DecodeByteArray();
+        header.Penalties = XdcRlpHelpers.DecodeAddressBytes(ref decoderContext);
     }
 
     protected override void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
@@ -45,28 +46,39 @@ public sealed class XdcSubnetHeaderDecoder : BaseXdcHeaderDecoder<XdcSubnetBlock
             writer.Encode(header.Validator);
         }
 
-        writer.Encode(header.Validators);
+        XdcRlpHelpers.EncodeAddressSequence(ref writer, GetAddresses(header.Validators));
 
         if (!IsForSealing(rlpBehaviors))
         {
-            writer.Encode(header.NextValidators);
+            XdcRlpHelpers.EncodeAddressSequence(ref writer, GetAddresses(header.NextValidators));
         }
 
-        writer.Encode(header.Penalties);
+        XdcRlpHelpers.EncodeAddressSequence(ref writer, GetAddresses(header.Penalties));
     }
 
     protected override int GetHeaderSpecificContentLength(XdcSubnetBlockHeader header, RlpBehaviors rlpBehaviors)
     {
         int len = 0
-            + Rlp.LengthOf(header.Validators)
-            + Rlp.LengthOf(header.Penalties);
+            + XdcRlpHelpers.LengthOfAddressSequence(GetAddresses(header.Validators))
+            + XdcRlpHelpers.LengthOfAddressSequence(GetAddresses(header.Penalties));
 
         if (!IsForSealing(rlpBehaviors))
         {
             len += Rlp.LengthOf(header.Validator);
-            len += Rlp.LengthOf(header.NextValidators);
+            len += XdcRlpHelpers.LengthOfAddressSequence(GetAddresses(header.NextValidators));
         }
 
         return len;
+    }
+
+    private static Address[] GetAddresses(byte[]? value)
+    {
+        if (value is null || value.Length == 0)
+        {
+            return [];
+        }
+
+        return value.AsSpan().ExtractAddresses()
+            ?? throw new RlpException($"Subnet address collection length must be a multiple of {Address.Size} bytes, got {value.Length}.");
     }
 }

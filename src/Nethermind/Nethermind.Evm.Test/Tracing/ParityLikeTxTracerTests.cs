@@ -827,6 +827,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Mark_as_success_without_report_action_creates_synthetic_root_action()
+    {
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        byte[] output = [1, 2, 3];
+
+        Assert.DoesNotThrow(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, output, []));
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action, Is.Not.Null);
+            Assert.That(trace.Action!.From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To));
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value));
+            Assert.That(trace.Action.Result!.Output, Is.EqualTo(output));
+            Assert.That(trace.Output, Is.EqualTo(output));
+        }
+    }
+
+    [Test]
     public void Is_tracing_rewards_only_when_rewards_trace_type_selected()
     {
         ParityLikeBlockTracer tracer = new(ParityTraceTypes.All ^ ParityTraceTypes.Rewards);
