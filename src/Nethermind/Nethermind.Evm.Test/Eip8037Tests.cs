@@ -126,14 +126,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Gas_policy_exposes_state_costs()
     {
-        EthereumGasPolicy gas = default;
-
         Assert.That(
             (
-                EthereumGasPolicy.GetStorageSetStateCost(in gas),
-                EthereumGasPolicy.GetCreateStateCost(in gas),
-                EthereumGasPolicy.GetNewAccountStateCost(in gas),
-                EthereumGasPolicy.GetPerAuthBaseStateCost(in gas)
+                EthereumGasPolicy.GetStorageSetStateCost(),
+                EthereumGasPolicy.GetCreateStateCost(),
+                EthereumGasPolicy.GetNewAccountStateCost(),
+                EthereumGasPolicy.GetPerAuthBaseStateCost()
             ),
             Is.EqualTo(
                 (

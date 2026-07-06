@@ -31,13 +31,6 @@ namespace Nethermind.Blockchain
             set { }
         }
 
-        public ulong? BestPersistedState
-        {
-            get => _wrapped.BestPersistedState;
-            set => _wrapped.BestPersistedState = value;
-        }
-
-
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _wrapped.LowestInsertedBeaconHeader;

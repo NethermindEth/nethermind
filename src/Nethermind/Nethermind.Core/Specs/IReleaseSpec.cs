@@ -407,6 +407,7 @@ namespace Nethermind.Core.Specs
 
         public bool IsEip7594Enabled { get; }
 
+
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.

@@ -13,6 +13,10 @@ using System.Runtime.Intrinsics;
 using Arm = System.Runtime.Intrinsics.Arm;
 using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Collections;
+#if ZK_EVM
+// RISC-V lacks CRC32C; route hashing to the guest substitute (see ZkEvmBitOperations).
+using BitOperations = Nethermind.Core.Extensions.ZkEvmBitOperations;
+#endif
 
 namespace Nethermind.Core.Extensions
 {

@@ -20,12 +20,12 @@ public static partial class EvmInstructions
     /// Interface for single-parameter mathematical operations on 256‐bit vectors.
     /// Implementations provide a specific operation that takes one 256‐bit operand and returns a 256‐bit result.
     /// </summary>
-    public interface IOpMath1Param
+    public interface IOpMath1Param : IGasCost
     {
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static ulong GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
@@ -56,7 +56,7 @@ public static partial class EvmInstructions
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        TGasPolicy.Consume(ref gas, TOpMath.GasCost);
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
         return Math1ParamCore<TOpMath>(ref stack);
     }
@@ -100,7 +100,18 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
+#if ZK_EVM
+        // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
+        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
+        // (endianness-agnostic for a zero test).
+        public static EvmWord Operation(EvmWord value)
+        {
+            ref ulong p = ref As<EvmWord, ulong>(ref value);
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
+        }
+#else
         public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
+#endif
     }
 
     /// <summary>
@@ -109,7 +120,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static ulong GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
 
         public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
@@ -125,7 +136,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
@@ -159,7 +170,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.Low);
+        TGasPolicy.Consume<LowGasCost>(ref gas);
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))

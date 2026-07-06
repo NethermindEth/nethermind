@@ -80,7 +80,7 @@ namespace Nethermind.Evm
             }
 
             regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = TGasPolicy.GetCodeDepositStateCost(in gas, byteCodeLength);
+            stateCost = TGasPolicy.GetCodeDepositStateCost(byteCodeLength);
             return true;
         }
 

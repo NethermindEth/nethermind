@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -12,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
+public class WorldStateManager : IWorldStateManager
 {
     private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
@@ -20,7 +19,6 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
-    private readonly StateBoundaryStore _boundaryStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
@@ -29,7 +27,7 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
-        IPruningConfig pruningConfig,
+        StateBoundaryStore boundaryStore,
         ILastNStateRootTracker lastNStateRootTracker = null
     )
     {
@@ -38,7 +36,9 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
-        _boundaryStore = new StateBoundaryStore(dbProvider.StateDb, _logManager);
+        // Never unsubscribed: the subscription must outlive the trie store's final
+        // PersistOnShutdown ReorgBoundaryReached event, and both share the container lifetime.
+        _trieStore.ReorgBoundaryReached += (_, e) => boundaryStore.BestPersistedState = e.BlockNumber;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -48,27 +48,11 @@ public class WorldStateManager : IWorldStateManager, IStateBoundaryWriter
         SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
-
-        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : (ulong?)null;
-    }
-
-    public ulong? RetentionWindowBlocks { get; }
-
-    public ulong? OldestStateBlock
-    {
-        get => _boundaryStore.OldestStateBlock;
-        set => _boundaryStore.OldestStateBlock = value;
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
-
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add => _trieStore.ReorgBoundaryReached += value;
-        remove => _trieStore.ReorgBoundaryReached -= value;
-    }
 
     public IStateReader GlobalStateReader { get; }
 

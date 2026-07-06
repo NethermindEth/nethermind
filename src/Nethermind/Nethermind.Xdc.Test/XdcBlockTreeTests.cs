@@ -8,6 +8,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
@@ -137,7 +138,7 @@ internal class XdcBlockTreeTests
         IXdcConsensusContext consensus = Substitute.For<IXdcConsensusContext>();
         consensus.HighestCommitBlock.Returns((BlockRoundInfo)null!);
 
-        XdcHeaderStore xdcHeaderStore = new(new TestMemDb(), new TestMemDb());
+        XdcHeaderStore xdcHeaderStore = new(new TestMemDb(), new TestMemDb(), new XdcHeaderDecoder());
         BlockTreeBuilder builder = Build.A.BlockTree(MainnetSpecProvider.Instance)
             .WithHeaderStore(xdcHeaderStore)
             .WithoutSettingHead;
@@ -153,6 +154,7 @@ internal class XdcBlockTreeTests
             builder.ChainLevelInfoRepository,
             MainnetSpecProvider.Instance,
             builder.SyncConfig,
+            builder.StateBoundary,
             LimboLogs.Instance);
 
         return (blockTree, consensus);

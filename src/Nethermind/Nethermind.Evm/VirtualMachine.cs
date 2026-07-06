@@ -97,6 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+    public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
 
@@ -290,7 +291,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                                 // account leaf rather than materialising a new one.
                                 if (previousState.IsCreateOnPreExistingAccount)
                                 {
-                                    CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                                    CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
                                 }
                             }
                         }
@@ -303,13 +304,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
-                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
                         }
                         else if (previousState.NewAccountCharged)
                         {
                             // EIP-8037: the reverted *CALL did not create its (dead) recipient, so refund
                             // the NEW_ACCOUNT state gas the parent charged up-front for the value transfer.
-                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas));
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
                         }
                         // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
@@ -475,7 +476,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // reservoir. When the parent reservoir was empty the NEW_ACCOUNT was spilled into regular gas, so
             // the refund belongs in gas_left — where a subsequent top-level halt burns it — not the reservoir
             // (which would survive the halt and under-charge the sender). trackSpillRefund:true mirrors this.
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -620,11 +621,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // EELS credit_state_gas_refund is always LIFO: spilled state gas returns to gas_left
             // first (up to the spill), then the reservoir. Refunding straight to the reservoir would
             // leave it inflated, so a later top-level halt returns gas the spec burns.
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
         }
         else if (childNewAccountCharged)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
         shouldExit = false;
@@ -811,11 +812,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // EELS credit_state_gas_refund is always LIFO: spilled state gas returns to gas_left
             // first (up to the spill), then the reservoir. Refunding straight to the reservoir would
             // leave it inflated, so a later top-level halt returns gas the spec burns.
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
         }
         else if (childNewAccountCharged)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
@@ -1211,7 +1212,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
             {
                 goto OutOfGas;
             }

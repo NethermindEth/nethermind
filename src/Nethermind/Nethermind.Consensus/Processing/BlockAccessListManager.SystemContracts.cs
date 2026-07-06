@@ -8,17 +8,14 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
-using Nethermind.Specs;
 
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// System-contract and validator-orchestration bridges. Each helper routes its work through
 /// the appropriate worldstate pulled from the tx-processor pool — pre-execution callers
-/// (beacon root, blockhash, AuRa) use the pre slot; post-execution callers (withdrawals,
+/// (beacon root, blockhash) use the pre slot; post-execution callers (withdrawals,
 /// execution requests) use the post slot.
 /// </summary>
 public partial class BlockAccessListManager
@@ -37,18 +34,6 @@ public partial class BlockAccessListManager
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
-    }
-
-    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
-    {
-        if (!Enabled)
-        {
-            return;
-        }
-
-        stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-        stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero);
-        stateProvider.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -28,7 +31,6 @@ public class GethTxTraceEntry
 
     public int Depth { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? Error { get; set; }
 
     [JsonPropertyName("refund")]
@@ -36,11 +38,17 @@ public class GethTxTraceEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? Refund { get; set; }
 
-    public string[]? Stack { get; set; }
+    [JsonConverter(typeof(StackHexConverter))]
+    public ReadOnlyMemory<byte>? Stack { get; set; }
 
-    public string[]? Memory { get; set; }
+    [JsonConverter(typeof(MemoryHexConverter))]
+    public ReadOnlyMemory<byte>? Memory { get; set; }
 
-    public Dictionary<string, string>? Storage { get; set; }
+    [JsonConverter(typeof(StorageHexConverter))]
+    public IDictionary<UInt256, UInt256>? Storage { get; set; }
+
+    [JsonIgnore]
+    internal (Address Address, UInt256 Key, UInt256 Value)? StorageDelta { get; set; }
 
     [JsonPropertyName("returnData")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

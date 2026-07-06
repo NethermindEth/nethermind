@@ -14,16 +14,16 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private static long _txCount;
     private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
 
-    // Per-spec-instance opcode dispatch tables. Weakly keyed: simulate/state-override RPC paths wrap
-    // specs in per-request decorators, which a strong-keyed map would retain (and regenerate) forever.
+    // Per-spec opcode dispatch tables; only a handful of specs are ever active (at head, the current and
+    // next fork). std-only: the zkEVM guest runs a single fork and caches in plain statics (see .zkevm).
     private sealed unsafe class OpcodeTable
     {
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? NoTrace;
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
     }
 
-    // std-only: the zkEVM guest runs a single fork, caches in plain statics (see .zkevm) and cannot
-    // map the GC dependent-handles ConditionalWeakTable relies on.
+    // Weak keys: transient spec wrappers (e.g. the per-block WithoutEip3607 decorator in
+    // eth_simulateV1) must not be retained forever by this process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
