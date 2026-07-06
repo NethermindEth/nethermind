@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -156,6 +157,60 @@ public class SnapProtocolHandlerTests
     [TestCase(0L, 1L)]
     [TestCase(-1L, 1L)]
     public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
+
+    [Test]
+    public void GetTrieNodes_forwards_requested_byte_budget_to_snap_server()
+    {
+        ISnapServer snapServer = Substitute.For<ISnapServer>();
+        snapServer.CanServe.Returns(true);
+        snapServer.GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), Arg.Any<Hash256>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyByteArrayList.Instance);
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetTrieNodesMessageSerializer()),
+            SerializerInfo.Create(new TrieNodesMessageSerializer()));
+
+        SnapProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            new SyncConfig(),
+            snapServer);
+
+        using GetTrieNodesMessage request = new()
+        {
+            RequestId = 1,
+            RootHash = Keccak.Zero,
+            Paths = PathGroup.EncodeToRlpPathGroupList([]),
+            Bytes = 1234
+        };
+
+        IByteBuffer? buffer = serializer.ZeroSerialize(request);
+        try
+        {
+            buffer.ReadByte();
+            ZeroPacket packet = new(buffer) { PacketType = SnapMessageCode.GetTrieNodes };
+            buffer = null;
+            try
+            {
+                handler.HandleMessage(packet);
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(packet);
+            }
+        }
+        finally
+        {
+            buffer?.SafeRelease();
+        }
+
+        snapServer.Received(1).GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), request.RootHash, request.Bytes, Arg.Any<CancellationToken>());
+    }
 
     [Test]
     [Explicit]
