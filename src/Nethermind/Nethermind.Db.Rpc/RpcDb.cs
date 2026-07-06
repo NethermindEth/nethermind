@@ -97,7 +97,7 @@ namespace Nethermind.Db.Rpc
             byte[] value = null;
             if (response.Result is not null)
             {
-                value = Bytes.FromHexString(response.Result.ToString());
+                value = Bytes.FromHexString($"{response.Result}");
                 if (_recordDb is not null)
                 {
                     _recordDb[key] = value;

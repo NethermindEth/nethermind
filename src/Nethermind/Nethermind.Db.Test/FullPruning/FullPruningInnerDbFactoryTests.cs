@@ -56,7 +56,7 @@ namespace Nethermind.Db.Test.FullPruning
 
         private static Expression<Predicate<DbSettings>> MatchSettings(TestContext test, int? index = null)
         {
-            string dbName = test.DbSettings.DbName + index;
+            string dbName = test.DbSettings.DbName;
             string combine = Combine(test.DbSettings.DbPath, index);
             return r => r.DbName == dbName && r.DbPath == combine;
         }
