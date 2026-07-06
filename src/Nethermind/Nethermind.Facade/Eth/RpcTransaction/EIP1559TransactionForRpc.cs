@@ -66,6 +66,13 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     public override bool ShouldSetBaseFee() =>
         base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
 
+    public override string? FillFeeDefaults(in TxFillContext context)
+    {
+        MaxPriorityFeePerGas ??= context.MaxPriorityFeePerGas;
+        MaxFeePerGas ??= context.BaseFee * 2 + MaxPriorityFeePerGas.Value;
+        return null;
+    }
+
     public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 }

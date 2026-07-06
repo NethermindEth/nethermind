@@ -463,25 +463,39 @@ public partial class EthRpcModule(
         IReleaseSpec spec = _specProvider.GetSpec(head);
         ulong chainId = _blockchainBridge.GetChainId();
 
-        // geth/reth require an explicit sender: nonce and gas are meaningless without it, and
-        // defaulting to the zero address would silently produce a fill for the wrong account.
-        Address? from = (rpcTx as LegacyTransactionForRpc)?.From;
-        if (from is null)
+        // Every concrete tx type derives from LegacyTransactionForRpc, which carries the common
+        // from/nonce/chainId fields. geth/reth require an explicit sender: nonce and gas are
+        // meaningless without it, and defaulting to the zero address would fill the wrong account.
+        if (rpcTx is not LegacyTransactionForRpc baseTx || baseTx.From is null)
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
+        Address from = baseTx.From;
+
         // geth parity: a supplied chain id must match the node's, otherwise the fill is unusable.
-        ulong? requestedChainId = (rpcTx as LegacyTransactionForRpc)?.ChainId;
-        if (requestedChainId is not null && requestedChainId != chainId)
+        if (baseTx.ChainId is { } requestedChainId && requestedChainId != chainId)
             return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
 
         // Fill the sender nonce from the pending-pool view so back-to-back fills chain correctly.
-        if (rpcTx is LegacyTransactionForRpc { Nonce: null } nonceless)
-            nonceless.Nonce = _txPool.GetLatestPendingNonce(from);
+        baseTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
-        // Derive blob fields (versioned hashes, blob fee, sidecar) before gas estimation: a blob tx
-        // without versioned hashes fails ToTransaction, which gas estimation relies on.
-        if (rpcTx is BlobTransactionForRpc blobTx && FillBlobFields(blobTx, head, spec) is { } blobError)
-            return ResultWrapper<FillTransactionResult>.Fail(blobError, ErrorCodes.InvalidInput);
+        UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
+            && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+            ? feePerBlobGas
+            : null;
+
+        TxFillContext fillContext = new()
+        {
+            GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
+            MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
+            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
+            BlobBaseFee = blobBaseFee,
+            Spec = spec,
+        };
+
+        // Derive the blob sidecar/versioned hashes before gas estimation: a blob tx without versioned
+        // hashes fails ToTransaction, which gas estimation relies on.
+        if (rpcTx.PrepareForGasEstimation(fillContext) is { } prepareError)
+            return ResultWrapper<FillTransactionResult>.Fail(prepareError, ErrorCodes.InvalidInput);
 
         // Estimate gas before defaulting fees: while the fee fields are unset ShouldSetBaseFee is
         // false, so estimation runs with the base fee zeroed and a zero-balance sender still resolves.
@@ -496,19 +510,10 @@ public partial class EthRpcModule(
             rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
         }
 
-        switch (rpcTx)
-        {
-            case EIP1559TransactionForRpc eip1559Tx:
-                eip1559Tx.MaxPriorityFeePerGas ??= _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
-                eip1559Tx.MaxFeePerGas ??= BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)) * 2 + eip1559Tx.MaxPriorityFeePerGas.Value;
-                break;
-            case LegacyTransactionForRpc legacyTx:
-                legacyTx.GasPrice ??= await _gasPriceOracle.GetGasPriceEstimate();
-                break;
-        }
+        if (rpcTx.FillFeeDefaults(fillContext) is { } feeError)
+            return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
-        if (rpcTx is LegacyTransactionForRpc chainless)
-            chainless.ChainId ??= chainId;
+        baseTx.ChainId ??= chainId;
 
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
         if (!txResult.Success(out Transaction tx, out string error))
@@ -1281,46 +1286,6 @@ public partial class EthRpcModule(
                 ErrorCodes.InvalidParams);
         }
 
-        return null;
-    }
-
-    /// <summary>
-    /// Fills the blob-specific fields of an EIP-4844 transaction: the blob base fee and, when the
-    /// caller supplied raw <c>blobs</c> but omitted the KZG sidecar, the derived commitments, proofs
-    /// and versioned hashes.
-    /// </summary>
-    /// <remarks>
-    /// Raw blobs are the caller's payload and are never synthesized. The proof shape follows the head
-    /// fork: one KZG proof per blob pre-PeerDAS, cell proofs (128 per blob) post-PeerDAS. Deriving
-    /// proofs and commitments requires the KZG trusted setup, which is loaded on any 4844-enabled node.
-    /// </remarks>
-    /// <returns>An error message if the blob base fee cannot be computed, otherwise <c>null</c>.</returns>
-    private static string? FillBlobFields(BlobTransactionForRpc blobTx, BlockHeader head, IReleaseSpec spec)
-    {
-        // Default maxFeePerBlobGas to twice the current blob base fee (geth parity). If it can't be
-        // computed the chain isn't 4844-capable, so fail rather than emit "0x0" — below the EIP-4844
-        // minimum blob base fee of 1.
-        if (blobTx.MaxFeePerBlobGas is null)
-        {
-            if (head.ExcessBlobGas is null
-                || !BlobGasCalculator.TryCalculateFeePerBlobGas(head.ExcessBlobGas.Value, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
-            {
-                return "unable to calculate the current blob base fee";
-            }
-
-            blobTx.MaxFeePerBlobGas = feePerBlobGas * 2;
-        }
-
-        bool sidecarComplete = blobTx.Commitments is not null && blobTx.Proofs is not null && blobTx.BlobVersionedHashes is { Length: > 0 };
-        if (blobTx.Blobs is not { Length: > 0 } || sidecarComplete)
-            return null;
-
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(spec.BlobProofVersion);
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blobTx.Blobs);
-        proofsManager.ComputeProofsAndCommitments(wrapper);
-        blobTx.Commitments = wrapper.Commitments;
-        blobTx.Proofs = wrapper.Proofs;
-        blobTx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
         return null;
     }
 }

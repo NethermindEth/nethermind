@@ -90,6 +90,51 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
+    public override string? PrepareForGasEstimation(in TxFillContext context)
+    {
+        // Raw blobs are the caller's payload; only derive the sidecar when it is missing or incomplete.
+        if (Blobs is not { Length: > 0 }) return null;
+        if (Commitments is not null && Proofs is not null && BlobVersionedHashes is { Length: > 0 }) return null;
+
+        // Bound the blob count before the expensive KZG work, matching the raw-tx decode cap.
+        ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(Blobs.Length, context.Spec);
+        if (!blobCountValidation) return blobCountValidation.Error!;
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(context.Spec.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(Blobs);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        if (BlobVersionedHashes is { Length: > 0 })
+        {
+            // Caller supplied hashes: verify they match the derived commitments rather than overwriting.
+            if (!proofsManager.ValidateHashes(wrapper, BlobVersionedHashes))
+                return "blob versioned hashes do not match the supplied blobs";
+        }
+        else
+        {
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+        }
+
+        Commitments = wrapper.Commitments;
+        Proofs = wrapper.Proofs;
+        return null;
+    }
+
+    public override string? FillFeeDefaults(in TxFillContext context)
+    {
+        base.FillFeeDefaults(context);
+
+        if (MaxFeePerBlobGas is null)
+        {
+            // Match eth_blobBaseFee: fail when the blob base fee can't be computed rather than emit
+            // "0x0", which is below the EIP-4844 minimum of 1.
+            if (context.BlobBaseFee is null) return "unable to calculate the current blob base fee";
+            MaxFeePerBlobGas = context.BlobBaseFee.Value * 2;
+        }
+
+        return null;
+    }
+
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
 
