@@ -44,16 +44,4 @@ public interface IProcessingEnvBuilder
     IProcessingEnvBuilder Configure(Action<ContainerBuilder> configure);
 
     TWrapper BuildAs<TWrapper>() where TWrapper : class;
-
-    /// <summary>
-    /// Builds the environment and returns its <see cref="IOverridableEnv{T}"/>; disposing the returned
-    /// handle disposes the underlying scope. Use for the state-override RPC envs whose world state comes
-    /// from <see cref="WithOverridableEnv(IOverridableEnv)"/>.
-    /// </summary>
-    IOverridableEnvHandle<T> BuildAsOverridableEnv<T>();
-}
-
-/// <summary>An <see cref="IOverridableEnv{T}"/> that owns and asynchronously disposes its environment scope.</summary>
-public interface IOverridableEnvHandle<T> : IOverridableEnv<T>, IAsyncDisposable
-{
 }

@@ -16,15 +16,17 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Generates and caches, once per wrapper interface, a concrete class that surfaces an Autofac
-/// <see cref="ILifetimeScope"/> as that interface: the constructor resolves every read-only property
-/// from the scope into a backing field, each getter returns that field, and
-/// <see cref="IDisposable.Dispose"/> / <see cref="IAsyncDisposable.DisposeAsync"/> dispose the scope.
+/// <see cref="ILifetimeScope"/> as that interface: each read-only property is resolved from the scope into
+/// a backing field and returned by its getter, each method inherited from a base interface is forwarded to
+/// that interface resolved from the scope, and <see cref="IDisposable.Dispose"/> /
+/// <see cref="IAsyncDisposable.DisposeAsync"/> dispose the scope.
 /// </summary>
 /// <remarks>
 /// The generated type lives in a dynamic assembly, so a wrapper interface must be <b>public</b>, and it
-/// must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> so the scope is
-/// released. Components are resolved eagerly at construction (like the constructor-injected
-/// <c>record</c> bundles this replaces), so any missing registration surfaces when the wrapper is built.
+/// must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> so the scope is released.
+/// A non-getter method declared directly on the wrapper interface has no component to forward to and is
+/// rejected when the wrapper is built. Components and forwarding targets are resolved eagerly at
+/// construction, so any missing registration surfaces then.
 /// </remarks>
 internal static class ProcessingEnvWrapperFactory
 {
@@ -60,6 +62,11 @@ internal static class ProcessingEnvWrapperFactory
     private static bool IsDisposeAsync(MethodInfo method) =>
         method.Name == nameof(IAsyncDisposable.DisposeAsync) && method.ReturnType == typeof(ValueTask) && method.GetParameters().Length == 0;
 
+    // A method inherited from a base interface (other than a getter or IDisposable/IAsyncDisposable) is
+    // forwarded to that interface resolved from the scope; a method declared on the wrapper has no target.
+    private static bool IsForwarded(Type iface, MethodInfo method) =>
+        method.DeclaringType != iface && !IsGetter(method) && !IsDispose(method) && !IsDisposeAsync(method);
+
     private static Func<ILifetimeScope, object> Emit(Type iface)
     {
         if (!typeof(IDisposable).IsAssignableFrom(iface) && !typeof(IAsyncDisposable).IsAssignableFrom(iface))
@@ -67,11 +74,11 @@ internal static class ProcessingEnvWrapperFactory
 
         MethodInfo[] methods = [.. new[] { iface }.Concat(iface.GetInterfaces()).SelectMany(i => i.GetMethods())];
 
-        // Validate the whole interface up front so an unsupported member fails when the wrapper is built, not when it is called.
+        // Validate up front so an unsupported member fails when the wrapper is built, not when it is called.
         foreach (MethodInfo method in methods)
-            if (!IsGetter(method) && !IsDispose(method) && !IsDisposeAsync(method))
+            if (!IsGetter(method) && !IsDispose(method) && !IsDisposeAsync(method) && !IsForwarded(iface, method))
                 throw new ArgumentException(
-                    $"'{iface}' cannot be a processing-env wrapper: '{method.Name}' is neither a read-only property nor IDisposable/IAsyncDisposable.", nameof(iface));
+                    $"'{iface}' cannot be a processing-env wrapper: '{method.Name}' is declared on the wrapper itself but is not a read-only property. Only getters, methods inherited from a base interface, and IDisposable/IAsyncDisposable are supported.", nameof(iface));
 
         // Unique suffix so a concurrent GetOrAdd re-entry never collides on the module type name.
         TypeBuilder type = Module.DefineType(
@@ -80,16 +87,21 @@ internal static class ProcessingEnvWrapperFactory
 
         FieldBuilder scope = type.DefineField("_scope", typeof(ILifetimeScope), FieldAttributes.Private | FieldAttributes.InitOnly);
 
-        // A backing field per getter, holding the component resolved in the constructor.
-        Dictionary<MethodInfo, FieldBuilder> fields = [];
+        // A backing field per getter (the component) and per forwarded interface (the delegate target),
+        // all resolved from the scope in the constructor.
+        Dictionary<MethodInfo, FieldBuilder> getters = [];
         foreach (MethodInfo getter in methods.Where(IsGetter))
-            fields[getter] = type.DefineField(
-                $"_{getter.Name}", getter.ReturnType, FieldAttributes.Private | FieldAttributes.InitOnly);
+            getters[getter] = type.DefineField($"_{getter.Name}", getter.ReturnType, FieldAttributes.Private | FieldAttributes.InitOnly);
 
-        EmitConstructor(type, scope, fields);
+        Dictionary<Type, FieldBuilder> forwardTargets = [];
+        foreach (MethodInfo method in methods.Where(m => IsForwarded(iface, m)))
+            if (!forwardTargets.ContainsKey(method.DeclaringType!))
+                forwardTargets[method.DeclaringType!] = type.DefineField($"_forward{forwardTargets.Count}", method.DeclaringType!, FieldAttributes.Private | FieldAttributes.InitOnly);
+
+        EmitConstructor(type, scope, [.. getters.Values, .. forwardTargets.Values]);
 
         foreach (MethodInfo method in methods)
-            EmitMethod(type, scope, fields, method);
+            EmitMethod(type, scope, getters, forwardTargets, method);
 
         Type generated = type.CreateType()!;
         ConstructorInfo ctor = generated.GetConstructor([typeof(ILifetimeScope)])!;
@@ -98,7 +110,7 @@ internal static class ProcessingEnvWrapperFactory
     }
 
     // .ctor(ILifetimeScope scope) { _scope = scope; _X = (TX)scope.Resolve(typeof(TX)); ... }
-    private static void EmitConstructor(TypeBuilder type, FieldBuilder scope, Dictionary<MethodInfo, FieldBuilder> fields)
+    private static void EmitConstructor(TypeBuilder type, FieldBuilder scope, IEnumerable<FieldBuilder> resolvedFields)
     {
         ILGenerator il = type
             .DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, [typeof(ILifetimeScope)])
@@ -110,7 +122,7 @@ internal static class ProcessingEnvWrapperFactory
         il.Emit(OpCodes.Ldarg_1);
         il.Emit(OpCodes.Stfld, scope);
 
-        foreach (FieldBuilder field in fields.Values)
+        foreach (FieldBuilder field in resolvedFields)
         {
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg_1);                              // scope (IComponentContext)
@@ -124,7 +136,7 @@ internal static class ProcessingEnvWrapperFactory
         il.Emit(OpCodes.Ret);
     }
 
-    private static void EmitMethod(TypeBuilder type, FieldBuilder scope, Dictionary<MethodInfo, FieldBuilder> fields, MethodInfo method)
+    private static void EmitMethod(TypeBuilder type, FieldBuilder scope, Dictionary<MethodInfo, FieldBuilder> getters, Dictionary<Type, FieldBuilder> forwardTargets, MethodInfo method)
     {
         MethodBuilder impl = type.DefineMethod(method.Name,
             MethodAttributes.Private | MethodAttributes.Final | MethodAttributes.Virtual | MethodAttributes.HideBySig | MethodAttributes.NewSlot,
@@ -148,13 +160,18 @@ internal static class ProcessingEnvWrapperFactory
         else if (IsGetter(method))
         {
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldfld, fields[method]);
+            il.Emit(OpCodes.Ldfld, getters[method]);
             il.Emit(OpCodes.Ret);
         }
         else
         {
-            // Unreachable: Emit rejects unsupported members before any method is generated.
-            throw new InvalidOperationException($"Unexpected member '{method.Name}' on a processing-env wrapper.");
+            // Forward to the component resolved for the method's declaring interface.
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, forwardTargets[method.DeclaringType!]);
+            for (int i = 0; i < method.GetParameters().Length; i++)
+                il.Emit(OpCodes.Ldarg_S, (byte)(i + 1));
+            il.Emit(OpCodes.Callvirt, method);
+            il.Emit(OpCodes.Ret);
         }
 
         type.DefineMethodOverride(impl, method);

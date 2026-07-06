@@ -48,6 +48,11 @@ public interface IEnvWithMethod : IDisposable
     void DoSomething();
 }
 
+// Inherits IOverridableEnv<T>.BuildAndOverride, which the wrapper forwards to the resolved env.
+public interface IOverridableWorldStateEnv : IOverridableEnv<IWorldState>, IAsyncDisposable
+{
+}
+
 [Parallelizable(ParallelScope.All)]
 public class ProcessingEnvBuilderTests
 {
@@ -154,21 +159,21 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
-    public async Task BuildAsOverridableEnv_returns_an_overridable_env_and_disposes_the_scope()
+    public async Task BuildAs_forwards_overridable_env_methods_and_disposes_the_scope()
     {
         using IContainer container = BuildContainer();
         IOverridableEnv overridableEnv = container.Resolve<IOverridableEnvFactory>().Create();
 
-        IOverridableEnvHandle<IWorldState> handle = container.Resolve<IProcessingEnvBuilder>()
+        IOverridableWorldStateEnv env = container.Resolve<IProcessingEnvBuilder>()
             .WithOverridableEnv(overridableEnv)
-            .BuildAsOverridableEnv<IWorldState>();
+            .BuildAs<IOverridableWorldStateEnv>();
 
-        using (Scope<IWorldState> scope = handle.BuildAndOverride(null))
+        using (Scope<IWorldState> scope = env.BuildAndOverride(null))
         {
             Assert.That(scope.Component, Is.Not.Null);
         }
 
-        await handle.DisposeAsync();
+        await env.DisposeAsync();
     }
 
     [Test]

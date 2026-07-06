@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -31,12 +32,12 @@ namespace Nethermind.Flashbots.Modules.Flashbots
     {
         public override IFlashbotsRpcModule Create()
         {
-            IOverridableEnvHandle<ValidateSubmissionHandler.ProcessingEnv> env = envBuilder
+            IEnv env = envBuilder
                 .WithOverridableEnv(overridableEnvFactory.Create())
                 .WithBlockValidationConfiguration()
                 .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance)
                 .Configure(builder => builder.AddScoped<ValidateSubmissionHandler.ProcessingEnv>())
-                .BuildAsOverridableEnv<ValidateSubmissionHandler.ProcessingEnv>();
+                .BuildAs<IEnv>();
 
             rootLifetime.Disposer.AddInstanceForAsyncDisposal(env);
             ValidateSubmissionHandler validateSubmissionHandler = new(
@@ -51,6 +52,11 @@ namespace Nethermind.Flashbots.Modules.Flashbots
             );
 
             return new FlashbotsRpcModule(validateSubmissionHandler);
+        }
+
+        // The wrapper forwards BuildAndOverride to the resolved env and DisposeAsync to the built scope.
+        public interface IEnv : IOverridableEnv<ValidateSubmissionHandler.ProcessingEnv>, IAsyncDisposable
+        {
         }
     }
 }
