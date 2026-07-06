@@ -8,6 +8,8 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 // Blockchain tests - directory derived from class name by convention (strip "BlockchainTests", lowercase)
 public class FrontierBlockchainTests : PyspecBlockchainTestFixture<FrontierBlockchainTests>;
 public class HomesteadBlockchainTests : PyspecBlockchainTestFixture<HomesteadBlockchainTests>;
+public class TangerineWhistleBlockchainTests : PyspecBlockchainTestFixture<TangerineWhistleBlockchainTests>;
+public class SpuriousDragonBlockchainTests : PyspecBlockchainTestFixture<SpuriousDragonBlockchainTests>;
 public class ByzantiumBlockchainTests : PyspecBlockchainTestFixture<ByzantiumBlockchainTests>;
 public class IstanbulBlockchainTests : PyspecBlockchainTestFixture<IstanbulBlockchainTests>;
 public class BerlinBlockchainTests : PyspecBlockchainTestFixture<BerlinBlockchainTests>;
@@ -63,6 +65,8 @@ public class AmsterdamParallelFullEngineBlockchainTests() : PyspecAmsterdamEngin
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 public class FrontierStateTests : PyspecStateTestFixture<FrontierStateTests>;
 public class HomesteadStateTests : PyspecStateTestFixture<HomesteadStateTests>;
+public class TangerineWhistleStateTests : PyspecStateTestFixture<TangerineWhistleStateTests>;
+public class SpuriousDragonStateTests : PyspecStateTestFixture<SpuriousDragonStateTests>;
 public class ByzantiumStateTests : PyspecStateTestFixture<ByzantiumStateTests>;
 public class IstanbulStateTests : PyspecStateTestFixture<IstanbulStateTests>;
 public class BerlinStateTests : PyspecStateTestFixture<BerlinStateTests>;
