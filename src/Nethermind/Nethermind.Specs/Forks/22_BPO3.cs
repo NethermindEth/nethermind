@@ -3,7 +3,9 @@
 
 namespace Nethermind.Specs.Forks;
 
-public class BPO3() : NamedReleaseSpec<BPO3>(Amsterdam.Instance)
+// BPO forks are blob-parameter-only forks chained off BPO2, parallel to Amsterdam
+// (matching execution-spec-tests fork lineage); they must not inherit Amsterdam EIPs.
+public class BPO3() : NamedReleaseSpec<BPO3>(BPO2.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {

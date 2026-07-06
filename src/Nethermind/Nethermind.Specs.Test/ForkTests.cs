@@ -43,4 +43,22 @@ public class ForkTests
             }
         }
     }
+
+    [Test]
+    public void Bpo_forks_are_blob_only_and_do_not_inherit_Amsterdam()
+    {
+        // Matches execution-spec-tests lineage: BPO3(BPO2), BPO4(BPO3), BPO5(BPO4),
+        // with Amsterdam a parallel branch. BAL hash (EIP-7928) is Amsterdam-only.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BPO3.Instance.Parent, Is.SameAs(BPO2.Instance));
+            Assert.That(BPO4.Instance.Parent, Is.SameAs(BPO3.Instance));
+            Assert.That(BPO5.Instance.Parent, Is.SameAs(BPO4.Instance));
+
+            Assert.That(BPO3.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(BPO4.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(BPO5.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7928Enabled, Is.True);
+        }
+    }
 }
