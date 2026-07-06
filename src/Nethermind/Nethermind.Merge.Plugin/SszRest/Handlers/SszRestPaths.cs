@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using Forks = Nethermind.Specs.Forks;
@@ -12,16 +13,8 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 public static class SszRestPaths
 {
-    private static readonly string _paris = Forks.Paris.Instance.EngineApiUrlSegment!;
-    private static readonly string _shanghai = Forks.Shanghai.Instance.EngineApiUrlSegment!;
-    private static readonly string _cancun = Forks.Cancun.Instance.EngineApiUrlSegment!;
-    private static readonly string _prague = Forks.Prague.Instance.EngineApiUrlSegment!;
-    private static readonly string _osaka = Forks.Osaka.Instance.EngineApiUrlSegment!;
-    private static readonly string _amsterdam = Forks.Amsterdam.Instance.EngineApiUrlSegment!;
-    private static readonly string _bogota = Forks.Bogota.Instance.EngineApiUrlSegment!;
-
     /// <summary>
-    /// Single source of truth: URL fork segment → <see cref="Forks.NamedReleaseSpec"/>. Built by
+    /// Single source of truth: fork name (Eth-Execution-Version value) → <see cref="Forks.NamedReleaseSpec"/>. Built by
     /// walking back from the latest fork via <see cref="Forks.NamedReleaseSpec.Parent"/> and
     /// keeping every fork that introduces an engine-API method-version change vs. its parent.
     /// BPO blob-parameter override forks inherit all engine-API versions and so are filtered out.
@@ -46,21 +39,20 @@ public static class SszRestPaths
 
         Dictionary<string, Forks.NamedReleaseSpec> result = new(StringComparer.OrdinalIgnoreCase);
         foreach (Forks.NamedReleaseSpec spec in ordered)
-            result[spec.EngineApiUrlSegment!] = spec;
+            result[ForkName(spec)!] = spec;
         return result;
     }
+
+    /// <summary>Lowercase fork name used as the <c>Eth-Execution-Version</c> header value.</summary>
+    private static string? ForkName(Forks.NamedReleaseSpec spec) => spec.Name?.ToLowerInvariant();
+
+    private static bool ResourceEquals(ReadOnlySpan<char> resource, string name) =>
+        resource.Equals(name.AsSpan(), StringComparison.OrdinalIgnoreCase);
 
     public static readonly IReadOnlyList<string> SupportedForksOrdered = [.. _forkSpecByUrl.Keys];
 
     public static readonly FrozenSet<string> SupportedForks =
         SupportedForksOrdered.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Cached <see cref="ReadOnlySpan{Char}"/> alternate lookup for <see cref="SupportedForks"/>,
-    /// so the per-request <c>GetAlternateLookup</c> call in <c>SszMiddleware.TryRoute</c> is avoided.
-    /// </summary>
-    public static readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> SupportedForksSpanLookup =
-        SupportedForks.GetAlternateLookup<ReadOnlySpan<char>>();
 
     public const string Payloads = "payloads";
 
@@ -76,44 +68,69 @@ public static class SszRestPaths
 
     public const string Blobs = "blobs";
 
-    // Documentation strings for the SSZ-REST routes — used by EngineRpcCapabilitiesProvider
-    // (registration) and EngineModuleTests (coverage assertions). Built at static-init time from
-    // each fork's EngineApiUrlSegment so the route docs stay in sync with the routing layer.
-    public static readonly string PostV1Payloads = $"POST /engine/v2/{_paris}/payloads";
-    public static readonly string GetV1Payloads = $"GET /engine/v2/{_paris}/payloads/{{payload_id}}";
-    public static readonly string PostV1Forkchoice = $"POST /engine/v2/{_paris}/forkchoice";
-    public const string PostV1Capabilities = "GET /engine/v2/capabilities";
-    public const string PostV1ClientVersion = "GET /engine/v2/identity";
+    public const string PayloadWithWitness = "payloads/witness";
 
-    public static readonly string PostV2Payloads = $"POST /engine/v2/{_shanghai}/payloads";
-    public static readonly string PostV2Forkchoice = $"POST /engine/v2/{_shanghai}/forkchoice";
-    public static readonly string GetV2Payloads = $"GET /engine/v2/{_shanghai}/payloads/{{payload_id}}";
-    public static readonly string PostV1PayloadBodiesByHash = $"POST /engine/v2/{_shanghai}/bodies/hash";
-    public static readonly string GetV1PayloadBodiesByRange = $"GET /engine/v2/{_shanghai}/bodies";
+    public const string InclusionList = "inclusion_list";
 
-    public static readonly string PostV3Payloads = $"POST /engine/v2/{_cancun}/payloads";
-    public static readonly string PostV3Forkchoice = $"POST /engine/v2/{_cancun}/forkchoice";
-    public static readonly string GetV3Payloads = $"GET /engine/v2/{_cancun}/payloads/{{payload_id}}";
-    public const string PostV1Blobs = "POST /engine/v2/blobs/v1";
+    /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
+    public enum ResourceScoping
+    {
+        /// <summary>Fork (and thus method version) comes from the <c>Eth-Execution-Version</c> header.</summary>
+        ForkScoped,
+        /// <summary>Version comes from a trailing <c>/v{N}</c> path segment; no fork header (blobs).</summary>
+        PathVersioned,
+        /// <summary>No fork and no version — a single endpoint (capabilities, identity).</summary>
+        Unscoped
+    }
 
-    public static readonly string PostV4Payloads = $"POST /engine/v2/{_prague}/payloads";
-    public static readonly string GetV4Payloads = $"GET /engine/v2/{_prague}/payloads/{{payload_id}}";
+    /// <summary>Classifies how the given first path <paramref name="resource"/> segment is routed.</summary>
+    public static ResourceScoping GetScoping(ReadOnlySpan<char> resource)
+    {
+        if (ResourceEquals(resource, Capabilities) || ResourceEquals(resource, ClientVersion)) return ResourceScoping.Unscoped;
+        if (ResourceEquals(resource, Blobs)) return ResourceScoping.PathVersioned;
+        return ResourceScoping.ForkScoped;
+    }
 
-    public static readonly string GetV5Payloads = $"GET /engine/v2/{_osaka}/payloads/{{payload_id}}";
-    public const string PostV2Blobs = "POST /engine/v2/blobs/v2";
-    public const string PostV3Blobs = "POST /engine/v2/blobs/v3";
+    public const string PostPayloads = "POST /engine/v2/payloads";
+    public const string GetPayloads = "GET /engine/v2/payloads/{payload_id}";
+    public const string PostForkchoice = "POST /engine/v2/forkchoice";
+    public const string PostBodiesByHash = "POST /engine/v2/bodies/hash";
+    public const string GetBodiesByRange = "GET /engine/v2/bodies";
+    public const string GetCapabilities = "GET /engine/v2/capabilities";
+    public const string GetIdentity = "GET /engine/v2/identity";
+    public const string PostBlobsV1 = "POST /engine/v2/blobs/v1";
+    public const string PostBlobsV2 = "POST /engine/v2/blobs/v2";
+    public const string PostBlobsV3 = "POST /engine/v2/blobs/v3";
+    public const string PostBlobsV4 = "POST /engine/v2/blobs/v4";
+    public const string PostPayloadsWitness = "POST /engine/v2/payloads/witness";
+    public const string GetInclusionList = "GET /engine/v2/inclusion_list/{block_hash}";
 
-    public static readonly string PostV5Payloads = $"POST /engine/v2/{_amsterdam}/payloads";
-    public static readonly string GetV6Payloads = $"GET /engine/v2/{_amsterdam}/payloads/{{payload_id}}";
-    public static readonly string PostV4Forkchoice = $"POST /engine/v2/{_amsterdam}/forkchoice";
-    public static readonly string PostV2PayloadBodiesByHash = $"POST /engine/v2/{_amsterdam}/bodies/hash";
-    public static readonly string GetV2PayloadBodiesByRange = $"GET /engine/v2/{_amsterdam}/bodies";
-    public const string PostV4Blobs = "POST /engine/v2/blobs/v4";
+    // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
+    // (one table per HTTP method). Presence in the table means the (method, resource) pair is a
+    // recognized endpoint, even when the selector returns null because this fork predates it.
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>> _postVersionByResource =
+        new Dictionary<string, Func<Forks.NamedReleaseSpec, int?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Payloads] = static spec => spec.EngineApiNewPayloadVersion,
+            [Forkchoice] = static spec => spec.EngineApiForkchoiceVersion,
+            [PayloadBodiesByHash] = static spec => spec.EngineApiPayloadBodiesByHashVersion,
+            // Witness reuses the newPayload version, but only from the EIP-7928 fork onward.
+            [PayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiNewPayloadVersion : null,
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    // Bogota — EIP-7805 (FOCIL)
-    public static readonly string PostV6Payloads = $"POST /engine/v2/{_bogota}/payloads";
-    public static readonly string PostV5Forkchoice = $"POST /engine/v2/{_bogota}/forkchoice";
-    public static readonly string GetV1InclusionList = $"GET /engine/v2/{_bogota}/inclusion_list/{{block_hash}}";
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>> _getVersionByResource =
+        new Dictionary<string, Func<Forks.NamedReleaseSpec, int?>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
+            [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
+            // EIP-7805 (FOCIL): inclusion lists exist only from the Bogota fork onward.
+            [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _postVersionLookup =
+        _postVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();
+    private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _getVersionLookup =
+        _getVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>
     /// Resolves the per-fork engine API method version for the given <paramref name="resource"/>
@@ -121,39 +138,38 @@ public static class SszRestPaths
     /// Each fork only declares the versions it changes vs. its parent; values flow forward through
     /// the spec inheritance chain.
     /// </summary>
-    public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod)
+    /// <param name="recognizedResource">
+    /// <c>true</c> when <paramref name="resource"/> + <paramref name="httpMethod"/> name a known
+    /// fork-scoped endpoint, even if this fork has no version for it (e.g. <c>paris</c> + <c>bodies</c>).
+    /// Lets the caller distinguish "endpoint not available for this fork" (400) from "unknown
+    /// endpoint" (404) when the returned version is <c>null</c>.
+    /// </param>
+    public static int? MapForkToVersion(string fork, ReadOnlySpan<char> resource, string httpMethod, out bool recognizedResource)
     {
-        if (!_forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)) return null;
+        Func<Forks.NamedReleaseSpec, int?>? selectVersion = null;
+        if (HttpMethods.IsPost(httpMethod))
+            _postVersionLookup.TryGetValue(resource, out selectVersion);
+        else if (HttpMethods.IsGet(httpMethod))
+            _getVersionLookup.TryGetValue(resource, out selectVersion);
 
-        // Resource comparisons are case-insensitive (URL segments are lowercase per spec,
-        // but routing accepts any case).
-        if (string.Equals(httpMethod, "POST", StringComparison.Ordinal))
-        {
-            if (Eq(resource, Payloads)) return spec.EngineApiNewPayloadVersion;
-            if (Eq(resource, Forkchoice)) return spec.EngineApiForkchoiceVersion;
-            if (Eq(resource, PayloadBodiesByHash)) return spec.EngineApiPayloadBodiesByHashVersion;
-        }
-        else if (string.Equals(httpMethod, "GET", StringComparison.Ordinal))
-        {
-            if (Eq(resource, Payloads)) return spec.EngineApiGetPayloadVersion;
-            if (Eq(resource, PayloadBodiesByRange)) return spec.EngineApiPayloadBodiesByRangeVersion;
-        }
-
-        return null;
-
-        static bool Eq(ReadOnlySpan<char> a, string b) => a.Equals(b.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        recognizedResource = selectVersion is not null;
+        return recognizedResource && _forkSpecByUrl.TryGetValue(fork, out Forks.NamedReleaseSpec? spec)
+            ? selectVersion!(spec)
+            : null;
     }
 
     /// <summary>
-    /// Returns the URL fork segment that owns <paramref name="spec"/>'s engine API surface,
-    /// walking up the parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>).
+    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface, walking up the
+    /// parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>). Matched
+    /// case-insensitively against the <c>Eth-Execution-Version</c> value, so it is returned as-is
+    /// (no per-call lowercasing).
     /// </summary>
-    public static string? GetEngineApiUrlSegment(IReleaseSpec spec)
+    public static string? GetEngineApiForkName(IReleaseSpec spec)
     {
         for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
         {
-            if (n.EngineApiUrlSegment is { } seg && _forkSpecByUrl.ContainsKey(seg))
-                return seg;
+            if (n.Name is { } name && _forkSpecByUrl.ContainsKey(name))
+                return name;
         }
         return null;
     }

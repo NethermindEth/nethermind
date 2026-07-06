@@ -123,6 +123,11 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
 
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(txSequenceStart + transactionSequence.Length);
+        }
     }
 
     public override void Encode<TWriter>(ref TWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

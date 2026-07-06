@@ -226,7 +226,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
                             }
                         }
                         finally
@@ -260,7 +260,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            if (tx.SenderAddress is not Address sender)
+            {
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                continue;
+            }
 
             if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
             {
@@ -277,10 +281,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        CancellationToken cancellationToken)
     {
         try
         {
+            // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -289,9 +295,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
+            // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
             if (blockState.Spec.UseTxAccessLists)
             {
-                worldState.WarmUp(tx.AccessList); // eip-2930
+                worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);

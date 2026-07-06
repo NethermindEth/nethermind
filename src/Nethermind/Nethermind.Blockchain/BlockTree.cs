@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
@@ -32,7 +33,6 @@ namespace Nethermind.Blockchain
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
-        private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
 
@@ -52,6 +52,7 @@ namespace Nethermind.Blockchain
         protected readonly ISpecProvider SpecProvider;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        private readonly IStateBoundary _stateBoundary;
 
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
@@ -87,8 +88,6 @@ namespace Nethermind.Blockchain
 
         private BlockHeader? _lowestInsertedBeaconHeader;
 
-        private ulong? _highestPersistedState;
-
         public ulong BestKnownNumber { get; private set; }
 
         public ulong BestKnownBeaconNumber { get; private set; }
@@ -116,6 +115,7 @@ namespace Nethermind.Blockchain
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             ISyncConfig? syncConfig,
+            IStateBoundary? stateBoundary,
             ILogManager? logManager,
             ulong genesisBlockNumber = 0)
         {
@@ -130,6 +130,7 @@ namespace Nethermind.Blockchain
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _stateBoundary = stateBoundary ?? throw new ArgumentNullException(nameof(stateBoundary));
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
@@ -576,7 +577,7 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
+                    bool isMain = level?.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
                     header = isMain ? header : null;
                 }
             }
@@ -1199,7 +1200,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            ulong? bestPersisted = BestPersistedState;
+            ulong? bestPersisted = _stateBoundary.BestPersistedState;
             if (bestPersisted is null)
             {
                 if (Logger.IsTrace) Logger.Trace("Did not update sync pivot because no best persisted state");
@@ -1419,7 +1420,6 @@ namespace Nethermind.Blockchain
             {
                 if (Logger.IsError) Logger.Error($"Block tree override detected - updating head block to {blockHash}.");
                 _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
-                BestPersistedState = header.Number;
             }
             else
             {
@@ -1618,7 +1618,7 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+                    bool isMain = level?.MainChainBlock?.BlockHash.Equals(blockHash) == true;
                     block = isMain ? block : null;
                 }
             }
@@ -1851,22 +1851,6 @@ namespace Nethermind.Blockchain
         }
 
         private Task WaitForReadinessToAcceptNewBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
-
-        /// <inheritdoc />
-        public ulong? BestPersistedState
-        {
-            get => _highestPersistedState;
-            set
-            {
-                _highestPersistedState = value;
-                if (value.HasValue)
-                {
-                    _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
-                }
-
-                TryUpdateSyncPivot();
-            }
-        }
 
         public bool IsProcessingBlock { get; set; }
 

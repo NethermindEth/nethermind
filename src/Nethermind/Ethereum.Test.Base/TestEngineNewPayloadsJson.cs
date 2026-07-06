@@ -18,6 +18,9 @@ namespace Ethereum.Test.Base
         // when absent (existing behaviour). FOCIL fixtures use this to assert INCLUSION_LIST_UNSATISFIED.
         public string? Status { get; set; }
 
+        public ExecutionWitnessJson? ExecutionWitness { get; set; }
+        public bool? ExecutionWitnessMutated { get; set; }
+
         public class ParamsExecutionPayload
         {
             public string ParentHash { get; set; }

@@ -9,13 +9,6 @@ namespace Nethermind.JsonRpc;
 
 internal static class RpcParameterTypeInfo
 {
-    public static JsonTypeInfo? Get(Type type)
-    {
-        if (!RpcGeneratedTypeInfoRegistry.TryGet(type, out JsonTypeInfo? typeInfo))
-        {
-            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out typeInfo);
-        }
-
-        return typeInfo;
-    }
+    public static JsonTypeInfo? Get(Type type) =>
+        EthereumJsonSerializer.JsonRpcRequestOptions.GetTypeInfo(type);
 }

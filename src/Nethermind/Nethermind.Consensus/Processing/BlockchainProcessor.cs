@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -38,10 +39,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
 
-    public ITracerBag Tracers => _compositeBlockTracer;
-
     private readonly IBranchProcessor _branchProcessor;
-    private readonly IBlockPreprocessorStep _recoveryStep;
+    private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
@@ -89,30 +88,41 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     /// <param name="blockTree"></param>
     /// <param name="branchProcessor"></param>
-    /// <param name="recoveryStep"></param>
+    /// <param name="preprocessorSteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
+    /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
-        IBlockPreprocessorStep recoveryStep,
+        IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
         IStateReader stateReader,
         ILogManager logManager,
         Options options,
-        IProcessingStats processingStats)
+        IProcessingStats processingStats,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
-        _recoveryStep = recoveryStep;
+        _preprocessorSteps = preprocessorSteps;
         _stateReader = stateReader;
         _options = options;
 
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
+        if (blockTracers is not null) _compositeBlockTracer.AddRange(blockTracers);
+    }
+
+    private void Preprocess(Block block)
+    {
+        for (int i = 0; i < _preprocessorSteps.Count; i++)
+        {
+            _preprocessorSteps[i].RecoverData(block);
+        }
     }
 
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
@@ -281,7 +291,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
-                _recoveryStep.RecoverData(blockRef.Block);
+                Preprocess(blockRef.Block);
 
                 try
                 {
@@ -689,7 +699,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         for (int i = 0; i < blocksToProcess.Count; i++)
         {
             /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-            _recoveryStep.RecoverData(blocksToProcess[i]);
+            Preprocess(blocksToProcess[i]);
         }
 
         // Uncommon logging and throws

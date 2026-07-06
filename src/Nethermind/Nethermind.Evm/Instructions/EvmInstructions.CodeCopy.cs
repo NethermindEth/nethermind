@@ -33,16 +33,17 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
         if (outOfGas) goto OutOfGas;
 
         if (!result.IsZero)
         {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = source.SliceWithZeroPadding(in b, (int)result);
-            if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             if (TTracingInst.IsActive)
             {
@@ -101,7 +102,8 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -110,11 +112,11 @@ public static partial class EvmInstructions
 
         if (!size.IsZero)
         {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, vm.VmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
-            if (!vm.VmState.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in destOffset, in slice);
 
             if (TTracingInst.IsActive)
             {
@@ -157,14 +159,15 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         // Pop destination offset, source offset, and length from the stack.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
-        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: true, spec.GasCosts.ExtCodeCost, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in result, out bool outOfGas));
+        ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        TGasPolicy.ConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words);
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
@@ -174,7 +177,7 @@ public static partial class EvmInstructions
         if (!result.IsZero)
         {
             // Update memory cost if the destination region requires expansion.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
 
             vm.WorldState.AddAccountRead(address);
@@ -187,8 +190,7 @@ public static partial class EvmInstructions
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
             ZeroPaddedSpan slice = externalCode.SliceWithZeroPadding(in b, (int)result);
-            // Save the slice into memory at the destination offset.
-            if (!vm.VmState.Memory.TrySave(in a, in slice)) goto OutOfGas;
+            vm.VmState.Memory.SaveAfterGas(in a, in slice);
 
             // Report memory changes if tracing is enabled.
             if (TTracingInst.IsActive)
@@ -199,6 +201,7 @@ public static partial class EvmInstructions
         else
         {
             vm.WorldState.AddAccountRead(address);
+            vm.WorldState.RecordBytecodeAccess(address);
         }
 
         return EvmExceptionType.None;
@@ -235,10 +238,10 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeCost);
+        TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
 
         // Pop the account address from the stack.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
@@ -276,7 +279,7 @@ public static partial class EvmInstructions
                 vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
-                TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+                TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
                 bool isCodeLengthNotZero = vm.WorldState.IsContract(address);

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
@@ -92,11 +92,23 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                         break;
                     }
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
-                    _ = reader.ReadSequenceLength();
-                    _ = reader.ReadSequenceLength();
-                    byte[] forkHash = reader.DecodeByteArray();
-                    long nextBlock = reader.DecodeLong();
-                    nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
+                    int start = reader.Position;
+                    int end = reader.ReadSequenceLength() + reader.Position;
+                    int forkIdEnd = reader.ReadSequenceLength() + reader.Position;
+                    byte[] forkHash = reader.DecodeByteArray(size: ForkId.ForkHashLength);
+                    ulong next = reader.DecodeULong();
+                    reader.Check(forkIdEnd);
+                    bool hasAdditionalEthFields = reader.Position < end;
+                    while (reader.Position < end)
+                    {
+                        reader.SkipItem();
+                    }
+
+                    reader.Check(end);
+                    byte[]? originalEthRlpValue = hasAdditionalEthFields
+                        ? reader.Data[start..end].ToArray()
+                        : null;
+                    nodeRecord.SetEntry(new EthEntry(forkHash, next, originalEthRlpValue));
                     break;
                 case 3 when key.SequenceEqual(EnrContentKey.TcpU8):
                     {

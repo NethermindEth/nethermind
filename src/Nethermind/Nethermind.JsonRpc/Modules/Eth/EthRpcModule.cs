@@ -71,9 +71,11 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
-    IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -88,6 +90,7 @@ public partial class EthRpcModule(
     protected readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+    protected readonly IBlockForRpcFactory _blockForRpcFactory = blockForRpcFactory ?? throw new ArgumentNullException(nameof(blockForRpcFactory));
     protected readonly ILogger _logger = logManager.GetClassLogger<EthRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     protected readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
@@ -97,6 +100,7 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -192,7 +196,7 @@ public partial class EthRpcModule(
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
-    public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+    public ResultWrapper<byte[]> eth_getStorageAt(Address address, StorageIndex positionIndex,
         BlockParameter? blockParameter = null)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
@@ -566,7 +570,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
@@ -592,7 +596,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockHeaderForRpc?>.Success(null);
         }
 
-        BlockHeaderForRpc result = new(searchResult.Object!, _specProvider);
+        BlockHeaderForRpc result = _blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             result.Hash = null;
@@ -744,7 +748,7 @@ public partial class EthRpcModule(
         }
 
         BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-        return ResultWrapper<BlockForRpc?>.Success(new BlockForRpc(new Block(uncleHeader), false, _specProvider));
+        return ResultWrapper<BlockForRpc?>.Success(_blockForRpcFactory.Create(new Block(uncleHeader), false, _specProvider));
     }
 
     public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
@@ -892,6 +896,9 @@ public partial class EthRpcModule(
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
 
+            if (EnsureBlockRangeWithinLimit(fromBlockHeader, toBlockHeader) is { } rangeError)
+                return rangeError;
+
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
@@ -921,7 +928,7 @@ public partial class EthRpcModule(
     }
 
     // https://github.com/ethereum/EIPs/issues/1186
-    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
     {
         if (storageKeys.Count > GetProofStorageKeyLimit)
         {
@@ -1183,5 +1190,24 @@ public partial class EthRpcModule(
                 );
             }
         }
+    }
+
+    // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
+    private ResultWrapper<IEnumerable<FilterLog>>? EnsureBlockRangeWithinLimit(BlockHeader fromBlock, BlockHeader toBlock)
+    {
+        int maxBlockDepth = _receiptConfig.MaxBlockDepth;
+        if (logIndexConfig?.Enabled is true || maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
+            return null;
+
+        ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+        if (rangeSize > (ulong)maxBlockDepth)
+        {
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(
+                $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per logs request. " +
+                $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
+                ErrorCodes.InvalidParams);
+        }
+
+        return null;
     }
 }

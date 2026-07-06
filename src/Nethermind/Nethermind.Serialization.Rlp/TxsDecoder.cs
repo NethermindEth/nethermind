@@ -2,21 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Serialization.Rlp;
 
 public static class TxsDecoder
 {
+    private const int ParallelDecodeThreshold = 32;
+
     public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
-        return TryDecodeParallel(txData, rlpDecoder, skipErrors, out TransactionDecodingResult result)
-            ? result
-            : DecodeSequential(txData, rlpDecoder, skipErrors);
+        return txData.Length < ParallelDecodeThreshold
+            ? DecodeSequential(txData, rlpDecoder, skipErrors)
+            : DecodeParallel(txData, rlpDecoder, skipErrors);
+    }
+
+    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
+    {
+        RlpReader ctx = new(rlp);
+        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
     private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
@@ -27,9 +36,8 @@ public static class TxsDecoder
         {
             try
             {
-                RlpReader ctx = new(txData[i]);
-                Transaction decoded = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-                transactions[added++] = decoded;
+                transactions[added] = DecodeTransaction(rlpDecoder, txData[i]);
+                added++;
             }
             catch (RlpException e)
             {
@@ -43,7 +51,7 @@ public static class TxsDecoder
             }
         }
 
-        if (skipErrors && added != transactions.Length)
+        if (added != transactions.Length)
         {
             Array.Resize(ref transactions, added);
         }
@@ -51,78 +59,41 @@ public static class TxsDecoder
         return new TransactionDecodingResult(transactions);
     }
 
-#if !ZK_EVM
-    private const int ParallelDecodeThreshold = 16;
-
-    private static bool TryDecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, out TransactionDecodingResult result)
-    {
-        if (txData.Length < ParallelDecodeThreshold)
-        {
-            result = default;
-            return false;
-        }
-
-        Transaction[] slots = new Transaction[txData.Length];
-        string? error = null;
-        int firstError = int.MaxValue;
-        object errorGate = new();
-
-        Parallel.For(0, txData.Length, (i, state) =>
-        {
-            try
-            {
-                RlpReader ctx = new(txData[i]);
-                slots[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
-            }
-            catch (Exception e) when (e is RlpException or ArgumentException)
-            {
-                if (skipErrors) return;
-                lock (errorGate)
-                {
-                    if (i < firstError)
-                    {
-                        firstError = i;
-                        error = e is RlpException rlpEx
-                            ? $"Transaction {i} is not valid: {rlpEx.Message}"
-                            : $"Transaction {i} is not valid";
-                    }
-                }
-                state.Stop();
-            }
-        });
-
-        if (error is not null)
-        {
-            result = new TransactionDecodingResult(error);
-            return true;
-        }
-
-        if (!skipErrors)
-        {
-            result = new TransactionDecodingResult(slots);
-            return true;
-        }
-
-        int j = 0;
-        for (int i = 0; i < slots.Length; i++)
-        {
-            if (slots[i] is not null)
-            {
-                if (i != j) slots[j] = slots[i];
-                j++;
-            }
-        }
-        if (j != slots.Length) Array.Resize(ref slots, j);
-        result = new TransactionDecodingResult(slots);
-        return true;
-    }
+#if ZK_EVM
+    // Zisk stateless guest builds with --no-pthread; parallelism is unavailable, so always decode sequentially.
+    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors) =>
+        DecodeSequential(txData, rlpDecoder, skipErrors);
 #else
-    // Zisk stateless guest builds with --no-pthread; BCL Parallel.For is unavailable, so the
-    // dispatch always short-circuits to DecodeSequential.
-    private static bool TryDecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, out TransactionDecodingResult result)
+    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
     {
-        result = default;
-        return false;
+        Transaction[] decoded = new Transaction[txData.Length];
+        bool[] failed = new bool[1];
+
+        ParallelUnbalancedWork.For(
+            0,
+            txData.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            (rlpDecoder, txData, decoded, failed),
+            static (i, state) =>
+            {
+                try
+                {
+                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
+                }
+                catch
+                {
+                    // Any failure defers to the serial fallback, which reproduces the exact
+                    // single-threaded error behavior (first invalid index, exception surface)
+                    // and applies skipErrors handling.
+                    Volatile.Write(ref state.failed[0], true);
+                }
+
+                return state;
+            });
+
+        return Volatile.Read(ref failed[0])
+            ? DecodeSequential(txData, rlpDecoder, skipErrors)
+            : new TransactionDecodingResult(decoded);
     }
 #endif
 }

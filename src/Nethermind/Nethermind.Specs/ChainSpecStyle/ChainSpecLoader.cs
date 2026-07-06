@@ -333,8 +333,9 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         ulong nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0UL;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-        byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
-        ulong? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
+        // Engine-specific seal sections are stashed raw; the owning consensus plugin (e.g. AuRa)
+        // upgrades Genesis.Header via its ChainSpec interceptor.
+        chainSpec.CustomSeal = chainSpecJson.Genesis.Seal?.CustomSeal;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
@@ -420,9 +421,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         {
             genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
         }
-
-        genesisHeader.AuRaStep = step;
-        genesisHeader.AuRaSignature = auRaSignature;
 
         chainSpec.Genesis = !blockAccessListsEnabled ?
             (!withdrawalsEnabled

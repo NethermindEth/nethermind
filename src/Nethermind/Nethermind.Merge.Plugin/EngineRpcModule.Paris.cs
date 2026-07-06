@@ -94,15 +94,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
-                try
-                {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
-                }
-                finally
-                {
-                    (await regionTask).Dispose();
-                }
+                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+                return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
             catch (BlockchainException exception)
             {
