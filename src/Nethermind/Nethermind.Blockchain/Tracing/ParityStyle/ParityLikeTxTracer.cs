@@ -237,17 +237,7 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action is null)
-        {
-            ParityTraceAction action = RentAction();
-            action.From = _tx!.SenderAddress;
-            action.To = _tx.To;
-            action.Value = _tx.Value;
-            action.Input = CopyInput(_tx.Data);
-            action.Gas = _tx.GasLimit;
-            action.CallType = _tx.IsMessageCall ? "call" : "init";
-            _trace.Action = action;
-        }
+        _trace.Action ??= CreateRootActionFromTx();
 
         if (_trace.Action.TraceAddress.Length == 0)
         {
@@ -269,16 +259,22 @@ public class ParityLikeTxTracer : TxTracer
 
         if (_trace.Action is null)
         {
-            ParityTraceAction action = RentAction();
-            action.From = _tx!.SenderAddress;
-            action.To = _tx.To;
-            action.Value = _tx.Value;
-            action.Input = CopyInput(_tx.Data);
-            action.Gas = _tx.GasLimit;
-            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            ParityTraceAction action = CreateRootActionFromTx();
             action.Error = error;
             _trace.Action = action;
         }
+    }
+
+    private ParityTraceAction CreateRootActionFromTx()
+    {
+        ParityTraceAction action = RentAction();
+        action.From = _tx!.SenderAddress;
+        action.To = _tx.To;
+        action.Value = _tx.Value;
+        action.Input = CopyInput(_tx.Data);
+        action.Gas = _tx.GasLimit;
+        action.CallType = _tx.IsMessageCall ? "call" : "init";
+        return action;
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
