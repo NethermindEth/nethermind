@@ -46,6 +46,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IBeaconPivot _beaconPivot;
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBlockProcessingQueue _processingQueue;
+    private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
@@ -69,6 +70,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IBeaconPivot beaconPivot,
         IBlockCacheService blockCacheService,
         IBlockProcessingQueue processingQueue,
+        IBlockPreprocessorStep recoveryStep,
         IInvalidChainTracker invalidChainTracker,
         IMergeSyncController mergeSyncController,
         IMergeConfig mergeConfig,
@@ -84,6 +86,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _beaconPivot = beaconPivot;
         _blockCacheService = blockCacheService;
         _processingQueue = processingQueue;
+        _recoveryStep = recoveryStep;
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
@@ -95,6 +98,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
+
+    private void StartSenderRecoveryInBackground(Block block) =>
+        Task.Run(() =>
+        {
+            try
+            {
+                _recoveryStep.RecoverData(block);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Background sender recovery failed for {block.ToString(Block.Format.Short)}: {e}");
+            }
+        });
 
     private string GetGasChange(ulong blockGasLimit) => blockGasLimit.CompareTo(_lastBlockGasLimit) switch
     {
@@ -136,6 +152,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // while computed hashes could incorrectly blacklist a valid block.
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
+
+        // Start sender recovery now so the ECDSA work overlaps with validation, block persistence
+        // and queue hops instead of running serially on the processing path right before execution
+        // (with an empty queue the block skips the recovery stage). The processing path's own
+        // RecoverData call joins this task via the per-block once semantics in RecoverSignatures.
+        StartSenderRecoveryInBackground(block);
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))

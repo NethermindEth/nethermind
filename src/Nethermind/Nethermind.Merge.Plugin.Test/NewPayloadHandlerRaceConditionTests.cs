@@ -326,6 +326,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             beaconPivot,
             blockCacheService,
             effectiveProcessingQueue,
+            Substitute.For<IBlockPreprocessorStep>(),
             invalidChainTracker,
             mergeSyncController,
             mergeConfig,

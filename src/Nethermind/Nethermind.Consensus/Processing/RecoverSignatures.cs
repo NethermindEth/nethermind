@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -22,6 +24,8 @@ namespace Nethermind.Consensus.Processing
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
 
+        private readonly ConditionalWeakTable<Block, Task> _recoveryTasks = [];
+
         public void RecoverData(Block block)
         {
             Transaction[] txs = block.Transactions;
@@ -34,6 +38,32 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
+            // Recovery can be started ahead of time (e.g. by NewPayloadHandler while the block is
+            // still being validated and persisted) and joined here by the processing path. The
+            // per-block task guarantees the work runs exactly once and a joining caller never
+            // observes a half-recovered transaction array. The starter runs it inline on its own
+            // thread; a concurrent second caller blocks until completion, and any recovery
+            // exception surfaces at the join, matching the previous inline-throw semantics.
+            Task recovery = _recoveryTasks.GetValue(block, b => new Task(() => RecoverDataCore(b)));
+            if (recovery.Status == TaskStatus.Created)
+            {
+                try
+                {
+                    recovery.RunSynchronously(TaskScheduler.Default);
+                    return;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Another caller won the race to start it; fall through to wait.
+                }
+            }
+
+            recovery.GetAwaiter().GetResult();
+        }
+
+        private void RecoverDataCore(Block block)
+        {
+            Transaction[] txs = block.Transactions;
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
