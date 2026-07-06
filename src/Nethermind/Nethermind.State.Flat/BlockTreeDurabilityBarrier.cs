@@ -11,6 +11,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class BlockTreeDurabilityBarrier(IDbProvider dbProvider) : IPersistenceBarrier
 {
+    /// <inheritdoc/>
     public void BeforePersistedStateAdvance()
     {
         dbProvider.HeadersDb.Flush(onlyWal: true);

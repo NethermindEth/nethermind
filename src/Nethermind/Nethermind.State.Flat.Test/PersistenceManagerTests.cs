@@ -443,6 +443,33 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void PersistSnapshot_Always_InvokesBarrierBeforeCreatingWriteBatch()
+    {
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        using Snapshot snapshot = CreateSnapshot(from, to);
+
+        IPersistenceBarrier barrier = Substitute.For<IPersistenceBarrier>();
+        _persistence.CreateWriteBatch(from, to).Returns(new FakeWriteBatch());
+        PersistenceManager pm = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            barrier,
+            LimboLogs.Instance);
+
+        pm.PersistSnapshot(snapshot);
+
+        Received.InOrder(() =>
+        {
+            barrier.BeforePersistedStateAdvance();
+            _persistence.CreateWriteBatch(from, to);
+        });
+    }
+
+    [Test]
     public void PersistSnapshot_WithSelfDestructedAddresses_CallsSelfDestruct()
     {
         // Arrange
