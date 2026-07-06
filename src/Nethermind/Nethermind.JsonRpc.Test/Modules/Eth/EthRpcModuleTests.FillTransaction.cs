@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -14,40 +15,41 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    [Test]
-    public async Task FillTransaction_WhenFieldsMissing_FillsNonceGasFeesAndChainId()
+    private static IEnumerable<TestCaseData> MissingFieldFillCases()
     {
-        EIP1559TransactionForRpc rpcTx = new()
+        yield return new TestCaseData((TransactionForRpc)new EIP1559TransactionForRpc
         {
             From = TestItem.AddressC,
             To = TestItem.AddressB,
             Value = 1,
-        };
+        }).SetName("Eip1559");
 
-        EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);
+        yield return new TestCaseData((TransactionForRpc)new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 1,
+        }).SetName("Legacy");
+    }
+
+    [TestCaseSource(nameof(MissingFieldFillCases))]
+    public async Task FillTransaction_WhenFieldsMissing_FillsNonceGasFeesAndChainId(TransactionForRpc rpcTx)
+    {
+        LegacyTransactionForRpc filled = (LegacyTransactionForRpc)await FillTransactionForResult(rpcTx);
 
         Assert.That(filled.Nonce, Is.EqualTo(0UL), "nonce must be filled from the pending-pool view of the sender");
         Assert.That(filled.Gas, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated - a plain value transfer costs exactly 21000");
-        Assert.That(filled.MaxPriorityFeePerGas, Is.Not.Null, "maxPriorityFeePerGas must be filled from the gas-price oracle");
-        Assert.That(filled.MaxFeePerGas, Is.Not.Null, "maxFeePerGas must be filled so the tx can be submitted as-is");
         Assert.That(filled.ChainId, Is.Not.Null, "chainId must be filled so the signature is replay-protected");
-    }
 
-    [Test]
-    public async Task FillTransaction_WhenLegacy_FillsGasPrice()
-    {
-        LegacyTransactionForRpc rpcTx = new()
+        if (filled is EIP1559TransactionForRpc eip1559)
         {
-            From = TestItem.AddressC,
-            To = TestItem.AddressB,
-            Value = 1,
-        };
-
-        LegacyTransactionForRpc filled = (LegacyTransactionForRpc)await FillTransactionForResult(rpcTx);
-
-        Assert.That(filled.GasPrice, Is.Not.Null, "a legacy tx must have its gasPrice filled from the oracle");
-        Assert.That(filled.Nonce, Is.EqualTo(0UL), "nonce must still be filled for legacy txs");
-        Assert.That(filled.Gas, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated for legacy txs too");
+            Assert.That(eip1559.MaxPriorityFeePerGas, Is.Not.Null, "maxPriorityFeePerGas must be filled from the gas-price oracle");
+            Assert.That(eip1559.MaxFeePerGas, Is.Not.Null, "maxFeePerGas must be filled so the tx can be submitted as-is");
+        }
+        else
+        {
+            Assert.That(filled.GasPrice, Is.Not.Null, "a legacy tx must have its gasPrice filled from the oracle");
+        }
     }
 
     [Test]
@@ -72,21 +74,41 @@ public partial class EthRpcModuleTests
         Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
     }
 
-    [Test]
-    public async Task FillTransaction_WhenContractCreationHasNoData_ReturnsInvalidInput()
+    private static IEnumerable<TestCaseData> InvalidInputCases()
     {
-        EIP1559TransactionForRpc rpcTx = new()
-        {
-            From = TestItem.AddressC,
-            To = null,
-            Value = 1,
-        };
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc { From = null, To = TestItem.AddressB, Value = 1 },
+            "from address not specified").SetName("FromMissing");
 
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                Nonce = 0UL,
+                Gas = 0x5208UL,
+                MaxFeePerGas = (UInt256)0x9184e72a000,
+                MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
+                ChainId = 999_999UL,
+            },
+            "invalid chain id").SetName("ChainIdMismatch");
+
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
+            null).SetName("ContractCreationWithoutData");
+    }
+
+    [TestCaseSource(nameof(InvalidInputCases))]
+    public async Task FillTransaction_WithUnfillableInput_ReturnsInvalidInput(TransactionForRpc rpcTx, string? expectedMessage)
+    {
         using Context ctx = await Context.CreateWithCancunEnabled();
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
 
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
-            "a contract creation without data cannot be filled - it must surface as InvalidInput");
+            "unfillable input must surface as InvalidInput so callers can branch on it");
+        if (expectedMessage is not null)
+            Assert.That(response, Does.Contain(expectedMessage), "error must name the problem so callers know what to fix");
     }
 
     [Test]
@@ -119,46 +141,64 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FillTransaction_WhenFromMissing_ReturnsInvalidInput()
+    public async Task FillTransaction_WhenBlobCountExceedsLimit_ReturnsInvalidInput()
     {
-        EIP1559TransactionForRpc rpcTx = new()
-        {
-            From = null,
-            To = TestItem.AddressB,
-            Value = 1,
-        };
+        // Seven blobs is over the Cancun per-tx limit; this must be rejected before any KZG work runs.
+        byte[][] blobs = new byte[7][];
+        for (int i = 0; i < blobs.Length; i++)
+            blobs[i] = new byte[131072];
 
-        using Context ctx = await Context.CreateWithCancunEnabled();
-        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
-
-        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
-            "a fill without a sender cannot be completed - nonce and gas are account-specific");
-        Assert.That(response, Does.Contain("from address not specified"),
-            "error must name the missing field so callers know what to add");
-    }
-
-    [Test]
-    public async Task FillTransaction_WhenChainIdMismatchesNode_ReturnsInvalidInput()
-    {
-        EIP1559TransactionForRpc rpcTx = new()
+        BlobTransactionForRpc rpcTx = new()
         {
             From = TestItem.AddressC,
             To = TestItem.AddressB,
-            Value = 1,
+            Value = 0,
             Nonce = 0UL,
-            Gas = 0x5208UL,
+            Gas = 0x76c0UL,
             MaxFeePerGas = (UInt256)0x9184e72a000,
             MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
-            ChainId = 999_999UL,
+            MaxFeePerBlobGas = (UInt256)1_000_000,
+            Blobs = blobs,
         };
 
         using Context ctx = await Context.CreateWithCancunEnabled();
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
 
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
-            "a chain id that doesn't match the node makes the fill unusable");
-        Assert.That(response, Does.Contain("invalid chain id"),
-            "error must indicate the chain id mismatch");
+            "a blob count above the per-tx limit must be rejected");
+    }
+
+    [Test]
+    public async Task FillTransaction_WhenSuppliedHashesDoNotMatchBlobs_ReturnsInvalidInput()
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+            await KzgPolynomialCommitments.InitializeAsync();
+
+        // Correct version byte but a bogus hash body: derivation must reject it rather than overwrite.
+        byte[] mismatchedHash = new byte[32];
+        mismatchedHash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+
+        BlobTransactionForRpc rpcTx = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 0,
+            Nonce = 0UL,
+            Gas = 0x76c0UL,
+            MaxFeePerGas = (UInt256)0x9184e72a000,
+            MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
+            MaxFeePerBlobGas = (UInt256)1_000_000,
+            Blobs = [new byte[131072]],
+            BlobVersionedHashes = [mismatchedHash],
+        };
+
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx);
+
+        Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
+            "caller-supplied versioned hashes that don't match the blobs must be rejected, not overwritten");
+        Assert.That(response, Does.Contain("blob versioned hashes do not match the supplied blobs"),
+            "error must explain the hash mismatch");
     }
 
     private async Task<TransactionForRpc> FillTransactionForResult(TransactionForRpc rpcTx)
