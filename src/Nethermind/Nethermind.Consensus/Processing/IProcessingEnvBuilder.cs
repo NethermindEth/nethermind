@@ -15,8 +15,9 @@ namespace Nethermind.Consensus.Processing;
 /// environment is no longer needed (disposing it disposes the scope).
 /// </summary>
 /// <remarks>
-/// Copy-on-mutate: each method returns a new builder, so a single injected instance can be reused — and
-/// forked concurrently — to build independent environments.
+/// The DI-registered instance is immutable and can be reused — and forked concurrently — to build
+/// independent environments; the first configuring call forks a private mutable builder that the rest of
+/// the fluent chain accumulates into.
 /// </remarks>
 public interface IProcessingEnvBuilder
 {

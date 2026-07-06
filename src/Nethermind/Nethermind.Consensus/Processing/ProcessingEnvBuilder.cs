@@ -18,29 +18,36 @@ namespace Nethermind.Consensus.Processing;
 public class ProcessingEnvBuilder : IProcessingEnvBuilder
 {
     private readonly ILifetimeScope _parentScope;
-    private readonly Action<ContainerBuilder>[] _configure;
-    private readonly IDisposable[] _disposables;
-    private readonly bool _worldStateConfigured;
+    private readonly bool _mutable;
+    private readonly List<Action<ContainerBuilder>> _configure = [];
+    private readonly List<IDisposable> _disposables = [];
+    private bool _worldStateConfigured;
 
-    public ProcessingEnvBuilder(ILifetimeScope parentScope) : this(parentScope, [], [], false) { }
+    public ProcessingEnvBuilder(ILifetimeScope parentScope) : this(parentScope, mutable: false) { }
 
-    private ProcessingEnvBuilder(
-        ILifetimeScope parentScope,
-        Action<ContainerBuilder>[] configure,
-        IDisposable[] disposables,
-        bool worldStateConfigured)
+    private ProcessingEnvBuilder(ILifetimeScope parentScope, bool mutable)
     {
         _parentScope = parentScope;
-        _configure = configure;
-        _disposables = disposables;
-        _worldStateConfigured = worldStateConfigured;
+        _mutable = mutable;
     }
 
-    public IProcessingEnvBuilder Configure(Action<ContainerBuilder> configure) =>
-        new ProcessingEnvBuilder(_parentScope, [.. _configure, configure], _disposables, _worldStateConfigured);
+    // The DI-registered instance is immutable so it can be reused and forked concurrently; the first
+    // configuring call forks a private mutable builder that subsequent calls accumulate into in place.
+    private ProcessingEnvBuilder Mutable() => _mutable ? this : new ProcessingEnvBuilder(_parentScope, mutable: true);
 
-    public IProcessingEnvBuilder ThatDisposes(IDisposable disposable) =>
-        new ProcessingEnvBuilder(_parentScope, _configure, [.. _disposables, disposable], _worldStateConfigured);
+    public IProcessingEnvBuilder Configure(Action<ContainerBuilder> configure)
+    {
+        ProcessingEnvBuilder builder = Mutable();
+        builder._configure.Add(configure);
+        return builder;
+    }
+
+    public IProcessingEnvBuilder ThatDisposes(IDisposable disposable)
+    {
+        ProcessingEnvBuilder builder = Mutable();
+        builder._disposables.Add(disposable);
+        return builder;
+    }
 
     public IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState) =>
         WithWorldStateConfigured(builder => builder.AddScoped<IWorldStateScopeProvider>(worldState));
@@ -105,8 +112,13 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
         return scope;
     }
 
-    private IProcessingEnvBuilder WithWorldStateConfigured(Action<ContainerBuilder> configure) =>
-        new ProcessingEnvBuilder(_parentScope, [.. _configure, configure], _disposables, worldStateConfigured: true);
+    private IProcessingEnvBuilder WithWorldStateConfigured(Action<ContainerBuilder> configure)
+    {
+        ProcessingEnvBuilder builder = Mutable();
+        builder._configure.Add(configure);
+        builder._worldStateConfigured = true;
+        return builder;
+    }
 
     private sealed class OverridableEnvHandle<T>(ILifetimeScope scope, IOverridableEnv<T> env) : IOverridableEnvHandle<T>
     {
