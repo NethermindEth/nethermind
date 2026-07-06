@@ -52,6 +52,7 @@ namespace Nethermind.Network.Rlpx
         private readonly Action<Task, object?> _onChannelCloseCompleted;
         private readonly Action<Task, object?> _markDisconnectedAfterCloseDelay;
         private readonly NodeFilter _nodeFilter;
+        private readonly IPrivilegedIpProvider _privilegedIpProvider;
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
@@ -64,6 +65,7 @@ namespace Nethermind.Network.Rlpx
             IDisconnectsAnalyzer disconnectsAnalyzer,
             INetworkConfig networkConfig,
             IIPResolver ipResolver,
+            IPrivilegedIpProvider privilegedIpProvider,
             ILogManager logManager,
             IChannelFactory? channelFactory = null)
         {
@@ -104,10 +106,13 @@ namespace Nethermind.Network.Rlpx
             _markDisconnectedAfterCloseDelay = MarkDisconnectedAfterCloseDelay;
             _shutdownQuietPeriod = TimeSpan.FromMilliseconds(Math.Min(networkConfig.RlpxHostShutdownCloseTimeoutMs, 100));
             _shutdownCloseTimeout = TimeSpan.FromMilliseconds(networkConfig.RlpxHostShutdownCloseTimeoutMs);
+            _privilegedIpProvider = privilegedIpProvider;
             _nodeFilter = NodeFilter.Create(networkConfig.MaxActivePeers, networkConfig.FilterPeersByRecentIp, networkConfig.FilterPeersBySameSubnet, ips.ExternalIp);
         }
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => _nodeFilter.TryAccept(ip, exactOnly);
+        // Privileged addresses (static and trusted nodes) bypass the recent-IP filter so they can always connect.
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+            => _privilegedIpProvider.IsPrivileged(ip) || _nodeFilter.TryAccept(ip, exactOnly);
 
         public async Task Init()
         {
@@ -263,6 +268,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (session.Direction == ConnectionDirection.In
                 && channel.RemoteAddress is IPEndPoint remoteEndpoint
+                && !_privilegedIpProvider.IsPrivileged(remoteEndpoint.Address)
                 && !_nodeFilter.TryAccept(remoteEndpoint.Address))
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Rejecting inbound connection from filtered IP {remoteEndpoint.Address}");

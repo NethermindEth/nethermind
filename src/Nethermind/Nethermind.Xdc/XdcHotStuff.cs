@@ -3,9 +3,11 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -29,6 +31,8 @@ namespace Nethermind.Xdc
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         ITimestamper timestamper,
+        IBlockProcessingQueue processingQueue,
+        IStateReader stateReader,
         ILogManager logManager) : IBlockProducerRunner
     {
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -41,6 +45,8 @@ namespace Nethermind.Xdc
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         private readonly ITimeoutTimer _timeoutTimer = timeoutTimer ?? throw new ArgumentNullException(nameof(timeoutTimer));
         private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        private readonly IBlockProcessingQueue _processingQueue = processingQueue ?? throw new ArgumentNullException(nameof(processingQueue));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private readonly object _lockObject = new();
@@ -230,6 +236,8 @@ namespace Nethermind.Xdc
 
             if (!IsMyTurn(proposalParent, round, proposalSpec)) return;
 
+            if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
+
             if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
@@ -240,21 +248,53 @@ namespace Nethermind.Xdc
 
             if (ct.IsCancellationRequested) return;
 
-            // Gate 2: if head has no QC yet, wait for late votes to form one.
-            // If QC arrives, NewRoundSetEvent fires and cancels this task via ct.
-            // If fallback elapses without QC, propose on the last certified block.
-            bool headHasQc = head.Hash == qc.ProposedBlockInfo.Hash;
-            if (!headHasQc)
+            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+        }
+
+        private async Task<bool> EnsureStateForProposalParent(XdcBlockHeader proposalParent, ulong round, CancellationToken ct)
+        {
+            if (_stateReader.HasStateForBlock(proposalParent)) return true;
+
+            Block? unprocessedParent = _blockTree.FindBlock(proposalParent.Hash!, BlockTreeLookupOptions.None, blockNumber: proposalParent.Number);
+            if (unprocessedParent is null)
             {
-                TimeSpan fallbackReadyAt = TimeSpan.FromSeconds(head.Timestamp + (ulong)proposalSpec.TimeoutPeriod / 2);
-                now = TimeSpan.FromSeconds(_timestamper.UnixTime.Seconds);
-                if (fallbackReadyAt > now)
-                    await Task.Delay(fallbackReadyAt - now, ct);
+                if (_logger.IsWarn) _logger.Warn($"Round {round}: HighestQC block #{proposalParent.Number} body not available, skipping proposal.");
+                return false;
             }
 
-            if (ct.IsCancellationRequested) return;
+            if (_logger.IsInfo) _logger.Info($"Round {round}: processing HighestQC fork block #{proposalParent.Number} {proposalParent.Hash} before proposing.");
 
-            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+            TaskCompletionSource<ProcessingResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnBlockRemoved(object? s, BlockRemovedEventArgs e)
+            {
+                if (e.BlockHash == unprocessedParent.Hash)
+                    tcs.TrySetResult(e.ProcessingResult);
+            }
+
+            _processingQueue.BlockRemoved += OnBlockRemoved;
+            try
+            {
+                // ForceProcessing bypasses the TD check (fork has equal TD); DoNotUpdateHead keeps head intact — only state is needed.
+                await _processingQueue.Enqueue(unprocessedParent, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead);
+                ProcessingResult result = await tcs.Task.WaitAsync(ct);
+                if (result != ProcessingResult.Success)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Round {round}: processing HighestQC block #{proposalParent.Number} failed ({result}), skipping proposal.");
+                    return false;
+                }
+            }
+            finally
+            {
+                _processingQueue.BlockRemoved -= OnBlockRemoved;
+            }
+
+            if (!_stateReader.HasStateForBlock(proposalParent))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Round {round}: state still unavailable for #{proposalParent.Number} after processing, skipping proposal.");
+                return false;
+            }
+
+            return true;
         }
 
         // ── Block proposal ───────────────────────────────────────────────────────

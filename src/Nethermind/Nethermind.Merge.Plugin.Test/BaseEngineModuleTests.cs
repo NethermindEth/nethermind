@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -194,10 +195,7 @@ public abstract partial class BaseEngineModuleTests
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
-            // Production default (7s) is too tight under Flat DB CI load — validation
-            // races the timeout and the handler returns SYNCING, breaking tests that
-            // assert VALID/INVALID. Tests that exercise timeout→SYNCING behavior pass
-            // an explicit shorter value.
+            // Production default (7s) is too tight under Flat DB CI load, causing spurious SYNCING; timeout tests pass an explicit shorter value.
             if (MergeConfig.NewPayloadBlockProcessingTimeout == DefaultNewPayloadBlockProcessingTimeout)
             {
                 MergeConfig.NewPayloadBlockProcessingTimeout = 60_000;
@@ -221,10 +219,16 @@ public abstract partial class BaseEngineModuleTests
             return configs;
         }
 
+        /// <summary>
+        /// The core merge module installed by <see cref="TestMergeModule"/>. AuRa-merge blockchains return
+        /// <c>null</c> and install <c>AuRaMergeModule</c> themselves, so <c>BaseMergePluginModule</c> loads exactly once.
+        /// </summary>
+        protected virtual IModule? MergeModule => new MergePluginModule();
+
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                .AddModule(new TestMergeModule(configProvider))
+                .AddModule(new TestMergeModule(configProvider, MergeModule))
                 .AddDecorator<IBranchProcessor>((_, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((_, factory) =>
                 {

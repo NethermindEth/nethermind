@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Services;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
 {
@@ -19,8 +17,6 @@ namespace Nethermind.HealthChecks
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
-        private ILogger _logger;
-        private IMergeConfig _mergeConfig;
 
         public string Name => "HealthChecks";
 
@@ -37,35 +33,10 @@ namespace Nethermind.HealthChecks
         {
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
-            _mergeConfig = _api.Config<IMergeConfig>();
-            _logger = api.LogManager.GetClassLogger<HealthChecksPlugin>();
 
             //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
             EnsureEnoughFreeSpace();
 
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
-            {
-                try
-                {
-                    FreeDiskSpaceChecker.StartAsync(default);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error("Failed to initialize available disk space check module", ex);
-                }
-            }
-
-            if (_mergeConfig.Enabled)
-            {
-                _ = _api.EngineRequestsTracker.StartAsync(); // Fire and forget
-            }
-
-            if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             return Task.CompletedTask;
         }
 
@@ -97,6 +68,8 @@ namespace Nethermind.HealthChecks
                 .Bind<IEngineRequestsTracker, ClHealthRequestsTracker>()
 
                 .RegisterSingletonJsonRpcModule<IHealthRpcModule, HealthRpcModule>()
+
+                .AddStep(typeof(StartHealthChecks))
                 ;
         }
     }
