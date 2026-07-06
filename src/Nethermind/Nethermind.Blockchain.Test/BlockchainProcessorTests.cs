@@ -121,7 +121,7 @@ public class BlockchainProcessorTests
             Processor = new BlockchainProcessor(
                 Tree,
                 BranchProcessor,
-                Substitute.For<IBlockPreprocessorStep>(),
+                [Substitute.For<IBlockPreprocessorStep>()],
                 Substitute.For<IStateReader>(),
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default,
