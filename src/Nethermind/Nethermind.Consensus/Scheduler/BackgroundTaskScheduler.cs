@@ -34,7 +34,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly IBranchProcessor _branchProcessor;
     private readonly IChainHeadInfoProvider _headInfo;
     private readonly int _capacity;
-    private readonly object _blockProcessingLock = new();
+    private readonly Lock _blockProcessingLock = new();
     private int _activeBlockProcessingBranches;
     private long _queueCount;
 
