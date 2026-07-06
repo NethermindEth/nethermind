@@ -278,7 +278,7 @@ Report the run URL to the user immediately after triggering.
 
 **THIS PHASE IS MANDATORY. Always run it in full, even if the workflow reported success. Never skip or abbreviate it. A "success" workflow conclusion does NOT mean the blocks processed correctly — Nethermind exceptions can occur mid-run without failing the workflow.**
 
-All snippets in this phase are working-directory-independent (absolute paths, no `cd`). Keep them that way: the Bash tool's working directory persists across tool calls while variables do not — rely on neither.
+Snippets in this phase never change the working directory (artifact paths are absolute `/tmp/...`; the one repo-relative path, `scripts/dottrace-report.sh`, keeps resolving because the cwd stays at the repo root). Keep them that way: the Bash tool's working directory persists across tool calls while variables do not — rely on neither.
 
 ### 4a. Exception scan (NEVER SKIP)
 
@@ -312,7 +312,10 @@ Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtim
 mkdir -p /tmp/gb-results
 gh run download <run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-results
-for z in /tmp/gb-results/*.zip; do unzip -o "$z" -d /tmp/gb-results; done
+for z in /tmp/gb-results/*.zip; do
+  [ -e "$z" ] || { echo "No results zip in /tmp/gb-results — check the artifact name" >&2; exit 1; }
+  unzip -o "$z" -d /tmp/gb-results
+done
 ```
 
 **Step 2 — Extract per-test timings from result files:**
@@ -355,8 +358,14 @@ gh run download <pr-run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-pr
 gh run download <base-run-id> --repo NethermindEth/gas-benchmarks \
   -n "results-1-nethermind-<cleaned-test-path>" -D /tmp/gb-base
-for z in /tmp/gb-pr/*.zip; do unzip -o "$z" -d /tmp/gb-pr; done
-for z in /tmp/gb-base/*.zip; do unzip -o "$z" -d /tmp/gb-base; done
+for z in /tmp/gb-pr/*.zip; do
+  [ -e "$z" ] || { echo "No results zip in /tmp/gb-pr — check the artifact name" >&2; exit 1; }
+  unzip -o "$z" -d /tmp/gb-pr
+done
+for z in /tmp/gb-base/*.zip; do
+  [ -e "$z" ] || { echo "No results zip in /tmp/gb-base — check the artifact name" >&2; exit 1; }
+  unzip -o "$z" -d /tmp/gb-base
+done
 
 # Compare per-test (sorted by delta); detect the newPayload version PER RUN — the two runs may target different forks
 PR=/tmp/gb-pr/results; BASE=/tmp/gb-base/results
