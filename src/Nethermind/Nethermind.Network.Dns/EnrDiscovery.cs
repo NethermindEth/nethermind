@@ -91,8 +91,6 @@ public class EnrDiscovery : INodeSource
     {
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
-        // A record without a tcp entry advertises no RLPx endpoint (EIP-778), e.g. a
-        // discovery-only bootnode; don't fall back to dialing the discovery udp port.
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp);
         return compressedPublicKey is not null && ipAddress is not null && port is > 0
             ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)

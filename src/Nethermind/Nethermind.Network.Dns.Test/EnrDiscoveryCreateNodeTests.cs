@@ -12,8 +12,6 @@ namespace Nethermind.Network.Dns.Test;
 [TestFixture]
 public class EnrDiscoveryCreateNodeTests
 {
-    // A record without a tcp entry (e.g. a discovery-only bootnode) has no RLPx endpoint;
-    // its udp port must not be used as a dial port.
     [TestCase(30303, 30304, ExpectedResult = 30303)]
     [TestCase(null, 30303, ExpectedResult = null)]
     [TestCase(0, 30303, ExpectedResult = null)]
