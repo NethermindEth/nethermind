@@ -285,10 +285,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             if (isCreate)
                             {
                                 IncorporateChildStateGasRefunds(previousState);
-                                // EIP-8037: the NEW_ACCOUNT state gas charged up-front at the CREATE/CREATE2
-                                // opcode is refunded on successful deployment when the target account already
-                                // existed (e.g. a pre-funded address), since the code is added to an existing
-                                // account leaf rather than materialising a new one.
+                                // EIP-8037: refund the CREATE/CREATE2 up-front NEW_ACCOUNT state gas when the target
+                                // already existed — the code lands on an existing account leaf.
                                 if (previousState.IsCreateOnPreExistingAccount)
                                 {
                                     CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
@@ -471,11 +469,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
-            // EELS generic_create refunds the parent's up-front NEW_ACCOUNT via credit_state_gas_refund
-            // (LIFO): the charge is returned to gas_left first, up to the still-spilled amount, then to the
-            // reservoir. When the parent reservoir was empty the NEW_ACCOUNT was spilled into regular gas, so
-            // the refund belongs in gas_left — where a subsequent top-level halt burns it — not the reservoir
-            // (which would survive the halt and under-charge the sender). trackSpillRefund:true mirrors this.
+            // EELS generic_create refunds the parent's up-front NEW_ACCOUNT LIFO (gas_left up to the spill,
+            // then reservoir): a spilled charge must return to gas_left, where a later top-level halt burns
+            // it, not to the reservoir which would survive the halt. trackSpillRefund:true mirrors this.
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
@@ -809,9 +805,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            // EELS credit_state_gas_refund is always LIFO: spilled state gas returns to gas_left
-            // first (up to the spill), then the reservoir. Refunding straight to the reservoir would
-            // leave it inflated, so a later top-level halt returns gas the spec burns.
+            // LIFO again: spilled state gas returns to gas_left first, then the reservoir (see above).
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
         }
         else if (childNewAccountCharged)

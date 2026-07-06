@@ -52,11 +52,8 @@ public class Eip7954Tests : VirtualMachineTestsBase
     [Test]
     public void Eip8037_floor_gas_enforced_in_validate_gas()
     {
-        // Craft a calldata-heavy tx whose calldata floor gas exceeds the standard intrinsic, then
-        // give it one gas less than the floor: above the standard intrinsic (so this is a floor
-        // rejection, not an intrinsic-gas one) but unable to cover the calldata floor. The floor is
-        // read from the spec-driven intrinsic calculator so the test tracks the EIP-7623/7976
-        // reprice (and the EIP-2780 reduced base cost) automatically.
+        // One gas below the calldata floor but above the standard intrinsic, so this is a floor
+        // rejection; the floor is read from the intrinsic calculator to track repricings automatically.
         byte[] calldata = new byte[100];
         for (int i = 0; i < calldata.Length; i++) calldata[i] = 0xFF;
 
