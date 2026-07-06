@@ -363,10 +363,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="address">Contract address</param>
     public override void ClearStorage(Address address)
     {
-        // Reads are not journaled, so the base registry walk below only zeroes written cells.
-        // Zero the read cells from the original-value capture for the same reason: reads after
-        // the destruct (including CREATE2 revival in the same block) must not observe
-        // pre-destruct values through the block or pre-warm caches.
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
         {
             if (readCell.Key.Address == address)
