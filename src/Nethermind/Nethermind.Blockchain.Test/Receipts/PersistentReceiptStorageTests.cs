@@ -116,6 +116,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
+        _storage.Dispose(); // drain the deferred receipt write to the column before reading it directly
         Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed], Is.Not.Null);
     }
 
@@ -127,6 +128,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Span<byte> blockNumPrefixed = stackalloc byte[40];
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+        _storage.Dispose(); // drain the deferred write to the column, preserving its WriteFlags
 
         TestMemDb blockDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
 

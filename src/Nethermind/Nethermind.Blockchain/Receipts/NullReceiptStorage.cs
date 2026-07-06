@@ -26,6 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null) { }
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber = null) { }
         public void InsertForMigration(Block block, TxReceipt[] receipts) { }
+        public byte[]? GetReceiptRawData(ulong blockNumber, Hash256 blockHash) => null;
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => [];
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => [];

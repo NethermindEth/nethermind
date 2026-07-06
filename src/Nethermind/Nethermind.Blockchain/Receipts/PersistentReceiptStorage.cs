@@ -20,12 +20,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore, IDisposable
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IDb _receiptsDb;
+        private readonly PendingReceiptsWriter _pendingReceipts;
         private readonly IDb _defaultColumn;
         private readonly IDb _transactionDb;
         private static readonly Hash256 MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
@@ -58,6 +59,8 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
+            // Keep the receipt-blob write off the block-processing path; reads still hit the column directly.
+            _pendingReceipts = new PendingReceiptsWriter(_receiptsDb);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -183,6 +186,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
+                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
                 receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
 
                 return receiptsData;
@@ -191,6 +195,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
+                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
                 Span<byte> receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
                 if (receiptsData.IsNull())
                 {
@@ -273,6 +278,25 @@ namespace Nethermind.Blockchain.Receipts
             => InsertCore(block, receipts, _specProvider.GetSpec(block.Header), ensureCanonical: true, WriteFlags.None, lastBlockNumber: null);
 
         [SkipLocalsInit]
+        byte[]? IReceiptMigrationStore.GetReceiptRawData(ulong blockNumber, Hash256 blockHash)
+        {
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            if (_legacyHashKey)
+            {
+                byte[]? data = _receiptsDb.Get(blockHash.Bytes);
+                if (data is not null) return data;
+
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
+                return _receiptsDb.Get(blockNumPrefixed);
+            }
+
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            _pendingReceipts.EnsureFlushed(blockNumPrefixed);
+            return _receiptsDb.Get(blockNumPrefixed) ?? _receiptsDb.Get(blockHash.Bytes);
+        }
+
+        [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
         {
             txReceipts ??= [];
@@ -294,7 +318,7 @@ namespace Nethermind.Blockchain.Receipts
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-            _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+            _pendingReceipts.Write(blockNumPrefixed, rlp, writeFlags);
 
             _receiptsCache.Set(block.Hash, txReceipts);
 
@@ -329,16 +353,20 @@ namespace Nethermind.Blockchain.Receipts
                 if (_receiptsDb.KeyExists(blockHash)) return true;
 
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
                 return _receiptsDb.KeyExists(blockNumPrefixed);
             }
             else
             {
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
                 return _receiptsDb.KeyExists(blockNumPrefixed) || _receiptsDb.KeyExists(blockHash);
             }
         }
 
         public void EnsureCanonical(Block block) => EnsureCanonical(block, null);
+
+        public void Dispose() => _pendingReceipts.Dispose(); // drains buffered receipts
 
         public void RemoveReceipts(Block block)
         {
@@ -346,6 +374,7 @@ namespace Nethermind.Blockchain.Receipts
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             GetBlockNumPrefixedKey(block.Number, block.Hash, blockNumPrefixed);
+            _pendingReceipts.Drop(blockNumPrefixed); // don't let a buffered blob resurrect after removal
             _receiptsDb.Remove(blockNumPrefixed);
 
             RemoveBlockTx(block);

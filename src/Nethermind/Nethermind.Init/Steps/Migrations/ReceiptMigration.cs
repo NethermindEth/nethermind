@@ -377,8 +377,8 @@ namespace Nethermind.Init.Steps.Migrations
                 return true;
             }
 
-            byte[]? receiptData = _receiptsBlockDb.Get(blockHash.Bytes);
-            receiptData ??= _receiptsBlockDb.Get(Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.Bytes));
+            // Go through the store so a deferred (buffered) receipt write is flushed before this raw read.
+            byte[]? receiptData = _migrationStore.GetReceiptRawData(blockNumber, blockHash);
 
             if (receiptData is null)
             {
