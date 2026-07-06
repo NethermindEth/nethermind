@@ -59,7 +59,8 @@ jobs:
 
       - name: Enable sync trace logging in Nethermind client
         run: |
-          sed -i 's#^/nethermind/nethermind --config /configs/test.json $LOG_FLAG#/nethermind/nethermind --config /configs/test.json $LOG_FLAG --Init.LogRules "Nethermind.Synchronization.*: Trace; Nethermind.Merge.Plugin.*: Trace"#' hive/clients/nethermind/nethermind.sh
+          # Nethermind logger names have the leading "Nethermind." stripped (see ILogManager.GetLoggerName)
+          sed -i 's#^/nethermind/nethermind --config /configs/test.json $LOG_FLAG#/nethermind/nethermind --config /configs/test.json $LOG_FLAG --Init.LogRules "Synchronization.*: Trace; Merge.Plugin.*: Trace; Blockchain.BlockTree: Trace"#' hive/clients/nethermind/nethermind.sh
           tail -2 hive/clients/nethermind/nethermind.sh
 
       - name: Build Hive
