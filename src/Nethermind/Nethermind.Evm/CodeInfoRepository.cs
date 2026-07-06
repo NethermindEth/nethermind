@@ -59,6 +59,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
 #if ZK_EVM
             return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
 #else
@@ -94,6 +95,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
+        // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
+        worldState.RecordBytecodeAccess(address);
         // When executing in parallel must get by address
         byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)
