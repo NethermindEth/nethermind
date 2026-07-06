@@ -1,0 +1,100 @@
+name: Hive - Invalid Missing Ancestor tests
+
+on:
+  push:
+    branches: ['test/hive-invalid-missing-ancestor']
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Test name pattern
+        required: true
+        default: '/Invalid Missing Ancestor Syncing ReOrg, StateRoot'
+        type: string
+      hive-runs:
+        description: Hive invocations per job
+        required: true
+        default: 2
+        type: number
+
+env:
+  LIMIT: ${{ github.event.inputs.limit || '/Invalid Missing Ancestor Syncing ReOrg, StateRoot' }}
+  HIVE_RUNS: ${{ github.event.inputs.hive-runs || 2 }}
+
+jobs:
+  test:
+    name: Run Invalid Missing Ancestor Hive tests (${{ matrix.iteration }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        iteration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+
+      - name: Check out Hive repository
+        uses: actions/checkout@v6
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+
+      - name: Enable sync trace logging in Nethermind client
+        run: |
+          sed -i 's#^/nethermind/nethermind --config /configs/test.json $LOG_FLAG#/nethermind/nethermind --config /configs/test.json $LOG_FLAG --Init.LogRules "Nethermind.Synchronization.*: Trace; Nethermind.Merge.Plugin.*: Trace"#' hive/clients/nethermind/nethermind.sh
+          tail -2 hive/clients/nethermind/nethermind.sh
+
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Run Hive
+        continue-on-error: true
+        working-directory: hive
+        run: |
+          for i in $(seq 1 $HIVE_RUNS); do
+            echo "::group::Hive run $i"
+            ./hive \
+              --client nethermind \
+              --sim ethereum/engine \
+              --sim.loglevel 3 \
+              --sim.parallelism 4 \
+              --sim.limit "$LIMIT" || true
+            echo "::endgroup::"
+          done
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.iteration }}-${{ github.run_number }}-${{ github.run_attempt }}
+          path: hive/workspace
+          retention-days: 7
+
+      - name: Summarize failures
+        run: |
+          rm -f hive/workspace/logs/hive.json
+          for f in hive/workspace/logs/*.json; do
+            jq -r --arg f "$f" '.testCases | to_entries[] | select(.value.summaryResult.pass == false) | "FAILED [\($f)]: " + .value.name' "$f" || true
+          done
+          echo "Done. Failures above (if any) have full client trace logs in the artifact."
