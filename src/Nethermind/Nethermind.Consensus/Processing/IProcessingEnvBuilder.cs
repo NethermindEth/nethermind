@@ -39,6 +39,8 @@ public interface IProcessingEnvBuilder
 
     IProcessingEnvBuilder WithComponent<T>(T instance) where T : class;
 
+    IProcessingEnvBuilder WithComponent<T>() where T : notnull;
+
     IProcessingEnvBuilder ThatDisposes(IDisposable disposable);
 
     IProcessingEnvBuilder WithBlockValidationConfiguration();

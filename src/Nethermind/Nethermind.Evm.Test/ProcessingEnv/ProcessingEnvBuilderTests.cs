@@ -141,6 +141,19 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
+    public void WithComponent_type_overload_registers_the_scoped_type()
+    {
+        using IContainer container = BuildContainer();
+
+        using ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+            .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+            .WithComponent<TrackingDisposable>()
+            .BuildAs<ITrackerEnv>();
+
+        Assert.That(env.Tracker, Is.Not.Null);
+    }
+
+    [Test]
     public void WithComponent_registers_but_does_not_dispose_the_instance()
     {
         using IContainer container = BuildContainer();

@@ -78,6 +78,9 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
     public IProcessingEnvBuilder WithComponent<T>(T instance) where T : class =>
         Configure(builder => builder.AddScoped<T>(instance));
 
+    public IProcessingEnvBuilder WithComponent<T>() where T : notnull =>
+        Configure(builder => builder.AddScoped<T>());
+
     public IProcessingEnvBuilder WithBlockValidationConfiguration() =>
         Configure(builder => builder.AddModule(_parentScope.Resolve<IBlockValidationModule[]>()));
 

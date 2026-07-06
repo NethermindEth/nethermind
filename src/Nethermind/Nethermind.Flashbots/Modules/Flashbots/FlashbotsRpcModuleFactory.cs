@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Flashbots.Handlers;
@@ -18,7 +15,6 @@ using Nethermind.State.OverridableEnv;
 namespace Nethermind.Flashbots.Modules.Flashbots
 {
     public class FlashbotsRpcModuleFactory(
-        ILifetimeScope rootLifetime,
         IProcessingEnvBuilder envBuilder,
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
@@ -35,10 +31,10 @@ namespace Nethermind.Flashbots.Modules.Flashbots
                 .WithOverridableEnv()
                 .WithBlockValidationConfiguration()
                 .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance)
-                .Configure(builder => builder.AddScoped<ValidateSubmissionHandler.ProcessingEnv>())
+                .WithComponent<ValidateSubmissionHandler.ProcessingEnv>()
+                .OwnedByParentLifetime()
                 .BuildAs<IEnv>();
 
-            rootLifetime.Disposer.AddInstanceForAsyncDisposal(env);
             ValidateSubmissionHandler validateSubmissionHandler = new(
                 headerValidator,
                 blockTree,
@@ -53,8 +49,8 @@ namespace Nethermind.Flashbots.Modules.Flashbots
             return new FlashbotsRpcModule(validateSubmissionHandler);
         }
 
-        // The wrapper forwards BuildAndOverride to the resolved env and DisposeAsync to the built scope.
-        public interface IEnv : IOverridableEnv<ValidateSubmissionHandler.ProcessingEnv>, IAsyncDisposable
+        // The wrapper forwards BuildAndOverride to the resolved env; the built scope is owned by the parent lifetime.
+        public interface IEnv : IOverridableEnv<ValidateSubmissionHandler.ProcessingEnv>
         {
         }
     }

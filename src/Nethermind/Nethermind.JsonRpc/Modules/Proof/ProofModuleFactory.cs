@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -33,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .WithReplacedComponent<IRewardCalculator>(NoBlockRewards.Instance)
                 .WithReplacedComponent<ITracer, Tracer>()
                 .Configure(builder => builder.AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>())
+                .OwnedByParentLifetime()
                 .BuildAs<IEnv>();
 
             // The tracer needs an in-memory receipts store while the proof RPC does not; keep them separate.
@@ -40,14 +40,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
             ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddSingleton<IOverridableEnv<ITracer>>(tracer));
 
-            proofRpcScope.Disposer.AddInstanceForAsyncDisposal(tracer);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(proofRpcScope);
 
             return proofRpcScope.Resolve<IProofRpcModule>();
         }
 
-        // The wrapper forwards BuildAndOverride to the resolved env and DisposeAsync to the built scope.
-        public interface IEnv : IOverridableEnv<ITracer>, IAsyncDisposable
+        // The wrapper forwards BuildAndOverride to the resolved env; the built scope is owned by the parent lifetime.
+        public interface IEnv : IOverridableEnv<ITracer>
         {
         }
     }
