@@ -3040,6 +3040,39 @@ public class BlockTreeTests
         }
     }
 
+    [Test]
+    public void RecalculateTreeLevels_WhenKnownHeadersSitBelowLowestInsertedBeaconHeader_MovesPointerToSuggestedChainBoundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+
+        BlockHeader header5 = Build.A.BlockHeader.WithNumber(5).WithParent(tree.Head!.Header).TestObject;
+        BlockHeader header6 = Build.A.BlockHeader.WithNumber(6).WithParent(header5).TestObject;
+        BlockHeader header7 = Build.A.BlockHeader.WithNumber(7).WithParent(header6).TestObject;
+        tree.Insert(header5, beaconInsert);
+        tree.Insert(header6, beaconInsert);
+        tree.Insert(header7, beaconInsert);
+        // An interrupted backfill persists the pointer above headers it already inserted.
+        tree.LowestInsertedBeaconHeader = header7;
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL));
+    }
+
+    [Test]
+    public void RecalculateTreeLevels_WhenBeaconHeaderParentIsUnknown_KeepsPointer()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+
+        BlockHeader detached = Build.A.BlockHeader.WithNumber(7).WithParentHash(TestItem.KeccakA).TestObject;
+        tree.Insert(detached, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(7UL));
+    }
+
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
     {
         using (Assert.EnterMultipleScope())

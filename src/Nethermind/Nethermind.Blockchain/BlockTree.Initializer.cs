@@ -22,6 +22,35 @@ public partial class BlockTree
         LoadBestKnown();
         LoadBeaconBestKnown();
         LoadForkChoiceInfo();
+        FixLowestInsertedBeaconHeader();
+    }
+
+    private void FixLowestInsertedBeaconHeader()
+    {
+        BlockHeader? lowest = _lowestInsertedBeaconHeader;
+        ulong stopAt = (BestSuggestedHeader?.Number ?? 0) + 1;
+        if (lowest is null || lowest.Number <= stopAt)
+        {
+            return;
+        }
+
+        BlockHeader current = lowest;
+        while (current.Number > stopAt)
+        {
+            BlockHeader? parent = FindHeader(current.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        if (!ReferenceEquals(current, lowest))
+        {
+            if (Logger.IsInfo) Logger.Info($"Lowest inserted beacon header moved from {lowest.Number} down to {current.Number} through already known headers");
+            LowestInsertedBeaconHeader = current;
+        }
     }
 
     public static ulong? BinarySearchBlockNumber(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
