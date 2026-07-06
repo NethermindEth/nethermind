@@ -11,6 +11,5 @@ namespace Nethermind.JsonRpc.Data;
 /// </summary>
 public class FillTransactionResult
 {
-    // Serialized as "tx" via the camelCase naming policy - no explicit attribute needed.
     public required TransactionForRpc Tx { get; init; }
 }
