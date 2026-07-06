@@ -235,4 +235,30 @@ public class SLoadFusionPreBerlinTests : SLoadFusionTestsBase
             Assert.That(gasSpent, Is.EqualTo(gasLimit));
         }
     }
+
+    // Chain steps onto a new cell each SLOAD (the loaded value is the next key), taking the fused
+    // chained branch. Pre-Berlin there is no cold/warm distinction, so every distinct-cell read
+    // costs a flat SLoadEip1884. Last two cases out-of-gas mid-chain (four reads fit, the fifth
+    // does not), pinning the chained OOG path that reports the failing op exactly like dispatch.
+    [TestCase(false, 100000L, GasCostOf.Transaction + 3 + 6 * GasCostOf.SLoadEip1884, StatusCode.Success)]
+    [TestCase(true, 100000L, GasCostOf.Transaction + 3 + 6 * GasCostOf.SLoadEip1884, StatusCode.Success)]
+    [TestCase(false, GasCostOf.Transaction + 3 + 4 * GasCostOf.SLoadEip1884 + 400, GasCostOf.Transaction + 3 + 4 * GasCostOf.SLoadEip1884 + 400, StatusCode.Failure)]
+    [TestCase(true, GasCostOf.Transaction + 3 + 4 * GasCostOf.SLoadEip1884 + 400, GasCostOf.Transaction + 3 + 4 * GasCostOf.SLoadEip1884 + 400, StatusCode.Failure)]
+    public void Chained_reads_price_flat_per_new_cell(bool traced, long gasLimit, long expectedGasSpent, byte expectedStatus)
+    {
+        TestState.CreateAccount(Recipient, 0);
+        TestState.Set(new StorageCell(Recipient, 0), [1]);
+        TestState.Set(new StorageCell(Recipient, 1), [2]);
+        TestState.Set(new StorageCell(Recipient, 2), [3]);
+        TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
+
+        // Chain: slot0->1, slot1->2, slot2->3, slot3->0, slot0->1, slot1->2 (each a distinct cell).
+        (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(6));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(expectedStatus));
+            Assert.That(gasSpent, Is.EqualTo(expectedGasSpent));
+        }
+    }
 }

@@ -709,6 +709,9 @@ public static partial class EvmInstructions
                 {
                     // Chained step onto a different cell (the loaded value is the next key):
                     // replicate one full SLOAD including cold/warm pricing and access journaling.
+                    // Count the op before charging gas so an OOG mid-chain still records it, matching
+                    // the unfused loop (which increments the SLOAD metric before consuming gas).
+                    extraOps++;
                     TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
                     if (TGasPolicy.GetRemainingGas(in gas) < 0)
                     {
@@ -726,7 +729,6 @@ public static partial class EvmInstructions
                     value = vm.WorldState.Get(in storageCell);
                     result = nextKey;
                     programCounter++;
-                    extraOps++;
                 }
             }
 
