@@ -208,8 +208,8 @@ public class SimpleTransferFastPathDifferentialTests
             .WithGasLimit(10_000_000)
             .TestObject;
 
-        bool forceDisabledBefore = SimpleTransferFastPath.ForceDisabled;
-        SimpleTransferFastPath.ForceDisabled = forceEvmPath;
+        bool forceDisabledBefore = TransactionProcessorBase.ForceSimpleTransferDisabled;
+        TransactionProcessorBase.ForceSimpleTransferDisabled = forceEvmPath;
         try
         {
             RecordingTracer? recordingTracer = tracerShape is TracerShape.None ? null : new RecordingTracer(tracerShape);
@@ -248,7 +248,7 @@ public class SimpleTransferFastPathDifferentialTests
         }
         finally
         {
-            SimpleTransferFastPath.ForceDisabled = forceDisabledBefore;
+            TransactionProcessorBase.ForceSimpleTransferDisabled = forceDisabledBefore;
         }
     }
 
