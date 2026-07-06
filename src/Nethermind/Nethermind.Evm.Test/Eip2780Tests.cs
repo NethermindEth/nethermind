@@ -25,63 +25,40 @@ public class Eip2780Tests
 {
     private static readonly IReleaseSpec Eip2780Spec = new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true };
 
-    private static ulong ChargeCallValue(bool isSelfCall, bool recipientEmpty)
+    [Test]
+    public void Call_value_cost_is_flat_under_eip2780()
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
-        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas, isSelfCall, recipientEmpty, Eip2780Spec), Is.True);
-        return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
+        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas), Is.True);
+        Assert.That(1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(Eip8038Constants.CallValue));
     }
 
-    [TestCase(true, false, GasCostOf.CallValueSelfEip2780, TestName = "self-call → STATE_UPDATE (1000)")]
-    [TestCase(false, false, GasCostOf.CallValueExistingEip2780, TestName = "existing recipient → 2*STATE_UPDATE + log (3756)")]
-    [TestCase(false, true, GasCostOf.CallValueNewAccountEip2780, TestName = "empty recipient → STATE_UPDATE + NEW_ACCOUNT + log (27756)")]
-    public void Call_value_cost_uses_eip2780_tiers(bool isSelfCall, bool recipientEmpty, ulong expected) =>
-        Assert.That(ChargeCallValue(isSelfCall, recipientEmpty), Is.EqualTo(expected));
-
-    [Test]
-    public void Call_value_tiers_have_expected_absolute_values()
-    {
-        // Guards against the constants drifting from the EIP-2780 specification.
-        Assert.That(GasCostOf.CallValueSelfEip2780, Is.EqualTo(1000));
-        Assert.That(GasCostOf.CallValueExistingEip2780, Is.EqualTo(3756));
-        Assert.That(GasCostOf.CallValueNewAccountEip2780, Is.EqualTo(27756));
-    }
-
-    private static ulong ChargeAccountAccess(IReleaseSpec spec, bool hasCode, bool prewarm)
+    private static ulong ChargeAccountAccess(IReleaseSpec spec, bool prewarm)
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
         using StackAccessTracker tracker = new();
         if (prewarm) tracker.WarmUp(TestItem.AddressB);
-        Assert.That(EthereumGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB, hasCode: hasCode), Is.True);
+        Assert.That(EthereumGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
         return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
     }
 
     [Test]
-    public void Cold_account_touch_is_two_tier_under_eip2780()
+    public void Cold_account_touch_is_flat()
     {
-        Assert.That(ChargeAccountAccess(Eip2780Spec, hasCode: true, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess), "cold account with code");
-        Assert.That(ChargeAccountAccess(Eip2780Spec, hasCode: false, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccessNoCodeEip2780), "cold account without code");
-        Assert.That(ChargeAccountAccess(Eip2780Spec, hasCode: false, prewarm: true), Is.EqualTo(GasCostOf.WarmStateRead), "warm account stays at WARM_STATE_READ");
-    }
-
-    [Test]
-    public void Cold_account_touch_stays_flat_without_eip2780()
-    {
-        // Pre-EIP-2780 the code-less hint is ignored: every cold touch costs ColdAccountAccess.
-        Assert.That(ChargeAccountAccess(Prague.Instance, hasCode: false, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess));
-        Assert.That(ChargeAccountAccess(Prague.Instance, hasCode: true, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess));
+        Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess), "cold account");
+        Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: true), Is.EqualTo(GasCostOf.WarmStateRead), "warm account stays at WARM_STATE_READ");
     }
 
     private static Task<BasicTestBlockchain> CreateChain() =>
         BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(
             new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true })));
 
-    // Whole-transaction gas (base + recipient cold touch + value STATE_UPDATE + transfer log),
-    // matching the EIP-2780 reference-case table; recipient AddressF is unfunded (dead per EIP-161).
-    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.StateUpdateEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (15256)")]
-    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780 + GasCostOf.NewAccount + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (39256)")]
-    [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to existing EOA (12500)")]
-    [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccessNoCodeEip2780, TestName = "no-transfer to empty account (12500)")]
+    // Whole-transaction gas: base + flat recipient cold touch + value-move + transfer log costs.
+    // Recipient existence is irrelevant to the intrinsic (state-independent by design).
+    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (21000)")]
+    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (21000)")]
+    [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess, TestName = "no-transfer to existing EOA (15000)")]
+    [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess, TestName = "no-transfer to empty account (15000)")]
     public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, ulong expectedGas)
     {
         using BasicTestBlockchain chain = await CreateChain();

@@ -135,10 +135,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        // The factory has a comfortable gas budget so it always runs to completion; the nested
-        // child, however, only receives 63/64 of the factory's remaining gas, which cannot cover
-        // the 256-byte code deposit (256 * (CodeDeposit + CodeDepositState)). The child must fail
-        // on its own budget rather than borrowing the parent's regular gas.
+        // The nested child's 63/64 share cannot cover the 256-byte code deposit; it must fail on
+        // its own budget rather than borrowing the parent's regular gas.
         const ulong gasLimit = 300_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 

@@ -303,38 +303,27 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
-            // EIP-8037 top-frame charges. At most one of the two below applies: a delegated recipient
-            // has code and is therefore never a dead account, so the branches are mutually exclusive
-            // (expressed as if/else-if to make that explicit and avoid running the second check on
-            // already-exhausted gas). Each exhausts the frame on failure so the EVM halts out of gas.
+            // EIP-8037 top-frame charges. At most one applies: a delegated recipient has code and is
+            // therefore never a dead account, hence the if/else-if.
             bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
-            // When either charge cannot be covered the top frame is out of gas before any code runs.
-            // The flag defers the halt to ExecuteEvmCall so the value transfer is rolled back and the
-            // sender forfeits all gas — matching the EVM-level OutOfGasError EELS raises in
-            // process_message. Merely consuming the remaining gas and proceeding would let a zero-cost
-            // frame (e.g. a delegated STOP, or an empty recipient) wrongly succeed.
+            // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the sender
+            // forfeits all gas (EELS raises OutOfGasError in process_message); merely draining the gas
+            // would let a zero-cost frame (e.g. a delegated STOP) wrongly succeed.
             bool topFrameOutOfGas = false;
 
-            // A value transfer materialising a new (dead) recipient pays NEW_ACCOUNT state gas,
-            // evaluated against pre-transfer state. This mirrors the ExecuteSimpleTransfer charge for
-            // the EVM path (transactions carrying code, calldata, or an authorization list, which
-            // bypass the simple-transfer fast path). An empty precompile is materialised like any other
-            // account, so it is charged too.
+            // A value transfer materialising a new (dead) recipient — including an empty precompile —
+            // pays NEW_ACCOUNT state gas against pre-transfer state (mirrors ExecuteSimpleTransfer).
             if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
             {
                 topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
             }
-            // A top-level call whose recipient is an EIP-7702 delegation also touches the delegation
-            // target with a (flat) cold account access. The target is already pre-warmed for the frame,
-            // so this is the sole charge for it. The delegation is read from post-authorization state,
-            // so a delegation installed by this same transaction's authorization list is included (and
-            // one cleared by it is excluded). Gated on EIP-8037 (the 2-D state-gas model); the standalone
-            // EIP-2780 model instead prices the delegation target touch in the intrinsic cost, so
-            // charging here would double-charge.
+            // EIP-8037: a delegated recipient's delegation target costs one flat cold account access
+            // (the target is only pre-warmed for the frame, so this is its sole charge). Read from
+            // post-authorization state, so same-tx installs/clears are respected.
             else if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 ulong delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
@@ -428,12 +417,9 @@ namespace Nethermind.Evm.TransactionProcessing
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
 
-            // EIP-8037 top-frame charge: a value transfer that materialises a new (dead) recipient pays
-            // NEW_ACCOUNT state gas, evaluated against pre-transfer state. If the (state) gas cannot be
-            // covered the frame is out of gas: no value moves and the sender forfeits all gas. Gated on
-            // EIP-8037 (the 2-D state-gas model); the standalone EIP-2780 model instead prices
-            // NEW_ACCOUNT in the intrinsic cost, so charging here would double-charge. An empty
-            // precompile is materialised like any other account, so it is charged too.
+            // EIP-8037: a value transfer materialising a new (dead) recipient — including an empty
+            // precompile — pays NEW_ACCOUNT state gas against pre-transfer state; if it cannot be
+            // covered no value moves and the sender forfeits all gas.
             bool newAccountOutOfGas = false;
             if (spec.IsEip8037Enabled && hasValueTransfer && !senderIsRecipient
                 && WorldState.IsDeadAccount(recipient))
@@ -681,10 +667,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
                 TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
-                // delegationRefunds (existing-authority count) is intentionally NOT zeroed: it flows on to
-                // Refund as codeInsertRefunds to surface the regular ACCOUNT_WRITE refund. The state refund
-                // applied just above is the only state-dimension refund, so ApplyCodeInsertRefunds must not
-                // re-apply it.
+                // delegationRefunds is intentionally NOT zeroed: it flows on to Refund as codeInsertRefunds
+                // for the regular ACCOUNT_WRITE refund; the state-dimension refund was applied just above.
                 delegationAuthBaseRefunds = 0;
             }
 
@@ -800,10 +784,9 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    // EIP-7702/EIP-8038 AUTH_BASE refill (EELS set_delegation): clearing always refills
-                    // AUTH_BASE, plus a second refill when the cleared delegation was installed earlier in
-                    // THIS tx (delegated now but not at tx start). Setting refills AUTH_BASE when the slot
-                    // already holds a delegation either now or at tx start.
+                    // EIP-7702/EIP-8038 AUTH_BASE refill (EELS set_delegation): clearing always refills, twice
+                    // when the delegation was installed earlier in THIS tx; setting refills when the slot holds
+                    // a delegation either now or at tx start.
                     if (clearsDelegation)
                     {
                         authBaseRefunds++;
@@ -1070,7 +1053,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
-            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit, WorldState);
+            => TGasPolicy.CalculateIntrinsicGas(tx, spec, blockGasLimit);
 
         protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
         {
@@ -1588,11 +1571,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // gas_left; spilled state gas thus ends up in gas_left and is burned as regular, not as
             // state. Only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            // Block regular gas = before_refund - state (EELS tx_regular_gas). Neither the gas refund nor the
-            // EIP-7623/7976 calldata floor touches it: both adjust only the sender charge (tx_gas_used /
-            // receipts). The floor in particular must NOT inflate the block's regular-gas dimension.
-            // System calls legitimately halt with preRefundGas 0 while intrinsic state gas remains;
-            // their GasConsumed is discarded, so the wrap below is inert for them.
+            // Block regular gas = before_refund - state (EELS tx_regular_gas); refunds and the EIP-7623/7976
+            // calldata floor adjust only the sender charge, never this dimension. System calls may halt with
+            // preRefundGas 0 while intrinsic state gas remains; their GasConsumed is discarded.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = preRefundGas - (ulong)effectiveStateGas;

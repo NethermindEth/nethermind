@@ -183,10 +183,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // EELS refill_frame_state_gas (run by the reverting child) refills its net spill into
-        // gas_left and returns only (used - spill) to the reservoir; the parent then absorbs the
-        // child's gas_left. Crediting the spill back to the reservoir instead would leave it inflated,
-        // so a subsequent top-level halt would return spilled gas the spec burns.
+        // EELS refill_frame_state_gas: the reverting child refills its net spill into gas_left and
+        // returns only (used - spill) to the reservoir; crediting spill to the reservoir would leave
+        // it inflated, returning gas a later top-level halt should burn.
         long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
@@ -216,12 +215,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // Code deposit failure is an exceptional halt of the child create frame, after the child was
-        // merged into the parent. EELS refills the child's spilled state gas into gas_left and then
-        // zeros gas_left (the halt burns it), so the spilled portion stays consumed. Only the
-        // reservoir-funded state gas returns to the parent reservoir; crediting the spilled portion
-        // too would over-refund — e.g. a failed CREATE deposit whose init wrote storage slots would
-        // get its (spilled) storage state gas back instead of burning it.
+        // Code deposit failure exceptionally halts the child create frame after it merged into the
+        // parent: EELS refills spilled state gas into gas_left and then burns it, so only the
+        // reservoir-funded portion returns to the parent reservoir.
         long childNetSpill = Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
@@ -261,8 +257,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        AccountAccessKind kind = AccountAccessKind.Default,
-        bool hasCode = true)
+        AccountAccessKind kind = AccountAccessKind.Default)
     {
         if (!spec.UseHotAndColdStorage) return true;
         if (isTracingAccess)
@@ -275,19 +270,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Precompiles are pre-warmed at tx start, so WarmUp(precompile) is already-warm and the reorder is moot.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
-            true => UpdateGas(ref gas, ColdAccountAccessCost(spec, hasCode)),
+            true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
     }
 
-    // EIP-8038 reprices the (flat) cold account-access cost. devnet-6 dropped the earlier
-    // EIP-2780 two-tier no-code discount, so the touch is independent of whether the account has code.
+    // EIP-8038 reprices the (flat) cold account-access cost.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ColdAccountAccessCost(IReleaseSpec spec, bool hasCode) =>
-        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess
-        : spec.IsEip2780Enabled && !hasCode ? GasCostOf.ColdAccountAccessNoCodeEip2780
-        : GasCostOf.ColdAccountAccess;
+    private static ulong ColdAccountAccessCost(IReleaseSpec spec) =>
+        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
@@ -387,11 +379,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long toGasLeft = 0;
         if (trackSpillRefund)
         {
-            // Source-based LIFO refill (EELS credit_state_gas_refund): a state-gas refund returns to the
-            // pools the charge drew from — gas_left first, up to the amount that spilled, then the
-            // reservoir. Crediting spilled gas back to gas_left (not the reservoir) keeps the runtime
-            // reservoir at the value the spec expects, so e.g. a reverted sub-frame that spilled its
-            // SSTORE state gas does not leave the caller's reservoir inflated.
+            // Source-based LIFO refill (EELS credit_state_gas_refund): return to the pools the charge
+            // drew from — gas_left first (up to the spill), then the reservoir — so a reverted sub-frame's
+            // spilled state gas does not leave the caller's reservoir inflated.
             toGasLeft = Math.Min(appliedRefund, GetUnrefundedStateGasSpill(in gas));
             gas.StateGasSpillRefunded += toGasLeft;
         }
@@ -482,20 +472,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool ConsumeCallValueTransfer(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
-    // EIP-2780 value-moving call cost. Under EIP-8038 a value-bearing call charges a flat CALL_VALUE
-    // (the new-account surcharge moves to a separate NEW_ACCOUNT state charge); the earlier draft used
-    // a three-tier charge keyed on self-call and recipient existence that subsumed the surcharge.
+    // EIP-2780/EIP-8038: a value-bearing call charges a flat CALL_VALUE; the new-account cost
+    // is a separate NEW_ACCOUNT state charge.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas, bool isSelfCall, bool recipientEmpty, IReleaseSpec spec)
-    {
-        if (spec.IsEip8038Enabled)
-            return UpdateGas(ref gas, Eip8038Constants.CallValue);
-
-        ulong cost = isSelfCall ? GasCostOf.CallValueSelfEip2780
-            : recipientEmpty ? GasCostOf.CallValueNewAccountEip2780
-            : GasCostOf.CallValueExistingEip2780;
-        return UpdateGas(ref gas, cost);
-    }
+    public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas)
+        => UpdateGas(ref gas, Eip8038Constants.CallValue);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
@@ -552,7 +533,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
 
-    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit, IReadOnlyStateProvider? worldState = null)
+    public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
         ulong tokensInCallData = IGasPolicy<EthereumGasPolicy>.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IGasPolicy<EthereumGasPolicy>.CalculateFloorTokensInAccessList(tx, spec);
@@ -565,7 +546,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                           + CreateCost(tx, spec)
                           + accessListCost
                           + authRegularCost
-                          + Eip2780ExtraGas(tx, spec, worldState);
+                          + Eip2780ExtraGas(tx, spec);
         ulong floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
         ulong createStateCost = CreateStateCost(tx, spec);
         ulong totalStateCost = authStateCost + createStateCost;
@@ -628,30 +609,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     /// <summary>
-    /// EIP-2780 recipient charge on top of TX_BASE_COST. Dispatches to the EIP-8038 (glamsterdam-devnet-6)
-    /// flat model when EIP-8038 is active, otherwise to the standalone EIP-2780 two-tier model.
+    /// EIP-2780 recipient charge on top of TX_BASE_COST, mirroring EELS <c>calculate_intrinsic_cost</c>.
     /// </summary>
     /// <remarks>
-    /// Both models mirror their respective EELS <c>calculate_intrinsic_cost</c>: the recipient touch overrides
-    /// EIP-2929's "all tx addresses are warm" rule and the recipient stays pre-warmed for execution. See
-    /// <see cref="Eip8038IntrinsicRecipientGas(Transaction)"/> and <see cref="Eip2780StandaloneExtraGas"/> for the specifics.
+    /// State-independent by design (per review, intrinsic gas must not read state): a flat cold touch
+    /// for a non-self recipient, plus the EIP-7708 transfer log and value-move costs on value transfers.
+    /// The new-account surcharge is a separate NEW_ACCOUNT state charge; the EIP-7702 delegation-target
+    /// touch is charged at execution time.
     /// </remarks>
-    private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
+    private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec)
     {
         if (!spec.IsEip2780Enabled) return 0;
-        return spec.IsEip8038Enabled
-            ? Eip8038IntrinsicRecipientGas(tx)
-            : Eip2780StandaloneExtraGas(tx, spec, worldState);
-    }
 
-    // EIP-8038 (glamsterdam-devnet-6): the recipient touch is a flat cold charge independent of the
-    // recipient's existence or code, and a value transfer adds the EIP-7708 transfer log plus a fixed
-    // value-move cost. The new-account surcharge moves to a separate NEW_ACCOUNT state charge, and the
-    // EIP-7702 delegation-target touch is charged at execution time (against post-authorization state)
-    // rather than here; neither is priced in this method. State-independent because the EELS
-    // intrinsic cost does not consult state.
-    private static ulong Eip8038IntrinsicRecipientGas(Transaction tx)
-    {
         bool hasValue = !tx.Value.IsZero;
 
         if (tx.IsContractCreation)
@@ -667,71 +636,5 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return cost;
     }
 
-    // Standalone EIP-2780 (pre-EIP-8038) intrinsic recipient cost: a two-tier cold touch keyed on
-    // whether the recipient carries code, plus a NEW_ACCOUNT surcharge and a STATE_UPDATE leaf write
-    // for value transfers, mirroring the EIP-2780 reference table. Requires <paramref name="worldState"/>
-    // to classify the recipient; superseded by <see cref="Eip8038IntrinsicRecipientGas(Transaction)"/> under EIP-8038.
-    private static ulong Eip2780StandaloneExtraGas(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider? worldState)
-    {
-        bool isCreate = tx.IsContractCreation;
-        Address? to = tx.To;
-        bool hasValue = !tx.Value.IsZero;
-        bool senderIsRecipient = !isCreate && tx.SenderAddress == to;
-
-        ulong cost = 0;
-        // EIP-7708 transfer log on the top-level value transfer; CREATE endows a distinct address.
-        if (hasValue && (isCreate || !senderIsRecipient))
-            cost += GasCostOf.TransferLogEip2780;
-
-        if (isCreate || to is null || worldState is null) return cost;
-
-        bool isPrecompile = spec.IsPrecompile(to);
-        bool recipientDead = worldState.IsDeadAccount(to);
-
-        // New-account surcharge: value transfer to a nonexistent, non-precompile recipient.
-        if (hasValue && !isPrecompile && recipientDead)
-            cost += GasCostOf.NewAccount;
-
-        // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST;
-        // precompiles are warm at tx start and charged zero.
-        if (!senderIsRecipient && !isPrecompile)
-        {
-            cost += RecipientTouchCost(tx, spec, worldState, to);
-            // The new-account surcharge already covers the recipient leaf write.
-            if (hasValue && !recipientDead)
-                cost += GasCostOf.StateUpdateEip2780;
-        }
-
-        return cost;
-    }
-
-    private static ulong RecipientTouchCost(Transaction tx, IReleaseSpec spec, IReadOnlyStateProvider worldState, Address to)
-    {
-        bool toHasCode = worldState.IsContract(to);
-        ulong cost = IsInAccessList(tx, to)
-            ? GasCostOf.WarmStateRead
-            : ColdAccountAccessCost(spec, toHasCode);
-
-        // EIP-7702: a delegated recipient also touches its delegation target (always carries code).
-        // The EVM warms (does not gas-charge) this target for the top-level frame, so this is the sole charge.
-        // Only an account with code can carry a delegation, so plain EOAs skip the code read entirely.
-        if (spec.IsEip7702Enabled && toHasCode
-            && ICodeInfoRepository.TryGetDelegatedAddress(worldState.GetCode(to).AsSpan(), out Address? target))
-            cost += IsInAccessList(tx, target) ? GasCostOf.WarmStateRead : ColdAccountAccessCost(spec, hasCode: true);
-
-        return cost;
-    }
-
-    // A single linear scan beats materialising a HashSet: access lists are small and we probe at
-    // most two addresses (the recipient and an optional EIP-7702 delegation target) per transaction.
-    private static bool IsInAccessList(Transaction tx, Address? address)
-    {
-        if (tx.AccessList is null) return false;
-        foreach ((Address entry, _) in tx.AccessList)
-        {
-            if (entry == address) return true;
-        }
-        return false;
-    }
 
 }
