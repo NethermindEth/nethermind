@@ -95,6 +95,8 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
 
+                .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
                 .AddSingleton<AuRaTerminalBlockDisposer>()

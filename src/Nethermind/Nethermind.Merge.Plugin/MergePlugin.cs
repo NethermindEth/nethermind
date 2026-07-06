@@ -55,7 +55,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     protected IBlocksConfig _blocksConfig = null!;
     protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
-    private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
     public virtual string Name => "Merge";
@@ -88,7 +87,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
             EnsureJsonRpcUrl();
 
-            _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
@@ -96,8 +94,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.BlockTree!, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
-
-            _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
         }
 
         return Task.CompletedTask;
@@ -209,6 +205,8 @@ public class MergePluginModule : Module
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
+
+            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
             .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 

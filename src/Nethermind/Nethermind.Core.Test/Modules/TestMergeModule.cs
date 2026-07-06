@@ -6,7 +6,6 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -40,9 +39,6 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) :
 
         builder
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
-
-            // Validators
-            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
 
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()
