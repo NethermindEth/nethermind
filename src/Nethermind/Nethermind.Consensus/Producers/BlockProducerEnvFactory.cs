@@ -12,9 +12,10 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
+        IProcessingEnvBuilder envBuilder,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory
-    ) : GlobalWorldStateBlockProducerEnvFactory(rootLifetime, worldStateManager, txSourceFactory)
+    ) : GlobalWorldStateBlockProducerEnvFactory(rootLifetime, envBuilder, worldStateManager, txSourceFactory)
     {
         protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
             base.ConfigureBuilder(builder)

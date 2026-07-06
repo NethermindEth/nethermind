@@ -10,10 +10,10 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class AutoReadOnlyTxProcessingEnvFactory(Func<IProcessingEnvBuilder> envBuilder, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
+public class AutoReadOnlyTxProcessingEnvFactory(IProcessingEnvBuilder envBuilder, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create() =>
-        new AutoReadOnlyTxProcessingEnv(envBuilder()
+        new AutoReadOnlyTxProcessingEnv(envBuilder.NewEnv()
             .WithWorldState(worldStateManager.CreateResettableWorldState())
             .BuildAs<AutoReadOnlyTxProcessingEnv.IEnv>());
 

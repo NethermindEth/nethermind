@@ -8,49 +8,41 @@ using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <summary>
-/// Fluent builder for an isolated block-processing environment. It configures an Autofac child lifetime
-/// scope (overriding the world state and/or individual components) and exposes the resolved graph through
-/// <see cref="BuildAs{TWrapper}"/>.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <c>TWrapper</c> must be a simple, getter-only interface (read-only properties, no methods) that the
-/// caller defines, and it must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/>.
-/// The returned wrapper owns the environment's child scope, so it must be disposed once the environment
-/// is no longer needed — disposing it disposes the scope and everything it owns.
-/// </para>
-/// <para>
-/// A builder is single-use and not thread-safe: accumulate the configuration with the <c>With*</c> /
-/// <see cref="Configure"/> methods (a world state is mandatory), then call <see cref="BuildAs{TWrapper}"/>
-/// once. Resolve a fresh builder (or inject <see cref="Func{IProcessingEnvBuilder}"/>) for each
-/// environment. Because the components come from a real child scope, all plugin registrations, decorators
-/// and composites in the parent container are honoured — unlike a hand-built processing stack.
-/// </para>
-/// </remarks>
+/// <summary>Source of fresh <see cref="IDsl"/> instances, one per block-processing environment.</summary>
 public interface IProcessingEnvBuilder
 {
-    IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState);
+    IDsl NewEnv();
 
-    IProcessingEnvBuilder WithWorldState(IWorldState worldState);
+    /// <summary>
+    /// Fluent builder for an isolated block-processing environment. It configures an Autofac child lifetime
+    /// scope and returns the resolved graph as <c>TWrapper</c> — a caller-defined, getter-only interface that
+    /// must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> and be disposed when the
+    /// environment is no longer needed (disposing it disposes the scope).
+    /// </summary>
+    public interface IDsl
+    {
+        IDsl WithWorldState(IWorldStateScopeProvider worldState);
 
-    IProcessingEnvBuilder WithOverridableEnv(IOverridableEnv env);
+        IDsl WithWorldState(IWorldState worldState);
 
-    IProcessingEnvBuilder WithOverridableEnv();
+        IDsl WithOverridableEnv(IOverridableEnv env);
 
-    IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class;
+        IDsl WithOverridableEnv();
 
-    IProcessingEnvBuilder WithReplacedComponent<TService, TImpl>() where TImpl : TService where TService : notnull;
+        IDsl WithReplacedComponent<T>(T instance) where T : class;
 
-    IProcessingEnvBuilder WithReplacedComponent<T>(Func<IComponentContext, T> factory) where T : class;
+        IDsl WithReplacedComponent<TService, TImpl>() where TImpl : TService where TService : notnull;
 
-    IProcessingEnvBuilder WithComponent<T>(T instance) where T : class;
+        IDsl WithReplacedComponent<T>(Func<IComponentContext, T> factory) where T : class;
 
-    IProcessingEnvBuilder ThatDisposes(IDisposable disposable);
+        IDsl WithComponent<T>(T instance) where T : class;
 
-    IProcessingEnvBuilder WithBlockValidationConfiguration();
+        IDsl ThatDisposes(IDisposable disposable);
 
-    IProcessingEnvBuilder Configure(Action<ContainerBuilder> configure);
+        IDsl WithBlockValidationConfiguration();
 
-    TWrapper BuildAs<TWrapper>() where TWrapper : class;
+        IDsl Configure(Action<ContainerBuilder> configure);
+
+        TWrapper BuildAs<TWrapper>() where TWrapper : class;
+    }
 }

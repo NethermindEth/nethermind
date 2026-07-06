@@ -23,10 +23,9 @@ namespace Nethermind.Init.Modules;
 public class MainProcessingContext : IMainProcessingContext, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler, IAsyncDisposable
 {
     public MainProcessingContext(
-        ILifetimeScope rootLifetimeScope,
+        IProcessingEnvBuilder envBuilder,
         IReceiptConfig receiptConfig,
         IInitConfig initConfig,
-        IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
@@ -34,7 +33,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
-
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
         if (logManager.GetClassLogger<WorldStateScopeOperationLogger>().IsTrace)
         {
@@ -43,15 +41,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 
         worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
-        ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-        {
-            builder
-                // These are main block processing specific
-                .AddSingleton<IWorldStateScopeProvider>(worldState)
-                .AddModule(blockValidationModules)
-                .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
+        _components = envBuilder.NewEnv()
+            .WithWorldState(worldState)
+            .WithBlockValidationConfiguration()
+            .WithComponent<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
+            .Configure(builder => builder
                 .AddModule(mainProcessingModules)
-
                 .AddScoped<BlockchainProcessor, IBranchProcessor, IProcessingStats, IEnumerable<IBlockTracer>>((branchProcessor, processingStats, blockTracers) =>
                     new BlockchainProcessor(
                         blockTree,
@@ -70,13 +65,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                         IsMainProcessor = true // Manual construction because of this flag
                     })
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
-                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
-                // And finally, to wrap things up.
-                .AddScoped<Components>()
-                ;
-        });
-
-        _components = innerScope.Resolve<Components>();
+                .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>()))
+            .BuildAs<IComponents>();
 
         if (initConfig.ExitOnInvalidBlock)
         {
@@ -87,14 +77,12 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 processExitSource.Exit(ExitCodes.InvalidBlock);
             };
         }
-
-        LifetimeScope = innerScope;
     }
 
-    public async ValueTask DisposeAsync() => await LifetimeScope.DisposeAsync();
+    public ValueTask DisposeAsync() => _components.DisposeAsync();
 
-    private readonly Components _components;
-    public ILifetimeScope LifetimeScope { get; init; }
+    private readonly IComponents _components;
+    public ILifetimeScope LifetimeScope => _components.LifetimeScope;
     public IBlockchainProcessor BlockchainProcessor => _components.BlockchainProcessor;
     public IBlockProcessingQueue BlockProcessingQueue => _components.BlockProcessingQueue;
     public IWorldState WorldState => _components.WorldState;
@@ -105,13 +93,16 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
 
-    private record Components(
-        ITransactionProcessor TransactionProcessor,
-        IBranchProcessor BranchProcessor,
-        IBlockProcessor BlockProcessor,
-        IBlockchainProcessor BlockchainProcessor,
-        IBlockProcessingQueue BlockProcessingQueue,
-        IWorldState WorldState,
-        IGenesisLoader GenesisLoader
-    );
+    /// <summary>The main-pipeline components resolved from the child scope; disposing it disposes the scope.</summary>
+    public interface IComponents : IAsyncDisposable
+    {
+        ITransactionProcessor TransactionProcessor { get; }
+        IBranchProcessor BranchProcessor { get; }
+        IBlockProcessor BlockProcessor { get; }
+        IBlockchainProcessor BlockchainProcessor { get; }
+        IBlockProcessingQueue BlockProcessingQueue { get; }
+        IWorldState WorldState { get; }
+        IGenesisLoader GenesisLoader { get; }
+        ILifetimeScope LifetimeScope { get; }
+    }
 }

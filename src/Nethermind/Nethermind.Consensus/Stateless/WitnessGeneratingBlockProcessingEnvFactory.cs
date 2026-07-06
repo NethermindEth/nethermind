@@ -37,6 +37,7 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
 /// <remarks>Entries are reset on return; the pool is soft-capped, with surplus and poisoned entries disposed rather than pooled.</remarks>
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
+    IProcessingEnvBuilder envBuilder,
     IWorldStateManager worldStateManager,
     IDbProvider dbProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory, IDisposable
@@ -82,7 +83,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        IEnvComponents graph = new ProcessingEnvBuilder(rootLifetimeScope)
+        IEnvComponents graph = envBuilder.NewEnv()
             .WithWorldState(witnessWorldState)
             .WithReplacedComponent<IStateReader>(stateReader)
             .WithReplacedComponent<WitnessGeneratingWorldState>(witnessWorldState)

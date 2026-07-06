@@ -61,7 +61,7 @@ public class ProcessingEnvBuilderTests
         IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
         ITransactionProcessor fakeProcessor = Substitute.For<ITransactionProcessor>();
 
-        using ITestProcessingEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using ITestProcessingEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
             .WithWorldState(provider)
             .WithReplacedComponent<ITransactionProcessor>(fakeProcessor)
             .BuildAs<ITestProcessingEnv>();
@@ -76,7 +76,7 @@ public class ProcessingEnvBuilderTests
         using IContainer container = BuildContainer();
 
         TrackingDisposable tracker;
-        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                    .Configure(builder => builder.AddScoped<TrackingDisposable>())
                    .BuildAs<ITrackerEnv>())
@@ -94,7 +94,7 @@ public class ProcessingEnvBuilderTests
         using IContainer container = BuildContainer();
 
         TrackingDisposable tracker;
-        await using (IAsyncTrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+        await using (IAsyncTrackerEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                    .Configure(builder => builder.AddScoped<TrackingDisposable>())
                    .BuildAs<IAsyncTrackerEnv>())
@@ -112,7 +112,7 @@ public class ProcessingEnvBuilderTests
         using IContainer container = BuildContainer();
         TrackingDisposable owned = new();
 
-        using (IEmptyEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using (IEmptyEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                    .ThatDisposes(owned)
                    .BuildAs<IEmptyEnv>())
@@ -129,7 +129,7 @@ public class ProcessingEnvBuilderTests
         using IContainer container = BuildContainer();
         TrackingDisposable component = new();
 
-        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                    .WithComponent(component)
                    .BuildAs<ITrackerEnv>())
@@ -145,7 +145,7 @@ public class ProcessingEnvBuilderTests
     {
         using IContainer container = BuildContainer();
 
-        using IOverridableTestEnv env = container.Resolve<IProcessingEnvBuilder>()
+        using IOverridableTestEnv env = container.Resolve<IProcessingEnvBuilder>().NewEnv()
             .WithOverridableEnv()
             .BuildAs<IOverridableTestEnv>();
 
@@ -157,7 +157,7 @@ public class ProcessingEnvBuilderTests
     public void Non_property_member_throws_during_build()
     {
         using IContainer container = BuildContainer();
-        IProcessingEnvBuilder builder = container.Resolve<IProcessingEnvBuilder>()
+        IProcessingEnvBuilder.IDsl builder = container.Resolve<IProcessingEnvBuilder>().NewEnv()
             .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState());
 
         Assert.That(() => builder.BuildAs<IEnvWithMethod>(), Throws.TypeOf<ArgumentException>());
@@ -167,7 +167,7 @@ public class ProcessingEnvBuilderTests
     public void BuildAs_without_world_state_throws()
     {
         using IContainer container = BuildContainer();
-        IProcessingEnvBuilder builder = container.Resolve<IProcessingEnvBuilder>();
+        IProcessingEnvBuilder.IDsl builder = container.Resolve<IProcessingEnvBuilder>().NewEnv();
 
         Assert.That(() => builder.BuildAs<IEnvWithMethod>(), Throws.InstanceOf<InvalidOperationException>());
     }

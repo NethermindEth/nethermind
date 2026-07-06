@@ -18,7 +18,7 @@ public class EvmWarmer(IProcessingEnvBuilder envBuilder) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        using IWarmupEnv warmupEnv = envBuilder
+        using IWarmupEnv warmupEnv = envBuilder.NewEnv()
             .WithOverridableEnv()
             .BuildAs<IWarmupEnv>();
 

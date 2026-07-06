@@ -18,6 +18,7 @@ namespace Nethermind.Consensus.Producers
     /// </summary>
     public class GlobalWorldStateBlockProducerEnvFactory(
         ILifetimeScope rootLifetime,
+        IProcessingEnvBuilder envBuilder,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory)
         : IMainStateBlockProducerEnvFactory
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         private IEnvHandle BeginScope() =>
-            new ProcessingEnvBuilder(rootLifetime)
+            envBuilder.NewEnv()
                 .WithWorldState(CreateWorldState())
                 .Configure(builder => ConfigureBuilder(builder))
                 .BuildAs<IEnvHandle>();

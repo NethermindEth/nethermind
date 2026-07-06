@@ -33,11 +33,12 @@ namespace Nethermind.Consensus.Stateless;
 /// </remarks>
 public sealed class WitnessCapturingBlockProcessingEnv(
     ILifetimeScope rootLifetimeScope,
+    IProcessingEnvBuilder envBuilder,
     IWorldStateManager worldStateManager,
     IHeaderStore headerStore) : IDisposable
 {
     private readonly Lazy<IGraph> _graph = new(() =>
-        Build(rootLifetimeScope, worldStateManager, headerStore));
+        Build(rootLifetimeScope, envBuilder, worldStateManager, headerStore));
 
     /// <summary>The witness-wired block processor; the same instance is reused for every witnessed block.</summary>
     public IBlockProcessor Processor => _graph.Value.Processor;
@@ -61,6 +62,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
 
     private static IGraph Build(
         ILifetimeScope rootLifetimeScope,
+        IProcessingEnvBuilder envBuilder,
         IWorldStateManager worldStateManager,
         IHeaderStore headerStore)
     {
@@ -76,7 +78,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             headerStore);
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
 
-        return new ProcessingEnvBuilder(rootLifetimeScope)
+        return envBuilder.NewEnv()
             .WithWorldState(recorder)
             .WithComponent(recorder)
             .WithComponent(headerRecorder)
