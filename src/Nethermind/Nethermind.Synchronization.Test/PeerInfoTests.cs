@@ -93,6 +93,29 @@ namespace Nethermind.Synchronization.Test
             Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.False);
         }
 
+        [Test]
+        public void Context_slot_mapping_round_trips_for_every_tracked_context()
+        {
+            (AllocationContexts Context, int Index)[] expected =
+            [
+                (AllocationContexts.Headers, 0),
+                (AllocationContexts.Bodies, 1),
+                (AllocationContexts.Receipts, 2),
+                (AllocationContexts.State, 3),
+                (AllocationContexts.Snap, 4),
+                (AllocationContexts.ForwardHeader, 5),
+                (AllocationContexts.BlockAccessLists, 6),
+                (AllocationContexts.Blocks, 7),
+            ];
+
+            Assert.That(expected, Has.Length.EqualTo(WeaknessTracking.TrackedContextCount));
+            foreach ((AllocationContexts context, int index) in expected)
+            {
+                Assert.That(WeaknessTracking.IndexOf(context), Is.EqualTo(index));
+                Assert.That(WeaknessTracking.ContextAt(index), Is.EqualTo(context));
+            }
+        }
+
         [TestCaseSource(nameof(ContextCases))]
         public void TryAllocate_then_Free_round_trip(AllocationContexts contexts)
         {

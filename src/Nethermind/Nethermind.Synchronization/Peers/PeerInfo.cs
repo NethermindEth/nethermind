@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -41,7 +42,13 @@ namespace Nethermind.Synchronization.Peers
 
         public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 
-        private readonly SleepSlot?[] _sleepingSince = new SleepSlot?[WeaknessTracking.TrackedContextCount];
+        private SleepSlots _sleepingSince;
+
+        [InlineArray(WeaknessTracking.TrackedContextCount)]
+        private struct SleepSlots
+        {
+            private SleepSlot? _slot;
+        }
 
         private sealed class SleepSlot(DateTime since)
         {
@@ -95,13 +102,15 @@ namespace Nethermind.Synchronization.Peers
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
         {
             Interlocked.Or(ref _sleepingContexts, (uint)contexts);
-            for (int i = 0; i < WeaknessTracking.TrackedContextCount; i++)
+            SleepSlot slot = new(dateTime);
+            for (uint bits = (uint)contexts; bits != 0; bits &= bits - 1)
             {
-                AllocationContexts ctx = WeaknessTracking.OrderedTrackedContexts[i];
-                if ((contexts & ctx) == ctx)
-                {
-                    Volatile.Write(ref _sleepingSince[i], new SleepSlot(dateTime));
-                }
+                AllocationContexts ctx = (AllocationContexts)(1u << BitOperations.TrailingZeroCount(bits));
+                Volatile.Write(ref _sleepingSince[WeaknessTracking.IndexOf(ctx)], slot);
+            }
+            if ((contexts & AllocationContexts.Blocks) == AllocationContexts.Blocks)
+            {
+                Volatile.Write(ref _sleepingSince[WeaknessTracking.IndexOf(AllocationContexts.Blocks)], slot);
             }
         }
 
@@ -109,9 +118,10 @@ namespace Nethermind.Synchronization.Peers
         {
             for (int i = 0; i < WeaknessTracking.TrackedContextCount; i++)
             {
-                AllocationContexts ctx = WeaknessTracking.OrderedTrackedContexts[i];
                 SleepSlot? slot = Volatile.Read(ref _sleepingSince[i]);
-                if (slot is null || !IsAsleep(ctx) || dateTime - slot.Since < wakeUpIfSleepsMoreThanThis) continue;
+                if (slot is null) continue;
+                AllocationContexts ctx = WeaknessTracking.ContextAt(i);
+                if (!IsAsleep(ctx) || dateTime - slot.Since < wakeUpIfSleepsMoreThanThis) continue;
                 if (!ReferenceEquals(Interlocked.CompareExchange(ref _sleepingSince[i], null, slot), slot)) continue;
 
                 Interlocked.And(ref _sleepingContexts, ~(uint)ctx);
