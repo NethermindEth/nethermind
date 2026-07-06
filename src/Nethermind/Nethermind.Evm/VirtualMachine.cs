@@ -97,6 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+    public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
