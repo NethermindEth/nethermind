@@ -4,6 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Nethermind.Evm.Precompiles;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -26,12 +28,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract ulong GetRemainingGas(in TSelf gas);
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
-    static virtual long GetStorageSetStateCost(in TSelf gas) => (long)GasCostOf.SSetState;
-    static virtual long GetCreateStateCost(in TSelf gas) => (long)GasCostOf.CreateState;
-    static virtual long GetNewAccountStateCost(in TSelf gas) => (long)GasCostOf.NewAccountState;
-    static virtual long GetPerAuthBaseStateCost(in TSelf gas) => (long)GasCostOf.PerAuthBaseState;
-    static virtual long GetCodeDepositStateCost(in TSelf gas, int byteCodeLength) => (long)GasCostOf.CodeDepositState * byteCodeLength;
-    static virtual long GetStorageSetReversalRefund(in TSelf gas) => (long)RefundOf.SSetReversedEip8037;
+    static virtual long GetStorageSetStateCost() => (long)GasCostOf.SSetState;
+    static virtual long GetCreateStateCost() => (long)GasCostOf.CreateState;
+    static virtual long GetNewAccountStateCost() => (long)GasCostOf.NewAccountState;
+    static virtual long GetPerAuthBaseStateCost() => (long)GasCostOf.PerAuthBaseState;
+    static virtual long GetCodeDepositStateCost(int byteCodeLength) => (long)GasCostOf.CodeDepositState * byteCodeLength;
+    static virtual long GetStorageSetReversalRefund() => (long)RefundOf.SSetReversedEip8037;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
     static virtual long GetStateReservoir(in TSelf gas) => 0;
@@ -91,12 +93,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         StorageAccessType storageAccessType,
         IReleaseSpec spec);
 
-    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, VmState<TSelf> vmState);
+    static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory);
 
-    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, VmState<TSelf> vmState)
+    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, ref EvmPooledMemory memory)
     {
-        UInt256 uint256Length = new(length);
-        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, vmState);
+        UInt256 uint256Length = length;
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory);
     }
 
     static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);
@@ -160,6 +162,104 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     // EXTCODECOPY may need different categorization (state trie access) for some policies.
     static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, ulong baseCost, ulong dataCost);
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void Consume<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
+        TSelf.Consume(ref gas, TCost.GasCost);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void Consume<TCost>(ref TSelf gas, IReleaseSpec spec) where TCost : struct, ISpecGasCost =>
+        TSelf.Consume(ref gas, TCost.GasCost(spec));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void ConsumeKeccak(ref TSelf gas, ulong words) =>
+        TSelf.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * words);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void ConsumeMemoryCopy(ref TSelf gas, ulong words) =>
+        TSelf.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * words);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void ConsumeExpBytes(ref TSelf gas, IReleaseSpec spec, ulong exponentByteSize) =>
+        TSelf.Consume(ref gas, spec.GasCosts.ExpByteCost * exponentByteSize);
+
+    // EIP-8038 reprices the CREATE/CREATE2 account-creation regular cost to CREATE_ACCESS.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeCreateGas<TEip8037, TOpCreate>(ref TSelf gas, IReleaseSpec spec, ulong initCodeWords)
+        where TEip8037 : struct, IFlag
+        where TOpCreate : struct, EvmInstructions.IOpCreate
+    {
+        ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
+            : TEip8037.IsActive ? GasCostOf.CreateRegular
+            : GasCostOf.Create;
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeCallBaseGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.CallCost);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeSStoreResetGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeNetMeteredSStoreGas(ref TSelf gas, IReleaseSpec spec) =>
+        TSelf.UpdateGas(ref gas, spec.GasCosts.NetMeteredSStoreCost);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeSSetFromCleanGas(ref TSelf gas) =>
+        TSelf.UpdateGas(ref gas, GasCostOf.SSet - GasCostOf.SReset);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumePrecompileGas(ref TSelf gas, IPrecompile precompile, ReadOnlyMemory<byte> inputData, IReleaseSpec spec)
+    {
+        ulong baseGasCost = precompile.BaseGasCost(spec);
+        ulong dataGasCost = precompile.DataGasCost(inputData, spec);
+        return baseGasCost <= ulong.MaxValue - dataGasCost && TSelf.UpdateGas(ref gas, baseGasCost + dataGasCost);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool ConsumeCreateStateGas(ref TSelf gas) =>
+        TSelf.ConsumeStateGas(ref gas, TSelf.GetCreateStateCost());
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryReserveChildGas(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
+    {
+        ulong gasAvailable = TSelf.GetRemainingGas(in gas);
+        if (spec.Use63Over64Rule)
+        {
+            ulong cap = gasAvailable - gasAvailable / 64;
+            childGas = requestedGas.IsUint64 && requestedGas.u0 <= cap ? requestedGas.u0 : cap;
+        }
+        else
+        {
+            childGas = requestedGas.IsUint64 && requestedGas.u0 <= gasAvailable ? requestedGas.u0 : gasAvailable;
+        }
+        return TSelf.UpdateGas(ref gas, childGas);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryReserveChildGas(ref TSelf gas, IReleaseSpec spec, out ulong childGas)
+    {
+        ulong gasAvailable = TSelf.GetRemainingGas(in gas);
+        childGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
+        return TSelf.UpdateGas(ref gas, childGas);
+    }
+
+    // EXTCODECOPY may need different categorization (state trie access) for some policies.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void ConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words) =>
+        TSelf.Consume(ref gas, (isExternalCode ? spec.GasCosts.ExtCodeCost : GasCostOf.VeryLow) + GasCostOf.Memory * words);
+
+
+    // EIP-8037 block gas rule: header gasUsed is the bottleneck dimension, max(regular, state).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
     static abstract void OnBeforeInstructionTrace(in TSelf gas, int pc, Instruction instruction, int depth);
     static abstract void OnAfterInstructionTrace(in TSelf gas);

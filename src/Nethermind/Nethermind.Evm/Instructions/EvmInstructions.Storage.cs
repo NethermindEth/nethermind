@@ -571,7 +571,7 @@ public static partial class EvmInstructions
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
-                        vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost(in gas));
+                        vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost());
                         if (!spec.IsEip8038Enabled)
                             refundFromReversal = (long)(GasCostOf.SSetRegular - GasCostOf.WarmStateRead);
                     }

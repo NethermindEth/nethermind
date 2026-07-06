@@ -249,7 +249,7 @@ public static partial class EvmInstructions
             // call cannot proceed (call depth exceeded or caller balance too low) no account is created, so
             // refund it. No-op pre-EIP-8037 (CreditStateGasRefund self-gates), matching legacy semantics.
             if (chargesNewAccount)
-                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost(in gas));
+                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
