@@ -18,10 +18,6 @@ public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-            // NOTE: The ordering of block preprocessors is not guaranteed
-            .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
-            .AddSingleton<CompositeBlockPreprocessorStep>()
-            .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
 
