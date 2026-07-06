@@ -70,6 +70,49 @@ public class InclusionListBuilderTests
     }
 
     [Test]
+    public void Skips_blob_transactions()
+    {
+        Transaction blobTx = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithNonce(0)
+            .WithMaxFeePerGas(10)
+            .WithMaxPriorityFeePerGas(1)
+            .WithMaxFeePerBlobGas(10)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction normalTx = TxOfSize(50, 1);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns([blobTx, normalTx]);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        Assert.That(il.Count, Is.EqualTo(1));
+        RlpReader ctx = new(il[0].AsSpan());
+        Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+        Assert.That(decoded.Hash, Is.EqualTo(normalTx.Hash));
+    }
+
+    [Test]
+    public void Handles_mempool_larger_than_reservoir_capacity()
+    {
+        Transaction[] txs = Enumerable.Range(0, Eip7805Constants.MaxTransactionsPerInclusionList + 100)
+            .Select(i => TxOfSize(0, i))
+            .ToArray();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns(txs);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
+        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    [Test]
     public void Returned_bytes_are_valid_RLP_decoding_back_to_originals()
     {
         Transaction[] txs = Enumerable.Range(0, 5).Select(i => TxOfSize(40, i)).ToArray();

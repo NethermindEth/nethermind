@@ -372,10 +372,9 @@ public abstract class BlockchainTestBase
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
-            // EIP-7805 (FOCIL): IL is sent as a separate field on the fixture; append it as the last
-            // positional arg when targeting V6 so the V6 RPC method receives all 5 params.
-            if (newPayloadVersion >= EngineApiVersions.NewPayload.V6 && enginePayload.InclusionListTransactions is { } ilJson)
-                paramsRaw = paramsRaw.Append(ilJson.GetRawText());
+            // EIP-7805 (FOCIL): the IL is a separate fixture field; append it as the 5th positional arg for V6.
+            if (newPayloadVersion >= EngineApiVersions.NewPayload.V6 && enginePayload.InclusionListTransactions is { } il)
+                paramsRaw = paramsRaw.Append(JsonSerializer.Serialize(il));
             string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitness" : "engine_newPayloadV" + newPayloadVersion;
@@ -410,11 +409,11 @@ public abstract class BlockchainTestBase
             else
             {
                 PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, enginePayload.Status, validationError, newPayloadVersion);
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.Status);
 
-                // FCU after VALID — and also after INCLUSION_LIST_UNSATISFIED so the chain head
-                // advances to the committed block, matching the EELS fixture's lastblockhash/postState.
-                if (payloadStatus.Status == PayloadStatus.Valid || payloadStatus.Status == PayloadStatus.InclusionListUnsatisfied)
+                // FCU after INCLUSION_LIST_UNSATISFIED too — the block is committed, so the head
+                // must advance to match the fixture's lastblockhash/postState.
+                if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                 {
                     string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
                     AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
@@ -463,11 +462,11 @@ public abstract class BlockchainTestBase
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
         Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? fixtureStatus, string? expectedValidationError, int payloadVersion)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, string? explicitStatus = null)
     {
-        // Fixture-supplied `status` wins when present (covers INCLUSION_LIST_UNSATISFIED for FOCIL).
-        // Otherwise fall back to the legacy validation-error → INVALID convention.
-        string expectedStatus = fixtureStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
+        // A fixture-supplied `status` wins (covers INCLUSION_LIST_UNSATISFIED for FOCIL);
+        // otherwise fall back to the legacy validation-error → INVALID convention.
+        string expectedStatus = explicitStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
         Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
 
         if (expectedValidationError is not null)

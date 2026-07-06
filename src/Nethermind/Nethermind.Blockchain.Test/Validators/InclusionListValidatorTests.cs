@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -18,79 +19,84 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class InclusionListValidatorTests
 {
-    private IReadOnlyStateProvider _state = null!;
-    private ISpecProvider _specProvider = null!;
-    private Transaction _validTx = null!;
+    private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
+    private static readonly Transaction _validTx = BuildTx();
 
-    [SetUp]
-    public void Setup()
+    public static IEnumerable<TestCaseData> SatisfactionCases
     {
-        _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
-        _state = StateWith(TestItem.AddressA, 10.Ether, 0UL);
+        get
+        {
+            static TestCaseData Case(string name, Transaction[]? il, bool satisfied, Transaction[]? blockTxs = null, ulong gasUsed = 1_000_000, UInt256 baseFee = default, ulong senderNonce = 0) =>
+                new(blockTxs ?? [], il, gasUsed, baseFee, senderNonce, satisfied) { TestName = name };
 
-        _validTx = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(0)
-            .WithValue(1.Ether)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
+            yield return Case("Full block is satisfied", [_validTx], true, gasUsed: 30_000_000);
+            yield return Case("All IL txs included", [_validTx], true, blockTxs: [_validTx]);
+            yield return Case("Appendable IL tx excluded", [_validTx], false);
+            // Null IL = non-engine-API path (genesis, RLP import); validator treats as not applicable.
+            yield return Case("No IL", null, true);
+            yield return Case("Empty IL", [], true);
+            yield return Case("Sender lacks balance", [BuildTx(value: 100.Ether, to: TestItem.AddressB)], true);
+            yield return Case("Wrong nonce", [BuildTx(nonce: 5, to: TestItem.AddressB)], true);
+            yield return Case("Gas price below base fee", [BuildTx(gasPrice: 1.GWei, to: TestItem.AddressB)], true, baseFee: 5.GWei);
+            yield return Case("Gas limit exceeds remaining block gas", [BuildTx(gasLimit: 25_000_000, to: TestItem.AddressB)], true, gasUsed: 10_000_000);
+            // An included tx and a not-appendable (wrong nonce) tx both absolve the builder.
+            yield return Case("Partially included, remainder invalid", [_validTx, BuildTx(nonce: 7, value: UInt256.One, to: TestItem.AddressB)], true, blockTxs: [_validTx]);
+            // Post-execution semantics: a same-nonce replacement tx advances the sender nonce, so the IL tx is no longer appendable.
+            yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
+            // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
+            yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
+            // Blob txs MUST NOT appear in an IL; treated as not appendable.
+            yield return Case("Blob tx", [BuildBlobTx()], true);
+            // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
+            // a tx whose GasLimit is below the intrinsic cost cannot execute.
+            yield return Case("Intrinsic gas too low", [BuildTx(gasLimit: 20_999)], true);
+            // Spec disallows duplicates, but adversarial input must not cause false rejection:
+            // the duplicate correctly fails the appendability check (nonce advanced).
+            yield return Case("Duplicate IL entries with tx included", [_validTx, _validTx], true, blockTxs: [_validTx], senderNonce: 1);
+        }
     }
 
-    [Test]
-    public void When_block_full_then_accept()
+    [TestCaseSource(nameof(SatisfactionCases))]
+    public void Inclusion_list_satisfaction(Transaction[] blockTxs, Transaction[]? il, ulong gasUsed, UInt256 baseFee, ulong senderNonce, bool satisfied)
     {
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
-            .WithGasUsed(30_000_000)
-            .WithInclusionListTransactions([_validTx])
+            .WithGasUsed(gasUsed)
+            .WithBaseFeePerGas(baseFee)
+            .WithTransactions(blockTxs)
+            .WithInclusionListTransactions(il)
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_all_inclusion_list_txs_included_then_accept()
-    {
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithTransactions(_validTx)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_valid_tx_excluded_then_reject()
-    {
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
-    }
-
-    [Test]
-    public void When_no_inclusion_list_then_accept()
-    {
-        // Null IL = non-engine-API path (genesis, RLP import); validator treats as not applicable.
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
+        IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
+        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.EqualTo(satisfied));
     }
 
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
     {
-        IReleaseSpec preBogotaSpec = Prague.Instance;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([_validTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), Prague.Instance), Is.True);
+    }
+
+    // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
+    [TestCase(false, ExpectedResult = true, TestName = "Sender with non-delegated code is not appendable")]
+    // EIP-7702 delegation: a sender with delegation code IS allowed to send txs.
+    [TestCase(true, ExpectedResult = false, TestName = "Sender with delegated code is appendable")]
+    public bool Sender_with_code_appendability_depends_on_delegation(bool isDelegated)
+    {
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
+        {
+            // Any non-empty codehash → HasCode = true.
+            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
+            return true;
+        });
+        state.IsDelegatedCode(TestItem.AddressA).Returns(isDelegated);
 
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
@@ -98,193 +104,33 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([_validTx])
             .TestObject;
 
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, preBogotaSpec), Is.True);
+        return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header));
     }
 
-    [Test]
-    public void When_il_tx_sender_lacks_balance_then_accept()
-    {
-        Transaction expensiveTx = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(0)
-            .WithValue(100.Ether) // sender (AddressA) only has 10 ether
-            .WithTo(TestItem.AddressB)
+    private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>
+        Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(gasPrice ?? 10.GWei)
+            .WithNonce(nonce)
+            .WithValue(value ?? 1.Ether)
+            .WithTo(to ?? TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([expensiveTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_il_tx_has_wrong_nonce_then_accept()
-    {
-        Transaction futureNonceTx = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(5) // sender's actual nonce is 0
-            .WithValue(1.Ether)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([futureNonceTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_il_tx_gas_price_below_base_fee_then_accept()
-    {
-        Transaction lowGasPriceTx = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(1.GWei)
-            .WithNonce(0)
-            .WithValue(1.Ether)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBaseFeePerGas(5.GWei)
-            .WithInclusionListTransactions([lowGasPriceTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_il_tx_gas_limit_exceeds_remaining_block_gas_then_accept()
-    {
-        Transaction wideTx = Build.A.Transaction
-            .WithGasLimit(25_000_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(0)
-            .WithValue(1.Ether)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(10_000_000) // only 20M remaining, tx needs 25M
-            .WithInclusionListTransactions([wideTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_partial_il_satisfied_and_remainder_invalid_then_accept()
-    {
-        // Mix: one IL tx that's included in the block, one that's invalid (wrong nonce).
-        // Both conditions absolve the builder per FOCIL conditional-inclusion semantics.
-        Transaction invalidTx = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(7)
-            .WithValue(UInt256.One)
-            .WithTo(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithTransactions(_validTx)
-            .WithInclusionListTransactions([_validTx, invalidTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void When_empty_il_then_accept()
-    {
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    /// <summary>
-    /// Spec semantics: the IL satisfaction rule is evaluated against post-execution state.
-    /// A same-nonce non-IL tx that lands first consumes the nonce, so the IL tx is no
-    /// longer appendable and the block is accepted.
-    /// </summary>
-    [Test]
-    public void Same_nonce_replacement_tx_advances_nonce_and_satisfies_il()
-    {
-        // Replacement: same sender + nonce as `_validTx` but different recipient.
-        Transaction replacement = Build.A.Transaction
-            .WithGasLimit(100_000)
-            .WithGasPrice(10.GWei)
-            .WithNonce(0)
-            .WithValue(UInt256.One)
-            .WithTo(TestItem.AddressC)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithTransactions(replacement)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        // Post-execution: AddressA's nonce moved to 1, so _validTx (nonce 0) is no longer appendable.
-        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, 1UL);
-        Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    /// <summary>
-    /// EIP-1559 fee check uses MaxFeePerGas (cap), not GasPrice (tip): a type-2 tx with
-    /// tip below baseFee but cap above must still be appendable.
-    /// </summary>
-    [Test]
-    public void Eip1559_tx_with_low_tip_but_sufficient_fee_cap_is_appendable()
-    {
-        Transaction eip1559Tx = Build.A.Transaction
+    private static Transaction Build1559Tx() =>
+        Build.A.Transaction
             .WithType(TxType.EIP1559)
             .WithGasLimit(100_000)
-            .WithMaxPriorityFeePerGas(1.GWei)   // tip below baseFee
-            .WithMaxFeePerGas(10.GWei)          // cap above baseFee → valid
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerGas(10.GWei)
             .WithNonce(0)
             .WithValue(UInt256.One)
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBaseFeePerGas(5.GWei)
-            .WithInclusionListTransactions([eip1559Tx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.False);
-    }
-
-    [Test]
-    public void Blob_il_tx_is_treated_as_not_appendable()
-    {
-        // Blob txs MUST NOT appear in the IL per EIP-7805; treat as not-appendable.
-        Transaction blobTx = Build.A.Transaction
+    private static Transaction BuildBlobTx() =>
+        Build.A.Transaction
             .WithType(TxType.Blob)
             .WithGasLimit(100_000)
             .WithMaxFeePerGas(10.GWei)
@@ -297,105 +143,6 @@ public class InclusionListValidatorTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([blobTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void Sender_with_non_delegated_code_is_treated_as_not_appendable()
-    {
-        // EIP-3607: a sender that has deployed (non-delegation) code cannot send a tx.
-        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
-        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
-        {
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString.ValueHash256);
-            return true;
-        });
-        // Non-default codehash here would also work; just ensure HasCode is true.
-        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
-        {
-            // Any non-empty codehash → HasCode = true.
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
-            return true;
-        });
-        state.IsDelegatedCode(TestItem.AddressA).Returns(false);
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void Sender_with_delegated_code_is_appendable()
-    {
-        // EIP-7702 delegation: sender with delegation code IS allowed to send txs.
-        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
-        state.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
-        {
-            call[1] = new AccountStruct(0UL, 10.Ether, Keccak.EmptyTreeHash, new ValueHash256("0x" + new string('a', 64)));
-            return true;
-        });
-        state.IsDelegatedCode(TestItem.AddressA).Returns(true);
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header)), Is.False);
-    }
-
-    [Test]
-    public void Intrinsic_gas_too_low_il_tx_is_treated_as_not_appendable()
-    {
-        // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
-        // a tx whose GasLimit is below the intrinsic cost cannot execute, so the block
-        // omitting it must not trip INCLUSION_LIST_UNSATISFIED.
-        Transaction tx = Build.A.Transaction
-            .WithGasLimit(20_999) // below the 21,000 base tx intrinsic
-            .WithGasPrice(10.GWei)
-            .WithNonce(0)
-            .WithValue(1.Ether)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithInclusionListTransactions([tx])
-            .TestObject;
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, _state, _specProvider.GetSpec(block.Header)), Is.True);
-    }
-
-    [Test]
-    public void Duplicate_il_entries_do_not_cause_spurious_rejection_when_block_includes_tx()
-    {
-        // Spec disallows duplicates, but adversarial input must not cause false rejection.
-        // If the block includes the tx, post-state nonce advances → the duplicate's appendability
-        // check correctly returns false (nonce mismatch).
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithTransactions(_validTx)
-            .WithInclusionListTransactions([_validTx, _validTx])
-            .TestObject;
-
-        IReadOnlyStateProvider postExec = StateWith(TestItem.AddressA, 10.Ether, 1UL);
-        Assert.That(InclusionListValidator.IsSatisfied(block, postExec, _specProvider.GetSpec(block.Header)), Is.True);
-    }
 
     private static IReadOnlyStateProvider StateWith(Address sender, UInt256 balance, ulong nonce)
     {

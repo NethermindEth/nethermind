@@ -3,7 +3,6 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -40,7 +39,7 @@ public class InclusionListDecoder(
         TxDecoder decoder = TxDecoder.Instance;
         int length = decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
         ArrayPoolList<byte> result = new(length, length);
-        RlpWriter writer = new(new CappedArray<byte>(result.UnsafeGetInternalArray(), length));
+        RlpWriter writer = new(result.AsSpan());
         decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
         return result;
     }

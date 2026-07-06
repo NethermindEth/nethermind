@@ -28,7 +28,6 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
         PayloadAttributes payloadAttrs = BuildBogotaPayloadAttributes(inclusionList: []);
-        // ForkchoiceStateV1 ctor is (head, finalized, safe); genesis stands in for both here.
         ForkchoiceStateV1 fcuState = new(startingHead, Keccak.Zero, startingHead);
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(fcuState, payloadAttrs);
@@ -97,6 +96,68 @@ public partial class EngineModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied));
         Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
+    }
+
+    [Test]
+    public async Task NewPayloadV6_should_revalidate_same_block_against_new_inclusion_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV1> first = await rpc.engine_newPayloadV6(
+            emptyPayload,
+            blobVersionedHashes: [],
+            parentBeaconBlockRoot: Keccak.Zero,
+            executionRequests: payloadResult.Data!.ExecutionRequests,
+            inclusionListTransactions: []);
+        Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        // Same block hash, different IL: the cached VALID must not short-circuit the IL check.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0)
+            .WithMaxFeePerGas(10.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        ResultWrapper<PayloadStatusV1> second = await rpc.engine_newPayloadV6(
+            emptyPayload,
+            blobVersionedHashes: [],
+            parentBeaconBlockRoot: Keccak.Zero,
+            executionRequests: payloadResult.Data!.ExecutionRequests,
+            inclusionListTransactions: [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied));
+    }
+
+    [Test]
+    public async Task NewPayloadV6_should_reject_oversized_inclusion_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV6(
+            payloadResult.Data!.ExecutionPayload,
+            blobVersionedHashes: [],
+            parentBeaconBlockRoot: Keccak.Zero,
+            executionRequests: payloadResult.Data!.ExecutionRequests,
+            inclusionListTransactions: [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]]);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]

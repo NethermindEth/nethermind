@@ -102,8 +102,6 @@ public class ExecutionPayloadTests
         return TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
     }
 
-    // Exercises the parallel branch of TxsDecoder (threshold = 16) that TryGetTransactions now
-    // routes through. Verifies it produces identical results to the serial branch
     private static byte[][] BuildDiverseBatch(int size)
     {
         TxType[] cycle = [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
@@ -131,9 +129,9 @@ public class ExecutionPayloadTests
     }
 
     [TestCase(1)]
-    [TestCase(8)]    // below TxsDecoder.ParallelDecodeThreshold (= 16) — serial path
-    [TestCase(15)]   // boundary, still serial
-    [TestCase(16)]   // boundary, first parallel
+    [TestCase(8)]    // below TxsDecoder.ParallelDecodeThreshold (= 32) — serial path
+    [TestCase(31)]   // boundary, still serial
+    [TestCase(32)]   // boundary, first parallel
     [TestCase(64)]
     [TestCase(256)]
     public void TryGetTransactions_decodes_mixed_batch_at_size(int size)
@@ -163,10 +161,9 @@ public class ExecutionPayloadTests
     [Test]
     public void TryGetTransactions_parallel_path_matches_serial_path()
     {
-        // 32 txs guarantees the parallel branch fires.
+        // 32 txs is at the threshold, so the parallel branch fires.
         byte[][] encoded = BuildDiverseBatch(32);
 
-        // Decode via the deduped TryGetTransactions (which routes through TxsDecoder → parallel).
         Result<Transaction[]> parallelResult = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
         Assert.That(parallelResult.Error, Is.Null);
 

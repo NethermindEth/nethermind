@@ -17,9 +17,7 @@ public class InclusionListBuilder(ITxPool txPool)
         return EncodeTransactionsUpToLimit(reservoir);
     }
 
-    // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(N=MaxTxs) for any
-    // mempool size. Pooled buffer + Count-tracking avoids the prior alloc+resize+copy pair when
-    // the mempool yields fewer than capacity non-blob txs.
+    // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(MaxTxs) for any mempool size.
     // TODO: score txs and randomly sample weighted by score.
     private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
@@ -31,7 +29,7 @@ public class InclusionListBuilder(ITxPool txPool)
         for (int i = 0; i < mempool.Length; i++)
         {
             Transaction tx = mempool[i];
-            // blob txs MUST NOT appear in the IL.
+            // Blob txs MUST NOT appear in an IL.
             if (tx.Type == TxType.Blob) continue;
 
             if (reservoir.Count < capacity)
@@ -65,7 +63,6 @@ public class InclusionListBuilder(ITxPool txPool)
         {
             ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
-            // skip tx if it's too big to fit in the inclusion list
             if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 txBytes.Dispose();
@@ -75,8 +72,8 @@ public class InclusionListBuilder(ITxPool txPool)
             size += txBytes.Count;
             result.Add(txBytes);
 
-            // impossible to fit another tx in the inclusion list (32 B is the theoretical floor)
-            if (size + Eip7805Constants.MinTransactionSizeBytesLower > Eip7805Constants.MaxBytesPerInclusionList)
+            // No possible tx can fit in the remaining space.
+            if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
             {
                 break;
             }

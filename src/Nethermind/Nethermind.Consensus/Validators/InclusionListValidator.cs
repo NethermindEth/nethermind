@@ -23,15 +23,14 @@ public static class InclusionListValidator
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
 
-        // FOCIL is conditional: no gas left for a base-cost transfer → nothing is appendable.
+        // No gas left for even a base-cost transfer → nothing is appendable.
         if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
 
         Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
             ? stackalloc bool[il.Length]
             : new bool[il.Length];
 
-        // hash → first IL index. TryAdd preserves the first occurrence; on duplicates the later
-        // entry stays unmarked but post-state appendability checks fail (nonce advanced).
+        // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
         for (int i = 0; i < il.Length; i++)
         {
@@ -56,14 +55,10 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Blob txs MUST NOT appear in an IL; cost formula here doesn't include blob gas anyway.
+        // Blob txs MUST NOT appear in an IL.
         if (tx.SupportsBlobs) return false;
         if (block.GasUsed + tx.GasLimit > block.GasLimit) return false;
-        // A tx whose GasLimit is below the intrinsic cost cannot execute, so it isn't appendable.
         if (tx.GasLimit < (ulong)IntrinsicGasCalculator.Calculate(tx, spec, block.GasLimit)) return false;
-
-        // EIP-1559: compare baseFee against the cap (MaxFeePerGas), not the priority tip
-        // (which is what tx.GasPrice exposes for type-2). Matches TransactionProcessor.
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
 
         senderCache ??= [];

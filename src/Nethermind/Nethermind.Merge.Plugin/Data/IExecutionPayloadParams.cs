@@ -75,6 +75,18 @@ public class ExecutionPayloadParams(
                 error = "Inclusion list must be set";
                 return ValidationResult.Fail;
             }
+
+            int totalBytes = 0;
+            foreach (byte[]? ilTx in InclusionListTransactions)
+            {
+                totalBytes += ilTx?.Length ?? 0;
+            }
+
+            if (totalBytes > Eip7805Constants.MaxBytesPerInclusionList)
+            {
+                error = $"Inclusion list must not exceed {Eip7805Constants.MaxBytesPerInclusionList} bytes";
+                return ValidationResult.Fail;
+            }
         }
 
         return ValidationResult.Success;

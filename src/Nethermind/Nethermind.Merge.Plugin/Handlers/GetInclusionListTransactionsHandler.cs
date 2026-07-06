@@ -11,10 +11,8 @@ using Nethermind.TxPool;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
-/// EIP-7805 (FOCIL): IL of pending mempool txs for <paramref name="blockHash"/>, bounded by
-/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/> bytes and
-/// <see cref="Eip7805Constants.MaxTransactionsPerInclusionList"/> entries. Returns
-/// <see cref="MergeErrorCodes.UnknownParent"/> (-38007) when the block hash is unknown.
+/// EIP-7805 (FOCIL): builds an inclusion list of pending mempool txs, bounded by
+/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/>.
 /// </summary>
 public class GetInclusionListTransactionsHandler(ITxPool? txPool, IBlockFinder? blockFinder)
     : IHandler<Hash256, InclusionListBytes>

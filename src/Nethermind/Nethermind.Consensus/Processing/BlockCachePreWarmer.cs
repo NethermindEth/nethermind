@@ -395,39 +395,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
+                    int txCount = block.Transactions.Length;
+                    int ilCount = block.InclusionListTransactions?.Length ?? 0;
 
                     ParallelUnbalancedWork.For(
                         0,
-                        block.Transactions.Length,
+                        txCount + ilCount,
                         parallelOptions,
                         baseState.InitThreadState,
                     static (i, state) =>
                     {
-                        Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+                        Transaction[] txs = state.Payload.Transactions;
+                        // Indexes past the block txs warm inclusion-list senders — they may be promoted into the block.
+                        Transaction tx = i < txs.Length ? txs[i] : state.Payload.InclusionListTransactions![i - txs.Length];
+                        WarmupSender(tx.SenderAddress, i < txs.Length ? tx.To : null, state.Scope!.WorldState);
 
                         return state;
                     },
                     WarmingState<Block>.FinallyAction);
-
-                    // Prewarm inclusion list transaction senders too — they may be promoted into the block.
-                    if (block.InclusionListTransactions is { Length: > 0 } inclusionList)
-                    {
-                        WarmingState<Transaction[]> ilState = new(envPool, inclusionList, parent);
-                        ParallelUnbalancedWork.For(
-                            0,
-                            inclusionList.Length,
-                            parallelOptions,
-                            ilState.InitThreadState,
-                        static (i, state) =>
-                        {
-                            Transaction tx = state.Payload[i];
-                            WarmupSender(tx.SenderAddress, to: null, state.Scope!.WorldState);
-
-                            return state;
-                        },
-                        WarmingState<Transaction[]>.FinallyAction);
-                    }
                 }
             }
             catch (OperationCanceledException)
