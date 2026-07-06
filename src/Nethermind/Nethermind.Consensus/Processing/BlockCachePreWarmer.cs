@@ -42,6 +42,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly long _adaptiveAbortMinGas;
     // Emit per-block [PWDIAG] coverage diagnostics for heavy blocks.
     private readonly bool _diagnostics;
+    // Run a concurrent single-scope sequential (index-order) warming pass to recover cross-tx-divergent reads.
+    private readonly bool _sequentialShadow;
+    private readonly int _sequentialShadowMinTx;
 
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
@@ -66,6 +69,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
         _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
         _diagnostics = blocksConfig.PreWarmDiagnostics;
+        _sequentialShadow = blocksConfig.PreWarmSequentialShadow;
+        _sequentialShadowMinTx = blocksConfig.PreWarmSequentialShadowMinTx;
     }
 
     internal BlockCachePreWarmer(
@@ -174,8 +179,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
+                // Optional sequential-shadow pass: runs concurrently with the parallel per-sender pass, sharing
+                // the pre-block cache. Executing all txs in index order in one scope makes each tx see prior
+                // txs' writes, so it warms the cross-tx-dependent (divergent) slots the parallel pass misses.
+                Task shadow = _sequentialShadow && suggestedBlock.Transactions.Length >= _sequentialShadowMinTx
+                    ? Task.Run(() => WarmupSequentialShadow(blockState, parallelOptions.CancellationToken))
+                    : Task.CompletedTask;
+
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+
+                try { shadow.Wait(parallelOptions.CancellationToken); }
+                catch (OperationCanceledException) { /* block completed */ }
             }
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
@@ -304,6 +319,82 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             _logger.DebugError("Error pre-warming transactions", ex);
+        }
+    }
+
+    /// <summary>
+    /// Sequential-shadow warming pass: executes all of the block's transactions in index order within a single
+    /// scope, so each transaction observes the state changes written by the preceding ones.
+    /// </summary>
+    /// <remarks>
+    /// The parallel per-sender pass executes every transaction from the parent post-state, so a transaction whose
+    /// control flow / read keys depend on state a preceding cross-sender transaction wrote (e.g. one that reverts
+    /// early on stale parent state) reads a different slot set than the main thread does — leaving those
+    /// intermediate-state-dependent slots cold. Running one in-order scope reproduces the accurate intermediate
+    /// state and warms exactly those slots. It shares the pre-block cache with the parallel pass, so it only pays
+    /// cold reads for the divergent minority; because the main thread is read-bound and serial, this pass can warm
+    /// those slots ahead of it. Warming only — runs on a discarded scratch scope and never affects committed state.
+    /// </remarks>
+    private void WarmupSequentialShadow(BlockState blockState, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            Block block = blockState.Block;
+            IReadOnlyTxProcessorSource env = _envPool.Get();
+            try
+            {
+                using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, blockState.Spec));
+                ReadOnlySpan<Transaction> txs = block.Transactions;
+                for (int i = 0; i < txs.Length; i++)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    Transaction tx = txs[i];
+                    if (tx.SenderAddress is null) continue; // invalid signature — block will be rejected
+                    WarmupSequentialTx(scope, tx, blockState, cancellationToken);
+                }
+            }
+            finally
+            {
+                _envPool.Return(env);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Block completed — stop.
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Error in sequential-shadow pre-warming", ex);
+        }
+    }
+
+    /// <summary>Warm a single transaction on the shared in-order shadow scope (no skip gates — accuracy is the point).</summary>
+    private static void WarmupSequentialTx(IReadOnlyTxProcessingScope scope, Transaction tx, BlockState blockState, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Address senderAddress = tx.SenderAddress!;
+            IWorldState worldState = scope.WorldState;
+            if (!worldState.AccountExists(senderAddress))
+            {
+                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+            }
+            if (blockState.Spec.UseTxAccessLists)
+            {
+                worldState.WarmUp(tx.AccessList, cancellationToken);
+            }
+            scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            blockState.RecordWarmed();
+        }
+        catch (Exception ex) when (ex is EvmException or OverflowException)
+        {
+            // Regular tx processing exceptions during speculative warming — ignore.
+        }
+        catch (Exception ex)
+        {
+            blockState.PreWarmer._logger.DebugError($"Error sequential-shadow warming cache {tx.Hash}", ex);
         }
     }
 

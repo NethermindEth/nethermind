@@ -55,6 +55,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Emit per-block prewarmer coverage diagnostics ([PWDIAG]) for heavy blocks. Diagnostic toggle.", DefaultValue = "False", HiddenFromDocs = true)]
     bool PreWarmDiagnostics { get; set; }
 
+    [ConfigItem(Description = "Whether to run a concurrent single-scope 'sequential shadow' warming pass over the block's transactions in index order (alongside the parallel per-sender pass). Because a single scope executed in order makes each transaction see the prior transactions' writes, this pass warms the cross-transaction-dependent (divergent) storage slots that the parallel per-sender pass — executing each transaction from the parent state — misses. Sharing the pre-block cache with the parallel pass, it only pays cold reads for those divergent slots. 0-disabled.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmSequentialShadow { get; set; }
+
+    [ConfigItem(Description = "Minimum transaction count for the sequential-shadow warming pass to run on a block (gates the extra pass to heavy blocks where cross-transaction divergence matters). Ignored when PreWarmSequentialShadow is disabled.", DefaultValue = "64", HiddenFromDocs = true)]
+    int PreWarmSequentialShadowMinTx { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
