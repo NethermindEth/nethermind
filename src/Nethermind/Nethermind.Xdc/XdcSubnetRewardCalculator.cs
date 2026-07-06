@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 
@@ -16,19 +15,8 @@ internal sealed class XdcSubnetRewardCalculator(
     ISpecProvider specProvider,
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
-    IMintedRecordContract mintedRecordContract,
-    ISigningTxCache signingTxCache,
-    ITransactionProcessor transactionProcessor,
-    IRewardsStore rewardsStore)
-    : XdcRewardCalculator(
-        epochSwitchManager,
-        specProvider,
-        blockTree,
-        masternodeVotingContract,
-        mintedRecordContract,
-        signingTxCache,
-        transactionProcessor,
-        rewardsStore)
+    ISigningTxCache signingTxCache)
+    : XdcEpochRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, signingTxCache)
 {
     protected internal override HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec) =>
         checkpointHeader.ValidatorsAddress is { } validators

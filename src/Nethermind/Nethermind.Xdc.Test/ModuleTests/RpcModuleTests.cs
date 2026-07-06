@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,7 +31,7 @@ public class RpcModuleTests
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
     private ISyncInfoManager _syncInfoManager;
-    private IRewardsStore _rewardsStore;
+    private IXdcRewardCalculator _rewardCalculator;
     private XdcRpcModule _rpcModule;
 
 
@@ -152,7 +153,7 @@ public class RpcModuleTests
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
         _syncInfoManager = Substitute.For<ISyncInfoManager>();
-        _rewardsStore = Substitute.For<IRewardsStore>();
+        _rewardCalculator = Substitute.For<IXdcRewardCalculator>();
 
         _rpcModule = new XdcRpcModule(
             _blockTree,
@@ -163,7 +164,7 @@ public class RpcModuleTests
             _votesManager,
             _timeoutCertificateManager,
             _syncInfoManager,
-            _rewardsStore);
+            _rewardCalculator);
     }
 
     [Test]
@@ -818,9 +819,13 @@ public class RpcModuleTests
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
         XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
+        XdcBlockHeader epoch1Header = Build.A.XdcBlockHeader().WithNumber(epoch1).TestObject;
+        XdcBlockHeader epoch2Header = Build.A.XdcBlockHeader().WithNumber(epoch2).TestObject;
 
         _blockTree.FindHeader(begin).Returns(beginHeader);
         _blockTree.FindHeader(end).Returns(endHeader);
+        _blockTree.FindHeader(epoch1).Returns(epoch1Header);
+        _blockTree.FindHeader(epoch2).Returns(epoch2Header);
 
         EpochSwitchInfo[] epochSwitchInfos =
         [
@@ -829,28 +834,8 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = epoch1;
-                callInfo[1] = epoch2;
-                return true;
-            });
-
-        _rewardsStore.HasEpochRewards(epoch1).Returns(true);
-        _rewardsStore.HasEpochRewards(epoch2).Returns(true);
-        _rewardsStore.TryGetAccountReward(account, epoch1, out Arg.Any<UInt256>())
-            .Returns(callInfo =>
-            {
-                callInfo[2] = (UInt256)10;
-                return true;
-            });
-        _rewardsStore.TryGetAccountReward(account, epoch2, out Arg.Any<UInt256>())
-            .Returns(callInfo =>
-            {
-                callInfo[2] = (UInt256)20;
-                return true;
-            });
+        _rewardCalculator.CalculateEpochRewards(epoch1Header).Returns([new BlockReward(account, 10)]);
+        _rewardCalculator.CalculateEpochRewards(epoch2Header).Returns([new BlockReward(account, 20)]);
 
         // Act
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
@@ -866,46 +851,7 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRequestIsPruned()
-    {
-        // Arrange
-        Address account = TestItem.AddressA;
-        const ulong begin = 100;
-        const ulong end = 200;
-        const ulong requestedEpoch = 120;
-        const ulong oldestRetained = 150;
-        const ulong newestRetained = 300;
-
-        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
-        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
-
-        _blockTree.FindHeader(begin).Returns(beginHeader);
-        _blockTree.FindHeader(end).Returns(endHeader);
-
-        EpochSwitchInfo[] epochSwitchInfos =
-        [
-            new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakA, 1, (long)requestedEpoch)),
-        ];
-
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = oldestRetained;
-                callInfo[1] = newestRetained;
-                return true;
-            });
-
-        // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
-
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
-    }
-
-    [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRewardsMissingForEpoch()
+    public void GetRewardByAccount_ShouldReturnFail_WhenEpochHeaderNotFound()
     {
         // Arrange
         Address account = TestItem.AddressA;
@@ -918,6 +864,7 @@ public class RpcModuleTests
 
         _blockTree.FindHeader(begin).Returns(beginHeader);
         _blockTree.FindHeader(end).Returns(endHeader);
+        _blockTree.FindHeader(epoch).Returns((BlockHeader?)null);
 
         EpochSwitchInfo[] epochSwitchInfos =
         [
@@ -925,8 +872,6 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
-        _rewardsStore.HasEpochRewards(epoch).Returns(false);
 
         // Act
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);

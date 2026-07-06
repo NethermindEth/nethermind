@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,7 +18,7 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IXdcRewardCalculator rewardCalculator) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -309,17 +310,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
         }
 
-        if (epochSwitchInfos.Length != 0 && rewardsStore.TryGetRetainedRange(out ulong oldestRetainedEpochBlockNumber, out _))
-        {
-            ulong requestedOldestEpoch = (ulong)epochSwitchInfos[0].EpochSwitchBlockInfo.BlockNumber;
-            if (requestedOldestEpoch < oldestRetainedEpochBlockNumber)
-            {
-                return ResultWrapper<AccountRewardResponse>.Fail(
-                    $"Cannot return pruned historical reward data before epoch block {oldestRetainedEpochBlockNumber}.",
-                    ErrorCodes.PrunedHistoryUnavailable);
-            }
-        }
-
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
         UInt256 totalReward = UInt256.Zero;
 
@@ -327,15 +317,24 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
             ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            if (!rewardsStore.HasEpochRewards(epochBlockNumber))
+
+            BlockHeader? epochHeader = tree.FindHeader(epochBlockNumber);
+            if (epochHeader is not XdcBlockHeader xdcEpochHeader)
             {
-                return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
+                return ResultWrapper<AccountRewardResponse>.Fail($"Header not found for epoch block {epochBlockNumber}");
             }
 
-            if (!rewardsStore.TryGetAccountReward(account, epochBlockNumber, out UInt256 accountReward))
+            BlockReward[] rewards = rewardCalculator.CalculateEpochRewards(xdcEpochHeader);
+
+            UInt256 accountReward = UInt256.Zero;
+            foreach (BlockReward reward in rewards)
             {
-                continue;
+                if (reward.Address == account)
+                    accountReward += reward.Value;
             }
+
+            if (accountReward == UInt256.Zero)
+                continue;
 
             totalReward += accountReward;
             epochRewards.Add(new AccountEpochReward
