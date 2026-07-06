@@ -105,10 +105,8 @@ public class Eip7981Tests
 
     private static IEnumerable<TestCaseData> CalldataWithAccessListCases()
     {
-        // standardWins: in devnet-6 the standard intrinsic carries TX_BASE + recipient COLD + the
-        // per-access-list-entry charge, and calldata is priced at TX_DATA_TOKEN_STANDARD (4/token);
-        // the floor prices every token at TX_DATA_TOKEN_FLOOR (16/token) over TX_BASE. With little
-        // calldata the standard's fixed recipient/access component dominates, so standard wins.
+        // standardWins: with little calldata the standard's fixed recipient/access-entry component
+        // dominates the floor's 16-vs-4 per-token premium.
         yield return new TestCaseData(new byte[] { 0 }, 1, 0, true)
             .SetName("1 zero byte + 1 address: standard wins");
 

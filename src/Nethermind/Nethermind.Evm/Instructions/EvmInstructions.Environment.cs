@@ -551,8 +551,7 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address,
-                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || vm.WorldState.IsContract(address))) goto OutOfGas;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         UInt256 result = vm.WorldState.GetBalance(address);
         return stack.PushUInt256<TTracingInst>(in result);
@@ -611,8 +610,7 @@ public static partial class EvmInstructions
         Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address,
-                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || vm.WorldState.IsContract(address))) goto OutOfGas;
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.

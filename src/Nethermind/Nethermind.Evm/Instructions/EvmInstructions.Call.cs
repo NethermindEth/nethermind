@@ -145,21 +145,11 @@ public static partial class EvmInstructions
         // charge keyed on self-call and recipient existence, subsuming the new-account surcharge.
         if (hasValueTransfer)
         {
-            bool valueOutOfGas;
-            if (spec.IsEip2780Enabled)
-            {
-                // EIP-8038 prices the value transfer as a flat charge independent of the recipient's
-                // liveness, so do not read the target here: the spec performs the static gas check
-                // before any state access, and a CALL that runs out of gas before the target access
-                // must not record the target in the block access list. The recipient-empty surcharge
-                // only applies to the older EIP-2780 tiered model (no BAL), so read lazily for it.
-                bool recipientEmpty = !spec.IsEip8038Enabled && state.IsDeadAccount(target);
-                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas, caller == target, recipientEmpty, spec);
-            }
-            else
-            {
-                valueOutOfGas = !TGasPolicy.ConsumeCallValueTransfer(ref gas);
-            }
+            // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
+            // static gas check before any target access, so an OOG here must not touch the BAL.
+            bool valueOutOfGas = spec.IsEip2780Enabled
+                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas) goto OutOfGas;
         }
 
@@ -172,8 +162,7 @@ public static partial class EvmInstructions
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         // EIP-2780 charges a cold code-less account less; delegated accounts always carry code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource,
-                hasCode: !spec.IsEip2780Enabled || spec.IsEip8038Enabled || state.IsContract(codeSource))) goto OutOfGas;
+                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
@@ -183,9 +172,8 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
-        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost (separate
-        // from the flat CALL_VALUE above). The earlier EIP-2780 draft folded creation into the
-        // value-transfer tier, so it charges nothing extra here.
+        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
+        // from the flat CALL_VALUE above; standalone EIP-2780 adds nothing extra here.
         bool chargesNewAccount = spec.IsEip8038Enabled
             ? hasValueTransfer && state.IsDeadAccount(target)
             : !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch

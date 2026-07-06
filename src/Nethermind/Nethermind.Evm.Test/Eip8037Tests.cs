@@ -291,10 +291,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void State_gas_refund_of_spilled_charge_returns_to_regular_gas_not_reservoir()
     {
-        // EIP-8037 source-based (LIFO) refund: a state-gas charge made when the reservoir was empty
-        // spills into regular gas (gas_left); refunding it must return to regular gas, NOT inflate the
-        // reservoir. Inflating the reservoir would wrongly let later operations (e.g. a forwarded CALL)
-        // draw state gas the spec says is unavailable.
+        // Source-based (LIFO) refund: a charge that spilled into gas_left must be refunded to gas_left;
+        // inflating the reservoir would let later operations draw state gas the spec says is unavailable.
         EthereumGasPolicy gas = new() { Value = 10_000, StateReservoir = 0 };
 
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 4000), Is.True);
@@ -719,10 +717,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Top_level_halt_block_regular_dimension_includes_burned_spill()
     {
-        // A top-level halt tx with N inner-frame reverts that each spilled S of state gas from gas_left should
-        // contribute (initialRegular + N*S) to block_regular and (intrinsicState - N*S) to
-        // block_state. The burned spill belongs in the regular dimension because it was paid
-        // from gas_left, not from the reservoir.
+        // N inner reverts each spilling S from gas_left contribute (initialRegular + N*S) to block_regular
+        // and (intrinsicState - N*S) to block_state: burned spill was paid from gas_left, not the reservoir.
         const long txGasLimit = 16_000_000;
         const long intrinsicStateGas = (long)GasCostOf.CreateState;
         const long innerRevertSpill = 4_174;
