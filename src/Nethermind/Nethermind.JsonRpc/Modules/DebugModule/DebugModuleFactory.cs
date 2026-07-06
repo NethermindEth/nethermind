@@ -5,21 +5,19 @@ using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory(
     IProcessingEnvBuilder envBuilder,
-    IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
     public IDebugRpcModule Create()
     {
         IEnv tracer = envBuilder
-            .WithOverridableEnv(envFactory.Create())
+            .WithOverridableEnv()
             // Standard configuration; not overriding `IReceiptStorage` to null.
             .WithBlockValidationConfiguration()
             .WithReplacedComponent<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)

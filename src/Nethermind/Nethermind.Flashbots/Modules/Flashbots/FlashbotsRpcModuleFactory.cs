@@ -20,7 +20,6 @@ namespace Nethermind.Flashbots.Modules.Flashbots
     public class FlashbotsRpcModuleFactory(
         ILifetimeScope rootLifetime,
         IProcessingEnvBuilder envBuilder,
-        IOverridableEnvFactory overridableEnvFactory,
         IHeaderValidator headerValidator,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
@@ -33,7 +32,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
         public override IFlashbotsRpcModule Create()
         {
             IEnv env = envBuilder
-                .WithOverridableEnv(overridableEnvFactory.Create())
+                .WithOverridableEnv()
                 .WithBlockValidationConfiguration()
                 .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance)
                 .Configure(builder => builder.AddScoped<ValidateSubmissionHandler.ProcessingEnv>())

@@ -16,14 +16,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 {
     public class ProofModuleFactory(
         ILifetimeScope rootLifetimeScope,
-        IProcessingEnvBuilder envBuilder,
-        IOverridableEnvFactory overridableEnvFactory
+        IProcessingEnvBuilder envBuilder
     ) : ModuleFactoryBase<IProofRpcModule>
     {
         public override IProofRpcModule Create()
         {
             IEnv tracer = envBuilder
-                .WithOverridableEnv(overridableEnvFactory.Create())
+                .WithOverridableEnv()
                 // Standard read only chain setting
                 .WithBlockValidationConfiguration()
                 .WithReplacedComponent<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
