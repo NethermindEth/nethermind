@@ -19,6 +19,7 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
     private readonly List<Action<ContainerBuilder>> _configure = [];
     private readonly List<IDisposable> _disposables = [];
     private bool _worldStateConfigured;
+    private bool _ownedByParent;
 
     public ProcessingEnvBuilder(ILifetimeScope parentScope) : this(parentScope, mutable: false) { }
 
@@ -81,8 +82,15 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
     public IProcessingEnvBuilder WithBlockValidationConfiguration() =>
         Configure(builder => builder.AddModule(_parentScope.Resolve<IBlockValidationModule[]>()));
 
+    public IProcessingEnvBuilder OwnedByParentLifetime()
+    {
+        ProcessingEnvBuilder builder = Mutable();
+        builder._ownedByParent = true;
+        return builder;
+    }
+
     public TWrapper BuildAs<TWrapper>() where TWrapper : class =>
-        ProcessingEnvWrapperFactory.Create<TWrapper>(BuildScope());
+        ProcessingEnvWrapperFactory.Create<TWrapper>(BuildScope(), ownedExternally: _ownedByParent);
 
     private ILifetimeScope BuildScope()
     {
@@ -99,6 +107,11 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
         // when no scope component ever resolves them.
         foreach (IDisposable disposable in _disposables)
             scope.Disposer.AddInstanceForDisposal(disposable);
+
+        // When owned by the parent lifetime, hand the scope to the parent's disposer so the caller never
+        // disposes it and the wrapper need not be disposable.
+        if (_ownedByParent)
+            _parentScope.Disposer.AddInstanceForAsyncDisposal(scope);
 
         return scope;
     }

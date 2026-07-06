@@ -22,8 +22,9 @@ namespace Nethermind.Consensus.Processing;
 /// <see cref="IAsyncDisposable.DisposeAsync"/> dispose the scope.
 /// </summary>
 /// <remarks>
-/// The generated type lives in a dynamic assembly, so a wrapper interface must be <b>public</b>, and it
-/// must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> so the scope is released.
+/// The generated type lives in a dynamic assembly, so a wrapper interface must be <b>public</b>. It must
+/// implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> so the scope is released —
+/// or, when its scope is owned externally, must <b>not</b> implement them, as the owner disposes the scope.
 /// A non-getter method declared directly on the wrapper interface has no component to forward to and is
 /// rejected when the wrapper is built. Components and forwarding targets are resolved eagerly at
 /// construction, so any missing registration surfaces then.
@@ -50,8 +51,24 @@ internal static class ProcessingEnvWrapperFactory
     /// <summary>
     /// Returns an implementation of <typeparamref name="TWrapper"/> backed by <paramref name="scope"/>.
     /// </summary>
-    public static TWrapper Create<TWrapper>(ILifetimeScope scope) where TWrapper : class =>
-        (TWrapper)Factories.GetOrAdd(typeof(TWrapper), Emit)(scope);
+    /// <param name="ownedExternally">
+    /// When <c>true</c> the scope's disposal is owned elsewhere (e.g. a parent lifetime), so
+    /// <typeparamref name="TWrapper"/> must <b>not</b> implement <see cref="IDisposable"/>/<see cref="IAsyncDisposable"/>;
+    /// when <c>false</c> it must, so the caller can release the scope.
+    /// </param>
+    public static TWrapper Create<TWrapper>(ILifetimeScope scope, bool ownedExternally) where TWrapper : class
+    {
+        Type iface = typeof(TWrapper);
+        bool disposable = typeof(IDisposable).IsAssignableFrom(iface) || typeof(IAsyncDisposable).IsAssignableFrom(iface);
+        if (ownedExternally && disposable)
+            throw new ArgumentException(
+                $"'{iface}' must not implement IDisposable/IAsyncDisposable when built with {nameof(IProcessingEnvBuilder.OwnedByParentLifetime)}; the parent lifetime owns and disposes the scope.", nameof(iface));
+        if (!ownedExternally && !disposable)
+            throw new ArgumentException(
+                $"'{iface}' must implement IDisposable or IAsyncDisposable so its backing scope is released, or be built with {nameof(IProcessingEnvBuilder.OwnedByParentLifetime)}.", nameof(iface));
+
+        return (TWrapper)Factories.GetOrAdd(iface, Emit)(scope);
+    }
 
     private static bool IsGetter(MethodInfo method) =>
         method.IsSpecialName && method.Name.StartsWith("get_", StringComparison.Ordinal) && method.GetParameters().Length == 0;
@@ -69,9 +86,6 @@ internal static class ProcessingEnvWrapperFactory
 
     private static Func<ILifetimeScope, object> Emit(Type iface)
     {
-        if (!typeof(IDisposable).IsAssignableFrom(iface) && !typeof(IAsyncDisposable).IsAssignableFrom(iface))
-            throw new ArgumentException($"'{iface}' must implement IDisposable or IAsyncDisposable so its backing scope is released.", nameof(iface));
-
         MethodInfo[] methods = [.. new[] { iface }.Concat(iface.GetInterfaces()).SelectMany(i => i.GetMethods())];
 
         // Validate up front so an unsupported member fails when the wrapper is built, not when it is called.

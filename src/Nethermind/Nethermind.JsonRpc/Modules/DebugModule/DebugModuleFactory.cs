@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
@@ -27,20 +26,20 @@ public class DebugModuleFactory(
             // So the debug rpc can change the adapter sometime.
             .WithReplacedComponent<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
             .Configure(builder => builder.AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>())
+            // The tracer is a long-lived singleton, so let the root lifetime own its scope.
+            .OwnedByParentLifetime()
             .BuildAs<IEnv>();
 
         // Pass only `IGethStyleTracer` into the debug rpc lifetime to prevent leaking processor or world
         // state accidentally. `GethStyleTracer` must be very careful to always dispose overridable env.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped<IGethStyleTracer>(tracer.Tracer));
-
-        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracer);
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
+        rootLifetimeScope.Disposer.AddInstanceForDisposal(debugRpcModuleLifetime);
 
         return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
     }
 
-    public interface IEnv : IAsyncDisposable
+    public interface IEnv
     {
         IGethStyleTracer Tracer { get; }
     }

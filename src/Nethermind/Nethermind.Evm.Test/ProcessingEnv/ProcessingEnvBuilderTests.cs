@@ -53,6 +53,12 @@ public interface IOverridableWorldStateEnv : IOverridableEnv<IWorldState>, IAsyn
 {
 }
 
+// No IDisposable: only valid with OwnedByParentLifetime, which hands scope disposal to the parent.
+public interface IOwnedTrackerEnv
+{
+    ProcessingEnvBuilderTests.TrackingDisposable Tracker { get; }
+}
+
 [Parallelizable(ParallelScope.All)]
 public class ProcessingEnvBuilderTests
 {
@@ -174,6 +180,42 @@ public class ProcessingEnvBuilderTests
         }
 
         await env.DisposeAsync();
+    }
+
+    [Test]
+    public void OwnedByParentLifetime_allows_non_disposable_wrapper_and_disposes_scope_with_parent()
+    {
+        using IContainer container = BuildContainer();
+
+        // A non-disposable wrapper is rejected unless its scope is owned by the parent lifetime.
+        Assert.That(
+            () => container.Resolve<IProcessingEnvBuilder>()
+                .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                .BuildAs<IOwnedTrackerEnv>(),
+            Throws.TypeOf<ArgumentException>());
+
+        // Conversely, a disposable wrapper is rejected when owned by the parent lifetime.
+        Assert.That(
+            () => container.Resolve<IProcessingEnvBuilder>()
+                .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                .OwnedByParentLifetime()
+                .BuildAs<IEmptyEnv>(),
+            Throws.TypeOf<ArgumentException>());
+
+        TrackingDisposable tracker;
+        using (ILifetimeScope parent = container.BeginLifetimeScope())
+        {
+            IOwnedTrackerEnv env = parent.Resolve<IProcessingEnvBuilder>()
+                .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                .Configure(builder => builder.AddScoped<TrackingDisposable>())
+                .OwnedByParentLifetime()
+                .BuildAs<IOwnedTrackerEnv>();
+
+            tracker = env.Tracker; // force construction inside the env scope
+            Assert.That(tracker.Disposed, Is.False);
+        }
+
+        Assert.That(tracker.Disposed, Is.True); // the env scope was disposed together with the parent scope
     }
 
     [Test]
