@@ -98,8 +98,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
             }
 
             _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
-
-            _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
         }
 
         return Task.CompletedTask;
@@ -241,6 +239,8 @@ public class BaseMergePluginModule : Module
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
+            .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
 
             .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
