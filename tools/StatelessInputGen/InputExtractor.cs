@@ -133,7 +133,7 @@ internal static class InputExtractor
                 {
                     string fileName = GetOutputFileName(test.Name, blockIndex, blockCount, maxFileNameLength);
 
-                    if (!writtenFiles.Add(fileName))
+                    if (writtenFiles.Contains(fileName))
                     {
                         failed++;
                         AnsiConsole.MarkupLine(
@@ -156,6 +156,7 @@ internal static class InputExtractor
                         ArrayPool<byte>.Shared.Return(buffer);
                     }
 
+                    writtenFiles.Add(fileName);
                     AnsiConsole.MarkupLine($"[green]✓[/] Saved [dim]{fileName.EscapeMarkup()}[/]");
 
                     extracted++;
