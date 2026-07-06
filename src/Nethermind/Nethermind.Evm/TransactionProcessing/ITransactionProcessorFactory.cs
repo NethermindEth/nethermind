@@ -22,8 +22,7 @@ public interface ITransactionProcessorFactory
         IWorldState worldState,
         IVirtualMachine virtualMachine,
         ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager,
-        bool parallel);
+        ILogManager logManager);
 }
 
 /// <summary>Default factory producing a plain <see cref="TransactionProcessor{TGasPolicy}"/>.</summary>
@@ -36,9 +35,8 @@ public class TransactionProcessorFactory<TGasPolicy> : ITransactionProcessorFact
         IWorldState worldState,
         IVirtualMachine virtualMachine,
         ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager,
-        bool parallel)
+        ILogManager logManager)
         => new TransactionProcessor<TGasPolicy>(
             blobBaseFeeCalculator, specProvider, worldState, (IVirtualMachine<TGasPolicy>)virtualMachine,
-            codeInfoRepository, logManager, parallel);
+            codeInfoRepository, logManager);
 }

@@ -374,6 +374,7 @@ public partial class BlockAccessListManager
         public readonly ITransactionProcessor TxProcessor;
         public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
+        private readonly bool _parallel;
         private ParentReaderLease? _parentReader;
 
         public TxProcessorWithWorldState(
@@ -386,6 +387,7 @@ public partial class BlockAccessListManager
             CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
 
+            _parallel = parallel;
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
             IWorldState worldState = stateProvider;
             if (parallel)
@@ -395,7 +397,7 @@ public partial class BlockAccessListManager
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
             ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
-            TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
+            TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager);
             TxProcessorAdapter = new(TxProcessor);
         }
 
@@ -407,7 +409,8 @@ public partial class BlockAccessListManager
             WorldState.Clear();
             WorldState.SetIndex(balIndex);
             _balWorldState?.SetBlockAccessIndex(balIndex);
-            TxProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
+            TxProcessorAdapter.SetBlockExecutionContext(
+                _parallel ? new BlockExecutionContext(in blockExecutionContext, parallel: true) : blockExecutionContext);
             if (_balWorldState is not null)
             {
                 if (parentReader is null) ThrowParentReaderUnavailable();

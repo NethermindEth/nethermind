@@ -83,9 +83,14 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             : baseRepo;
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(
-            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
+            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager);
         return (tracedState, processor);
     }
+
+    // Parallel-worker semantics now ride on the per-block context rather than the processor ctor,
+    // so mirror the CreateTracedProcessor parallel choice when setting the block execution context.
+    private BlockExecutionContext ParallelContext(BlockHeader header, IReleaseSpec spec, bool? parallelOverride = null)
+        => new(new BlockExecutionContext(header, spec), parallel: parallelOverride ?? parallel);
 
     private static Transaction BuildContractTx(byte[] code, ulong executionGas, UInt256 value, BlockHeader header)
     {
@@ -110,7 +115,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
             CreateTracedProcessor(wrapPrecompileCache: true);
         Block block = Build.A.Block.TestObject;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(block.Header, Amsterdam.Instance));
         return (tracedState, processor, block);
     }
 
@@ -378,7 +383,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
         Transaction tx = BuildSetCodeCallTx(_callTargetAddress, authorizationList);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
         Assert.That(res.TransactionExecuted, Is.True, res.ToString());
@@ -396,7 +401,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithBaseFee(1)
             .TestObject;
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(header, Amsterdam.Instance));
         for (int i = 0; i < transactions.Length; i++)
         {
             TransactionResult res = processor.Execute(transactions[i], NullTxTracer.Instance);
@@ -438,7 +443,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
@@ -503,7 +508,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithValue(_testAccountBalance)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
@@ -985,7 +990,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
         Transaction tx = BuildCallTx(_callTargetAddress);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        processor.SetBlockExecutionContext(ParallelContext(header, spec));
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
@@ -1149,7 +1154,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(intrinsicGas + executionGas)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(block.Header, Amsterdam.Instance));
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
@@ -1181,7 +1186,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithBaseFee(1.GWei)
             .WithParentHash(parentHash)
             .TestObject;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(header, Amsterdam.Instance));
 
         SystemCall systemCall = new()
         {
@@ -1982,7 +1987,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(blockGasLimit)
             .WithNumber(1)
             .TestObject;
-        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(ParallelContext(header, Amsterdam.Instance, parallelOverride: true));
 
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressB)
