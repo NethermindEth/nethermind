@@ -39,11 +39,11 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
-    /// High-bit marker recording that the original request wanted validation, set when a system
+    /// Marker recording that the original request wanted validation, set when a system
     /// transaction forces <see cref="SkipValidationAndCommit"/>. Set and read only within system
     /// transaction processing.
     /// </summary>
-    SystemOriginalValidate = 1 << 30,
+    SystemOriginalValidate = 32,
 
     /// <summary>
     /// Skip potential fail checks and commit state after execution
