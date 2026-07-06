@@ -48,6 +48,18 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 NodeSession.PingRetryTimeout).SetName(nameof(NodeSession.HasTriedPingRecently)),
         ];
 
+        private static readonly TestCaseData[] RememberedEndpointCapacityCases =
+        [
+            new TestCaseData(
+                (Action<NodeSession, IPEndPoint>)((session, endpoint) => session.OnPingReceived(endpoint)),
+                (Func<NodeSession, IPEndPoint, bool>)((session, endpoint) => session.HasReceivedPingFrom(endpoint)))
+                .SetName("HasReceivedPingFrom_caps_remembered_endpoints"),
+            new TestCaseData(
+                (Action<NodeSession, IPEndPoint>)((session, endpoint) => session.OnPongReceived(endpoint)),
+                (Func<NodeSession, IPEndPoint, bool>)((session, endpoint) => session.HasEndpointBond(endpoint)))
+                .SetName("HasEndpointBond_caps_remembered_endpoints"),
+        ];
+
         [TestCaseSource(nameof(FlagTimeoutCases))]
         public void Flag_is_set_on_event_and_cleared_after_timeout(
             Func<NodeSession, bool> getter,
@@ -96,23 +108,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(_nodeSession.HasEndpointBond(otherEndpoint), Is.True);
         }
 
-        [Test]
-        public void HasReceivedPingFrom_caps_remembered_endpoints()
+        [TestCaseSource(nameof(RememberedEndpointCapacityCases))]
+        public void Remembered_endpoint_state_is_capped(
+            Action<NodeSession, IPEndPoint> recordEndpoint,
+            Func<NodeSession, IPEndPoint, bool> hasEndpoint)
         {
-            const int MaxRememberedEndpointsPerSession = 16;
             IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
             IPEndPoint newestEndpoint = null!;
 
-            _nodeSession.OnPingReceived(oldestEndpoint);
-            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
+            recordEndpoint(_nodeSession, oldestEndpoint);
+            for (int i = 0; i < EndpointBondTable.Capacity; i++)
             {
                 _timestamper.Add(TimeSpan.FromTicks(1));
                 newestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
-                _nodeSession.OnPingReceived(newestEndpoint);
+                recordEndpoint(_nodeSession, newestEndpoint);
             }
 
-            Assert.That(_nodeSession.HasReceivedPingFrom(oldestEndpoint), Is.False);
-            Assert.That(_nodeSession.HasReceivedPingFrom(newestEndpoint), Is.True);
+            Assert.That(hasEndpoint(_nodeSession, oldestEndpoint), Is.False);
+            Assert.That(hasEndpoint(_nodeSession, newestEndpoint), Is.True);
         }
 
         [Test]
@@ -153,12 +166,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public void HasPendingBondingPing_caps_pending_endpoints()
         {
-            const int MaxRememberedEndpointsPerSession = 16;
             IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
             IPEndPoint newestEndpoint = null!;
 
             _nodeSession.OnPingSent(oldestEndpoint);
-            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
+            for (int i = 0; i < EndpointBondTable.Capacity; i++)
             {
                 newestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
                 _nodeSession.OnPingSent(newestEndpoint);
@@ -171,7 +183,6 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task WaitForEndpointBond_completes_when_pending_ping_is_evicted()
         {
-            const int MaxRememberedEndpointsPerSession = 16;
             IPEndPoint oldestEndpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port);
 
             _nodeSession.OnPingSent(oldestEndpoint);
@@ -181,7 +192,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             Assert.That(waitTask.IsCompleted, Is.False);
 
-            for (int i = 0; i < MaxRememberedEndpointsPerSession; i++)
+            for (int i = 0; i < EndpointBondTable.Capacity; i++)
             {
                 IPEndPoint endpoint = new(IPAddress.Parse("192.168.1.1"), TestEndpoint.Port + i + 1);
                 _nodeSession.OnPingSent(endpoint);

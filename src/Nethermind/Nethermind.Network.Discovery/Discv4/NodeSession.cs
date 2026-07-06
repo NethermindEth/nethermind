@@ -14,49 +14,85 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     public static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);
     public const int AuthenticatedRequestFailureLimit = 5;
-    private const int MaxRememberedEndpointsPerSession = 16;
 
     private int _authenticatedRequestFailureCount;
     private long _lastPingSentTicks;
     private long _lastPingToken;
-    private EndpointEntry[]? _receivedPingsByEndpoint;
-    private int _receivedPingsByEndpointCount;
-    private EndpointEntry[]? _receivedPongsByEndpoint;
-    private int _receivedPongsByEndpointCount;
-    private EndpointEntry[]? _pendingBondingPingsByEndpoint;
-    private int _pendingBondingPingsByEndpointCount;
     private readonly object _endpointBondLock = new();
+    private EndpointBondTable _receivedPings;
+    private EndpointBondTable _receivedPongs;
+    private EndpointBondTable _pendingBondingPings;
     private TaskCompletionSource? _endpointBondChanged;
 
-    public bool HasReceivedPing => HasFreshReceivedPing();
     public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
-    public bool HasReceivedPong => HasFreshReceivedPong();
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
-    public bool HasReceivedPingFrom(IPEndPoint endpoint) => HasFreshReceivedPingFrom(endpoint);
+
+    public bool HasReceivedPing
+    {
+        get
+        {
+            lock (_endpointBondLock)
+            {
+                _receivedPings.PruneStale(StaleBondStamp);
+                return !_receivedPings.IsEmpty;
+            }
+        }
+    }
+
+    public bool HasReceivedPong
+    {
+        get
+        {
+            lock (_endpointBondLock)
+            {
+                _receivedPongs.PruneStale(StaleBondStamp);
+                return !_receivedPongs.IsEmpty;
+            }
+        }
+    }
+
+    public bool HasReceivedPingFrom(IPEndPoint endpoint)
+    {
+        EndpointKey endpointKey = new(endpoint);
+        lock (_endpointBondLock)
+        {
+            long minValidStamp = StaleBondStamp;
+            _receivedPings.PruneStale(minValidStamp);
+            return _receivedPings.HasFresh(endpointKey, minValidStamp);
+        }
+    }
+
+    public bool HasEndpointBond(IPEndPoint endpoint)
+    {
+        EndpointKey endpointKey = new(endpoint);
+        lock (_endpointBondLock)
+        {
+            long minValidStamp = StaleBondStamp;
+            _receivedPongs.PruneStale(minValidStamp);
+            return _receivedPongs.HasFresh(endpointKey, minValidStamp);
+        }
+    }
 
     public bool HasPendingBondingPing(IPEndPoint endpoint)
     {
         EndpointKey endpointKey = new(endpoint);
         lock (_endpointBondLock)
         {
-            return ContainsEndpoint(_pendingBondingPingsByEndpoint, _pendingBondingPingsByEndpointCount, endpointKey);
+            return _pendingBondingPings.Contains(endpointKey);
         }
     }
-
-    public bool HasEndpointBond(IPEndPoint endpoint) => HasFreshReceivedPongFrom(endpoint);
 
     public void ResetAuthenticatedRequestFailure() => Interlocked.Exchange(ref _authenticatedRequestFailureCount, 0);
     public void OnAuthenticatedRequestFailure() => Interlocked.Increment(ref _authenticatedRequestFailureCount);
 
     public void OnPongReceived(IPEndPoint endpoint)
     {
+        EndpointKey endpointKey = new(endpoint);
         lock (_endpointBondLock)
         {
-            RecordEndpointTimestamp(
-                ref _receivedPongsByEndpoint,
-                ref _receivedPongsByEndpointCount,
-                endpoint,
-                Timestamper.UtcNow.Ticks);
+            long nowTicks = Timestamper.UtcNow.Ticks;
+            _receivedPongs.PruneStale(nowTicks - BondTimeout.Ticks);
+            _receivedPongs.Record(endpointKey, nowTicks);
         }
 
         SignalEndpointBondChanged();
@@ -64,13 +100,12 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 
     public void OnPingReceived(IPEndPoint endpoint)
     {
+        EndpointKey endpointKey = new(endpoint);
         lock (_endpointBondLock)
         {
-            RecordEndpointTimestamp(
-                ref _receivedPingsByEndpoint,
-                ref _receivedPingsByEndpointCount,
-                endpoint,
-                Timestamper.UtcNow.Ticks);
+            long nowTicks = Timestamper.UtcNow.Ticks;
+            _receivedPings.PruneStale(nowTicks - BondTimeout.Ticks);
+            _receivedPings.Record(endpointKey, nowTicks);
         }
     }
 
@@ -101,16 +136,14 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     {
         OnPingSent();
         long token = Interlocked.Increment(ref _lastPingToken);
+        EndpointKey endpointKey = new(endpoint);
         bool evicted;
         lock (_endpointBondLock)
         {
-            evicted = RecordEndpointEntry(
-                ref _pendingBondingPingsByEndpoint,
-                ref _pendingBondingPingsByEndpointCount,
-                new EndpointKey(endpoint),
-                token);
+            evicted = _pendingBondingPings.Record(endpointKey, token);
         }
 
+        // An eviction drops another endpoint's pending ping, so wake its waiter to return false instead of timing out.
         if (evicted)
         {
             SignalEndpointBondChanged();
@@ -125,11 +158,7 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         bool removed;
         lock (_endpointBondLock)
         {
-            removed = RemoveEndpointEntry(
-                _pendingBondingPingsByEndpoint,
-                ref _pendingBondingPingsByEndpointCount,
-                endpointKey,
-                token);
+            removed = _pendingBondingPings.Remove(endpointKey, token);
         }
 
         if (removed)
@@ -149,19 +178,19 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
             Task bondChanged;
             lock (_endpointBondLock)
             {
-                long nowTicks = Timestamper.UtcNow.Ticks;
-                PruneExpiredEndpoints(_receivedPongsByEndpoint, ref _receivedPongsByEndpointCount, nowTicks);
-                if (HasFreshEndpoint(_receivedPongsByEndpoint, _receivedPongsByEndpointCount, endpointKey, nowTicks))
+                long minValidStamp = StaleBondStamp;
+                _receivedPongs.PruneStale(minValidStamp);
+                if (_receivedPongs.HasFresh(endpointKey, minValidStamp))
                 {
                     return true;
                 }
 
-                if (!ContainsEndpoint(_pendingBondingPingsByEndpoint, _pendingBondingPingsByEndpointCount, endpointKey))
+                if (!_pendingBondingPings.Contains(endpointKey))
                 {
                     return false;
                 }
 
-                bondChanged = (_endpointBondChanged ??= NewEndpointBondChangedSource()).Task;
+                bondChanged = (_endpointBondChanged ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
             }
 
             try
@@ -175,179 +204,6 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         }
     }
 
-    private bool HasFreshReceivedPing()
-    {
-        lock (_endpointBondLock)
-        {
-            long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredEndpoints(_receivedPingsByEndpoint, ref _receivedPingsByEndpointCount, nowTicks);
-            return _receivedPingsByEndpointCount != 0;
-        }
-    }
-
-    private bool HasFreshReceivedPong()
-    {
-        lock (_endpointBondLock)
-        {
-            long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredEndpoints(_receivedPongsByEndpoint, ref _receivedPongsByEndpointCount, nowTicks);
-            return _receivedPongsByEndpointCount != 0;
-        }
-    }
-
-    private bool HasFreshReceivedPingFrom(IPEndPoint endpoint)
-    {
-        EndpointKey endpointKey = new(endpoint);
-        lock (_endpointBondLock)
-        {
-            long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredEndpoints(_receivedPingsByEndpoint, ref _receivedPingsByEndpointCount, nowTicks);
-            return HasFreshEndpoint(_receivedPingsByEndpoint, _receivedPingsByEndpointCount, endpointKey, nowTicks);
-        }
-    }
-
-    private bool HasFreshReceivedPongFrom(IPEndPoint endpoint)
-    {
-        EndpointKey endpointKey = new(endpoint);
-        lock (_endpointBondLock)
-        {
-            long nowTicks = Timestamper.UtcNow.Ticks;
-            PruneExpiredEndpoints(_receivedPongsByEndpoint, ref _receivedPongsByEndpointCount, nowTicks);
-            return HasFreshEndpoint(_receivedPongsByEndpoint, _receivedPongsByEndpointCount, endpointKey, nowTicks);
-        }
-    }
-
-    private static void RecordEndpointTimestamp(
-        ref EndpointEntry[]? endpoints,
-        ref int count,
-        IPEndPoint endpoint,
-        long nowTicks)
-    {
-        PruneExpiredEndpoints(endpoints, ref count, nowTicks);
-        RecordEndpointEntry(ref endpoints, ref count, new EndpointKey(endpoint), nowTicks);
-    }
-
-    private static bool RecordEndpointEntry(
-        ref EndpointEntry[]? endpoints,
-        ref int count,
-        EndpointKey endpoint,
-        long stamp)
-    {
-        endpoints ??= new EndpointEntry[MaxRememberedEndpointsPerSession];
-        for (int i = 0; i < count; i++)
-        {
-            if (endpoints[i].Endpoint.Equals(endpoint))
-            {
-                endpoints[i] = new(endpoint, stamp);
-                return false;
-            }
-        }
-
-        if (count < endpoints.Length)
-        {
-            endpoints[count++] = new(endpoint, stamp);
-            return false;
-        }
-
-        endpoints[GetOldestEndpointIndex(endpoints)] = new(endpoint, stamp);
-        return true;
-    }
-
-    private static bool RemoveEndpointEntry(
-        EndpointEntry[]? endpoints,
-        ref int count,
-        EndpointKey endpoint,
-        long expectedStamp)
-    {
-        if (endpoints is null) return false;
-
-        for (int i = 0; i < count; i++)
-        {
-            if (!endpoints[i].Endpoint.Equals(endpoint) || endpoints[i].Stamp != expectedStamp)
-            {
-                continue;
-            }
-
-            count--;
-            endpoints[i] = endpoints[count];
-            endpoints[count] = default;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool ContainsEndpoint(EndpointEntry[]? endpoints, int count, EndpointKey endpoint)
-    {
-        if (endpoints is null) return false;
-
-        for (int i = 0; i < count; i++)
-        {
-            if (endpoints[i].Endpoint.Equals(endpoint))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasFreshEndpoint(EndpointEntry[]? endpoints, int count, EndpointKey endpoint, long nowTicks)
-    {
-        if (endpoints is null) return false;
-
-        for (int i = 0; i < count; i++)
-        {
-            EndpointEntry entry = endpoints[i];
-            if (entry.Endpoint.Equals(endpoint) && IsValid(entry.Stamp, nowTicks))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static void PruneExpiredEndpoints(EndpointEntry[]? endpoints, ref int count, long nowTicks)
-    {
-        if (endpoints is null) return;
-
-        int i = 0;
-        while (i < count)
-        {
-            if (IsValid(endpoints[i].Stamp, nowTicks))
-            {
-                i++;
-                continue;
-            }
-
-            count--;
-            endpoints[i] = endpoints[count];
-            endpoints[count] = default;
-        }
-    }
-
-    private static int GetOldestEndpointIndex(EndpointEntry[] endpoints)
-    {
-        int oldestIndex = 0;
-        long oldestStamp = endpoints[0].Stamp;
-        for (int i = 1; i < endpoints.Length; i++)
-        {
-            if (endpoints[i].Stamp >= oldestStamp) continue;
-
-            oldestIndex = i;
-            oldestStamp = endpoints[i].Stamp;
-        }
-
-        return oldestIndex;
-    }
-
-    private static bool IsValid(long ticks, long nowTicks) =>
-        ticks + BondTimeout.Ticks > nowTicks;
-
-    private static TaskCompletionSource NewEndpointBondChangedSource() =>
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
-
     private void SignalEndpointBondChanged()
     {
         TaskCompletionSource? completion;
@@ -360,13 +216,6 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
         completion?.TrySetResult();
     }
 
-    private readonly record struct EndpointEntry(EndpointKey Endpoint, long Stamp);
-
-    private readonly record struct EndpointKey(IPAddress Address, int Port)
-    {
-        public EndpointKey(IPEndPoint endpoint)
-            : this(endpoint.Address, endpoint.Port)
-        {
-        }
-    }
+    // Endpoint stamps recorded at or before this tick predate the bond window and are treated as expired.
+    private long StaleBondStamp => Timestamper.UtcNow.Ticks - BondTimeout.Ticks;
 }
