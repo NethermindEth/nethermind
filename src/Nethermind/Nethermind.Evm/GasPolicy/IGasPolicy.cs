@@ -101,8 +101,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        AccountAccessKind kind = AccountAccessKind.Default,
-        bool hasCode = true);
+        AccountAccessKind kind = AccountAccessKind.Default);
 
     static abstract bool ConsumeStorageAccessGas(ref TSelf gas,
         ref readonly StackAccessTracker accessTracker,
@@ -172,8 +171,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
 
-    // EIP-2780 three-tier value-moving call cost replacing the legacy CallValue + NewAccount charges.
-    static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas, bool isSelfCall, bool recipientEmpty, IReleaseSpec spec);
+    // EIP-2780/EIP-8038 flat value-moving call cost.
+    static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas);
     static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
     static abstract bool ConsumeLogEmission(ref TSelf gas, ulong topicCount, ulong dataSize);
     static abstract TSelf Max(in TSelf a, in TSelf b);
@@ -181,9 +180,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec) =>
         TSelf.CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
-    // EIP-2780 needs the pre-execution state to price the new-account surcharge; worldState is
-    // optional so callers without state (and pre-2780 specs) keep working.
-    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit, IReadOnlyStateProvider? worldState = null);
+    static abstract IntrinsicGas<TSelf> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit);
 
     static abstract TSelf CreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
 

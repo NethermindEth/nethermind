@@ -42,10 +42,8 @@ public class Eip8037BlockGasInclusionCheckTests
         Assert.That(outcome, Is.EqualTo(expected));
     }
 
-    // Regression: the regular check reserves the FULL tx.gas (no intrinsic.state subtraction).
-    // A creation tx whose full gas exceeds the remaining regular budget must be rejected even
-    // though tx.gas - intrinsic.state would have fit. Mirrors the spec test
-    // creation_tx_regular_check_uses_full_tx_gas.
+    // Regression (spec test creation_tx_regular_check_uses_full_tx_gas): the regular check
+    // reserves FULL tx.gas, rejecting even when tx.gas - intrinsic.state would have fit.
     [Test]
     public void Creation_tx_regular_check_uses_full_tx_gas_rejects()
     {

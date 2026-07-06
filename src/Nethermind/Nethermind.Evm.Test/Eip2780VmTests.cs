@@ -41,10 +41,10 @@ public class Eip2780VmTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Cold_account_access_via_balance_is_two_tier()
+    public void Cold_account_access_via_balance_is_flat()
     {
-        Address codeless = TestItem.AddressC;       // exists, no code -> COLD_ACCOUNT_COST_NOCODE
-        Address withCode = TestItem.AddressF;        // has code -> COLD_ACCOUNT_COST_CODE
+        Address codeless = TestItem.AddressC;
+        Address withCode = TestItem.AddressF;
         TestState.CreateAccount(codeless, 1.Ether);
         TestState.CreateAccount(withCode, 1.Ether);
         TestState.InsertCode(withCode, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
@@ -52,27 +52,25 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         ulong codelessCost = OpCost("BALANCE", Prepare.EvmCode.PushData(codeless).Op(Instruction.BALANCE).STOP().Done);
         ulong withCodeCost = OpCost("BALANCE", Prepare.EvmCode.PushData(withCode).Op(Instruction.BALANCE).STOP().Done);
 
-        Assert.That((codelessCost, withCodeCost), Is.EqualTo((GasCostOf.ColdAccountAccessNoCodeEip2780, GasCostOf.ColdAccountAccess)));
+        Assert.That((codelessCost, withCodeCost), Is.EqualTo((GasCostOf.ColdAccountAccess, GasCostOf.ColdAccountAccess)));
     }
 
     [Test]
-    public void Call_value_cost_new_account_tier_is_24000_above_existing_tier()
+    public void Call_value_cost_is_independent_of_recipient_existence()
     {
-        Address existing = TestItem.AddressC;        // exists -> CallValueExistingEip2780 (3756)
-        Address newAccount = TestItem.AddressF;       // dead   -> CallValueNewAccountEip2780 (27756)
+        Address existing = TestItem.AddressC;
+        Address newAccount = TestItem.AddressF; // dead account: no surcharge, cost is state-independent
         TestState.CreateAccount(existing, 1.Ether);
 
         ulong existingGas = GasSpent(Prepare.EvmCode.CallWithValue(existing, 50000, 1).STOP().Done);
         ulong newAccountGas = GasSpent(Prepare.EvmCode.CallWithValue(newAccount, 50000, 1).STOP().Done);
 
-        Assert.That(newAccountGas - existingGas, Is.EqualTo(GasCostOf.CallValueNewAccountEip2780 - GasCostOf.CallValueExistingEip2780));
+        Assert.That(newAccountGas, Is.EqualTo(existingGas));
     }
 
     [Test]
-    public void Callcode_with_value_is_charged_self_call_tier()
+    public void Callcode_with_value_charges_flat_call_value()
     {
-        // CALLCODE keeps caller == target (the executing account), so any value transfer is a
-        // self-call priced at a single STATE_UPDATE (1000) instead of the legacy CallValue (9000).
         Address codeSource = TestItem.AddressC;
         TestState.CreateAccount(codeSource, 1.Ether);
         TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
@@ -80,15 +78,14 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         ulong noValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 0).STOP().Done);
         ulong withValueOp = OpCost("CALLCODE", Prepare.EvmCode.CallCode(codeSource, 50000, 1).STOP().Done);
 
-        Assert.That(withValueOp - noValueOp, Is.EqualTo(GasCostOf.CallValueSelfEip2780));
+        Assert.That(withValueOp - noValueOp, Is.EqualTo(Eip8038Constants.CallValue));
     }
 
     [Test]
-    public void Delegated_recipient_charges_delegation_target_cold_touch_once()
+    public void Delegated_recipient_costs_the_same_as_plain_contract()
     {
-        // A delegated recipient pays COLD_ACCOUNT_COST_CODE for itself and its delegation target.
-        // The EVM only warms (does not gas-charge) the target for the top-level frame, so the total
-        // exceeds a plain-contract recipient by exactly one cold-code touch, not two (no double-charge).
+        // The flat intrinsic already covers the recipient; the delegation-target top-frame
+        // charge only exists under EIP-8037 (see Eip8037RegressionTests).
         Address target = TestItem.AddressC;
         TestState.CreateAccount(target, 1.Ether);
         TestState.InsertCode(target, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
@@ -97,6 +94,6 @@ public class Eip2780VmTests : VirtualMachineTestsBase
         ulong delegatedGas = GasSpent(delegated);
         ulong plainContractGas = GasSpent(Prepare.EvmCode.Op(Instruction.STOP).Done);
 
-        Assert.That(delegatedGas - plainContractGas, Is.EqualTo(GasCostOf.ColdAccountAccess));
+        Assert.That(delegatedGas, Is.EqualTo(plainContractGas));
     }
 }
