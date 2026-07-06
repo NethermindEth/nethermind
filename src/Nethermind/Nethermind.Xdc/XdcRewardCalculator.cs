@@ -35,7 +35,7 @@ public class XdcRewardCalculator(
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
 
-        (BlockReward[] rewards, UInt256 burnedInEpoch, bool isTipUpgrade) = epochRewardCalculator.CalculateEpochRewardsCore(xdcHeader);
+        (BlockReward[] rewards, UInt256 burnedInEpoch, bool isTipUpgrade) = epochRewardCalculator.CalculateEpochRewardsCore(xdcHeader, transactionProcessor);
 
         if (isTipUpgrade)
         {

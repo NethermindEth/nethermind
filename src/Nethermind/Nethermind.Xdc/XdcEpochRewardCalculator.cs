@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
@@ -44,7 +45,9 @@ public class XdcEpochRewardCalculator(
     /// <c>IsTipUpgrade</c> indicates whether the TIP-upgrade code path was taken; only when
     /// <c>true</c> should the caller invoke <c>IMintedRecordContract.UpdateAccounting</c>.
     /// </remarks>
-    internal (BlockReward[] Rewards, UInt256 BurnedInEpoch, bool IsTipUpgrade) CalculateEpochRewardsCore(XdcBlockHeader epochHeader)
+    internal (BlockReward[] Rewards, UInt256 BurnedInEpoch, bool IsTipUpgrade) CalculateEpochRewardsCore(
+        XdcBlockHeader epochHeader,
+        ITransactionProcessor? transactionProcessor = null)
     {
         ArgumentNullException.ThrowIfNull(epochHeader);
         if (epochHeader.Number == 0)
@@ -64,13 +67,13 @@ public class XdcEpochRewardCalculator(
 
         UInt256 totalFoundationWalletReward = UInt256.Zero;
         List<BlockReward> rewards = [];
-        (Dictionary<Address, ulong> masternodeSigners, Dictionary<Address, ulong> protectorSigners, Dictionary<Address, ulong> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(epochHeader, spec);
+        (Dictionary<Address, ulong> masternodeSigners, Dictionary<Address, ulong> protectorSigners, Dictionary<Address, ulong> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(epochHeader, spec, transactionProcessor);
 
         if (!spec.IsTipUpgradeRewardEnabled)
         {
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-            AddDistributedRewards(epochHeader, foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward);
+            AddDistributedRewards(epochHeader, foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward, transactionProcessor);
         }
         else
         {
@@ -78,9 +81,9 @@ public class XdcEpochRewardCalculator(
             Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(spec.ProtectorReward, protectorSigners);
             Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(spec.ObserverReward, observerSigners);
 
-            AddDistributedRewards(epochHeader, foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward);
-            AddDistributedRewards(epochHeader, foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward);
-            AddDistributedRewards(epochHeader, foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward);
+            AddDistributedRewards(epochHeader, foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, transactionProcessor);
+            AddDistributedRewards(epochHeader, foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, transactionProcessor);
+            AddDistributedRewards(epochHeader, foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward, transactionProcessor);
         }
 
         if (totalFoundationWalletReward > UInt256.Zero)
@@ -93,7 +96,10 @@ public class XdcEpochRewardCalculator(
         Dictionary<Address, ulong> MasternodeSigners,
         Dictionary<Address, ulong> ProtectorSigners,
         Dictionary<Address, ulong> ObserverSigners,
-        UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
+        UInt256 BurnedInOneEpoch) GetSigningTxCount(
+            XdcBlockHeader epochHeader,
+            IXdcReleaseSpec spec,
+            ITransactionProcessor? transactionProcessor)
     {
         Dictionary<Address, ulong> masternodeSigners = [];
         Dictionary<Address, ulong> protectorSigners = [];
@@ -135,7 +141,7 @@ public class XdcEpochRewardCalculator(
                     {
                         // TIPUpgradeReward path: select protector and observer sets from stake-sorted candidates.
                         // Exclude current masternodes and penalized nodes from the checkpoint header.
-                        Address[] candidatesByStake = GetCandidatesByStakeForReward(epochHeader);
+                        Address[] candidatesByStake = GetCandidatesByStakeForReward(epochHeader, transactionProcessor);
                         int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
                         HashSet<Address> excludedCandidates = new(masternodes.Count + penaltiesCount);
                         excludedCandidates.UnionWith(masternodes);
@@ -203,11 +209,14 @@ public class XdcEpochRewardCalculator(
         return [.. checkpointHeader.ValidatorsAddress!];
     }
 
-    private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader)
+    private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader, ITransactionProcessor? transactionProcessor)
     {
         // We intentionally avoid GetCandidatesByStake here to preserve Go-equivalent ordering:
         // fetch candidates at the checkpoint header and apply a stable stake-descending sort locally.
-        Address[] candidates = masternodeVotingContract.GetCandidates(checkpointHeader) ?? [];
+        Address[] candidates = transactionProcessor is not null
+            ? masternodeVotingContract.GetCandidates(transactionProcessor, checkpointHeader)
+            : masternodeVotingContract.GetCandidates(checkpointHeader);
+        candidates ??= [];
         if (candidates.Length == 0)
             return [];
 
@@ -220,7 +229,9 @@ public class XdcEpochRewardCalculator(
             candidatesAndStake.Add(new CandidateStake
             {
                 Address = candidate,
-                Stake = masternodeVotingContract.GetCandidateStake(checkpointHeader, candidate),
+                Stake = transactionProcessor is not null
+                    ? masternodeVotingContract.GetCandidateStake(transactionProcessor, checkpointHeader, candidate)
+                    : masternodeVotingContract.GetCandidateStake(checkpointHeader, candidate),
             });
         }
 
@@ -314,7 +325,25 @@ public class XdcEpochRewardCalculator(
         XdcBlockHeader epochHeader, Address masternodeAddress, UInt256 reward, Address foundationWalletAddr)
     {
         Address owner = masternodeVotingContract.GetCandidateOwner(epochHeader, masternodeAddress);
+        return DistributeRewards(owner, reward, foundationWalletAddr);
+    }
 
+    private (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
+        ITransactionProcessor transactionProcessor,
+        XdcBlockHeader epochHeader,
+        Address masternodeAddress,
+        UInt256 reward,
+        Address foundationWalletAddr)
+    {
+        Address owner = masternodeVotingContract.GetCandidateOwner(transactionProcessor, epochHeader, masternodeAddress);
+        return DistributeRewards(owner, reward, foundationWalletAddr);
+    }
+
+    private static (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
+        Address owner,
+        UInt256 reward,
+        Address foundationWalletAddr)
+    {
         // 90% of the reward goes to the masternode owner
         UInt256 masterReward = reward * 90 / 100;
 
@@ -335,11 +364,14 @@ public class XdcEpochRewardCalculator(
         Address foundationWalletAddr,
         Dictionary<Address, UInt256> rewardSigners,
         List<BlockReward> rewards,
-        ref UInt256 totalFoundationWalletReward)
+        ref UInt256 totalFoundationWalletReward,
+        ITransactionProcessor? transactionProcessor)
     {
         foreach ((Address signer, UInt256 reward) in rewardSigners)
         {
-            (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(epochHeader, signer, reward, foundationWalletAddr);
+            (BlockReward holderReward, UInt256 foundationWalletReward) = transactionProcessor is not null
+                ? DistributeRewards(transactionProcessor, epochHeader, signer, reward, foundationWalletAddr)
+                : DistributeRewards(epochHeader, signer, reward, foundationWalletAddr);
             totalFoundationWalletReward += foundationWalletReward;
             rewards.Add(holderReward);
         }
