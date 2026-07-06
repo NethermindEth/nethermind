@@ -1992,6 +1992,17 @@ public ref struct EvmStack
         return new Address(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
     }
 
+    /// <summary>
+    /// Pops an address, reusing the cached instance when the popped bytes match the previously popped address.
+    /// </summary>
+    public Address? PopAddress(PoppedAddressCache cache)
+    {
+        int head = Head - 1;
+        if (head < 0) return null;
+        Head = head;
+        return cache.GetOrCreate(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize) + WordSize - AddressSize), AddressSize));
+    }
+
     public bool PopAddress(out Address address)
     {
         int head = Head - 1;
