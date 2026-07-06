@@ -331,6 +331,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7825Enabled = (chainSpec.Parameters.Eip7825TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7918Enabled = (chainSpec.Parameters.Eip7918TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8024Enabled = (chainSpec.Parameters.Eip8024TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8246Enabled = (chainSpec.Parameters.Eip8246TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && BlockOf(chainSpec.Parameters.Eip1559FeeCollectorTransition) <= block;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
