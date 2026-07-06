@@ -28,7 +28,6 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     [ThreadStatic] private static byte[]? t_cachedInput;
     [ThreadStatic] private static Result<byte[]> t_cachedResult;
-    [ThreadStatic] private static bool t_hasCachedResult;
     private static CachedResult? s_cachedResult;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
@@ -119,8 +118,10 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     private static bool TryGetCachedResult(ReadOnlySpan<byte> inputData, out Result<byte[]> result)
     {
+        // A non-null t_cachedInput is the sentinel: it is only ever assigned by CacheThreadResult,
+        // which fills the buffer and t_cachedResult together, so the two are always in lockstep.
         byte[]? cachedInput = t_cachedInput;
-        if (t_hasCachedResult && cachedInput is not null && inputData.SequenceEqual(cachedInput))
+        if (cachedInput is not null && inputData.SequenceEqual(cachedInput))
         {
             result = t_cachedResult;
             return true;
@@ -149,7 +150,6 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         byte[] cachedInput = t_cachedInput ??= new byte[InputLength];
         inputData.CopyTo(cachedInput);
         t_cachedResult = result;
-        t_hasCachedResult = true;
     }
 
     private sealed class CachedResult

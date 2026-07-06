@@ -863,6 +863,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     internal bool CanExecutePrecompileCallDirectlyForOpcode(IPrecompile precompile) =>
         CanExecutePrecompileCallDirectly(precompile);
 
+    /// <summary>
+    /// Whether a direct precompile call to <paramref name="target"/> must instead go through the full call
+    /// frame so the EIP-161 parity touch-bug handling in <see cref="RunPrecompile"/> is preserved.
+    /// </summary>
+    /// <remarks>
+    /// A zero-value (STATICCALL) touch of the empty RIPEMD-160 account must be able to mark it for
+    /// state-clearing deletion even when the call halts. The direct fast path does not track
+    /// <c>_parityTouchBugAccount</c>, so address 3 is excluded from it whenever the touch-bug can apply.
+    /// </remarks>
+    internal bool PrecompileCallNeedsParityTouchBugHandling(Address target, IReleaseSpec spec) =>
+        spec.ClearEmptyAccountWhenTouched && _parityTouchBugAccount.Address.Equals(target);
+
     protected virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile) => true;
 
     internal bool TryRunPrecompileDirectly(

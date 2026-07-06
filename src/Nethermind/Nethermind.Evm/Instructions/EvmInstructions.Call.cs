@@ -276,7 +276,11 @@ public static partial class EvmInstructions
             codeInfo.IsPrecompile &&
             !TTracingInst.IsActive &&
             !vm.TxTracer.IsTracingActions &&
-            vm.CanExecutePrecompileCallDirectlyForOpcode(codeInfo.Precompile!))
+            vm.CanExecutePrecompileCallDirectlyForOpcode(codeInfo.Precompile!) &&
+            // EIP-161 parity touch-bug: RunPrecompile records a zero-value touch of the (possibly empty)
+            // RIPEMD-160 account so a halted call can still mark it for state-clearing deletion. The direct
+            // fast path omits that bookkeeping, so keep address 3 on the full-frame path where it can apply.
+            !vm.PrecompileCallNeedsParityTouchBugHandling(target, spec))
         {
             return ExecuteStaticPrecompileCallDirectly(
                 vm,
@@ -329,8 +333,10 @@ public static partial class EvmInstructions
 
             if (!success)
             {
-                TGasPolicy.SetOutOfGas(ref childGas);
-                TGasPolicy.RestoreChildStateGas(ref gas, in childGas);
+                // A precompile failure is an exceptional halt of the sub-call: the forwarded regular gas is
+                // burned and only the child's state reservoir returns to the parent. Mirror the full frame's
+                // PopAndRestoreParentState -> RestoreChildStateGasOnHalt (halt), not RestoreChildStateGas (revert).
+                TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
                 vm.ReturnDataBuffer = Array.Empty<byte>();
                 vm.ReturnData = null;
                 return stack.PushZero<TTracingInst>();
