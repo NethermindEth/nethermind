@@ -9,9 +9,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
+using System.Buffers.Binary;
 
 namespace Nethermind.Merge.Plugin.Test.SszRest;
 
@@ -742,4 +744,109 @@ public class SszCodecTests
         for (int i = 0; i < proofs.Length; i++)
             Assert.That(decoded.Commitments![i].AsSpan().ToArray(), Is.EqualTo(proofs[i]), $"commitment {i} bytes must round-trip exactly");
     }
+
+    [TestCase(PayloadStatus.Valid, true, true)]
+    [TestCase(PayloadStatus.Valid, false, false)]
+    [TestCase(PayloadStatus.Invalid, true, false)]
+    [TestCase(PayloadStatus.Syncing, true, false)]
+    [TestCase(PayloadStatus.Accepted, true, false)]
+    public void EncodeNewPayloadWithWitnessResponse_witness_union_presence(string status, bool hasWitness, bool expectedPresent)
+    {
+        using Witness? witness = hasWitness ? MakeMinimalWitness() : null;
+        PayloadStatusV1 ps = new() { Status = status };
+
+        byte[] encoded = Encode(
+            (ps, witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        (_, _, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+        Assert.That(witnessPresent, Is.EqualTo(expectedPresent));
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_embeds_regular_payload_status_encoding()
+    {
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
+
+        byte[] withWitness = Encode(
+            (ps, (Witness?)null),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+        byte[] standalone = Encode(ps, static (p, w) => SszCodec.EncodePayloadStatus(p, w));
+
+        // The outer container has two variable fields (payload_status, witness) → an 8-byte two-offset header.
+        ReadOnlySpan<byte> buf = withWitness;
+        int offStatus = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(0, 4));
+        int offWitness = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(4, 4));
+        Assert.That(offStatus, Is.EqualTo(8), "two-offset container header is 8 bytes");
+
+        Assert.That(buf.Slice(offStatus, offWitness - offStatus).ToArray(), Is.EqualTo(standalone),
+            "the witness response must reuse the regular PayloadStatus encoding");
+        Assert.That(offWitness, Is.EqualTo(buf.Length),
+            "the witness Optional is an empty List[_, 1] (no bytes) when no witness was produced");
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_roundtrips_status_lvh_and_witness_items()
+    {
+        // Witness items travel as opaque ByteLists — the EL must not re-encode them as structured SSZ.
+        byte[] stateNode1 = [0xf8, 0x44, 0x01, 0x02, 0x03];
+        byte[] stateNode2 = [0xe2, 0x80, 0xa0, 0xaa, 0xbb];
+        byte[] codeItem = [0x60, 0x01, 0x60, 0x00, 0x52];
+        byte[] headerBlob = [0xf9, 0x02, 0x18, 0x01, 0x02];
+
+        using Witness witness = new()
+        {
+            State = new Core.Collections.ArrayPoolList<byte[]>(2) { stateNode1, stateNode2 },
+            Codes = new Core.Collections.ArrayPoolList<byte[]>(1) { codeItem },
+            Headers = new Core.Collections.ArrayPoolList<byte[]>(1) { headerBlob },
+            Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
+        };
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB };
+
+        byte[] encoded = Encode(
+            (ps, witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        PayloadStatusWithWitnessWire.Decode(encoded, out PayloadStatusWithWitnessWire wire);
+
+        Assert.That(wire.PayloadStatus.Status, Is.EqualTo((byte)0x00), "VALID encodes as status byte 0x00");
+        Assert.That(wire.PayloadStatus.LatestValidHash, Is.Not.Null.And.Length.EqualTo(1));
+        Assert.That(wire.PayloadStatus.LatestValidHash![0], Is.EqualTo(TestItem.KeccakB));
+        Assert.That(wire.Witness, Is.Not.Null.And.Length.EqualTo(1), "VALID + witness => present as a length-1 list");
+
+        ExecutionWitnessV1Wire w = wire.Witness![0];
+        Assert.That(w.State!.Length, Is.EqualTo(2));
+        Assert.That(w.State[0].Bytes, Is.EqualTo(stateNode1));
+        Assert.That(w.State[1].Bytes, Is.EqualTo(stateNode2));
+        Assert.That(w.Codes!.Length, Is.EqualTo(1));
+        Assert.That(w.Codes[0].Bytes, Is.EqualTo(codeItem));
+        Assert.That(w.Headers!.Length, Is.EqualTo(1));
+        Assert.That(w.Headers[0].Bytes, Is.EqualTo(headerBlob));
+    }
+
+    [Test]
+    public void EncodeNewPayloadWithWitnessResponse_invalid_status_suppresses_witness()
+    {
+        using Witness witness = MakeMinimalWitness();
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Invalid };
+
+        byte[] encoded = Encode(
+            (ps, witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        (byte decodedStatusByte, _, bool witnessPresent) =
+            SszCodec.DecodeNewPayloadWithWitnessResponse(encoded);
+
+        Assert.That(decodedStatusByte, Is.EqualTo(0x01), "INVALID encodes as status byte 0x01");
+        Assert.That(witnessPresent, Is.False,
+            "INVALID status must not carry a witness even when one was passed to the encoder");
+    }
+
+    private static Witness MakeMinimalWitness() => new()
+    {
+        State = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Codes = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Keys = new Core.Collections.ArrayPoolList<byte[]>(0),
+        Headers = new Core.Collections.ArrayPoolList<byte[]>(0),
+    };
 }

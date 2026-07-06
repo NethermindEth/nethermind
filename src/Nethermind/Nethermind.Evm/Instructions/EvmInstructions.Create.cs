@@ -133,7 +133,7 @@ public static partial class EvmInstructions
         if (createOutOfGas) goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
@@ -148,7 +148,7 @@ public static partial class EvmInstructions
         if (!vm.VmState.Memory.TryLoad(in memoryPositionOfInitCode, in initCodeLength, out ReadOnlyMemory<byte> initCode))
             goto OutOfGas;
 
-        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, TGasPolicy.GetCreateStateCost(in gas)))
+        if (TEip8037.IsActive && !TGasPolicy.ConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
         // Check that the executing account has sufficient balance to transfer the specified value.
@@ -176,10 +176,8 @@ public static partial class EvmInstructions
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(gasAvailable);
 
-        // Calculate gas available for the contract creation call.
-        // Use the 63/64 gas rule if specified in the current EVM specification.
-        ulong callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64 : gasAvailable;
-        if (!TGasPolicy.UpdateGas(ref gas, callGas))
+        // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
+        if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
             goto OutOfGas;
 
         // Compute the contract address:
@@ -260,7 +258,7 @@ public static partial class EvmInstructions
         {
             if (TEip8037.IsActive)
             {
-                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost(in gasState));
+                vm.CreditStateGasRefund(ref gasState, TGasPolicy.GetCreateStateCost());
             }
         }
     }

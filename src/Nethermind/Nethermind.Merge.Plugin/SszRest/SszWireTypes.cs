@@ -446,3 +446,23 @@ public partial struct GetBlobsV4ResponseWire
 {
     [SszList(128)] public BlobV4EntryWire[]? Entries { get; set; }
 }
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessItem
+{
+    [SszList(1048576)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct ExecutionWitnessV1Wire
+{
+    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+}
+
+[SszContainer]
+public partial struct PayloadStatusWithWitnessWire
+{
+    public PayloadStatusWire PayloadStatus { get; set; }
+    [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
+}

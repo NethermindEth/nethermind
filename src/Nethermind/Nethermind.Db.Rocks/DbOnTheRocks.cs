@@ -373,6 +373,29 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         };
     }
 
+    public long EstimatedCount
+    {
+        get
+        {
+            if (_isDisposed)
+            {
+                return 0;
+            }
+
+            try
+            {
+                return FetchTotalPropertyValue("rocksdb.estimate-num-keys");
+            }
+            catch (RocksDbSharpException e)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Failed to read DB key count estimate {e.Message}");
+            }
+
+            return 0;
+        }
+    }
+
     private long GetSize()
     {
         try
@@ -1375,7 +1398,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public void Flush(bool onlyWal = false)
+    public virtual void Flush(bool onlyWal = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 

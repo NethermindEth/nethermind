@@ -102,13 +102,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
     public override void SetOperationStack(TraceStack stack)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Stack = stack.ToHexWordList();
+            CurrentTraceEntry.Stack = stack.ToRawBytes();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
-            CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
+            CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
     }
 
     public override GethLikeTxTrace BuildResult()

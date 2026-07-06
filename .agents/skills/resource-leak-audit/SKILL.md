@@ -17,7 +17,7 @@ Determine the audit scope before starting:
 Audit only files changed in the PR. Use `git diff` to get the changed files, then apply the full methodology to those files plus their immediate callers/callees.
 
 Steps:
-1. Get changed files: `git diff origin/master...HEAD --name-only` (three-dot diff uses the merge-base, so it works correctly both locally and in CI even if master has advanced)
+1. Get changed files: `git diff origin/master...HEAD --name-only` (three-dot diff uses the merge-base, so it works correctly both locally and in CI even if master has advanced). If the file list looks implausibly large, the local `origin/master` ref may be stale — verify with `git ls-remote origin refs/heads/master` (see the review skill's stale-ref procedure).
 2. Filter to non-test C# files (exclude `*.Test*`, `*.Benchmark*`)
 3. For each changed file, also read classes it inherits from and interfaces it implements
 4. Apply Phase 1 search only for categories relevant to the changed code
@@ -33,7 +33,7 @@ Audit all non-test code in `src/Nethermind/`. This is the exhaustive mode — us
 
 Read these — they define conventions and inform what counts as a leak:
 
-1. **All rule files** in `.agents/rules/` — always list the directory rather than relying on a fixed list
+1. The rule files in `.agents/rules/` relevant to resource management — `robustness.md`, `performance.md`, `di-patterns.md` (list the directory to catch newly added rule files; skip clearly unrelated ones like `git.md` or `github-workflows.md`)
 2. **`CONTRIBUTING.md`** and **`.editorconfig`**
 
 ## Methodology — Two-Phase Audit with Reviewer Gate
@@ -217,7 +217,7 @@ COSMETIC means: technically violates a best practice but has zero quantified run
 - **Read actual code** — don't report based on grep matches alone
 - **Prove triggerability** — "could theoretically race" is not enough
 - **Config-gated is NOT dead** — report with config dependency noted
-- **Check GitHub before reporting** — prevent duplicate work
+- **Check GitHub before reporting CRITICAL/HIGH in the final report** (Phase 2 step D) — prevent duplicate work. Phase 1 recording deliberately skips this; MEDIUM/LOW findings reported without deep validation are marked as such.
 - **Ownership transfers are not leaks** — verify the receiver cleans up
 - **GC finalization is not proper disposal** — still report, but quantify the actual impact (finalizer queue pressure vs. zero impact)
 - **`using` declarations (C# 8+)** are valid disposal
