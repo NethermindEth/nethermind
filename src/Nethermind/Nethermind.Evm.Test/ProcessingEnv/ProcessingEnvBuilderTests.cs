@@ -154,6 +154,24 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
+    public async Task BuildAsOverridableEnv_returns_an_overridable_env_and_disposes_the_scope()
+    {
+        using IContainer container = BuildContainer();
+        IOverridableEnv overridableEnv = container.Resolve<IOverridableEnvFactory>().Create();
+
+        IOverridableEnvHandle<IWorldState> handle = container.Resolve<IProcessingEnvBuilder>()
+            .WithOverridableEnv(overridableEnv)
+            .BuildAsOverridableEnv<IWorldState>();
+
+        using (Scope<IWorldState> scope = handle.BuildAndOverride(null))
+        {
+            Assert.That(scope.Component, Is.Not.Null);
+        }
+
+        await handle.DisposeAsync();
+    }
+
+    [Test]
     public void Non_property_member_throws_during_build()
     {
         using IContainer container = BuildContainer();

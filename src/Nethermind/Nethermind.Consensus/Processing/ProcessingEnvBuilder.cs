@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 
@@ -73,7 +77,16 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
     public IProcessingEnvBuilder WithBlockValidationConfiguration() =>
         Configure(builder => builder.AddModule(_parentScope.Resolve<IBlockValidationModule[]>()));
 
-    public TWrapper BuildAs<TWrapper>() where TWrapper : class
+    public TWrapper BuildAs<TWrapper>() where TWrapper : class =>
+        ProcessingEnvWrapperFactory.Create<TWrapper>(BuildScope());
+
+    public IOverridableEnvHandle<T> BuildAsOverridableEnv<T>()
+    {
+        ILifetimeScope scope = BuildScope();
+        return new OverridableEnvHandle<T>(scope, scope.Resolve<IOverridableEnv<T>>());
+    }
+
+    private ILifetimeScope BuildScope()
     {
         if (!_worldStateConfigured)
             throw new InvalidOperationException(
@@ -89,9 +102,17 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
         foreach (IDisposable disposable in _disposables)
             scope.Disposer.AddInstanceForDisposal(disposable);
 
-        return ProcessingEnvWrapperFactory.Create<TWrapper>(scope);
+        return scope;
     }
 
     private IProcessingEnvBuilder WithWorldStateConfigured(Action<ContainerBuilder> configure) =>
         new ProcessingEnvBuilder(_parentScope, [.. _configure, configure], _disposables, worldStateConfigured: true);
+
+    private sealed class OverridableEnvHandle<T>(ILifetimeScope scope, IOverridableEnv<T> env) : IOverridableEnvHandle<T>
+    {
+        public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null) =>
+            env.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+
+        public ValueTask DisposeAsync() => scope.DisposeAsync();
+    }
 }
