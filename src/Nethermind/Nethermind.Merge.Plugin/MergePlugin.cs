@@ -205,9 +205,6 @@ public class MergePluginModule : Module
 
             .AddModule(new BaseMergePluginModule())
 
-            // Activate the blob-tx cleaner once the block tree is up so its constructor can subscribe to
-            // BlocksFinalized (container owns disposal). The block tree is passed as a resolve parameter, so
-            // the cleaner does not re-resolve it — which would recurse into this same activation hook.
             .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>();
 }
 
@@ -236,8 +233,6 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
-            // Registered here for reuse; only activated (via ResolveOnServiceActivation) by the merge/AuRa-merge
-            // modules. Optimism/Taiko never resolve it. Self-disables unless blob-tx reorg support is enabled.
             .AddSingleton<ProcessedTransactionsDbCleaner>()
 
             // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.

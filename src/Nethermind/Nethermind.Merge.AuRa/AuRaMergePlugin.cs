@@ -106,8 +106,6 @@ namespace Nethermind.Merge.AuRa
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
 
-                // See MergePluginModule: activate the blob-tx cleaner (registered in BaseMergePluginModule)
-                // once the block tree is up. It self-disables unless blob-tx reorg support is enabled.
                 .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
                 ;
     }
