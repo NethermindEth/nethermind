@@ -96,6 +96,41 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
+    public void WithComponent_owns_the_instance_by_default_and_disposes_it()
+    {
+        using IContainer container = BuildContainer();
+        TrackingDisposable owned = new();
+
+        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+                   .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                   .WithComponent(owned)
+                   .BuildAs<ITrackerEnv>())
+        {
+            Assert.That(env.Tracker, Is.SameAs(owned));
+            Assert.That(owned.Disposed, Is.False);
+        }
+
+        Assert.That(owned.Disposed, Is.True);
+    }
+
+    [Test]
+    public void WithComponent_externallyOwned_does_not_dispose_the_instance()
+    {
+        using IContainer container = BuildContainer();
+        TrackingDisposable external = new();
+
+        using (ITrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+                   .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                   .WithComponent(external, externallyOwned: true)
+                   .BuildAs<ITrackerEnv>())
+        {
+            Assert.That(env.Tracker, Is.SameAs(external));
+        }
+
+        Assert.That(external.Disposed, Is.False);
+    }
+
+    [Test]
     public void Non_property_member_throws_NotSupported()
     {
         using IContainer container = BuildContainer();

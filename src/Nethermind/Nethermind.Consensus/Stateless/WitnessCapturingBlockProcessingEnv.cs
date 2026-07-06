@@ -38,7 +38,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
     IHeaderStore headerStore,
     IBlockValidationModule[] validationModules) : IDisposable
 {
-    private readonly Lazy<Graph> _graph = new(() =>
+    private readonly Lazy<IGraph> _graph = new(() =>
         Build(rootLifetimeScope, worldStateManager, headerStore, validationModules));
 
     /// <summary>The witness-wired block processor; the same instance is reused for every witnessed block.</summary>
@@ -47,7 +47,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
     /// <summary>Clears the recorder accumulators so the next witnessed block starts from a clean slate.</summary>
     public void ResetForBlock()
     {
-        Graph graph = _graph.Value;
+        IGraph graph = _graph.Value;
         graph.Recorder.Reset();
         graph.HeaderRecorder.Reset();
         graph.BlockhashCache.Clear();
@@ -61,7 +61,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
         if (_graph.IsValueCreated) _graph.Value.Dispose();
     }
 
-    private static Graph Build(
+    private static IGraph Build(
         ILifetimeScope rootLifetimeScope,
         IWorldStateManager worldStateManager,
         IHeaderStore headerStore,
@@ -81,51 +81,37 @@ public sealed class WitnessCapturingBlockProcessingEnv(
 
         // Off the root scope (not the main-processing child) to avoid inheriting the selector decorator; the recorder is
         // registered by instance so the decorator wraps the captured parent rather than re-resolving itself (no cycle).
-        IWitnessGraph env = new ProcessingEnvBuilder(rootLifetimeScope)
-            .WithWorldState(recorder)
-            .Configure(builder => builder
-                .AddScoped<IHeaderFinder>(recordingFinder)
-                .AddScoped<IBlockhashCache, BlockhashCache>()
-                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-                .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
-                    ctx.Resolve<IWorldState>(),
-                    ctx.Resolve<ISpecProvider>(),
-                    ctx.Resolve<IBlockhashProvider>(),
-                    ctx.Resolve<ILogManager>(),
-                    ctx.Resolve<IBlocksConfig>(),
-                    ctx.Resolve<IWithdrawalProcessorFactory>(),
-                    codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                    transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-                // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
-                .AddModule(validationModules))
-            .BuildAs<IWitnessGraph>();
-
-        return new Graph(env, trieStore, recorder, headerRecorder);
+        return new ProcessingEnvBuilder(rootLifetimeScope)
+            .WithWorldState(recorder, externallyOwned: true) // wraps the shared main-pipeline world state
+            .WithComponent(recorder, externallyOwned: true)  // exposed as WitnessGeneratingWorldState
+            .WithComponent(headerRecorder)
+            .WithComponent(trieStore)                         // owned: disposed with the scope
+            .WithReplacedComponent<IHeaderFinder>(recordingFinder)
+            .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
+            .WithReplacedComponent<ICodeInfoRepository, CodeInfoRepository>()
+            .WithReplacedComponent<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ISpecProvider>(),
+                ctx.Resolve<IBlockhashProvider>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<IWithdrawalProcessorFactory>(),
+                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
+            .Configure(builder => builder.AddModule(validationModules))
+            .BuildAs<IGraph>();
     }
 
-    /// <summary>The resolved witness components; disposing it disposes the underlying child scope.</summary>
-    public interface IWitnessGraph : IDisposable
+    /// <summary>
+    /// The resolved witness components (plus the scope-owned witness-walk trie store); disposing it
+    /// disposes the underlying child scope and everything it owns.
+    /// </summary>
+    public interface IGraph : IDisposable
     {
         IBlockProcessor Processor { get; }
         IBlockhashCache BlockhashCache { get; }
-    }
-
-    /// <summary>The witness bundle plus the witness-walk trie store whose lifetime it owns alongside the env scope.</summary>
-    private sealed class Graph(
-        IWitnessGraph env,
-        IReadOnlyTrieStore trieStore,
-        WitnessGeneratingWorldState recorder,
-        WitnessHeaderRecorder headerRecorder) : IDisposable
-    {
-        public WitnessGeneratingWorldState Recorder => recorder;
-        public WitnessHeaderRecorder HeaderRecorder => headerRecorder;
-        public IBlockProcessor Processor => env.Processor;
-        public IBlockhashCache BlockhashCache => env.BlockhashCache;
-
-        public void Dispose()
-        {
-            try { env.Dispose(); }
-            finally { trieStore.Dispose(); }
-        }
+        WitnessGeneratingWorldState Recorder { get; }
+        WitnessHeaderRecorder HeaderRecorder { get; }
     }
 }

@@ -86,24 +86,23 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IEnvComponents graph = new ProcessingEnvBuilder(rootLifetimeScope)
             .WithWorldState(witnessWorldState)
-            .Configure(builder => builder
-                .AddScoped<IStateReader>(stateReader)
-                .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
-                .AddScoped<IHeaderFinder>(capturingHeaderFinder)
-                .AddScoped<IBlockhashCache, BlockhashCache>()
-                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-                .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
-                    ctx.Resolve<IWorldState>(),
-                    ctx.Resolve<ISpecProvider>(),
-                    ctx.Resolve<IBlockhashProvider>(),
-                    ctx.Resolve<ILogManager>(),
-                    ctx.Resolve<IBlocksConfig>(),
-                    ctx.Resolve<IWithdrawalProcessorFactory>(),
-                    codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                    transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-                .AddModule(validationModules)
-                .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>())
+            .WithReplacedComponent<IStateReader>(stateReader)
+            .WithReplacedComponent<WitnessGeneratingWorldState>(witnessWorldState)
+            .WithReplacedComponent<IHeaderFinder>(capturingHeaderFinder)
+            .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
+            .WithReplacedComponent<IReceiptStorage>(NullReceiptStorage.Instance, externallyOwned: true)
+            .WithReplacedComponent<ICodeInfoRepository, CodeInfoRepository>()
+            .WithReplacedComponent<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ISpecProvider>(),
+                ctx.Resolve<IBlockhashProvider>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<IWithdrawalProcessorFactory>(),
+                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+            .WithReplacedComponent<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>()
+            .Configure(builder => builder.AddModule(validationModules))
             .BuildAs<IEnvComponents>();
 
         return new PooledEntry(graph, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState);

@@ -26,25 +26,50 @@ public interface IProcessingEnvBuilder
     /// components (<see cref="IWorldState"/>, the transaction processor, etc.) are built over it.
     /// </summary>
     /// <remarks>
-    /// This is the common case — pass a provider from <c>IWorldStateManager</c> (e.g.
-    /// <c>CreateResettableWorldState()</c>, <c>GlobalWorldState</c>, or
-    /// <c>CreateOverridableWorldScope().WorldState</c>). One of the <see cref="WithWorldState(IWorldStateScopeProvider)"/>
-    /// / <see cref="WithWorldState(IWorldState)"/> overloads must be called before
-    /// <see cref="BuildAs{TWrapper}"/>. The provider is externally owned and is not disposed with the scope.
+    /// Pass a provider from <c>IWorldStateManager</c> (e.g. <c>CreateResettableWorldState()</c>,
+    /// <c>GlobalWorldState</c>, or <c>CreateOverridableWorldScope().WorldState</c>). One of the
+    /// <see cref="WithWorldState(IWorldStateScopeProvider, bool)"/> / <see cref="WithWorldState(IWorldState, bool)"/>
+    /// overloads must be called before <see cref="BuildAs{TWrapper}"/>. Pass
+    /// <paramref name="externallyOwned"/> <c>true</c> for a shared/manager-owned provider (e.g.
+    /// <c>GlobalWorldState</c>) that must never be disposed by the environment.
     /// </remarks>
-    IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState);
+    /// <param name="externallyOwned">When <c>false</c> (default) the environment owns the instance and
+    /// disposes it (if disposable) when the wrapper is disposed.</param>
+    IProcessingEnvBuilder WithWorldState(IWorldStateScopeProvider worldState, bool externallyOwned = false);
 
     /// <summary>
     /// Binds the environment to an already-built <see cref="IWorldState"/> instance, registered
     /// directly (the witness / stateless case where a wrapping world state is constructed by hand).
     /// </summary>
-    IProcessingEnvBuilder WithWorldState(IWorldState worldState);
+    /// <inheritdoc cref="WithWorldState(IWorldStateScopeProvider, bool)" path="/param"/>
+    IProcessingEnvBuilder WithWorldState(IWorldState worldState, bool externallyOwned = false);
 
     /// <summary>
     /// Replaces the registration of <typeparamref name="T"/> within the environment's scope with
-    /// <paramref name="instance"/>. The instance is externally owned and is not disposed with the scope.
+    /// <paramref name="instance"/>.
     /// </summary>
-    IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class;
+    /// <param name="externallyOwned">When <c>false</c> (default) the environment owns the instance and
+    /// disposes it (if disposable) when the wrapper is disposed; pass <c>true</c> for a shared instance.</param>
+    IProcessingEnvBuilder WithReplacedComponent<T>(T instance, bool externallyOwned = false) where T : class;
+
+    /// <summary>
+    /// Replaces the registration of <typeparamref name="TService"/> within the environment's scope with
+    /// a fresh, scope-owned <typeparamref name="TImpl"/>.
+    /// </summary>
+    IProcessingEnvBuilder WithReplacedComponent<TService, TImpl>() where TImpl : TService where TService : notnull;
+
+    /// <summary>
+    /// Replaces the registration of <typeparamref name="T"/> within the environment's scope with a
+    /// scope-owned instance produced by <paramref name="factory"/>.
+    /// </summary>
+    IProcessingEnvBuilder WithReplacedComponent<T>(Func<IComponentContext, T> factory) where T : class;
+
+    /// <summary>
+    /// Adds <paramref name="instance"/> as a component of the environment's scope (a service the base
+    /// graph does not provide).
+    /// </summary>
+    /// <inheritdoc cref="WithReplacedComponent{T}(T, bool)" path="/param"/>
+    IProcessingEnvBuilder WithComponent<T>(T instance, bool externallyOwned = false) where T : class;
 
     /// <summary>
     /// Escape hatch to apply arbitrary registrations to the environment's child scope (decorators,
