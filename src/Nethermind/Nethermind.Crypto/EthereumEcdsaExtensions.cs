@@ -23,6 +23,10 @@ public static class EthereumEcdsaExtensions
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly ClockCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+
+    /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
+    internal static void ClearSenderCache() => _senderCache.Clear();
+
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         KeccakRlpWriter writer = new();

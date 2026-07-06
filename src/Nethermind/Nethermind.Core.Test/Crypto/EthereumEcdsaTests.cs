@@ -97,6 +97,10 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(TxType.Legacy, false)]
         public void RecoverAddress_repeat_recovery_uses_sender_cache_for_typed_tx_only(TxType txType, bool servedFromCache)
         {
+            // The sender cache is a process-wide static; reset it so the miss/hit sequence
+            // asserted below cannot depend on what other tests recovered earlier.
+            EthereumEcdsaExtensions.ClearSenderCache();
+
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey keyA = TestItem.PrivateKeyA;
             PrivateKey keyB = TestItem.PrivateKeyB;
