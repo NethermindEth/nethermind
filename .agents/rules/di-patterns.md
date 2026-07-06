@@ -53,6 +53,12 @@ builder.AddSingleton<IWorldState, WorldState>();
 5. If one type should be aliased to another already-registered type, use `Bind<TTo, TFrom>()`.
 6. Never register test-specific stubs or `MemDb` overrides in a production module — put them in `TestEnvironmentModule` or `TestBlockProcessingModule`.
 
+## Overriding or intercepting components
+- On a per case basis, one can override any component by opening a new child lifetime and using `AddSingleton` on the lifetime configuration.
+- In a lot more case, one need to intercept calls while preserving previous behavior.
+  - In this case, DO NOT subclass the implementation as plugin is likely going to replace them.
+  - Rather make a decorator, which then calls a dedicated store class that can be resolved separately.
+
 ## Test modules (`Nethermind.Core.Test/Modules/`)
 
 | Module | Purpose | File |

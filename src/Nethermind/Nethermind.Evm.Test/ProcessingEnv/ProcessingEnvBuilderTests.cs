@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,6 +31,16 @@ public interface ITrackerEnv : IDisposable
 public interface IAsyncTrackerEnv : IAsyncDisposable
 {
     ProcessingEnvBuilderTests.TrackingDisposable Tracker { get; }
+}
+
+public interface IEmptyEnv : IDisposable
+{
+}
+
+public interface IOverridableTestEnv : IDisposable
+{
+    IWorldState WorldState { get; }
+    ICodeInfoRepository CodeInfoRepository { get; }
 }
 
 public interface IEnvWithMethod : IDisposable
@@ -101,10 +112,10 @@ public class ProcessingEnvBuilderTests
         using IContainer container = BuildContainer();
         TrackingDisposable owned = new();
 
-        using (IEnvWithMethod env = container.Resolve<IProcessingEnvBuilder>()
+        using (IEmptyEnv env = container.Resolve<IProcessingEnvBuilder>()
                    .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
                    .ThatDisposes(owned)
-                   .BuildAs<IEnvWithMethod>())
+                   .BuildAs<IEmptyEnv>())
         {
             Assert.That(owned.Disposed, Is.False);
         }
@@ -130,14 +141,26 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
-    public void Non_property_member_throws_NotSupported()
+    public void WithOverridableEnv_auto_creates_the_env_and_resolves_its_components()
     {
         using IContainer container = BuildContainer();
-        using IEnvWithMethod env = container.Resolve<IProcessingEnvBuilder>()
-            .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
-            .BuildAs<IEnvWithMethod>();
 
-        Assert.That(env.DoSomething, Throws.TypeOf<NotSupportedException>());
+        using IOverridableTestEnv env = container.Resolve<IProcessingEnvBuilder>()
+            .WithOverridableEnv()
+            .BuildAs<IOverridableTestEnv>();
+
+        Assert.That(env.WorldState, Is.Not.Null);
+        Assert.That(env.CodeInfoRepository, Is.Not.Null);
+    }
+
+    [Test]
+    public void Non_property_member_throws_during_build()
+    {
+        using IContainer container = BuildContainer();
+        IProcessingEnvBuilder builder = container.Resolve<IProcessingEnvBuilder>()
+            .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState());
+
+        Assert.That(() => builder.BuildAs<IEnvWithMethod>(), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

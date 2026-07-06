@@ -65,14 +65,20 @@ internal static class ProcessingEnvWrapperFactory
         if (!typeof(IDisposable).IsAssignableFrom(iface) && !typeof(IAsyncDisposable).IsAssignableFrom(iface))
             throw new ArgumentException($"'{iface}' must implement IDisposable or IAsyncDisposable so its backing scope is released.", nameof(iface));
 
+        MethodInfo[] methods = [.. new[] { iface }.Concat(iface.GetInterfaces()).SelectMany(i => i.GetMethods())];
+
+        // Validate the whole interface up front so an unsupported member fails when the wrapper is built, not when it is called.
+        foreach (MethodInfo method in methods)
+            if (!IsGetter(method) && !IsDispose(method) && !IsDisposeAsync(method))
+                throw new ArgumentException(
+                    $"'{iface}' cannot be a processing-env wrapper: '{method.Name}' is neither a read-only property nor IDisposable/IAsyncDisposable.", nameof(iface));
+
         // Unique suffix so a concurrent GetOrAdd re-entry never collides on the module type name.
         TypeBuilder type = Module.DefineType(
             $"{iface.Name}_Env_{Interlocked.Increment(ref _typeCounter)}",
             TypeAttributes.Public | TypeAttributes.Sealed, typeof(object), [iface]);
 
         FieldBuilder scope = type.DefineField("_scope", typeof(ILifetimeScope), FieldAttributes.Private | FieldAttributes.InitOnly);
-
-        MethodInfo[] methods = [.. new[] { iface }.Concat(iface.GetInterfaces()).SelectMany(i => i.GetMethods())];
 
         // A backing field per getter, holding the component resolved in the constructor.
         Dictionary<MethodInfo, FieldBuilder> fields = [];
@@ -147,10 +153,8 @@ internal static class ProcessingEnvWrapperFactory
         }
         else
         {
-            // Keep the type verifiable but reject non-property members at call time.
-            il.Emit(OpCodes.Ldstr, $"'{method.Name}' is not supported on a processing-env wrapper; only read-only properties and IDisposable.Dispose are.");
-            il.Emit(OpCodes.Newobj, typeof(NotSupportedException).GetConstructor([typeof(string)])!);
-            il.Emit(OpCodes.Throw);
+            // Unreachable: Emit rejects unsupported members before any method is generated.
+            throw new InvalidOperationException($"Unexpected member '{method.Name}' on a processing-env wrapper.");
         }
 
         type.DefineMethodOverride(impl, method);

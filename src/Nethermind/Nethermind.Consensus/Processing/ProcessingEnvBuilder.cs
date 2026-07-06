@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -45,6 +46,22 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
     {
         _worldStateConfigured = true;
         return Configure(builder => builder.AddScoped<IWorldState>(worldState));
+    }
+
+    public IProcessingEnvBuilder WithOverridableEnv(IOverridableEnv env)
+    {
+        _worldStateConfigured = true; // the env module supplies the (overridden) world state
+        return Configure(builder => builder.AddModule(env));
+    }
+
+    public IProcessingEnvBuilder WithOverridableEnv()
+    {
+        // Create and own an env from the world-state manager: the environment disposes both the env and
+        // its opened (un-overridden) world-state scope when it is disposed.
+        IOverridableEnv env = parentScope.Resolve<IOverridableEnvFactory>().Create();
+        if (env is IDisposable disposableEnv) ThatDisposes(disposableEnv); // added first → disposed last
+        ThatDisposes(env.BuildAndOverride(null));                          // added last → disposed first
+        return WithOverridableEnv(env);
     }
 
     public IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class =>

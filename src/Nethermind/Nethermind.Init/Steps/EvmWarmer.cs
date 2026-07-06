@@ -4,31 +4,32 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Steps;
-using Nethermind.State.OverridableEnv;
 
 [RunnerStepDependencies(
     typeof(InitializeBlockchain)
 )]
-public class EvmWarmer(IOverridableEnvFactory envFactory, ILifetimeScope rootScope) : IStep
+public class EvmWarmer(IProcessingEnvBuilder envBuilder) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        IOverridableEnv env = envFactory.Create();
-        using IDisposable envScope = env.BuildAndOverride(null, null);
+        using IWarmupEnv warmupEnv = envBuilder
+            .WithOverridableEnv()
+            .BuildAs<IWarmupEnv>();
 
-        using ILifetimeScope childContainerScope = rootScope.BeginLifetimeScope((builder) =>
-        {
-            builder.AddModule(env);
-        });
-
-        EthereumVirtualMachine.WarmUpEvmInstructions(childContainerScope.Resolve<IWorldState>(), childContainerScope.Resolve<ICodeInfoRepository>());
+        EthereumVirtualMachine.WarmUpEvmInstructions(warmupEnv.WorldState, warmupEnv.CodeInfoRepository);
 
         return Task.CompletedTask;
+    }
+
+    public interface IWarmupEnv : IDisposable
+    {
+        IWorldState WorldState { get; }
+        ICodeInfoRepository CodeInfoRepository { get; }
     }
 }
