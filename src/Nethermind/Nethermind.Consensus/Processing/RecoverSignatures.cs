@@ -32,15 +32,29 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
+            // Recovery may have been started ahead of time (e.g. by NewPayloadHandler while the
+            // block is still being validated and persisted) and must then always be joined:
+            // recovery processes the transactions in parallel, so while it is in flight any subset
+            // of senders may already be set and the first-transaction shortcut is not a reliable
+            // completion signal. The shortcut is read BEFORE the task lookup: entries are never
+            // removed from the table, so a task that set the first sender before our read is
+            // necessarily visible to the lookup, and a set sender with no task present can only
+            // come from a path that populated all senders (e.g. block production from the pool).
             Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
-                // already recovered a sender for a signed tx in this block,
-                // so we assume the rest of txs in the block are already recovered
+            bool firstSenderRecovered = firstTx.IsSigned && firstTx.SenderAddress is not null;
+
+            if (_recoveryTasks.TryGetValue(block, out Task? inFlight))
+            {
+                inFlight.GetAwaiter().GetResult();
+                return;
+            }
+
+            if (firstSenderRecovered)
+                // already recovered a sender for a signed tx in this block with no recovery task
+                // in flight, so the rest of txs in the block are already recovered
                 return;
 
-            // Recovery can be started ahead of time (e.g. by NewPayloadHandler while the block is
-            // still being validated and persisted) and joined here by the processing path. The
-            // per-block task guarantees the work runs exactly once and a joining caller never
+            // The per-block task guarantees the work runs exactly once and a joining caller never
             // observes a half-recovered transaction array. The starter runs it inline on its own
             // thread; a concurrent second caller blocks until completion, and any recovery
             // exception surfaces at the join, matching the previous inline-throw semantics.
