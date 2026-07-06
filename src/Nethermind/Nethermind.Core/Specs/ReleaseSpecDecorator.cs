@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using Nethermind.Int256;
 
@@ -79,7 +80,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual ulong Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
-    public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
@@ -106,6 +106,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
+    Array? IReleaseSpec.EvmInstructionsNoTrace { get => spec.EvmInstructionsNoTrace; set => spec.EvmInstructionsNoTrace = value; }
+    Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
@@ -114,6 +116,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7778Enabled => spec.IsEip7778Enabled;
     public virtual bool IsEip7843Enabled => spec.IsEip7843Enabled;
     public virtual bool IsEip7954Enabled => spec.IsEip7954Enabled;
+    public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
     public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public SpecGasCosts GasCosts => spec.GasCosts;
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -93,7 +94,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip5656Enabled { get; set; } = spec.IsEip5656Enabled;
         public ulong Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled { get; set; } = spec.IsEip6780Enabled;
-        public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
@@ -115,6 +115,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
+        Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
+        Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
@@ -122,6 +124,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
+        public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     }
