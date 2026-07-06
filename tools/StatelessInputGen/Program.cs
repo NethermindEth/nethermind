@@ -116,6 +116,11 @@ static async Task<int> RunCommand(Func<Task<int>> command)
     {
         return await command();
     }
+    catch (OperationCanceledException)
+    {
+        AnsiConsole.MarkupLine("[yellow]Cancelled[/]");
+        return 130; // The conventional exit code for termination by Ctrl+C
+    }
     catch (Exception ex)
     {
         AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
