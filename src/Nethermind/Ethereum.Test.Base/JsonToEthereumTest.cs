@@ -119,23 +119,6 @@ namespace Ethereum.Test.Base
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
             PrivateKey privateKey = new(transactionJson.SecretKey);
-
-            // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
-            // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
-            if (postStateJson.ExpectException is not null && postStateJson.Txbytes is not null)
-            {
-                try
-                {
-                    Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
-                    decoded.SenderAddress = privateKey.Address;
-                    return decoded;
-                }
-                catch (RlpException)
-                {
-                    // Undecodable txbytes: fall back to the template; non-signature invalidity
-                    // (e.g. intrinsic gas) is still caught by tx validation at execution time.
-                }
-            }
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
