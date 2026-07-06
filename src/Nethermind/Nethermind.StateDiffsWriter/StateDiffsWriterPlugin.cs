@@ -33,6 +33,4 @@ public class StateDiffsWriterPlugin(IStateDiffsWriterConfig config) : INethermin
         pruner.Start();
         return Task.CompletedTask;
     }
-
-    public Task InitRpcModules() => Task.CompletedTask;
 }
