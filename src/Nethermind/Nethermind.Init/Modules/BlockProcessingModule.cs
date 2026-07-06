@@ -81,6 +81,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+            .Add<IProcessingEnvBuilder, ProcessingEnvBuilder>()
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
             // in a `IMainProcessingContext`.

@@ -1,33 +1,23 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
+using System;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, Func<IProcessingEnvBuilder> envBuilder)
 {
-    public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
-    {
-        PrewarmerScopeProvider worldState = new(
-            worldStateManager.CreateResettableWorldState(),
-            preBlockCaches,
-            logManager,
-            isPrewarmer: true
-        );
-
-        ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
-        {
-            builder
-                .AddSingleton<IWorldStateScopeProvider>(worldState)
-                .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
-        });
-
-        return childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
-    }
+    public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches) =>
+        new AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv(
+            envBuilder()
+                .WithWorldState(new PrewarmerScopeProvider(
+                    worldStateManager.CreateResettableWorldState(),
+                    preBlockCaches,
+                    logManager,
+                    isPrewarmer: true))
+                .BuildAs<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv.IEnv>());
 }

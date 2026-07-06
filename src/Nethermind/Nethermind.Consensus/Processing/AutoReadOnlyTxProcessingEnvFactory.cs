@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.State;
@@ -11,29 +10,24 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
+public class AutoReadOnlyTxProcessingEnvFactory(Func<IProcessingEnvBuilder> envBuilder, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
 {
-    public IReadOnlyTxProcessorSource Create()
-    {
-        IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
-        ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
-        {
-            builder
-                .AddSingleton<IWorldStateScopeProvider>(worldState)
-                .AddSingleton<AutoReadOnlyTxProcessingEnv>();
-        });
+    public IReadOnlyTxProcessorSource Create() =>
+        new AutoReadOnlyTxProcessingEnv(envBuilder()
+            .WithWorldState(worldStateManager.CreateResettableWorldState())
+            .BuildAs<AutoReadOnlyTxProcessingEnv.IEnv>());
 
-        return childScope.Resolve<AutoReadOnlyTxProcessingEnv>();
-    }
-
-    public class AutoReadOnlyTxProcessingEnv(ITransactionProcessor transactionProcessor, IWorldState worldState, ILifetimeScope lifetimeScope) : IReadOnlyTxProcessorSource
+    public class AutoReadOnlyTxProcessingEnv(AutoReadOnlyTxProcessingEnv.IEnv env) : IReadOnlyTxProcessorSource
     {
-        public IReadOnlyTxProcessingScope Build(BlockHeader? header)
+        public interface IEnv : IDisposable
         {
-            IDisposable closer = worldState.BeginScope(header);
-            return new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
+            ITransactionProcessor TransactionProcessor { get; }
+            IWorldState WorldState { get; }
         }
 
-        public void Dispose() => lifetimeScope.Dispose();
+        public IReadOnlyTxProcessingScope Build(BlockHeader? header) =>
+            new ReadOnlyTxProcessingScope(env.TransactionProcessor, env.WorldState.BeginScope(header), env.WorldState);
+
+        public void Dispose() => env.Dispose();
     }
 }

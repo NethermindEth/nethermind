@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Autofac;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
@@ -69,7 +68,10 @@ internal class MasternodeVotingContractTests
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
+        AutoReadOnlyTxProcessingEnv.IEnv env = Substitute.For<AutoReadOnlyTxProcessingEnv.IEnv>();
+        env.TransactionProcessor.Returns(transactionProcessor);
+        env.WorldState.Returns(stateProvider);
+        AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new(env);
 
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
 
