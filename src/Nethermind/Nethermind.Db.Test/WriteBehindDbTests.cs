@@ -197,6 +197,54 @@ public class WriteBehindDbTests
         Assert.That(inner.WasTunedWith(ITunableDb.TuneType.HeavyWrite), Is.True);
     }
 
+    [Test]
+    public void OverCap_write_through_is_serialized_with_a_concurrent_drain()
+    {
+        // Regression: the over-cap write-through must not race a concurrent drain of the same key. With a
+        // 1-byte cap the second Set takes the write-through path; the gated inner blocks the drain of the
+        // stale value while the drain holds the lock, so the write-through has to wait rather than letting
+        // the drain re-commit the stale value on top of the newest one.
+        byte[] oldValue = [7];
+        GatedMemDb inner = new(oldValue);
+        using WriteBehindDb db = new(inner, maxBufferedBytes: 1);
+
+        db.Set(Key, oldValue); // buffered (cap not yet exceeded); the worker then drains and blocks in the inner write
+        Assert.That(inner.WaitUntilStaleWriteStarted(TimeSpan.FromSeconds(10)), Is.True,
+            "the background drain should reach the inner write of the buffered value");
+
+        Task overCap = Task.Run(() => db.Set(Key, Value)); // over cap -> write-through, must block on the drain lock
+        Assert.That(overCap.Wait(TimeSpan.FromMilliseconds(300)), Is.False,
+            "the over-cap write-through must not proceed while a drain holds the lock");
+
+        inner.ReleaseStaleWrite();
+
+        Assert.That(overCap.Wait(TimeSpan.FromSeconds(10)), Is.True, "write-through completes once the drain releases");
+        Assert.That(inner.Get(Key), Is.EqualTo(Value), "newest write must win, never the drained stale value");
+    }
+
+    // Blocks the drain inside the inner write of a chosen value (once) so a test can hold the drain lock while
+    // exercising the concurrent over-cap write-through path.
+    private sealed class GatedMemDb(byte[] gateValue) : MemDb
+    {
+        private readonly ManualResetEventSlim _started = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+        private int _armed = 1;
+
+        public bool WaitUntilStaleWriteStarted(TimeSpan timeout) => _started.Wait(timeout);
+        public void ReleaseStaleWrite() => _release.Set();
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is not null && Bytes.AreEqual(value, gateValue) && Interlocked.Exchange(ref _armed, 0) == 1)
+            {
+                _started.Set();
+                _release.Wait();
+            }
+
+            base.Set(key, value, flags);
+        }
+    }
+
     private sealed class ThrowOnceDb : MemDb
     {
         private int _thrown;

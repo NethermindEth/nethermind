@@ -42,13 +42,15 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
     private readonly CancellationTokenSource _cts = new();
     private readonly Lock _drainLock = new();
     private readonly Thread _worker;
+    private readonly long _maxBufferedBytes;
     private long _bufferedBytes;
     private int _disposed;
 
-    public WriteBehindDb(IDb inner, ILogManager? logManager = null, bool disposeInner = true)
+    public WriteBehindDb(IDb inner, ILogManager? logManager = null, bool disposeInner = true, long maxBufferedBytes = MaxBufferedBytes)
     {
         _inner = inner;
         _disposeInner = disposeInner;
+        _maxBufferedBytes = maxBufferedBytes;
         _logger = logManager?.GetClassLogger<WriteBehindDb>() ?? NullLogger.Instance;
         _bufferLookup = _buffer.GetAlternateLookup<ReadOnlySpan<byte>>();
         _worker = new Thread(FlushLoop) { IsBackground = true, Name = $"WriteBehind:{inner.Name}" };
@@ -63,14 +65,21 @@ public sealed class WriteBehindDb : IDb, IReadOnlyNativeKeyValueStore, ITunableD
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         // Past the cap (drain fell behind, e.g. bulk sync) or once disposed, degrade to the undecorated behavior.
-        if (Volatile.Read(ref _disposed) == 1 || Interlocked.Read(ref _bufferedBytes) >= MaxBufferedBytes)
+        if (Volatile.Read(ref _disposed) == 1 || Interlocked.Read(ref _bufferedBytes) >= _maxBufferedBytes)
         {
-            // Inner gets the new value first, then the (stale) buffer entry is dropped, so the key stays readable.
-            _inner.Set(key, value, flags);
-            if (_bufferLookup.TryGetValue(key, out byte[]? staleKey, out Entry stale) &&
-                _buffer.TryRemove(new KeyValuePair<byte[], Entry>(staleKey, stale)))
+            // Serialize with the drain: without the lock a concurrent DrainAll can commit the stale buffered
+            // value to the inner db *after* this write-through stores the new one, silently dropping the newest
+            // write. Under the lock the drain either fully precedes us (its remove empties the buffer entry so it
+            // won't be re-committed) or fully follows us. Inner gets the new value first, then the (stale) buffer
+            // entry is dropped, so the key stays readable throughout.
+            lock (_drainLock)
             {
-                Interlocked.Add(ref _bufferedBytes, -EntrySize(staleKey, stale.Value));
+                _inner.Set(key, value, flags);
+                if (_bufferLookup.TryGetValue(key, out byte[]? staleKey, out Entry stale) &&
+                    _buffer.TryRemove(new KeyValuePair<byte[], Entry>(staleKey, stale)))
+                {
+                    Interlocked.Add(ref _bufferedBytes, -EntrySize(staleKey, stale.Value));
+                }
             }
             return;
         }
