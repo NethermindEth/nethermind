@@ -736,6 +736,67 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         }
     }
 
+    // Nodes across all columns (lengths 4/10/32/64), in-range pairs under "ab" and
+    // out-of-range neighbours (aa/ac), to verify the range bounds delete only in-range nodes.
+    private static readonly (string Path, bool Deleted)[] RangeDeleteNodes =
+    [
+        ("ab00",                true),  ("abffff",               true),
+        ("ab00000000",          true),  ("abffffffffffff",        true),
+        ("ab".PadRight(32,'0'), true),  ("ab".PadRight(32, 'f'), true),
+        ("ab".PadRight(64,'0'), true),  ("ab".PadRight(64, 'f'), true),
+        ("aa00",                false), ("ac00",                  false),
+        ("aa00000000",          false), ("ac00000000",            false),
+        ("aa".PadRight(32,'0'), false), ("ac".PadRight(32, '0'), false),
+        ("aa".PadRight(64,'0'), false), ("ac".PadRight(64, '0'), false),
+    ];
+    private static readonly TreePath RangeDeleteFrom = TreePath.FromHexString("ab".PadRight(64, '0'));
+    private static readonly TreePath RangeDeleteTo = TreePath.FromHexString("ab".PadRight(64, 'f'));
+
+    [Test]
+    public void TestDeleteStateTrieNodeRange()
+    {
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in RangeDeleteNodes) writer.SetStateTrieNode(TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStateTrieNodeRange(RangeDeleteFrom, RangeDeleteTo);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in RangeDeleteNodes)
+            {
+                byte[]? node = reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
+    }
+
+    [Test]
+    public void TestDeleteStorageTrieNodeRange()
+    {
+        Hash256 account = TestItem.KeccakA;
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in RangeDeleteNodes) writer.SetStorageTrieNode(account, TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStorageTrieNodeRange(new ValueHash256(account.Bytes), RangeDeleteFrom, RangeDeleteTo);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in RangeDeleteNodes)
+            {
+                byte[]? node = reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
+    }
+
     [Test]
     public void TestAccountIterator_EnumeratesAllAccounts()
     {

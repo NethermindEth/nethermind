@@ -192,6 +192,7 @@ public class TestBlockchain : IDisposable
         public bool AddBlockOnStart = true;
         public UInt256 AccountInitialValue = InitialValue;
         public long SlotTime = 1;
+        public string? SealEngineType;
     }
 
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
@@ -207,6 +208,7 @@ public class TestBlockchain : IDisposable
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
+        builder.ConfigureTestConfiguration(conf => conf.SealEngineType = SealEngineType);
 
         Container = builder.Build();
         _fromContainer = Container.Resolve<FromContainer>();
@@ -242,7 +244,7 @@ public class TestBlockchain : IDisposable
     /// <remarks>
     /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, <c>BestPersistedState</c>, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
     /// </remarks>
     public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
@@ -361,11 +363,6 @@ public class TestBlockchain : IDisposable
             }
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
-
-            if (specProvider.SealEngine == Core.SealEngineType.AuRa)
-            {
-                genesisBlockBuilder.WithAura(0, new byte[65]);
-            }
 
             if (specProvider.GenesisSpec.IsEip4844Enabled)
             {

@@ -224,6 +224,7 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x00)
             EncodeFullStateNodeKey(firstKeyBuf, fromPath);
+            firstKeyBuf[1 + FullPathLength] = 0;
             EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
             lastKeyBuf[FullStateNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
@@ -254,6 +255,7 @@ public static class BaseTriePersistence
 
             // Delete from FallbackNodes (path length 16+, prefix 0x01)
             EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
+            firstKeyBuf[1 + StoragePrefixPortion + FullPathLength] = 0;
             EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,

@@ -739,14 +739,21 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_to_unknown_block_fails()
+    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatus.Syncing).ToUpper())); // ToDo wait for final PostMerge sync
-        AssertExecutionStatusNotChanged(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        Assert.Multiple(() =>
+        {
+            // The head must not move for an unresolvable forkchoice state, but the finalized/safe hashes
+            // are recorded so a node restarted before its first pivot update can recover without a new FCU.
+            Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(TestItem.KeccakF));
+        });
     }
 
     [Test]
@@ -2181,51 +2188,37 @@ public partial class EngineModuleTests
 
     private static readonly string[] SszRestPathsParis =
     [
-        SszRestPaths.PostV1Payloads,
-        SszRestPaths.GetV1Payloads,
-        SszRestPaths.PostV1Forkchoice,
-        SszRestPaths.PostV1Capabilities,
-        SszRestPaths.PostV1ClientVersion,
+        SszRestPaths.PostPayloads,
+        SszRestPaths.GetPayloads,
+        SszRestPaths.PostForkchoice,
+        SszRestPaths.GetCapabilities,
+        SszRestPaths.GetIdentity,
     ];
 
     private static readonly string[] SszRestPathsShanghai =
     [
-        SszRestPaths.PostV2Payloads,
-        SszRestPaths.GetV2Payloads,
-        SszRestPaths.PostV2Forkchoice,
-        SszRestPaths.PostV1PayloadBodiesByHash,
-        SszRestPaths.GetV1PayloadBodiesByRange,
+        SszRestPaths.PostBodiesByHash,
+        SszRestPaths.GetBodiesByRange,
     ];
 
     private static readonly string[] SszRestPathsCancun =
     [
-        SszRestPaths.PostV3Payloads,
-        SszRestPaths.GetV3Payloads,
-        SszRestPaths.PostV3Forkchoice,
-        SszRestPaths.PostV1Blobs,
+        SszRestPaths.PostBlobsV1,
     ];
 
-    private static readonly string[] SszRestPathsPrague =
-    [
-        SszRestPaths.PostV4Payloads,
-        SszRestPaths.GetV4Payloads,
-    ];
+    // Prague adds new method versions (newPayloadV4/getPayloadV4) but no new REST path.
+    private static readonly string[] SszRestPathsPrague = [];
 
     private static readonly string[] SszRestPathsOsaka =
     [
-        SszRestPaths.GetV5Payloads,
-        SszRestPaths.PostV2Blobs,
-        SszRestPaths.PostV3Blobs,
-        SszRestPaths.PostV4Blobs,
+        SszRestPaths.PostBlobsV2,
+        SszRestPaths.PostBlobsV3,
+        SszRestPaths.PostBlobsV4,
     ];
 
     private static readonly string[] SszRestPathsAmsterdam =
     [
-        SszRestPaths.PostV5Payloads,
-        SszRestPaths.GetV6Payloads,
-        SszRestPaths.PostV4Forkchoice,
-        SszRestPaths.PostV2PayloadBodiesByHash,
-        SszRestPaths.GetV2PayloadBodiesByRange,
+        SszRestPaths.PostPayloadsWitness,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

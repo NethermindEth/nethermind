@@ -135,6 +135,10 @@ public class TimeoutCertificateManagerTests
         Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
         yield return new TestCaseData(new TimeoutCertificate(1, [.. sigs, malleable], 0), masterNodes, false)
             .SetName("MalleableDuplicateSigner");
+
+        Signature[] highOnlySigs = sigs.Select(XdcTestHelper.CreateMalleableSignature).ToArray();
+        yield return new TestCaseData(new TimeoutCertificate(1, highOnlySigs, 0), masterNodes, false)
+            .SetName("MalleableHighSOnly");
     }
 
     [TestCaseSource(nameof(TcCases))]

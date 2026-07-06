@@ -233,7 +233,7 @@ namespace Nethermind.Facade
                 if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
                     availableForGas = UInt256.Zero;
 
-                ulong allowance = UInt256.Min(availableForGas / feeCap, ulong.MaxValue).u0;
+                ulong allowance = GasEstimator.AllowanceFromFunds(in availableForGas, in feeCap);
                 if (tx.GasLimit > allowance)
                     tx.GasLimit = allowance;
             }

@@ -708,44 +708,26 @@ public class JsonRpcSocketsClientTests
 
     private static object RandomObject(int size)
     {
-        string[] strings = RandomStringArray(size / 2);
+        byte[] rawBytes = RandomRawBytes(size / 2 * 32);
         return new GethLikeTxTrace
         {
             Entries =
             {
                 new GethTxTraceEntry
                 {
-                    Stack = strings, Memory = strings,
+                    Stack = (ReadOnlyMemory<byte>?)rawBytes, Memory = (ReadOnlyMemory<byte>?)rawBytes,
                 }
             }
         };
     }
 
-    private static string[] RandomStringArray(int length, bool runGc = true)
+    private static byte[] RandomRawBytes(int byteLength, bool runGc = true)
     {
-        string[] array = new string[length];
-        for (int i = 0; i < length; i++)
-        {
-            array[i] = RandomString(length);
-            if (runGc && i % 100 == 0)
-            {
-                GC.Collect();
-            }
-        }
-        return array;
-    }
-
-    private static string RandomString(int length)
-    {
-        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        char[] stringChars = new char[length];
         Random random = new();
-
-        for (int i = 0; i < stringChars.Length; i++)
-        {
-            stringChars[i] = chars[random.Next(chars.Length)];
-        }
-        return new string(stringChars);
+        byte[] bytes = new byte[byteLength];
+        random.NextBytes(bytes);
+        if (runGc) GC.Collect();
+        return bytes;
     }
 
     private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);

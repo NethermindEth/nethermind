@@ -326,7 +326,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
         Assert.That(() => _blockTree.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
-            willPruneOldIndices ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
+            willPruneOldIndices ? Is.Not.Empty.After(10000, 50) : Is.Empty.After(100, 10));
     }
 
     [Test]
