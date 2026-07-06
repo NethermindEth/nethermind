@@ -23,7 +23,7 @@ public sealed class PoppedAddressCache
     public Address GetOrCreate(ReadOnlySpan<byte> addressBytes)
     {
         Address? front = _entry0;
-        if (front is not null && addressBytes.SequenceEqual(front.Bytes))
+        if (front is not null && front.Equals(addressBytes))
         {
             return front;
         }
@@ -36,13 +36,13 @@ public sealed class PoppedAddressCache
     {
         // No reordering on hit: promotion would cost field writes and buys nothing at this size.
         Address? entry = _entry1;
-        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+        if (entry is not null && entry.Equals(addressBytes)) return entry;
 
         entry = _entry2;
-        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+        if (entry is not null && entry.Equals(addressBytes)) return entry;
 
         entry = _entry3;
-        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+        if (entry is not null && entry.Equals(addressBytes)) return entry;
 
         Address created = new(addressBytes);
         _entry3 = _entry2;
