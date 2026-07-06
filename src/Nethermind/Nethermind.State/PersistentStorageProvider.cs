@@ -198,9 +198,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (isTracing)
         {
-            // Reads no longer journal, so read reporting is reconstructed from the captured
-            // original values: cells also written this round get their pre-round value as the
-            // trace's Before; read-only cells are reported as reads.
             foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
             {
                 if (trace!.TryGetValue(cell, out StorageChangeTrace changeTrace))
