@@ -860,6 +860,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return default;
     }
 
+    /// <summary>
+    /// Whether a STATICCALL into the precompile at <paramref name="codeSource"/> may be executed inline
+    /// instead of building a full child call frame.
+    /// </summary>
+    /// <remarks>
+    /// The Parity touch-bug account (RIPEMD-160) is excluded because <see cref="RunPrecompile"/> records its
+    /// EIP-161 empty-account deletion, which the inline path does not replay.
+    /// </remarks>
+    protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
+        !codeSource.Equals(_parityTouchBugAccount.Address);
+
+    /// <summary>
+    /// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same
+    /// exception handling as <see cref="ExecutePrecompileCall"/>.
+    /// </summary>
+    /// <returns><c>false</c> when the precompile threw a non-fatal exception; otherwise <c>true</c> with its result in <paramref name="output"/>.</returns>
+    internal bool TryRunPrecompileDirectly(IPrecompile precompile, ReadOnlyMemory<byte> callData, IReleaseSpec spec, out Result<byte[]> output)
+    {
+        try
+        {
+            output = precompile.Run(callData, spec);
+            return true;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        {
+            if (_logger.IsError) LogMissingDependency(precompile, (exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException)!);
+            Environment.Exit(ExitCodes.MissingPrecompile);
+            throw; // Unreachable
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) LogExecutionException(precompile, exception);
+            output = default;
+            return false;
+        }
+    }
+
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
         _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
