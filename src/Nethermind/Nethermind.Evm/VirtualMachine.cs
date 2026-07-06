@@ -1118,8 +1118,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (!vmState.IsContinuation)
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
-            // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, vmState.ExecutionType, in env.Value, spec);
+
+            _worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, vmState.ExecutionType, in env.Value, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)

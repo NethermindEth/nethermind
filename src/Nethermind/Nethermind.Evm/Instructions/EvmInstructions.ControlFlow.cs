@@ -252,10 +252,10 @@ public static partial class EvmInstructions
 
         if (outOfGas) goto OutOfGas;
 
-        // Create or update the inheritor account with the transferred balance.
+        // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            state.AddToBalanceAndCreateIfNotEmpty(inheritor, in result, spec);
         }
         else if (!inheritor.Equals(executingAccount))
         {
