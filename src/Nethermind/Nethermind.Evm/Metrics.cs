@@ -95,12 +95,6 @@ public class Metrics
     private static CacheLinePaddedLong _otherSelfDestructs;
     [Description("Number of SELFDESTRUCT calls on main processing thread.")]
     public static long MainThreadSelfDestructs => _mainSelfDestructs.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSelfDestructs()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs.Value : ref _otherSelfDestructs.Value);
-    }
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
@@ -109,12 +103,6 @@ public class Metrics
     private static CacheLinePaddedLong _otherCalls;
     [Description("Number of calls to other contracts on main processing thread.")]
     public static long MainThreadCalls => _mainCalls.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementCalls()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls.Value : ref _otherCalls.Value);
-    }
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
@@ -123,12 +111,6 @@ public class Metrics
     private static CacheLinePaddedLong _otherSLoadOpcode;
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
     public static long MainThreadSLoadOpcode => _mainSLoadOpcode.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSLoadOpcode()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value);
-    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
@@ -137,12 +119,6 @@ public class Metrics
     private static CacheLinePaddedLong _otherSStoreOpcode;
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
     public static long MainThreadSStoreOpcode => _mainSStoreOpcode.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSStoreOpcode()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode.Value : ref _otherSStoreOpcode.Value);
-    }
 
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
@@ -243,12 +219,6 @@ public class Metrics
     private static CacheLinePaddedLong _mainStorageDeleted;
     private static CacheLinePaddedLong _otherStorageDeleted;
     internal static long MainThreadStorageDeleted => _mainStorageDeleted.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void IncrementStorageDeleted()
-    {
-        if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageDeleted.Value : ref _otherStorageDeleted.Value);
-    }
 
     [CounterMetric]
     [Description("Number of code writes during execution.")]
