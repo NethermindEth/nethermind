@@ -610,6 +610,7 @@ public partial class EngineModuleTests
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
             SlotNumber = (ulong?)(head.Number + 1),
+            TargetGasLimit = head.GasLimit,
         };
 
         Hash256 headHash = head.Hash!;
