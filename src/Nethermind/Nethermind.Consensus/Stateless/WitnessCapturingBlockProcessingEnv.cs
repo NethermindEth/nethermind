@@ -9,7 +9,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -35,11 +34,10 @@ namespace Nethermind.Consensus.Stateless;
 public sealed class WitnessCapturingBlockProcessingEnv(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
-    IHeaderStore headerStore,
-    IBlockValidationModule[] validationModules) : IDisposable
+    IHeaderStore headerStore) : IDisposable
 {
     private readonly Lazy<IGraph> _graph = new(() =>
-        Build(rootLifetimeScope, worldStateManager, headerStore, validationModules));
+        Build(rootLifetimeScope, worldStateManager, headerStore));
 
     /// <summary>The witness-wired block processor; the same instance is reused for every witnessed block.</summary>
     public IBlockProcessor Processor => _graph.Value.Processor;
@@ -64,8 +62,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
     private static IGraph Build(
         ILifetimeScope rootLifetimeScope,
         IWorldStateManager worldStateManager,
-        IHeaderStore headerStore,
-        IBlockValidationModule[] validationModules)
+        IHeaderStore headerStore)
     {
         IWorldState parentWorldState = rootLifetimeScope.Resolve<IMainProcessingContext>().WorldState;
 
@@ -79,13 +76,11 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             headerStore);
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
 
-        // Off the root scope (not the main-processing child) to avoid inheriting the selector decorator; the recorder is
-        // registered by instance so the decorator wraps the captured parent rather than re-resolving itself (no cycle).
         return new ProcessingEnvBuilder(rootLifetimeScope)
-            .WithWorldState(recorder)                        // wraps the shared main-pipeline world state
-            .WithComponent(recorder)                         // exposed as WitnessGeneratingWorldState
+            .WithWorldState(recorder)
+            .WithComponent(recorder)
             .WithComponent(headerRecorder)
-            .ThatDisposes(trieStore)                         // the env owns the witness-walk trie store
+            .ThatDisposes(trieStore)
             .WithReplacedComponent<IHeaderFinder>(recordingFinder)
             .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
             .WithReplacedComponent<ICodeInfoRepository, CodeInfoRepository>()
@@ -98,8 +93,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
                 transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
-            .Configure(builder => builder.AddModule(validationModules))
+            .WithBlockValidationConfiguration()
             .BuildAs<IGraph>();
     }
 

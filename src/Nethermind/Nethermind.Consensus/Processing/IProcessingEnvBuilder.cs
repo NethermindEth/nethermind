@@ -79,6 +79,14 @@ public interface IProcessingEnvBuilder
     IProcessingEnvBuilder ThatDisposes(IDisposable disposable);
 
     /// <summary>
+    /// Applies the registered <c>IBlockValidationModule</c>s (the validation transaction executor and
+    /// related wiring) to the environment's scope; everything else is inherited from the parent scope
+    /// and re-resolved against the environment's world state. The modules are resolved from the builder's
+    /// parent scope, so callers do not pass them.
+    /// </summary>
+    IProcessingEnvBuilder WithBlockValidationConfiguration();
+
+    /// <summary>
     /// Escape hatch to apply arbitrary registrations to the environment's child scope (decorators,
     /// composites, whole modules) that the typed shortcuts do not cover.
     /// </summary>

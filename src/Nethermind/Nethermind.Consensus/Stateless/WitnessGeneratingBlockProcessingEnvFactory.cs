@@ -12,7 +12,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -40,7 +39,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
     IDbProvider dbProvider,
-    IBlockValidationModule[] validationModules,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory, IDisposable
 {
     // LIFO so the warmest (most-recently-returned) entry is reused first.
@@ -102,7 +100,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
                 transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
             .WithReplacedComponent<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>()
-            .Configure(builder => builder.AddModule(validationModules))
+            .WithBlockValidationConfiguration()
             .BuildAs<IEnvComponents>();
 
         return new PooledEntry(graph, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState);

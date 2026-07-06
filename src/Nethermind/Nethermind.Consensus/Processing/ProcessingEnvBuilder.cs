@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Processing;
@@ -57,6 +58,9 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
 
     public IProcessingEnvBuilder WithComponent<T>(T instance) where T : class =>
         Configure(builder => builder.AddScoped<T>(instance));
+
+    public IProcessingEnvBuilder WithBlockValidationConfiguration() =>
+        Configure(builder => builder.AddModule(parentScope.Resolve<IBlockValidationModule[]>()));
 
     public TWrapper BuildAs<TWrapper>() where TWrapper : class
     {
