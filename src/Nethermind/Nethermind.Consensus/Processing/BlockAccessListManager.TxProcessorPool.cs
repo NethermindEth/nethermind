@@ -48,6 +48,18 @@ public partial class BlockAccessListManager
         TracedAccessWorldState WorldState { get; }
         ITransactionProcessor TxProcessor { get; }
         ITransactionProcessorAdapter TxProcessorAdapter { get; }
+
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader);
+        void ClearParentReader();
+    }
+
+    /// <summary>
+    /// Builds <see cref="IBalProcessingEnv"/> workers bound to the block-processing state. One
+    /// factory backs both pools; the <c>parallel</c> flag selects BAL-backed vs plain world state.
+    /// </summary>
+    private interface IBalProcessingEnvFactory
+    {
+        IBalProcessingEnv Create(bool parallel);
     }
 
     private interface ITxProcessorWithWorldStateManager : IDisposable
@@ -84,39 +96,24 @@ public partial class BlockAccessListManager
         private BlockHeader? _parentStateHeader;
 
         // _inUse[i] is the processor currently bound to balIndex i.
-        private TxProcessorWithWorldState?[] _inUse = new TxProcessorWithWorldState?[DefaultTxCount];
+        private IBalProcessingEnv?[] _inUse = new IBalProcessingEnv?[DefaultTxCount];
 
         // _perTxBal[i] holds its detached BAL until the validator merges it in order.
         private BlockAccessListAtIndex?[] _perTxBal = new BlockAccessListAtIndex?[DefaultTxCount];
 
         // processors are not shared statically between BAL managers
-        private readonly ConcurrentQueue<TxProcessorWithWorldState> _processors = [];
-        private readonly IBlockhashProvider _blockHashProvider;
-        private readonly ISpecProvider _specProvider;
-        private readonly IWorldState _stateProvider;
-        private readonly ILogManager _logManager;
-        private readonly ITransactionProcessorFactory _txProcessorFactory;
+        private readonly ConcurrentQueue<IBalProcessingEnv> _processors = [];
+        private readonly IBalProcessingEnvFactory _envFactory;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
-        private readonly CodeInfoRepositoryFactory _codeInfoRepositoryFactory;
 
         public ParallelTxProcessorWithWorldStateManager(
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
-            IWorldState stateProvider,
-            ILogManager logManager,
+            IBalProcessingEnvFactory envFactory,
             PrewarmerEnvFactory? prewarmerEnvFactory,
             PreBlockCaches? preBlockCaches,
-            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
-            ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
+            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
         {
-            _blockHashProvider = blockHashProvider;
-            _specProvider = specProvider;
-            _stateProvider = stateProvider;
-            _logManager = logManager;
-            _txProcessorFactory = txProcessorFactory;
-            _codeInfoRepositoryFactory = codeInfoRepositoryFactory;
+            _envFactory = envFactory;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -158,10 +155,10 @@ public partial class BlockAccessListManager
 
             // Re-entrant Get for the same balIndex returns the already-acquired processor
             // (lets pre/post callers share state across calls — main thread only).
-            TxProcessorWithWorldState? existing = _inUse[idx];
+            IBalProcessingEnv? existing = _inUse[idx];
             if (existing is not null) return existing;
 
-            TxProcessorWithWorldState processor = RentProcessor();
+            IBalProcessingEnv processor = RentProcessor();
             ParentReaderLease? parentReader = RentParentReader();
 
             try
@@ -195,7 +192,7 @@ public partial class BlockAccessListManager
         {
             int idx = ClampBalIndex(balIndex);
 
-            TxProcessorWithWorldState? processor = _inUse[idx];
+            IBalProcessingEnv? processor = _inUse[idx];
             if (processor is null) return;
 
             _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
@@ -241,12 +238,11 @@ public partial class BlockAccessListManager
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
-        private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
+        private IBalProcessingEnv NewProcessor() => _envFactory.Create(parallel: true);
 
-        private TxProcessorWithWorldState RentProcessor()
+        private IBalProcessingEnv RentProcessor()
         {
-            if (Volatile.Read(ref _processorCount) > 0 && _processors.TryDequeue(out TxProcessorWithWorldState? p))
+            if (Volatile.Read(ref _processorCount) > 0 && _processors.TryDequeue(out IBalProcessingEnv? p))
             {
                 Interlocked.Decrement(ref _processorCount);
                 return p;
@@ -254,7 +250,7 @@ public partial class BlockAccessListManager
             return NewProcessor();
         }
 
-        private void ReturnProcessor(TxProcessorWithWorldState p)
+        private void ReturnProcessor(IBalProcessingEnv p)
         {
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
@@ -342,17 +338,11 @@ public partial class BlockAccessListManager
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
     {
-        private readonly TxProcessorWithWorldState _txProcessorWithWorldState;
+        private readonly IBalProcessingEnv _txProcessorWithWorldState;
 
-        public SequentialTxProcessorWithWorldStateManager(
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
-            IWorldState stateProvider,
-            ILogManager logManager,
-            ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
+        public SequentialTxProcessorWithWorldStateManager(IBalProcessingEnvFactory envFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
+            _txProcessorWithWorldState = envFactory.Create(parallel: false);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -378,6 +368,19 @@ public partial class BlockAccessListManager
             target?.Merge(slice);
             onSlice?.Invoke(slice);
         }
+    }
+
+    /// <summary>Default <see cref="IBalProcessingEnvFactory"/> producing <see cref="TxProcessorWithWorldState"/> workers.</summary>
+    private sealed class BalProcessingEnvFactory(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        IWorldState stateProvider,
+        ILogManager logManager,
+        ITransactionProcessorFactory txProcessorFactory,
+        CodeInfoRepositoryFactory codeInfoRepositoryFactory) : IBalProcessingEnvFactory
+    {
+        public IBalProcessingEnv Create(bool parallel)
+            => new TxProcessorWithWorldState(parallel, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
     }
 
     private class TxProcessorWithWorldState : IBalProcessingEnv

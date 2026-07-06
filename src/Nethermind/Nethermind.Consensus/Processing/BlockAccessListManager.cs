@@ -57,11 +57,14 @@ public partial class BlockAccessListManager(
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+        new(() => new(
+            new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
+                transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory),
+            prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+        new(() => new(
+            new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
+                transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory)));
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;
