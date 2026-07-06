@@ -41,6 +41,10 @@ public interface IProcessingEnvBuilder
 
     IProcessingEnvBuilder WithComponent<T>() where T : notnull;
 
+    IProcessingEnvBuilder WithComponent<TService, TImpl>() where TImpl : TService where TService : notnull;
+
+    IProcessingEnvBuilder WithDecorator<TService, TDecorator>() where TService : class where TDecorator : TService;
+
     IProcessingEnvBuilder ThatDisposes(IDisposable disposable);
 
     IProcessingEnvBuilder WithBlockValidationConfiguration();
@@ -60,4 +64,10 @@ public interface IProcessingEnvBuilder
     IProcessingEnvBuilder OwnedByParentLifetime();
 
     TWrapper BuildAs<TWrapper>() where TWrapper : class;
+
+    /// <summary>
+    /// Builds the environment and resolves <typeparamref name="T"/> from its scope. Requires
+    /// <see cref="OwnedByParentLifetime"/>, since the returned component cannot dispose the scope itself.
+    /// </summary>
+    T Build<T>() where T : notnull;
 }

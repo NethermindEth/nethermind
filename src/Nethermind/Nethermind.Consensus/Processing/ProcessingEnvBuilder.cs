@@ -81,6 +81,12 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
     public IProcessingEnvBuilder WithComponent<T>() where T : notnull =>
         Configure(builder => builder.AddScoped<T>());
 
+    public IProcessingEnvBuilder WithComponent<TService, TImpl>() where TImpl : TService where TService : notnull =>
+        Configure(builder => builder.AddScoped<TService, TImpl>());
+
+    public IProcessingEnvBuilder WithDecorator<TService, TDecorator>() where TService : class where TDecorator : TService =>
+        Configure(builder => builder.AddDecorator<TService, TDecorator>());
+
     public IProcessingEnvBuilder WithBlockValidationConfiguration() =>
         Configure(builder => builder.AddModule(_parentScope.Resolve<IBlockValidationModule[]>()));
 
@@ -93,6 +99,14 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
 
     public TWrapper BuildAs<TWrapper>() where TWrapper : class =>
         ProcessingEnvWrapperFactory.Create<TWrapper>(BuildScope(), ownedExternally: _ownedByParent);
+
+    public T Build<T>() where T : notnull
+    {
+        if (!_ownedByParent)
+            throw new InvalidOperationException(
+                $"{nameof(Build)}<T> returns a resolved component that cannot dispose its scope; call {nameof(OwnedByParentLifetime)} so the parent lifetime owns it.");
+        return BuildScope().Resolve<T>();
+    }
 
     private ILifetimeScope BuildScope()
     {

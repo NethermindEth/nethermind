@@ -41,7 +41,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
 
-        IEnv env = envBuilder
+        return envBuilder
             .WithOverridableEnv() // worldstate related override here
             .ThatDisposes(editableDbProvider)
             .WithComponent<IReadOnlyDbProvider>(editableDbProvider)
@@ -52,27 +52,18 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .WithReplacedComponent<IBlockhashCache, BlockhashCache>()
             .WithBlockValidationConfiguration()
             .WithReplacedComponent<IUnresolvedBlockhashPolicy, NullUnresolvedBlockhashPolicy>()
-            // Decorators and Bind have no With* equivalent, so they stay in Configure.
-            .Configure((builder) => builder
-                .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
-                .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
-                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
-                .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>())
+            .WithDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
+            .WithDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
+            .WithDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+            .WithDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
             .WithReplacedComponent<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .WithComponent<IReceiptStorage>(NullReceiptStorage.Instance)
             .WithComponent<SimulateRequestState>()
+            // BindScoped has no With* equivalent: IBlobBaseFeeOverrideProvider must share the SimulateRequestState instance.
             .Configure((builder) => builder.BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>())
-            .WithComponent<SimulateReadOnlyBlocksProcessingEnv>()
+            .WithComponent<ISimulateReadOnlyBlocksProcessingEnv, SimulateReadOnlyBlocksProcessingEnv>()
             .OwnedByParentLifetime()
-            .BuildAs<IEnv>();
-
-        return env.Env;
-    }
-
-    // The built scope is owned by the parent lifetime; the wrapper only surfaces the resolved env.
-    public interface IEnv
-    {
-        SimulateReadOnlyBlocksProcessingEnv Env { get; }
+            .Build<ISimulateReadOnlyBlocksProcessingEnv>();
     }
 
     private static BlockTree CreateTempBlockTree(

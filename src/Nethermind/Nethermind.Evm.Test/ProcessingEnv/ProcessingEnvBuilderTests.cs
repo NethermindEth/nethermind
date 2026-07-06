@@ -65,6 +65,11 @@ public interface IOwnedTrackerEnv
     ProcessingEnvBuilderTests.TrackingDisposable Tracker { get; }
 }
 
+public interface IGreeterEnv : IDisposable
+{
+    ProcessingEnvBuilderTests.IGreeter Greeter { get; }
+}
+
 [Parallelizable(ParallelScope.All)]
 public class ProcessingEnvBuilderTests
 {
@@ -266,6 +271,47 @@ public class ProcessingEnvBuilderTests
     }
 
     [Test]
+    public void WithComponent_type_impl_registers_the_service_and_WithDecorator_wraps_it()
+    {
+        using IContainer container = BuildContainer();
+
+        using IGreeterEnv env = container.Resolve<IProcessingEnvBuilder>()
+            .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+            .WithComponent<IGreeter, Greeter>()
+            .WithDecorator<IGreeter, ShoutingGreeter>()
+            .BuildAs<IGreeterEnv>();
+
+        Assert.That(env.Greeter.Greet(), Is.EqualTo("HI")); // ShoutingGreeter wraps Greeter
+    }
+
+    [Test]
+    public void Build_resolves_the_component_but_requires_owned_by_parent_lifetime()
+    {
+        using IContainer container = BuildContainer();
+
+        // Build<T> returns a bare component that cannot dispose its scope, so it needs OwnedByParentLifetime.
+        Assert.That(
+            () => container.Resolve<IProcessingEnvBuilder>()
+                .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                .Build<IWorldState>(),
+            Throws.TypeOf<InvalidOperationException>());
+
+        TrackingDisposable tracker;
+        using (ILifetimeScope parent = container.BeginLifetimeScope())
+        {
+            tracker = parent.Resolve<IProcessingEnvBuilder>()
+                .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                .WithComponent<TrackingDisposable>()
+                .OwnedByParentLifetime()
+                .Build<TrackingDisposable>();
+
+            Assert.That(tracker.Disposed, Is.False);
+        }
+
+        Assert.That(tracker.Disposed, Is.True); // the built component's scope was disposed with the parent
+    }
+
+    [Test]
     public void Non_property_member_throws_during_build()
     {
         using IContainer container = BuildContainer();
@@ -288,5 +334,20 @@ public class ProcessingEnvBuilderTests
     {
         public bool Disposed { get; private set; }
         public void Dispose() => Disposed = true;
+    }
+
+    public interface IGreeter
+    {
+        string Greet();
+    }
+
+    public sealed class Greeter : IGreeter
+    {
+        public string Greet() => "hi";
+    }
+
+    public sealed class ShoutingGreeter(IGreeter inner) : IGreeter
+    {
+        public string Greet() => inner.Greet().ToUpperInvariant();
     }
 }
