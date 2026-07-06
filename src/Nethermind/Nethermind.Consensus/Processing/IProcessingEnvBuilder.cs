@@ -60,10 +60,11 @@ public interface IProcessingEnvBuilder
     /// </summary>
     /// <remarks>
     /// <typeparamref name="TWrapper"/> must be a <b>public</b> interface exposing only read-only
-    /// properties plus <see cref="IDisposable"/>; the implementation is generated once per interface at
-    /// runtime and cached. Every property is resolved from the scope when the wrapper is constructed, so
-    /// a missing registration surfaces here (fail-fast).
+    /// properties plus <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> (so the scope is
+    /// released); the implementation is generated once per interface at runtime and cached. Every
+    /// property is resolved from the scope when the wrapper is constructed, so a missing registration
+    /// surfaces here (fail-fast).
     /// </remarks>
     /// <exception cref="InvalidOperationException">No world state was specified via <c>WithWorldState</c>.</exception>
-    TWrapper BuildAs<TWrapper>() where TWrapper : class, IDisposable;
+    TWrapper BuildAs<TWrapper>() where TWrapper : class;
 }

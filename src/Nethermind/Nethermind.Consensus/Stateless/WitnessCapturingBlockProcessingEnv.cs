@@ -79,46 +79,52 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             headerStore);
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
 
-        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            // Registered by instance, so the decorator wraps the captured parent instance rather than re-resolving itself (no cycle).
-            .AddScoped<IWorldState>(recorder)
-            .AddScoped<IHeaderFinder>(recordingFinder)
-            .AddScoped<IBlockhashCache, BlockhashCache>()
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
-                ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
-            .AddModule(validationModules));
+        // Off the root scope (not the main-processing child) to avoid inheriting the selector decorator; the recorder is
+        // registered by instance so the decorator wraps the captured parent rather than re-resolving itself (no cycle).
+        IWitnessGraph env = new ProcessingEnvBuilder(rootLifetimeScope)
+            .WithWorldState(recorder)
+            .Configure(builder => builder
+                .AddScoped<IHeaderFinder>(recordingFinder)
+                .AddScoped<IBlockhashCache, BlockhashCache>()
+                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+                .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                    ctx.Resolve<IWorldState>(),
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IBlockhashProvider>(),
+                    ctx.Resolve<ILogManager>(),
+                    ctx.Resolve<IBlocksConfig>(),
+                    ctx.Resolve<IWithdrawalProcessorFactory>(),
+                    codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                    transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+                // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
+                .AddModule(validationModules))
+            .BuildAs<IWitnessGraph>();
 
-        IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
-        IBlockhashCache blockhashCache = scope.Resolve<IBlockhashCache>();
-        return new Graph(scope, trieStore, recorder, headerRecorder, processor, blockhashCache);
+        return new Graph(env, trieStore, recorder, headerRecorder);
     }
 
-    /// <summary>The witness bundle plus the scope and witness-walk trie store whose lifetime it owns.</summary>
+    /// <summary>The resolved witness components; disposing it disposes the underlying child scope.</summary>
+    public interface IWitnessGraph : IDisposable
+    {
+        IBlockProcessor Processor { get; }
+        IBlockhashCache BlockhashCache { get; }
+    }
+
+    /// <summary>The witness bundle plus the witness-walk trie store whose lifetime it owns alongside the env scope.</summary>
     private sealed class Graph(
-        ILifetimeScope scope,
+        IWitnessGraph env,
         IReadOnlyTrieStore trieStore,
         WitnessGeneratingWorldState recorder,
-        WitnessHeaderRecorder headerRecorder,
-        IBlockProcessor processor,
-        IBlockhashCache blockhashCache) : IDisposable
+        WitnessHeaderRecorder headerRecorder) : IDisposable
     {
         public WitnessGeneratingWorldState Recorder => recorder;
         public WitnessHeaderRecorder HeaderRecorder => headerRecorder;
-        public IBlockProcessor Processor => processor;
-        public IBlockhashCache BlockhashCache => blockhashCache;
+        public IBlockProcessor Processor => env.Processor;
+        public IBlockhashCache BlockhashCache => env.BlockhashCache;
 
         public void Dispose()
         {
-            try { scope.Dispose(); }
+            try { env.Dispose(); }
             finally { trieStore.Dispose(); }
         }
     }

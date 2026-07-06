@@ -40,7 +40,7 @@ public class ProcessingEnvBuilder(ILifetimeScope parentScope) : IProcessingEnvBu
     public IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class =>
         Configure(builder => builder.AddScoped<T>(instance));
 
-    public TWrapper BuildAs<TWrapper>() where TWrapper : class, IDisposable
+    public TWrapper BuildAs<TWrapper>() where TWrapper : class
     {
         if (!_worldStateConfigured)
             throw new InvalidOperationException(

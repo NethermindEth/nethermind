@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
@@ -36,23 +37,27 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockProducerEnv CreatePersistent()
         {
-            ILifetimeScope scope = BeginScope(out IBlockProducerEnv blockProducerEnv);
-            rootLifetime.Disposer.AddInstanceForAsyncDisposal(scope);
-            return blockProducerEnv;
+            IEnvHandle handle = BeginScope();
+            rootLifetime.Disposer.AddInstanceForAsyncDisposal(handle);
+            return handle.Env;
         }
 
         public ScopedBlockProducerEnv CreateTransient()
         {
-            ILifetimeScope scope = BeginScope(out IBlockProducerEnv blockProducerEnv);
-            return new ScopedBlockProducerEnv(blockProducerEnv, scope);
+            IEnvHandle handle = BeginScope();
+            return new ScopedBlockProducerEnv(handle.Env, handle);
         }
 
-        private ILifetimeScope BeginScope(out IBlockProducerEnv blockProducerEnv)
+        private IEnvHandle BeginScope() =>
+            new ProcessingEnvBuilder(rootLifetime)
+                .WithWorldState(CreateWorldState())
+                .Configure(builder => ConfigureBuilder(builder))
+                .BuildAs<IEnvHandle>();
+
+        /// <summary>Owns the block-producer child scope; disposing it (async) disposes the scope.</summary>
+        public interface IEnvHandle : IAsyncDisposable
         {
-            IWorldStateScopeProvider worldState = CreateWorldState();
-            ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder => ConfigureBuilder(builder).AddScoped(worldState));
-            blockProducerEnv = scope.Resolve<IBlockProducerEnv>();
-            return scope;
+            IBlockProducerEnv Env { get; }
         }
     }
 }

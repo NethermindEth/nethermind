@@ -9,6 +9,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 
 namespace Nethermind.Consensus.Processing;
@@ -17,12 +18,13 @@ namespace Nethermind.Consensus.Processing;
 /// Generates and caches, once per wrapper interface, a concrete class that surfaces an Autofac
 /// <see cref="ILifetimeScope"/> as that interface: the constructor resolves every read-only property
 /// from the scope into a backing field, each getter returns that field, and
-/// <see cref="IDisposable.Dispose"/> disposes the scope.
+/// <see cref="IDisposable.Dispose"/> / <see cref="IAsyncDisposable.DisposeAsync"/> dispose the scope.
 /// </summary>
 /// <remarks>
-/// The generated type lives in a dynamic assembly, so a wrapper interface must be <b>public</b>.
-/// Components are resolved eagerly at construction (like the constructor-injected <c>record</c> bundles
-/// this replaces), so any missing registration surfaces when the wrapper is built.
+/// The generated type lives in a dynamic assembly, so a wrapper interface must be <b>public</b>, and it
+/// must implement <see cref="IDisposable"/> and/or <see cref="IAsyncDisposable"/> so the scope is
+/// released. Components are resolved eagerly at construction (like the constructor-injected
+/// <c>record</c> bundles this replaces), so any missing registration surfaces when the wrapper is built.
 /// </remarks>
 internal static class ProcessingEnvWrapperFactory
 {
@@ -40,6 +42,8 @@ internal static class ProcessingEnvWrapperFactory
         typeof(Type).GetMethod(nameof(Type.GetTypeFromHandle))!;
     private static readonly MethodInfo DisposeMethod =
         typeof(IDisposable).GetMethod(nameof(IDisposable.Dispose))!;
+    private static readonly MethodInfo DisposeAsyncMethod =
+        typeof(IAsyncDisposable).GetMethod(nameof(IAsyncDisposable.DisposeAsync))!;
 
     /// <summary>
     /// Returns an implementation of <typeparamref name="TWrapper"/> backed by <paramref name="scope"/>.
@@ -53,8 +57,14 @@ internal static class ProcessingEnvWrapperFactory
     private static bool IsDispose(MethodInfo method) =>
         method.Name == nameof(IDisposable.Dispose) && method.ReturnType == typeof(void) && method.GetParameters().Length == 0;
 
+    private static bool IsDisposeAsync(MethodInfo method) =>
+        method.Name == nameof(IAsyncDisposable.DisposeAsync) && method.ReturnType == typeof(ValueTask) && method.GetParameters().Length == 0;
+
     private static Func<ILifetimeScope, object> Emit(Type iface)
     {
+        if (!typeof(IDisposable).IsAssignableFrom(iface) && !typeof(IAsyncDisposable).IsAssignableFrom(iface))
+            throw new ArgumentException($"'{iface}' must implement IDisposable or IAsyncDisposable so its backing scope is released.", nameof(iface));
+
         // Unique suffix so a concurrent GetOrAdd re-entry never collides on the module type name.
         TypeBuilder type = Module.DefineType(
             $"{iface.Name}_Env_{Interlocked.Increment(ref _typeCounter)}",
@@ -120,6 +130,13 @@ internal static class ProcessingEnvWrapperFactory
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, scope);
             il.Emit(OpCodes.Callvirt, DisposeMethod);
+            il.Emit(OpCodes.Ret);
+        }
+        else if (IsDisposeAsync(method))
+        {
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, scope);
+            il.Emit(OpCodes.Callvirt, DisposeAsyncMethod);
             il.Emit(OpCodes.Ret);
         }
         else if (IsGetter(method))

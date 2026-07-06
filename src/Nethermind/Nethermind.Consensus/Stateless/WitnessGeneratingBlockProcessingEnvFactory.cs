@@ -84,29 +84,36 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            .AddScoped<IStateReader>(stateReader)
-            .AddScoped<IWorldState>(witnessWorldState)
-            .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
-            .AddScoped<IHeaderFinder>(capturingHeaderFinder)
-            .AddScoped<IBlockhashCache, BlockhashCache>()
-            .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
-                ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-            .AddModule(validationModules)
-            .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
+        IEnvComponents graph = new ProcessingEnvBuilder(rootLifetimeScope)
+            .WithWorldState(witnessWorldState)
+            .Configure(builder => builder
+                .AddScoped<IStateReader>(stateReader)
+                .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
+                .AddScoped<IHeaderFinder>(capturingHeaderFinder)
+                .AddScoped<IBlockhashCache, BlockhashCache>()
+                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+                .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                    ctx.Resolve<IWorldState>(),
+                    ctx.Resolve<ISpecProvider>(),
+                    ctx.Resolve<IBlockhashProvider>(),
+                    ctx.Resolve<ILogManager>(),
+                    ctx.Resolve<IBlocksConfig>(),
+                    ctx.Resolve<IWithdrawalProcessorFactory>(),
+                    codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                    transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+                .AddModule(validationModules)
+                .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>())
+            .BuildAs<IEnvComponents>();
 
-        IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
-        IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(graph, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState);
+    }
+
+    /// <summary>The resolved env components; disposing it disposes the underlying child scope.</summary>
+    public interface IEnvComponents : IDisposable
+    {
+        IWitnessGeneratingBlockProcessingEnv Env { get; }
+        IBlockhashCache BlockhashCache { get; }
     }
 
     private void Return(PooledEntry entry)
@@ -154,21 +161,18 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     }
 
     private sealed class PooledEntry(
-        ILifetimeScope scope,
+        IEnvComponents graph,
         IReadOnlyTrieStore trieStore,
         IReadOnlyDbProvider dbProvider,
         WitnessHeaderRecorder headerRecorder,
-        WitnessGeneratingWorldState worldState,
-        IBlockhashCache blockhashCache,
-        IWitnessGeneratingBlockProcessingEnv env) : IDisposable
+        WitnessGeneratingWorldState worldState) : IDisposable
     {
-        public ILifetimeScope Scope { get; } = scope;
-        public IWitnessGeneratingBlockProcessingEnv Env { get; } = env;
+        public IWitnessGeneratingBlockProcessingEnv Env => graph.Env;
 
         /// <summary>Tears down the Autofac scope first, then the manually-created read-only trie store it borrowed.</summary>
         public void Dispose()
         {
-            Scope.Dispose();
+            graph.Dispose();
             trieStore.Dispose();
         }
 
@@ -179,7 +183,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             headerRecorder.Reset();
             worldState.Reset();
             dbProvider.ClearTempChanges();
-            blockhashCache.Clear();
+            graph.BlockhashCache.Clear();
         }
     }
 

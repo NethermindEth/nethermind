@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
@@ -22,6 +23,11 @@ public interface ITestProcessingEnv : IDisposable
 }
 
 public interface ITrackerEnv : IDisposable
+{
+    ProcessingEnvBuilderTests.TrackingDisposable Tracker { get; }
+}
+
+public interface IAsyncTrackerEnv : IAsyncDisposable
 {
     ProcessingEnvBuilderTests.TrackingDisposable Tracker { get; }
 }
@@ -65,6 +71,24 @@ public class ProcessingEnvBuilderTests
                    .BuildAs<ITrackerEnv>())
         {
             tracker = env.Tracker; // force construction inside the scope
+            Assert.That(tracker.Disposed, Is.False);
+        }
+
+        Assert.That(tracker.Disposed, Is.True);
+    }
+
+    [Test]
+    public async Task DisposeAsync_disposes_the_child_scope()
+    {
+        using IContainer container = BuildContainer();
+
+        TrackingDisposable tracker;
+        await using (IAsyncTrackerEnv env = container.Resolve<IProcessingEnvBuilder>()
+                   .WithWorldState(container.Resolve<IWorldStateManager>().CreateResettableWorldState())
+                   .Configure(builder => builder.AddScoped<TrackingDisposable>())
+                   .BuildAs<IAsyncTrackerEnv>())
+        {
+            tracker = env.Tracker;
             Assert.That(tracker.Disposed, Is.False);
         }
 
