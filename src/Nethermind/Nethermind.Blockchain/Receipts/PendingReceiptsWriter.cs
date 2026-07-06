@@ -27,6 +27,11 @@ namespace Nethermind.Blockchain.Receipts;
 internal sealed class PendingReceiptsWriter : IDisposable
 {
     private readonly IDb _column;
+    // Batch a short window of blocks per flush so the worker wakes about once per window rather than once
+    // per block; per-block wake-ups otherwise preempt (and add jitter to) the parallel block-processing path.
+    private const int FlushBatchIntervalMs = 200;
+    private const int FlushBatchMaxEntries = 128;
+
     private readonly ConcurrentDictionary<byte[], Entry> _pending = new((IEqualityComparer<byte[]>)Bytes.EqualityComparer);
     private readonly ConcurrentDictionary<byte[], Entry>.AlternateLookup<ReadOnlySpan<byte>> _pendingBySpan;
     private readonly SemaphoreSlim _signal = new(0);
@@ -39,7 +44,8 @@ internal sealed class PendingReceiptsWriter : IDisposable
     {
         _column = column;
         _pendingBySpan = _pending.GetAlternateLookup<ReadOnlySpan<byte>>();
-        _worker = new Thread(FlushLoop) { IsBackground = true, Name = "ReceiptsFlush" };
+        // Below-normal so a flush yields to block-processing threads rather than preempting them.
+        _worker = new Thread(FlushLoop) { IsBackground = true, Name = "ReceiptsFlush", Priority = ThreadPriority.BelowNormal };
         _worker.Start();
     }
 
@@ -92,6 +98,9 @@ internal sealed class PendingReceiptsWriter : IDisposable
             try
             {
                 _signal.Wait(token);
+                // Let a batch of blocks accumulate before draining (unless the buffer is already large), so the
+                // worker wakes ~once per window instead of once per block. Cancellation ends the window promptly.
+                if (_pending.Count < FlushBatchMaxEntries && token.WaitHandle.WaitOne(FlushBatchIntervalMs)) return;
                 while (_signal.CurrentCount > 0) _signal.Wait(0); // coalesce pending signals into one drain
                 DrainAll();
             }
