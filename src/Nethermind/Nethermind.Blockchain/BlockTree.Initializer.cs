@@ -339,21 +339,64 @@ public partial class BlockTree
 
             SetHeadBlock(startBlock.Hash);
         }
+        else if (persistedNumber is not null)
+        {
+            // The reorg-boundary pointer is durable but its block data was lost from a write-behind buffer on an
+            // unclean crash; recover to the newest fully-durable canonical ancestor rather than booting to genesis.
+            SetHeadToLastLoadableAncestor(persistedNumber.Value);
+        }
     }
 
     private void SetHeadBlock(Hash256 headHash)
     {
-        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException(
-                "An attempt to set a head block that has not been stored in the DB.");
-        ChainLevelInfo? level = LoadLevel(headBlock.Number);
+        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None);
+        ChainLevelInfo? level = headBlock is null ? null : LoadLevel(headBlock.Number);
         int? index = level?.FindIndex(headHash);
-        if (!index.HasValue)
+        if (headBlock is null || !index.HasValue)
         {
-            throw new InvalidDataException("Head block data missing from chain info");
+            // The head/boundary pointer is durable but the block data it names is not: with write-behind
+            // block-data DBs an unclean crash drops the un-drained tail, leaving the pointer ahead of the
+            // bodies/levels it references. Recover to the newest fully-durable canonical ancestor instead of
+            // throwing (which would crash-loop construction before forkchoiceUpdated can advance the head).
+            SetHeadToLastLoadableAncestor((headBlock?.Number ?? _headerStore.GetBlockNumber(headHash)) ?? _genesisBlockNumber);
+            return;
         }
 
         headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
         Head = headBlock;
+    }
+
+    /// <summary>
+    /// Sets <see cref="IBlockFinder.Head"/> to the newest canonical block at or below <paramref name="fromNumber"/>
+    /// whose header, body and chain-level are all durable, walking back one level at a time.
+    /// </summary>
+    /// <remarks>
+    /// Recovery path for an unclean crash under write-behind block-data DBs: the durable head/boundary pointer can
+    /// reference block data whose write-behind buffer had not drained. Rather than throwing (crash-loop) or dropping
+    /// straight to genesis, resume from the last block that is fully loadable; the consensus client re-drives the
+    /// missing blocks via <c>forkchoiceUpdated</c>.
+    /// </remarks>
+    private void SetHeadToLastLoadableAncestor(ulong fromNumber)
+    {
+        for (ulong number = fromNumber; ; number--)
+        {
+            ChainLevelInfo? level = LoadLevel(number);
+            BlockInfo? main = level?.MainChainBlock;
+            if (main is not null)
+            {
+                Block? block = FindBlock(main.BlockHash, BlockTreeLookupOptions.None);
+                if (block is { Hash: not null })
+                {
+                    block.Header.TotalDifficulty = main.TotalDifficulty;
+                    Head = block;
+                    if (Logger.IsWarn) Logger.Warn(
+                        $"Head pointer referenced block data missing after an unclean shutdown; recovered head to {block.ToString(Block.Format.Short)}.");
+                    return;
+                }
+            }
+
+            if (number == _genesisBlockNumber) return; // nothing loadable; the ctor's genesis fallback takes over
+        }
     }
 
     private void LoadSyncPivot()

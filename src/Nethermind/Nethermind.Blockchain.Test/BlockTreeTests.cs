@@ -1674,6 +1674,34 @@ public class BlockTreeTests
         Assert.That(loadedTree.Head?.Number, Is.EqualTo(50ul));
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Recovers_head_to_last_loadable_ancestor_when_head_block_body_is_missing()
+    {
+        // Unclean crash under write-behind block-data DBs: the reorg-boundary/head pointer is durable but the
+        // newest block's body never drained. The reloaded tree must resume from the last fully-durable ancestor
+        // rather than crash-looping (SetHeadBlock throw) or dropping to genesis.
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = builder.TestObject;
+
+        Block head = tree.Head!;
+        Block parent = tree.FindBlock(head.Number - 1, BlockTreeLookupOptions.None)!;
+        tree.BestPersistedState = head.Number;
+
+        // Simulate the lost write-behind tail: the head block's body is gone while its pointer/level survive.
+        builder.BlockStore.Delete(head.Number, head.Hash!);
+
+        BlockTree loadedTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedTree.Head?.Number, Is.EqualTo(parent.Number), "resumes at the last loadable ancestor");
+            Assert.That(loadedTree.Head?.Hash, Is.EqualTo(parent.Hash));
+        }
+    }
+
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(1ul)]
     [TestCase(2ul)]
