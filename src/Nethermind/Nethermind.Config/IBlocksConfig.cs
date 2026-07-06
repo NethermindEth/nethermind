@@ -46,6 +46,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Whether the prewarmer skips speculatively executing transactions the main thread has already started, avoiding redundant co-execution and freeing warming capacity for transactions ahead of the main thread.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmSkipStartedTxs { get; set; }
+
+    [ConfigItem(Description = "Speculative-warming gas threshold for a dominating index-0 transaction. When >0, an index-0 transaction whose gas limit exceeds this is not speculatively executed by the prewarmer (the main thread starts it immediately, so co-executing it only contends); its sender and access list are still warmed. 0 disables.", DefaultValue = "0", HiddenFromDocs = true)]
+    long PreWarmAdaptiveAbortMinGas { get; set; }
+
+    [ConfigItem(Description = "Emit per-block prewarmer coverage diagnostics ([PWDIAG]) for heavy blocks. Diagnostic toggle.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmDiagnostics { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

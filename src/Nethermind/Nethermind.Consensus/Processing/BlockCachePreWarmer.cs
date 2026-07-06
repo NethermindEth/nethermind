@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -35,6 +36,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    // Skip speculatively re-executing transactions the main thread has already started (see PrewarmerTxAdapter).
+    private readonly bool _skipStartedTxs;
+    // >0: skip speculatively executing a dominating index-0 transaction whose gas limit exceeds this threshold.
+    private readonly long _adaptiveAbortMinGas;
+    // Emit per-block [PWDIAG] coverage diagnostics for heavy blocks.
+    private readonly bool _diagnostics;
+
+    // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
+    // can report its transaction progress, letting the prewarmer skip already-started transactions.
+    private BlockState? _currentBlockState;
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
@@ -48,7 +60,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
+        _adaptiveAbortMinGas = blocksConfig.PreWarmAdaptiveAbortMinGas;
+        _diagnostics = blocksConfig.PreWarmDiagnostics;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -82,6 +100,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
+                _currentBlockState = blockState;
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
@@ -107,6 +126,32 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
+    /// <summary>
+    /// Called by the main processing thread (via <see cref="PrewarmerTxAdapter"/>) immediately before it
+    /// executes each transaction, advancing the prewarmer's view of main-thread progress.
+    /// </summary>
+    /// <remarks>
+    /// Lets the prewarmer skip transactions the main thread has already started, avoiding redundant
+    /// speculative re-execution (and the cache/CPU contention it causes) of in-flight transactions,
+    /// which frees warming capacity for transactions ahead of the main thread.
+    /// </remarks>
+    public void OnBeforeTxExecution(Transaction transaction) => _currentBlockState?.IncrementTransactionCounter();
+
+    /// <summary>
+    /// Whether to skip speculative <em>execution</em> of a transaction during warming (its sender and access
+    /// list are still warmed cheaply by the caller).
+    /// </summary>
+    /// <remarks>
+    /// The prewarmer starts together with the main processing thread, so it cannot get ahead of a heavy
+    /// transaction at the very front of the block: the main thread begins executing it immediately. For such
+    /// a dominating index-0 transaction, speculatively executing it does not pre-load anything the main
+    /// thread reaches later — it only runs concurrently with the main thread's execution of the same
+    /// transaction and contends with it (catastrophic for a compute-bound giant). Gated by gas so normal
+    /// first transactions are unaffected; 0 disables the skip.
+    /// </remarks>
+    private bool SkipExecWarmup(Transaction tx, int txIndex)
+        => _adaptiveAbortMinGas > 0 && txIndex == 0 && tx.GasLimit > (ulong)_adaptiveAbortMinGas;
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
@@ -120,6 +165,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        long startTs = _diagnostics ? Stopwatch.GetTimestamp() : 0;
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
@@ -143,6 +189,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
             addressWarmer.Dispose();
+
+            if (_diagnostics && !addressWarmer.HasBal)
+            {
+                // Coverage snapshot at the point warming stopped (usually when the main thread finished the
+                // block and cancelled the prewarmer). warmed+skippedStarted+skippedExec vs txCount shows how
+                // much of the block the prewarmer covered; a low ratio means the main thread paid cold reads.
+                blockState.LogCoverage(_logger, Stopwatch.GetElapsedTime(startTs));
+            }
         }
     }
 
@@ -286,6 +340,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Skip transactions the main thread has already started: re-executing them speculatively is
+            // wasted work and contends with the main thread (severe for a heavy tx at a low index). Their
+            // state is already loaded by the main thread's own execution.
+            if (blockState.PreWarmer._skipStartedTxs && blockState.LastExecutedTransaction >= txIndex)
+            {
+                blockState.RecordSkippedStarted();
+                return;
+            }
+
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
@@ -301,7 +364,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
+            if (blockState.PreWarmer.SkipExecWarmup(tx, txIndex))
+            {
+                blockState.RecordSkippedExec();
+                return;
+            }
+
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            blockState.RecordWarmed();
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -485,5 +555,39 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec)
+    {
+        // Written only by the single main thread (in order) via IncrementTransactionCounter; read by prewarmer threads.
+        private int _lastExecutedTransaction = -1;
+        // Diagnostic coverage counters, incremented from prewarmer threads.
+        private int _warmedCount;
+        private int _skippedStartedCount;
+        private int _skippedExecCount;
+
+        /// <summary>Index of the last transaction the main thread has started executing (-1 before any).</summary>
+        public int LastExecutedTransaction => Volatile.Read(ref _lastExecutedTransaction);
+        public void IncrementTransactionCounter() => Interlocked.Increment(ref _lastExecutedTransaction);
+
+        public void RecordWarmed() => Interlocked.Increment(ref _warmedCount);
+        public void RecordSkippedStarted() => Interlocked.Increment(ref _skippedStartedCount);
+        public void RecordSkippedExec() => Interlocked.Increment(ref _skippedExecCount);
+
+        public void LogCoverage(ILogger logger, TimeSpan wall)
+        {
+            int txCount = Block.Transactions.Length;
+            // Only the heaviest (tail) blocks matter for tail analysis; keep the log sparse (~tens of lines
+            // per 1000-block run) so it does not perturb the P99 measurement.
+            if (txCount < 150 && Block.GasUsed < 28_000_000) return;
+            int warmed = Volatile.Read(ref _warmedCount);
+            int skippedStarted = Volatile.Read(ref _skippedStartedCount);
+            int skippedExec = Volatile.Read(ref _skippedExecCount);
+            if (logger.IsInfo)
+            {
+                logger.Info(
+                    $"[PWDIAG] blk={Block.Number} txs={txCount} gas={Block.GasUsed / 1_000_000}M " +
+                    $"warmed={warmed} skipStarted={skippedStarted} skipExec={skippedExec} " +
+                    $"mainReachedTx={LastExecutedTransaction} pwWallMs={wall.TotalMilliseconds:F1}");
+            }
+        }
+    }
 }
