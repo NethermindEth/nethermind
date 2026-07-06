@@ -1,50 +1,47 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory(
+    IProcessingEnvBuilder envBuilder,
     IOverridableEnvFactory envFactory,
-    ILifetimeScope rootLifetimeScope,
-    IBlockValidationModule[] validationBlockProcessingModules
+    ILifetimeScope rootLifetimeScope
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder) =>
-        builder
-            // Standard configuration
-            // Note: Not overriding `IReceiptStorage` to null.
-            .AddModule(validationBlockProcessingModules)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-
-            // So the debug rpc change the adapter sometime.
-            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>();
-
     public IDebugRpcModule Create()
     {
-        IOverridableEnv env = envFactory.Create();
+        IEnv tracer = envBuilder
+            .WithOverridableEnv(envFactory.Create())
+            // Standard configuration; not overriding `IReceiptStorage` to null.
+            .WithBlockValidationConfiguration()
+            .WithReplacedComponent<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            // So the debug rpc can change the adapter sometime.
+            .WithReplacedComponent<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+            .Configure(builder => builder.AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>())
+            .BuildAs<IEnv>();
 
-        ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureTracerContainer(builder)
-                .AddModule(env));
-
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        // Pass only `IGethStyleTracer` into the debug rpc lifetime to prevent leaking processor or world
+        // state accidentally. `GethStyleTracer` must be very careful to always dispose overridable env.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
+            .AddScoped<IGethStyleTracer>(tracer.Tracer));
 
-        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
+        debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracer);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
         return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
+    }
+
+    public interface IEnv : IAsyncDisposable
+    {
+        IGethStyleTracer Tracer { get; }
     }
 }

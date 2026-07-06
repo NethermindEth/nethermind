@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         private IEnvHandle BeginScope() =>
-            envBuilder.NewEnv()
+            envBuilder
                 .WithWorldState(CreateWorldState())
                 .Configure(builder => ConfigureBuilder(builder))
                 .BuildAs<IEnvHandle>();

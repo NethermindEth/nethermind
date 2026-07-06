@@ -78,7 +78,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             headerStore);
         WitnessCapturingHeaderFinder recordingFinder = new(headerStore, headerRecorder);
 
-        return envBuilder.NewEnv()
+        return envBuilder
             .WithWorldState(recorder)
             .WithComponent(recorder)
             .WithComponent(headerRecorder)

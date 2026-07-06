@@ -83,7 +83,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        IEnvComponents graph = envBuilder.NewEnv()
+        IEnvComponents graph = envBuilder
             .WithWorldState(witnessWorldState)
             .WithReplacedComponent<IStateReader>(stateReader)
             .WithReplacedComponent<WitnessGeneratingWorldState>(witnessWorldState)

@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing;
 public class AutoReadOnlyTxProcessingEnvFactory(IProcessingEnvBuilder envBuilder, IWorldStateManager worldStateManager) : IReadOnlyTxProcessingEnvFactory
 {
     public IReadOnlyTxProcessorSource Create() =>
-        new AutoReadOnlyTxProcessingEnv(envBuilder.NewEnv()
+        new AutoReadOnlyTxProcessingEnv(envBuilder
             .WithWorldState(worldStateManager.CreateResettableWorldState())
             .BuildAs<AutoReadOnlyTxProcessingEnv.IEnv>());
 

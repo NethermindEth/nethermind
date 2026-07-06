@@ -12,7 +12,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches) =>
         new AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv(
-            envBuilder.NewEnv()
+            envBuilder
                 .WithWorldState(new PrewarmerScopeProvider(
                     worldStateManager.CreateResettableWorldState(),
                     preBlockCaches,

@@ -41,7 +41,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
 
         worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
-        _components = envBuilder.NewEnv()
+        _components = envBuilder
             .WithWorldState(worldState)
             .WithBlockValidationConfiguration()
             .WithComponent<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
