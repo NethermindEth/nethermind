@@ -12,6 +12,8 @@ using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
+[assembly: InternalsVisibleTo("Nethermind.Network.Dns.Test")]
+
 namespace Nethermind.Network.Dns;
 
 public class EnrDiscovery : INodeSource
@@ -85,12 +87,14 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private static Node? CreateNode(NodeRecord nodeRecord)
+    internal static Node? CreateNode(NodeRecord nodeRecord)
     {
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
-        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null
+        // A record without a tcp entry advertises no RLPx endpoint (EIP-778), e.g. a
+        // discovery-only bootnode; don't fall back to dialing the discovery udp port.
+        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp);
+        return compressedPublicKey is not null && ipAddress is not null && port is > 0
             ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
             : null;
     }
