@@ -226,7 +226,7 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
-            run_count="1"
+            run_count="3"
             dottrace="false"
           else
             branch="${PUSH_BRANCH}"
@@ -241,7 +241,7 @@ jobs:
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
-            run_count="1"
+            run_count="3"
             dottrace="false"
           fi
 
@@ -537,16 +537,6 @@ jobs:
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${SCENARIO_NAME}"
 
-      - name: Restore cached master metrics
-        id: restore-master-metrics
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@v4
-        with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
-
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
@@ -672,6 +662,150 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Start memory sampler
+        id: mem-sampler
+        continue-on-error: true
+        shell: bash
+        env:
+          MEM_SAMPLE_INTERVAL: "5"
+        run: |
+          set -uo pipefail
+          sampler="${RUNNER_TEMP}/mem-sampler.sh"
+          csv="${RUNNER_TEMP}/mem-samples.csv"
+          stopfile="${RUNNER_TEMP}/mem-sampler.stop"
+          pidfile="${RUNNER_TEMP}/mem-sampler.pid"
+
+          # Clear any stale sampler/state from a previous matrix cell on this runner.
+          pkill -f "${sampler}" 2>/dev/null || true
+          rm -f "${csv}" "${stopfile}" "${pidfile}" || true
+
+          cat > "${sampler}" <<'MEM_SAMPLER_EOF'
+          #!/usr/bin/env bash
+          # Append "epoch,used_bytes,mem_perc,source" for the Nethermind container.
+          # Preferred signal is cgroup 'anon' (v2) / 'total_rss' (v1) read from the host
+          # cgroup files — anonymous memory only (managed heap + native allocs + RocksDB
+          # block cache), excluding reclaimable page cache; that is the true leak / OOM
+          # signal. 'docker stats' MemUsage still counts active file cache, so it is only
+          # a fallback when the cgroup files are unreadable.
+          set -uo pipefail
+          CSV="$1"
+          STOPFILE="${2:-}"
+          INTERVAL="${MEM_SAMPLE_INTERVAL:-5}"
+          IMAGE="${NETHERMIND_IMAGE:-}"
+          MAX_SECONDS="${MEM_SAMPLER_MAX_SECONDS:-21600}"
+          ABSENT_LIMIT="${MEM_SAMPLER_ABSENT_LIMIT:-3}"
+
+          host_mem_total() { awk '/^MemTotal:/ { print $2 * 1024; exit }' /proc/meminfo 2>/dev/null; }
+
+          discover() {
+            local id=""
+            if [[ -n "${IMAGE}" ]]; then
+              id="$(docker ps --filter "ancestor=${IMAGE}" --format '{{.ID}}' 2>/dev/null | head -n1)"
+            fi
+            if [[ -z "${id}" ]]; then
+              id="$(docker ps --format '{{.ID}}|{{.Image}}' 2>/dev/null \
+                | awk -F'|' 'tolower($2) ~ /nethermind/ { print $1; exit }')"
+            fi
+            printf '%s' "${id}"
+          }
+
+          read_stat() { awk -v k="$2" '$1 == k { print $2; exit }' "$1" 2>/dev/null; }
+
+          # Echo "statpath<TAB>statkey<TAB>limitbytes"; statkey 'stats' => docker-stats fallback.
+          resolve_source() {
+            local cid="$1" fid base lim ht d
+            fid="$(docker inspect -f '{{.Id}}' "${cid}" 2>/dev/null)"
+            ht="$(host_mem_total)"
+            if [[ -n "${fid}" ]]; then
+              for base in "/sys/fs/cgroup/system.slice/docker-${fid}.scope" "/sys/fs/cgroup/docker/${fid}"; do
+                if [[ -r "${base}/memory.stat" ]] && [[ -n "$(read_stat "${base}/memory.stat" anon)" ]]; then
+                  lim="$(cat "${base}/memory.max" 2>/dev/null)"
+                  [[ "${lim}" =~ ^[0-9]+$ ]] || lim="${ht}"
+                  printf '%s\tanon\t%s' "${base}/memory.stat" "${lim:-0}"
+                  return 0
+                fi
+              done
+              d="/sys/fs/cgroup/memory/docker/${fid}"
+              if [[ -r "${d}/memory.stat" ]] && [[ -n "$(read_stat "${d}/memory.stat" total_rss)" ]]; then
+                lim="$(cat "${d}/memory.limit_in_bytes" 2>/dev/null)"
+                if ! [[ "${lim}" =~ ^[0-9]+$ ]] || { [[ -n "${ht}" ]] && [[ "${lim}" -gt "${ht}" ]]; }; then lim="${ht}"; fi
+                printf '%s\ttotal_rss\t%s' "${d}/memory.stat" "${lim:-0}"
+                return 0
+              fi
+            fi
+            printf '\tstats\t0'
+          }
+
+          to_bytes() {
+            awk -v s="$1" 'BEGIN {
+              gsub(/^[ \t]+|[ \t]+$/, "", s)
+              if (match(s, /^[0-9.]+/)) { num = substr(s, 1, RLENGTH) + 0; unit = substr(s, RLENGTH + 1) }
+              else { print 0; exit }
+              gsub(/[ \t]/, "", unit); u = tolower(unit); m = 1
+              if (u == "b" || u == "") m = 1
+              else if (u == "kib") m = 1024
+              else if (u == "mib") m = 1024 * 1024
+              else if (u == "gib") m = 1024 * 1024 * 1024
+              else if (u == "tib") m = 1024 * 1024 * 1024 * 1024
+              else if (u == "kb") m = 1000
+              else if (u == "mb") m = 1000000
+              else if (u == "gb") m = 1000000000
+              else if (u == "tb") m = 1000000000000
+              printf "%.0f", num * m
+            }'
+          }
+
+          start="$(date +%s)"
+          seen=0
+          absent=0
+          last_cid=""
+          stat_path=""
+          stat_key="stats"
+          limit=0
+          echo "# epoch,bytes,mem_perc,source" >> "${CSV}"
+          while :; do
+            [[ -n "${STOPFILE}" && -f "${STOPFILE}" ]] && break
+            [[ $(( $(date +%s) - start )) -ge "${MAX_SECONDS}" ]] && break
+            cid="$(discover)"
+            if [[ -n "${cid}" ]]; then
+              if [[ "${cid}" != "${last_cid}" ]]; then
+                last_cid="${cid}"
+                IFS=$'\t' read -r stat_path stat_key limit < <(resolve_source "${cid}")
+              fi
+              seen=1; absent=0
+              bytes=""; perc=""; src="${stat_key}"
+              if [[ "${stat_key}" == "anon" || "${stat_key}" == "total_rss" ]] && [[ -n "${stat_path}" ]]; then
+                bytes="$(read_stat "${stat_path}" "${stat_key}")"
+                if [[ "${bytes}" =~ ^[0-9]+$ && "${limit}" =~ ^[0-9]+$ && "${limit}" -gt 0 ]]; then
+                  perc="$(awk -v b="${bytes}" -v l="${limit}" 'BEGIN { printf "%.1f", b / l * 100 }')"
+                fi
+              fi
+              if [[ -z "${bytes}" || ! "${bytes}" =~ ^[0-9]+$ ]]; then
+                src="stats"
+                line="$(docker stats --no-stream --format '{{.MemUsage}};{{.MemPerc}}' "${cid}" 2>/dev/null | head -n1)"
+                if [[ -n "${line}" ]]; then
+                  usage="${line%%;*}"; perc="${line##*;}"
+                  usage="${usage%%/*}"; perc="${perc%\%}"
+                  bytes="$(to_bytes "${usage}")"
+                fi
+              fi
+              if [[ -n "${bytes}" && "${bytes}" =~ ^[0-9]+$ && "${bytes}" != "0" ]]; then
+                printf '%s,%s,%s,%s\n' "$(date +%s)" "${bytes}" "${perc:-}" "${src}" >> "${CSV}"
+              fi
+            elif [[ "${seen}" -eq 1 ]]; then
+              absent=$(( absent + 1 ))
+              [[ "${absent}" -ge "${ABSENT_LIMIT}" ]] && break
+            fi
+            sleep "${INTERVAL}"
+          done
+          MEM_SAMPLER_EOF
+          chmod +x "${sampler}" || true
+
+          nohup bash "${sampler}" "${csv}" "${stopfile}" > "${RUNNER_TEMP}/mem-sampler.out" 2>&1 &
+          echo $! > "${pidfile}"
+          disown || true
+          echo "Memory sampler started (pid $(cat "${pidfile}" 2>/dev/null || echo '?'), image '${NETHERMIND_IMAGE:-?}', every ${MEM_SAMPLE_INTERVAL}s)."
 
       - name: Run expb scenarios
         id: run-expb
@@ -936,28 +1070,247 @@ jobs:
             done < "${metrics_file}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Stop sampler and analyze memory
+        id: mem-analyze
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          MEM_NEAR_LIMIT_PERC: "90"
+          MEM_SLOPE_MB_PER_MIN_MIN: "15"
+          MEM_GROWTH_MB_MIN: "256"
+          MEM_MIN_SAMPLES: "5"
+          MEM_WARMUP_FRAC: "0.3"
+          METRICS_FILE: ${{ runner.temp }}/expb-metrics.env
+        run: |
+          set -uo pipefail
+          csv="${RUNNER_TEMP}/mem-samples.csv"
+          stopfile="${RUNNER_TEMP}/mem-sampler.stop"
+          pidfile="${RUNNER_TEMP}/mem-sampler.pid"
+          awkfile="${RUNNER_TEMP}/mem-analyze.awk"
+
+          # Signal the sampler to stop, then give it a moment to flush and exit.
+          touch "${stopfile}" || true
+          if [[ -f "${pidfile}" ]]; then
+            spid="$(cat "${pidfile}" 2>/dev/null || true)"
+            for _ in $(seq 1 15); do
+              if [[ -z "${spid}" ]] || ! kill -0 "${spid}" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            if [[ -n "${spid}" ]] && kill -0 "${spid}" 2>/dev/null; then
+              kill -TERM "${spid}" 2>/dev/null || true
+            fi
+          fi
+
+          if [[ ! -f "${csv}" ]] || ! grep -qv '^#' "${csv}" 2>/dev/null; then
+            echo "No memory samples were collected."
+            {
+              echo "MEM_SAMPLES=0"
+              echo "MEM_SEVERITY=0"
+              echo "MEM_VERDICT=ℹ️ no memory samples collected"
+            } >> "${METRICS_FILE}"
+            exit 0
+          fi
+
+          cat > "${awkfile}" <<'MEM_AWK_EOF'
+          # Analyze a memory-sample CSV: epoch,bytes,mem_perc,source (# lines ignored).
+          # Emits KEY=VALUE lines consumed by the workflow. All sizes in MiB.
+          #
+          # Leak detection ignores the cold-start ramp: a freshly started node grows
+          # from cold to a warm plateau (a one-time step, NOT a leak). The verdict is
+          # computed on the POST-WARMUP window using the least-squares slope of the
+          # per-time-bucket minima (the "floor"). Flat floor => plateau (healthy);
+          # sustained positive floor slope => a footprint that never clears (leak).
+          BEGIN { FS = "," }
+          /^#/ { next }
+          NF >= 2 && $2 + 0 > 0 {
+            n++
+            t[n] = $1 + 0
+            b[n] = ($2 + 0) / 1048576.0
+            p[n] = $3 + 0
+            s[n] = $4
+          }
+          END {
+            if (n == 0) { print "SAMPLES=0"; exit }
+            t0 = t[1]; tN = t[n]; dur = tN - t0
+            peak = b[1]; minv = b[1]; sum = 0; peakperc = p[1]; src = ""
+            for (i = 1; i <= n; i++) {
+              if (b[i] > peak) peak = b[i]
+              if (b[i] < minv) minv = b[i]
+              sum += b[i]
+              if (p[i] > peakperc) peakperc = p[i]
+              if (s[i] != "") src = s[i]
+            }
+            avg = sum / n
+            frac = WARMUP_FRAC + 0
+            if (frac <= 0 || frac >= 1) frac = 0.3
+            cutoff = t0 + frac * dur
+            m = 0
+            for (i = 1; i <= n; i++) if (t[i] >= cutoff) { m++; mt[m] = t[i]; mb[m] = b[i] }
+            if (m < 4) { m = 0; for (i = 1; i <= n; i++) { m++; mt[m] = t[i]; mb[m] = b[i] }; cutoff = t0 }
+            warmup_s = cutoff - t0
+            mt0 = mt[1]; mtN = mt[m]; mdur = mtN - mt0
+            K = 10; if (m < K) K = m
+            for (j = 1; j <= K; j++) { bmin[j] = -1; bsum[j] = 0; bcnt[j] = 0; btsum[j] = 0 }
+            for (i = 1; i <= m; i++) {
+              j = (mdur > 0) ? int((mt[i] - mt0) / mdur * K) + 1 : 1
+              if (j > K) j = K; if (j < 1) j = 1
+              if (bmin[j] < 0 || mb[i] < bmin[j]) bmin[j] = mb[i]
+              bsum[j] += mb[i]; bcnt[j]++; btsum[j] += mt[i]
+            }
+            kk = 0
+            for (j = 1; j <= K; j++) if (bcnt[j] > 0) { kk++; fmin[kk] = bmin[j]; ftime[kk] = btsum[j] / bcnt[j] }
+            baseline = fmin[1]; end_floor = fmin[kk]
+            growth = end_floor - baseline
+            growth_pct = (baseline > 0) ? (growth / baseline) * 100.0 : 0
+            Sx = 0; Sy = 0; Sxy = 0; Sxx = 0
+            for (j = 1; j <= kk; j++) { x = (ftime[j] - mt0) / 60.0; y = fmin[j]; Sx += x; Sy += y; Sxy += x * y; Sxx += x * x }
+            denom = kk * Sxx - Sx * Sx
+            slope = (denom != 0) ? (kk * Sxy - Sx * Sy) / denom : 0
+            UK = 10; if (n < UK) UK = n
+            for (j = 1; j <= UK; j++) { ubsum[j] = 0; ubcnt[j] = 0 }
+            for (i = 1; i <= n; i++) {
+              uj = (dur > 0) ? int((t[i] - t0) / dur * UK) + 1 : 1
+              if (uj > UK) uj = UK; if (uj < 1) uj = 1
+              ubsum[uj] += b[i]; ubcnt[uj]++
+            }
+            uu = 0
+            for (j = 1; j <= UK; j++) if (ubcnt[j] > 0) { uu++; umean[uu] = ubsum[j] / ubcnt[j] }
+            printf "SAMPLES=%d\n", n
+            printf "SOURCE=%s\n", (src == "" ? "unknown" : src)
+            printf "DURATION_S=%d\n", dur
+            printf "WARMUP_S=%d\n", warmup_s
+            printf "BUCKETS=%d\n", kk
+            printf "PEAK_MB=%.1f\n", peak
+            printf "PEAK_PERC=%.1f\n", peakperc
+            printf "MIN_MB=%.1f\n", minv
+            printf "AVG_MB=%.1f\n", avg
+            printf "BASELINE_MB=%.1f\n", baseline
+            printf "END_FLOOR_MB=%.1f\n", end_floor
+            printf "FLOOR_GROWTH_MB=%.1f\n", growth
+            printf "FLOOR_GROWTH_PCT=%.1f\n", growth_pct
+            printf "FLOOR_SLOPE_MB_PER_MIN=%.2f\n", slope
+            printf "SPARK_USAGE_IDX=%s\n", sparkline(umean, uu)
+            printf "SPARK_FLOOR_IDX=%s\n", sparkline(fmin, kk)
+          }
+          function sparkline(arr, cnt,   j, lo, hi, out, lvl) {
+            if (cnt <= 0) return ""
+            lo = arr[1]; hi = arr[1]
+            for (j = 1; j <= cnt; j++) { if (arr[j] < lo) lo = arr[j]; if (arr[j] > hi) hi = arr[j] }
+            out = ""
+            for (j = 1; j <= cnt; j++) {
+              lvl = (hi > lo) ? int((arr[j] - lo) / (hi - lo) * 7 + 0.5) : 0
+              out = out (j > 1 ? " " : "") lvl
+            }
+            return out
+          }
+          MEM_AWK_EOF
+
+          NEAR_LIMIT_PERC="${MEM_NEAR_LIMIT_PERC:-90}"
+          SLOPE_MIN="${MEM_SLOPE_MB_PER_MIN_MIN:-15}"
+          GROWTH_MB_MIN="${MEM_GROWTH_MB_MIN:-256}"
+          MIN_SAMPLES="${MEM_MIN_SAMPLES:-5}"
+          WARMUP_FRAC="${MEM_WARMUP_FRAC:-0.3}"
+          MEM_LEVELS=(▁ ▂ ▃ ▄ ▅ ▆ ▇ █)
+
+          declare -A A=()
+          while IFS='=' read -r k v; do
+            [[ -z "${k}" ]] && continue
+            A["${k}"]="${v}"
+          done < <(awk -v WARMUP_FRAC="${WARMUP_FRAC}" -f "${awkfile}" "${csv}")
+
+          samples="${A[SAMPLES]:-0}"
+          source="${A[SOURCE]:-unknown}"
+          hsize() { awk -v m="${1:-0}" 'BEGIN { if (m + 0 >= 1024) printf "%.2f GiB", m / 1024.0; else printf "%.0f MiB", m }'; }
+          spark() { local out="" i; for i in $1; do out+="${MEM_LEVELS[$i]}"; done; printf '%s' "${out}"; }
+          ge() { awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { print (a + 0 >= b + 0) ? 1 : 0 }'; }
+
+          src_note=""
+          [[ "${source}" == "stats" ]] && src_note=" (docker stats — includes active page cache)"
+
+          if [[ "${samples}" -lt "${MIN_SAMPLES}" ]]; then
+            verdict="ℹ️ insufficient samples (${samples})"
+            severity=0
+            spark_usage=""; spark_floor=""
+          else
+            near="$(ge "${A[PEAK_PERC]:-0}" "${NEAR_LIMIT_PERC}")"
+            slope_hit="$(ge "${A[FLOOR_SLOPE_MB_PER_MIN]:-0}" "${SLOPE_MIN}")"
+            growth_hit="$(ge "${A[FLOOR_GROWTH_MB]:-0}" "${GROWTH_MB_MIN}")"
+            grow=0
+            [[ "${slope_hit}" -eq 1 && "${growth_hit}" -eq 1 ]] && grow=1
+            severity=0
+            [[ "${grow}" -eq 1 ]] && severity=$(( severity + 1 ))
+            [[ "${near}" -eq 1 ]] && severity=$(( severity + 2 ))
+            case "${severity}" in
+              0) verdict="✅ stable (floor clears)" ;;
+              1) verdict="⚠️ rising floor (possible leak)" ;;
+              2) verdict="⚠️ near memory limit" ;;
+              3) verdict="🔴 rising floor near limit" ;;
+            esac
+            spark_usage="$(spark "${A[SPARK_USAGE_IDX]:-}")"
+            spark_floor="$(spark "${A[SPARK_FLOOR_IDX]:-}")"
+          fi
+
+          echo "----- Memory (container) -----"
+          if [[ "${samples}" -lt "${MIN_SAMPLES}" ]]; then
+            echo "  ${verdict}"
+          else
+            printf "  Samples        %s over %ss (source: %s%s)\n" "${samples}" "${A[DURATION_S]:-0}" "${source}" "${src_note}"
+            printf "  Warmup skipped %ss\n" "${A[WARMUP_S]:-0}"
+            printf "  Peak           %s (%s%% of limit/host)\n" "$(hsize "${A[PEAK_MB]:-0}")" "${A[PEAK_PERC]:-?}"
+            printf "  Baseline floor %s (post-warmup)\n" "$(hsize "${A[BASELINE_MB]:-0}")"
+            printf "  End floor      %s\n" "$(hsize "${A[END_FLOOR_MB]:-0}")"
+            printf "  Floor growth   %s (%s%%)\n" "$(hsize "${A[FLOOR_GROWTH_MB]:-0}")" "${A[FLOOR_GROWTH_PCT]:-0}"
+            printf "  Floor trend    %s MiB/min\n" "${A[FLOOR_SLOPE_MB_PER_MIN]:-0}"
+            printf "  Usage shape    %s\n" "${spark_usage}"
+            printf "  Floor shape    %s\n" "${spark_floor}"
+            printf "  Verdict        %s\n" "${verdict}"
+          fi
+
+          {
+            echo "MEM_SAMPLES=${samples}"
+            echo "MEM_SOURCE=${source}"
+            echo "MEM_SEVERITY=${severity}"
+            echo "MEM_VERDICT=${verdict}"
+            if [[ "${samples}" -ge "${MIN_SAMPLES}" ]]; then
+              echo "MEM_DURATION_S=${A[DURATION_S]:-}"
+              echo "MEM_WARMUP_S=${A[WARMUP_S]:-}"
+              echo "MEM_PEAK_MB=${A[PEAK_MB]:-}"
+              echo "MEM_PEAK_PERC=${A[PEAK_PERC]:-}"
+              echo "MEM_MIN_MB=${A[MIN_MB]:-}"
+              echo "MEM_AVG_MB=${A[AVG_MB]:-}"
+              echo "MEM_BASELINE_MB=${A[BASELINE_MB]:-}"
+              echo "MEM_END_FLOOR_MB=${A[END_FLOOR_MB]:-}"
+              echo "MEM_FLOOR_GROWTH_MB=${A[FLOOR_GROWTH_MB]:-}"
+              echo "MEM_FLOOR_GROWTH_PCT=${A[FLOOR_GROWTH_PCT]:-}"
+              echo "MEM_FLOOR_SLOPE_MB_PER_MIN=${A[FLOOR_SLOPE_MB_PER_MIN]:-}"
+              echo "MEM_SPARK_USAGE=${spark_usage}"
+              echo "MEM_SPARK_FLOOR=${spark_floor}"
+            fi
+          } >> "${METRICS_FILE}"
+
       - name: Upload metrics artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ steps.analyze.outputs.metrics_file }}
+          # Deterministic path (not steps.analyze.outputs.metrics_file): the analyze step can
+          # exit before setting that output on a crash/OOM, but the mem-analyze step still
+          # appends MEM_* here, so the memory verdict survives a metrics-less run.
+          path: ${{ runner.temp }}/expb-metrics.env
           retention-days: 30
+          if-no-files-found: ignore
 
-      - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
-
-      - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
-        uses: actions/cache/save@v4
+      - name: Upload memory samples artifact
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
+          name: expb-memory-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: |
+            ${{ runner.temp }}/mem-samples.csv
+            ${{ runner.temp }}/mem-sampler.out
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Enforce run quality gates
         if: always()
@@ -1060,9 +1413,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -1070,9 +1423,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-realblocks-
 
       - name: Build PR comparison comment
         id: pr-comment
@@ -1082,6 +1435,7 @@ jobs:
           MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
@@ -1092,6 +1446,30 @@ jobs:
           marker="<!-- expb-reproducible-benchmark-report -->"
           comment_file="${RUNNER_TEMP}/expb-pr-comment.md"
           : > "${comment_file}"
+          run_count="${RUN_COUNT:-1}"
+
+          # Mean of each stat across run metric files; RUNS records how many runs contributed.
+          aggregate_runs() {
+            local out="$1"
+            shift
+            local files=("$@")
+            local prefix key values f v mean
+            : > "${out}"
+            for prefix in "" "TTFB_"; do
+              for key in COUNT AVG MEDIAN P90 P95 P99 MIN MAX; do
+                values=""
+                for f in "${files[@]}"; do
+                  v=$(grep -E "^${prefix}${key}=" "${f}" | head -n 1 | cut -d'=' -f2- || true)
+                  if [[ -n "${v}" ]]; then values+="${v} "; fi
+                done
+                if [[ -n "${values}" ]]; then
+                  mean=$(echo "${values}" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {printf "%.2f", sum/n}')
+                  echo "${prefix}${key}=${mean}" >> "${out}"
+                fi
+              done
+            done
+            echo "RUNS=${#files[@]}" >> "${out}"
+          }
 
           load_metric() {
             local file="$1"
@@ -1140,7 +1518,7 @@ jobs:
             local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
 
             if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
-              append_line "| Metric | PR |"
+              append_line "| Metric | ${PR_COL} |"
               append_line "|---|---:|"
               for m in "${metrics[@]}"; do
                 local val
@@ -1151,7 +1529,7 @@ jobs:
               return
             fi
 
-            append_line "| Metric | PR | Master (cached) | Delta |"
+            append_line "| Metric | ${PR_COL} | ${MASTER_COL} | Delta |"
             append_line "|---|---:|---:|---:|"
             for m in "${metrics[@]}"; do
               local cv mv
@@ -1180,6 +1558,18 @@ jobs:
 
             append_line "Scenario: \`${scenario_name}\`"
 
+            local pr_runs master_runs
+            pr_runs="$(load_metric "${current_metrics}" "RUNS")"
+            master_runs="$(load_metric "${master_metrics}" "RUNS")"
+            PR_COL="PR"
+            if [[ -n "${pr_runs}" && "${pr_runs}" -gt 1 ]]; then
+              PR_COL="PR (mean of ${pr_runs} runs)"
+            fi
+            MASTER_COL="Master (cached)"
+            if [[ -n "${master_runs}" && "${master_runs}" -gt 1 ]]; then
+              MASTER_COL="Master (cached, mean of ${master_runs} runs)"
+            fi
+
             if [[ ! -f "${master_metrics}" ]]; then
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
             fi
@@ -1192,12 +1582,63 @@ jobs:
             append_blank
             emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
 
+            # Per-run breakdown behind the mean-of-runs comparison table
+            if [[ "${run_count}" -gt 1 ]]; then
+              append_blank
+              append_line "<details><summary>Per-run breakdown</summary>"
+              append_blank
+              append_line "| Run | AVG (ms) | Median (ms) | P90 (ms) | P95 (ms) | P99 (ms) | Min (ms) | Max (ms) |"
+              append_line "|---:|---:|---:|---:|---:|---:|---:|---:|"
+              local r rf
+              for (( r=1; r<=run_count; r++ )); do
+                rf="${METRICS_DIR}/expb-single-metrics-${payload_set}-run${r}/expb-metrics.env"
+                if [[ ! -f "${rf}" ]]; then
+                  append_line "| ${r} | - | - | - | - | - | - | - |"
+                  continue
+                fi
+                append_line "| ${r} | $(load_metric "${rf}" "AVG") | $(load_metric "${rf}" "MEDIAN") | $(load_metric "${rf}" "P90") | $(load_metric "${rf}" "P95") | $(load_metric "${rf}" "P99") | $(load_metric "${rf}" "MIN") | $(load_metric "${rf}" "MAX") |"
+              done
+              append_blank
+              append_line "</details>"
+            fi
+
             # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
             if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
               append_blank
               append_line "<details><summary>K6 TTFB</summary>"
               append_blank
               emit_metrics_section "TTFB" "${current_metrics}" "${master_metrics}" "TTFB_"
+              append_blank
+              append_line "</details>"
+            fi
+
+            # Memory (container) — leak / OOM-headroom watch (per run)
+            local mem_rows="" mem_worst_sev=-1 mem_worst_verdict="" mem_have_any=0 mem_have_rows=0
+            local mr mrf msev mvd mpeak
+            for (( mr=1; mr<=run_count; mr++ )); do
+              mrf="${METRICS_DIR}/expb-single-metrics-${payload_set}-run${mr}/expb-metrics.env"
+              [[ -f "${mrf}" ]] || continue
+              msev="$(load_metric "${mrf}" "MEM_SEVERITY")"
+              [[ -z "${msev}" ]] && continue
+              mem_have_any=1
+              mvd="$(load_metric "${mrf}" "MEM_VERDICT")"
+              [[ "${msev}" -gt "${mem_worst_sev}" ]] && { mem_worst_sev="${msev}"; mem_worst_verdict="${mvd}"; }
+              mpeak="$(load_metric "${mrf}" "MEM_PEAK_MB")"
+              [[ -z "${mpeak}" ]] && continue
+              mem_have_rows=1
+              mem_rows+="| ${mr} | $(load_metric "${mrf}" "MEM_PEAK_MB") | $(load_metric "${mrf}" "MEM_PEAK_PERC") | $(load_metric "${mrf}" "MEM_BASELINE_MB") | $(load_metric "${mrf}" "MEM_END_FLOOR_MB") | $(load_metric "${mrf}" "MEM_FLOOR_GROWTH_MB") | $(load_metric "${mrf}" "MEM_FLOOR_GROWTH_PCT") | $(load_metric "${mrf}" "MEM_SPARK_FLOOR") | ${mvd} |"$'\n'
+            done
+            if [[ "${mem_have_any}" -eq 1 ]]; then
+              append_blank
+              append_line "<details><summary>Memory (container) — ${mem_worst_verdict}</summary>"
+              append_blank
+              if [[ "${mem_have_rows}" -eq 1 ]]; then
+                append_line "| Run | Peak (MiB) | Peak % | Baseline (MiB) | End floor (MiB) | Floor Δ (MiB) | Floor Δ % | Floor shape | Verdict |"
+                append_line "|---:|---:|---:|---:|---:|---:|---:|:--|:--|"
+                printf '%s' "${mem_rows}" >> "${comment_file}"
+              else
+                append_line "Verdict: ${mem_worst_verdict}"
+              fi
               append_blank
               append_line "</details>"
             fi
@@ -1212,8 +1653,20 @@ jobs:
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
 
           for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+            # Aggregate PR metrics across all runs (mean per stat)
+            run_files=()
+            for (( r=1; r<=run_count; r++ )); do
+              f="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              [[ -f "${f}" ]] && run_files+=("${f}")
+            done
+
+            current_metrics="${RUNNER_TEMP}/expb-pr-metrics-${ps}.env"
+            if [[ "${#run_files[@]}" -gt 0 ]]; then
+              aggregate_runs "${current_metrics}" "${run_files[@]}"
+            else
+              # Leave the file absent so build_table reports missing metrics
+              rm -f "${current_metrics}"
+            fi
 
             # Master metrics from cache
             if [[ "${ps}" == "superblocks" ]]; then
@@ -1268,6 +1721,92 @@ jobs:
                 body,
               });
             }
+
+  # ---------------------------------------------------------------------------
+  # Master baseline: aggregate all runs (mean per metric) and cache for PR comparisons.
+  # Runs only when every benchmark job passed its quality gates (implicit success()).
+  # ---------------------------------------------------------------------------
+
+  save-master-baseline:
+    needs: [resolve, benchmark]
+    if: github.event_name == 'push' && github.ref_name == 'master' && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all metrics artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/all-metrics
+          pattern: expb-single-metrics-*
+
+      - name: Aggregate runs into master baseline
+        id: aggregate
+        shell: bash
+        env:
+          METRICS_DIR: ${{ runner.temp }}/all-metrics
+          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+        run: |
+          set -euo pipefail
+          run_count="${RUN_COUNT:-1}"
+
+          # Mean of each stat across run metric files; RUNS records how many runs contributed.
+          aggregate_runs() {
+            local out="$1"
+            shift
+            local files=("$@")
+            local prefix key values f v mean
+            : > "${out}"
+            for prefix in "" "TTFB_"; do
+              for key in COUNT AVG MEDIAN P90 P95 P99 MIN MAX; do
+                values=""
+                for f in "${files[@]}"; do
+                  v=$(grep -E "^${prefix}${key}=" "${f}" | head -n 1 | cut -d'=' -f2- || true)
+                  if [[ -n "${v}" ]]; then values+="${v} "; fi
+                done
+                if [[ -n "${values}" ]]; then
+                  mean=$(echo "${values}" | tr ' ' '\n' | awk 'NF {sum += $1; n++} END {printf "%.2f", sum/n}')
+                  echo "${prefix}${key}=${mean}" >> "${out}"
+                fi
+              done
+            done
+            echo "RUNS=${#files[@]}" >> "${out}"
+          }
+
+          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+
+          for ps in "${payload_sets[@]}"; do
+            run_files=()
+            for (( r=1; r<=run_count; r++ )); do
+              f="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              [[ -f "${f}" ]] && run_files+=("${f}")
+            done
+
+            if [[ "${#run_files[@]}" -eq 0 ]]; then
+              echo "No metrics found for '${ps}'; skipping baseline update."
+              echo "save_${ps}=false" >> "${GITHUB_OUTPUT}"
+              continue
+            fi
+
+            mkdir -p "/tmp/expb-master-metrics-cache-${ps}"
+            aggregate_runs "/tmp/expb-master-metrics-cache-${ps}/master-metrics.env" "${run_files[@]}"
+            echo "Baseline for '${ps}' (mean of ${#run_files[@]} run(s)):"
+            cat "/tmp/expb-master-metrics-cache-${ps}/master-metrics.env"
+            echo "save_${ps}=true" >> "${GITHUB_OUTPUT}"
+          done
+
+      - name: Save master metrics cache (superblocks)
+        if: steps.aggregate.outputs.save_superblocks == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-superblocks
+          key: expb-master-metrics-v4-superblocks-${{ github.run_id }}
+
+      - name: Save master metrics cache (realblocks)
+        if: steps.aggregate.outputs.save_realblocks == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-realblocks
+          key: expb-master-metrics-v4-realblocks-${{ github.run_id }}
 
   # ---------------------------------------------------------------------------
   # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
@@ -1457,6 +1996,34 @@ jobs:
                   } >> "${summary_file}"
                 fi
               fi
+            fi
+
+            # Memory (container) — leak / OOM-headroom watch (per run)
+            mem_worst_sev=-1; mem_worst_verdict=""; mem_rows=""; mem_have_any=0; mem_have_rows=0
+            for (( mr=1; mr<=run_count; mr++ )); do
+              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${mr}/expb-metrics.env"
+              [[ -f "${mf}" ]] || continue
+              msev="$(load_metric "${mf}" "MEM_SEVERITY")"
+              [[ -z "${msev}" ]] && continue
+              mem_have_any=1
+              mvd="$(load_metric "${mf}" "MEM_VERDICT")"
+              [[ "${msev}" -gt "${mem_worst_sev}" ]] && { mem_worst_sev="${msev}"; mem_worst_verdict="${mvd}"; }
+              mpeak="$(load_metric "${mf}" "MEM_PEAK_MB")"
+              [[ -z "${mpeak}" ]] && continue
+              mem_have_rows=1
+              mem_rows+="| ${mr} | $(load_metric "${mf}" "MEM_PEAK_MB") | $(load_metric "${mf}" "MEM_PEAK_PERC") | $(load_metric "${mf}" "MEM_BASELINE_MB") | $(load_metric "${mf}" "MEM_END_FLOOR_MB") | $(load_metric "${mf}" "MEM_FLOOR_GROWTH_MB") | $(load_metric "${mf}" "MEM_FLOOR_GROWTH_PCT") | $(load_metric "${mf}" "MEM_SPARK_FLOOR") | ${mvd} |"$'\n'
+            done
+            if [[ "${mem_have_any}" -eq 1 ]]; then
+              {
+                echo ""
+                echo "**Memory (container):** ${mem_worst_verdict}"
+                echo ""
+                if [[ "${mem_have_rows}" -eq 1 ]]; then
+                  echo "| Run | Peak (MiB) | Peak % | Baseline (MiB) | End floor (MiB) | Floor Δ (MiB) | Floor Δ % | Floor shape | Verdict |"
+                  echo "|---:|---:|---:|---:|---:|---:|---:|:--|:--|"
+                  printf '%s' "${mem_rows}"
+                fi
+              } >> "${summary_file}"
             fi
           done
 
@@ -1752,6 +2319,155 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Start memory sampler
+        id: mem-sampler
+        continue-on-error: true
+        shell: bash
+        env:
+          MEM_SAMPLE_INTERVAL: "5"
+          MEM_SAMPLER: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.sh
+          MEM_CSV: ${{ runner.temp }}/mem-samples-${{ matrix.tag }}-run${{ matrix.run }}.csv
+          MEM_STOPFILE: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.stop
+          MEM_PIDFILE: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.pid
+          MEM_OUT: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.out
+        run: |
+          set -uo pipefail
+          sampler="${MEM_SAMPLER}"
+          csv="${MEM_CSV}"
+          stopfile="${MEM_STOPFILE}"
+          pidfile="${MEM_PIDFILE}"
+
+          # Clear any stale sampler/state from a previous matrix cell on this runner.
+          pkill -f "${sampler}" 2>/dev/null || true
+          rm -f "${csv}" "${stopfile}" "${pidfile}" || true
+
+          cat > "${sampler}" <<'MEM_SAMPLER_EOF'
+          #!/usr/bin/env bash
+          # Append "epoch,used_bytes,mem_perc,source" for the Nethermind container.
+          # Preferred signal is cgroup 'anon' (v2) / 'total_rss' (v1) read from the host
+          # cgroup files — anonymous memory only (managed heap + native allocs + RocksDB
+          # block cache), excluding reclaimable page cache; that is the true leak / OOM
+          # signal. 'docker stats' MemUsage still counts active file cache, so it is only
+          # a fallback when the cgroup files are unreadable.
+          set -uo pipefail
+          CSV="$1"
+          STOPFILE="${2:-}"
+          INTERVAL="${MEM_SAMPLE_INTERVAL:-5}"
+          IMAGE="${NETHERMIND_IMAGE:-}"
+          MAX_SECONDS="${MEM_SAMPLER_MAX_SECONDS:-21600}"
+          ABSENT_LIMIT="${MEM_SAMPLER_ABSENT_LIMIT:-3}"
+
+          host_mem_total() { awk '/^MemTotal:/ { print $2 * 1024; exit }' /proc/meminfo 2>/dev/null; }
+
+          discover() {
+            local id=""
+            if [[ -n "${IMAGE}" ]]; then
+              id="$(docker ps --filter "ancestor=${IMAGE}" --format '{{.ID}}' 2>/dev/null | head -n1)"
+            fi
+            if [[ -z "${id}" ]]; then
+              id="$(docker ps --format '{{.ID}}|{{.Image}}' 2>/dev/null \
+                | awk -F'|' 'tolower($2) ~ /nethermind/ { print $1; exit }')"
+            fi
+            printf '%s' "${id}"
+          }
+
+          read_stat() { awk -v k="$2" '$1 == k { print $2; exit }' "$1" 2>/dev/null; }
+
+          # Echo "statpath<TAB>statkey<TAB>limitbytes"; statkey 'stats' => docker-stats fallback.
+          resolve_source() {
+            local cid="$1" fid base lim ht d
+            fid="$(docker inspect -f '{{.Id}}' "${cid}" 2>/dev/null)"
+            ht="$(host_mem_total)"
+            if [[ -n "${fid}" ]]; then
+              for base in "/sys/fs/cgroup/system.slice/docker-${fid}.scope" "/sys/fs/cgroup/docker/${fid}"; do
+                if [[ -r "${base}/memory.stat" ]] && [[ -n "$(read_stat "${base}/memory.stat" anon)" ]]; then
+                  lim="$(cat "${base}/memory.max" 2>/dev/null)"
+                  [[ "${lim}" =~ ^[0-9]+$ ]] || lim="${ht}"
+                  printf '%s\tanon\t%s' "${base}/memory.stat" "${lim:-0}"
+                  return 0
+                fi
+              done
+              d="/sys/fs/cgroup/memory/docker/${fid}"
+              if [[ -r "${d}/memory.stat" ]] && [[ -n "$(read_stat "${d}/memory.stat" total_rss)" ]]; then
+                lim="$(cat "${d}/memory.limit_in_bytes" 2>/dev/null)"
+                if ! [[ "${lim}" =~ ^[0-9]+$ ]] || { [[ -n "${ht}" ]] && [[ "${lim}" -gt "${ht}" ]]; }; then lim="${ht}"; fi
+                printf '%s\ttotal_rss\t%s' "${d}/memory.stat" "${lim:-0}"
+                return 0
+              fi
+            fi
+            printf '\tstats\t0'
+          }
+
+          to_bytes() {
+            awk -v s="$1" 'BEGIN {
+              gsub(/^[ \t]+|[ \t]+$/, "", s)
+              if (match(s, /^[0-9.]+/)) { num = substr(s, 1, RLENGTH) + 0; unit = substr(s, RLENGTH + 1) }
+              else { print 0; exit }
+              gsub(/[ \t]/, "", unit); u = tolower(unit); m = 1
+              if (u == "b" || u == "") m = 1
+              else if (u == "kib") m = 1024
+              else if (u == "mib") m = 1024 * 1024
+              else if (u == "gib") m = 1024 * 1024 * 1024
+              else if (u == "tib") m = 1024 * 1024 * 1024 * 1024
+              else if (u == "kb") m = 1000
+              else if (u == "mb") m = 1000000
+              else if (u == "gb") m = 1000000000
+              else if (u == "tb") m = 1000000000000
+              printf "%.0f", num * m
+            }'
+          }
+
+          start="$(date +%s)"
+          seen=0
+          absent=0
+          last_cid=""
+          stat_path=""
+          stat_key="stats"
+          limit=0
+          echo "# epoch,bytes,mem_perc,source" >> "${CSV}"
+          while :; do
+            [[ -n "${STOPFILE}" && -f "${STOPFILE}" ]] && break
+            [[ $(( $(date +%s) - start )) -ge "${MAX_SECONDS}" ]] && break
+            cid="$(discover)"
+            if [[ -n "${cid}" ]]; then
+              if [[ "${cid}" != "${last_cid}" ]]; then
+                last_cid="${cid}"
+                IFS=$'\t' read -r stat_path stat_key limit < <(resolve_source "${cid}")
+              fi
+              seen=1; absent=0
+              bytes=""; perc=""; src="${stat_key}"
+              if [[ "${stat_key}" == "anon" || "${stat_key}" == "total_rss" ]] && [[ -n "${stat_path}" ]]; then
+                bytes="$(read_stat "${stat_path}" "${stat_key}")"
+                if [[ "${bytes}" =~ ^[0-9]+$ && "${limit}" =~ ^[0-9]+$ && "${limit}" -gt 0 ]]; then
+                  perc="$(awk -v b="${bytes}" -v l="${limit}" 'BEGIN { printf "%.1f", b / l * 100 }')"
+                fi
+              fi
+              if [[ -z "${bytes}" || ! "${bytes}" =~ ^[0-9]+$ ]]; then
+                src="stats"
+                line="$(docker stats --no-stream --format '{{.MemUsage}};{{.MemPerc}}' "${cid}" 2>/dev/null | head -n1)"
+                if [[ -n "${line}" ]]; then
+                  usage="${line%%;*}"; perc="${line##*;}"
+                  usage="${usage%%/*}"; perc="${perc%\%}"
+                  bytes="$(to_bytes "${usage}")"
+                fi
+              fi
+              if [[ -n "${bytes}" && "${bytes}" =~ ^[0-9]+$ && "${bytes}" != "0" ]]; then
+                printf '%s,%s,%s,%s\n' "$(date +%s)" "${bytes}" "${perc:-}" "${src}" >> "${CSV}"
+              fi
+            elif [[ "${seen}" -eq 1 ]]; then
+              absent=$(( absent + 1 ))
+              [[ "${absent}" -ge "${ABSENT_LIMIT}" ]] && break
+            fi
+            sleep "${INTERVAL}"
+          done
+          MEM_SAMPLER_EOF
+          chmod +x "${sampler}" || true
+
+          nohup bash "${sampler}" "${csv}" "${stopfile}" > "${MEM_OUT}" 2>&1 &
+          echo $! > "${pidfile}"
+          disown || true
+          echo "Memory sampler started (pid $(cat "${pidfile}" 2>/dev/null || echo '?'), image '${NETHERMIND_IMAGE:-?}', every ${MEM_SAMPLE_INTERVAL}s)."
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -2022,6 +2738,232 @@ jobs:
           echo "========================================="
           echo ""
 
+      - name: Stop sampler and analyze memory
+        id: mem-analyze
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          MEM_NEAR_LIMIT_PERC: "90"
+          MEM_SLOPE_MB_PER_MIN_MIN: "15"
+          MEM_GROWTH_MB_MIN: "256"
+          MEM_MIN_SAMPLES: "5"
+          MEM_WARMUP_FRAC: "0.3"
+          MEM_CSV: ${{ runner.temp }}/mem-samples-${{ matrix.tag }}-run${{ matrix.run }}.csv
+          MEM_STOPFILE: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.stop
+          MEM_PIDFILE: ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.pid
+          MEM_AWKFILE: ${{ runner.temp }}/mem-analyze-${{ matrix.tag }}-run${{ matrix.run }}.awk
+          METRICS_FILE: ${{ runner.temp }}/expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}/metrics.env
+          MEM_TAG: ${{ matrix.tag }}
+          MEM_RUN: ${{ matrix.run }}
+        run: |
+          set -uo pipefail
+          csv="${MEM_CSV}"
+          stopfile="${MEM_STOPFILE}"
+          pidfile="${MEM_PIDFILE}"
+          awkfile="${MEM_AWKFILE}"
+          mkdir -p "$(dirname "${METRICS_FILE}")" || true
+
+          # Signal the sampler to stop, then give it a moment to flush and exit.
+          touch "${stopfile}" || true
+          if [[ -f "${pidfile}" ]]; then
+            spid="$(cat "${pidfile}" 2>/dev/null || true)"
+            for _ in $(seq 1 15); do
+              if [[ -z "${spid}" ]] || ! kill -0 "${spid}" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            if [[ -n "${spid}" ]] && kill -0 "${spid}" 2>/dev/null; then
+              kill -TERM "${spid}" 2>/dev/null || true
+            fi
+          fi
+
+          if [[ ! -f "${csv}" ]] || ! grep -qv '^#' "${csv}" 2>/dev/null; then
+            echo "No memory samples were collected."
+            {
+              echo "MEM_SAMPLES=0"
+              echo "MEM_SEVERITY=0"
+              echo "MEM_VERDICT=ℹ️ no memory samples collected"
+            } >> "${METRICS_FILE}"
+            exit 0
+          fi
+
+          cat > "${awkfile}" <<'MEM_AWK_EOF'
+          # Analyze a memory-sample CSV: epoch,bytes,mem_perc,source (# lines ignored).
+          # Emits KEY=VALUE lines consumed by the workflow. All sizes in MiB.
+          #
+          # Leak detection ignores the cold-start ramp: a freshly started node grows
+          # from cold to a warm plateau (a one-time step, NOT a leak). The verdict is
+          # computed on the POST-WARMUP window using the least-squares slope of the
+          # per-time-bucket minima (the "floor"). Flat floor => plateau (healthy);
+          # sustained positive floor slope => a footprint that never clears (leak).
+          BEGIN { FS = "," }
+          /^#/ { next }
+          NF >= 2 && $2 + 0 > 0 {
+            n++
+            t[n] = $1 + 0
+            b[n] = ($2 + 0) / 1048576.0
+            p[n] = $3 + 0
+            s[n] = $4
+          }
+          END {
+            if (n == 0) { print "SAMPLES=0"; exit }
+            t0 = t[1]; tN = t[n]; dur = tN - t0
+            peak = b[1]; minv = b[1]; sum = 0; peakperc = p[1]; src = ""
+            for (i = 1; i <= n; i++) {
+              if (b[i] > peak) peak = b[i]
+              if (b[i] < minv) minv = b[i]
+              sum += b[i]
+              if (p[i] > peakperc) peakperc = p[i]
+              if (s[i] != "") src = s[i]
+            }
+            avg = sum / n
+            frac = WARMUP_FRAC + 0
+            if (frac <= 0 || frac >= 1) frac = 0.3
+            cutoff = t0 + frac * dur
+            m = 0
+            for (i = 1; i <= n; i++) if (t[i] >= cutoff) { m++; mt[m] = t[i]; mb[m] = b[i] }
+            if (m < 4) { m = 0; for (i = 1; i <= n; i++) { m++; mt[m] = t[i]; mb[m] = b[i] }; cutoff = t0 }
+            warmup_s = cutoff - t0
+            mt0 = mt[1]; mtN = mt[m]; mdur = mtN - mt0
+            K = 10; if (m < K) K = m
+            for (j = 1; j <= K; j++) { bmin[j] = -1; bsum[j] = 0; bcnt[j] = 0; btsum[j] = 0 }
+            for (i = 1; i <= m; i++) {
+              j = (mdur > 0) ? int((mt[i] - mt0) / mdur * K) + 1 : 1
+              if (j > K) j = K; if (j < 1) j = 1
+              if (bmin[j] < 0 || mb[i] < bmin[j]) bmin[j] = mb[i]
+              bsum[j] += mb[i]; bcnt[j]++; btsum[j] += mt[i]
+            }
+            kk = 0
+            for (j = 1; j <= K; j++) if (bcnt[j] > 0) { kk++; fmin[kk] = bmin[j]; ftime[kk] = btsum[j] / bcnt[j] }
+            baseline = fmin[1]; end_floor = fmin[kk]
+            growth = end_floor - baseline
+            growth_pct = (baseline > 0) ? (growth / baseline) * 100.0 : 0
+            Sx = 0; Sy = 0; Sxy = 0; Sxx = 0
+            for (j = 1; j <= kk; j++) { x = (ftime[j] - mt0) / 60.0; y = fmin[j]; Sx += x; Sy += y; Sxy += x * y; Sxx += x * x }
+            denom = kk * Sxx - Sx * Sx
+            slope = (denom != 0) ? (kk * Sxy - Sx * Sy) / denom : 0
+            UK = 10; if (n < UK) UK = n
+            for (j = 1; j <= UK; j++) { ubsum[j] = 0; ubcnt[j] = 0 }
+            for (i = 1; i <= n; i++) {
+              uj = (dur > 0) ? int((t[i] - t0) / dur * UK) + 1 : 1
+              if (uj > UK) uj = UK; if (uj < 1) uj = 1
+              ubsum[uj] += b[i]; ubcnt[uj]++
+            }
+            uu = 0
+            for (j = 1; j <= UK; j++) if (ubcnt[j] > 0) { uu++; umean[uu] = ubsum[j] / ubcnt[j] }
+            printf "SAMPLES=%d\n", n
+            printf "SOURCE=%s\n", (src == "" ? "unknown" : src)
+            printf "DURATION_S=%d\n", dur
+            printf "WARMUP_S=%d\n", warmup_s
+            printf "BUCKETS=%d\n", kk
+            printf "PEAK_MB=%.1f\n", peak
+            printf "PEAK_PERC=%.1f\n", peakperc
+            printf "MIN_MB=%.1f\n", minv
+            printf "AVG_MB=%.1f\n", avg
+            printf "BASELINE_MB=%.1f\n", baseline
+            printf "END_FLOOR_MB=%.1f\n", end_floor
+            printf "FLOOR_GROWTH_MB=%.1f\n", growth
+            printf "FLOOR_GROWTH_PCT=%.1f\n", growth_pct
+            printf "FLOOR_SLOPE_MB_PER_MIN=%.2f\n", slope
+            printf "SPARK_USAGE_IDX=%s\n", sparkline(umean, uu)
+            printf "SPARK_FLOOR_IDX=%s\n", sparkline(fmin, kk)
+          }
+          function sparkline(arr, cnt,   j, lo, hi, out, lvl) {
+            if (cnt <= 0) return ""
+            lo = arr[1]; hi = arr[1]
+            for (j = 1; j <= cnt; j++) { if (arr[j] < lo) lo = arr[j]; if (arr[j] > hi) hi = arr[j] }
+            out = ""
+            for (j = 1; j <= cnt; j++) {
+              lvl = (hi > lo) ? int((arr[j] - lo) / (hi - lo) * 7 + 0.5) : 0
+              out = out (j > 1 ? " " : "") lvl
+            }
+            return out
+          }
+          MEM_AWK_EOF
+
+          NEAR_LIMIT_PERC="${MEM_NEAR_LIMIT_PERC:-90}"
+          SLOPE_MIN="${MEM_SLOPE_MB_PER_MIN_MIN:-15}"
+          GROWTH_MB_MIN="${MEM_GROWTH_MB_MIN:-256}"
+          MIN_SAMPLES="${MEM_MIN_SAMPLES:-5}"
+          WARMUP_FRAC="${MEM_WARMUP_FRAC:-0.3}"
+          MEM_LEVELS=(▁ ▂ ▃ ▄ ▅ ▆ ▇ █)
+
+          declare -A A=()
+          while IFS='=' read -r k v; do
+            [[ -z "${k}" ]] && continue
+            A["${k}"]="${v}"
+          done < <(awk -v WARMUP_FRAC="${WARMUP_FRAC}" -f "${awkfile}" "${csv}")
+
+          samples="${A[SAMPLES]:-0}"
+          source="${A[SOURCE]:-unknown}"
+          hsize() { awk -v m="${1:-0}" 'BEGIN { if (m + 0 >= 1024) printf "%.2f GiB", m / 1024.0; else printf "%.0f MiB", m }'; }
+          spark() { local out="" i; for i in $1; do out+="${MEM_LEVELS[$i]}"; done; printf '%s' "${out}"; }
+          ge() { awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { print (a + 0 >= b + 0) ? 1 : 0 }'; }
+
+          src_note=""
+          [[ "${source}" == "stats" ]] && src_note=" (docker stats — includes active page cache)"
+
+          if [[ "${samples}" -lt "${MIN_SAMPLES}" ]]; then
+            verdict="ℹ️ insufficient samples (${samples})"
+            severity=0
+            spark_usage=""; spark_floor=""
+          else
+            near="$(ge "${A[PEAK_PERC]:-0}" "${NEAR_LIMIT_PERC}")"
+            slope_hit="$(ge "${A[FLOOR_SLOPE_MB_PER_MIN]:-0}" "${SLOPE_MIN}")"
+            growth_hit="$(ge "${A[FLOOR_GROWTH_MB]:-0}" "${GROWTH_MB_MIN}")"
+            grow=0
+            [[ "${slope_hit}" -eq 1 && "${growth_hit}" -eq 1 ]] && grow=1
+            severity=0
+            [[ "${grow}" -eq 1 ]] && severity=$(( severity + 1 ))
+            [[ "${near}" -eq 1 ]] && severity=$(( severity + 2 ))
+            case "${severity}" in
+              0) verdict="✅ stable (floor clears)" ;;
+              1) verdict="⚠️ rising floor (possible leak)" ;;
+              2) verdict="⚠️ near memory limit" ;;
+              3) verdict="🔴 rising floor near limit" ;;
+            esac
+            spark_usage="$(spark "${A[SPARK_USAGE_IDX]:-}")"
+            spark_floor="$(spark "${A[SPARK_FLOOR_IDX]:-}")"
+          fi
+
+          echo "----- Memory (container): ${MEM_TAG:-?} run ${MEM_RUN:-?} -----"
+          if [[ "${samples}" -lt "${MIN_SAMPLES}" ]]; then
+            echo "  ${verdict}"
+          else
+            printf "  Samples        %s over %ss (source: %s%s)\n" "${samples}" "${A[DURATION_S]:-0}" "${source}" "${src_note}"
+            printf "  Warmup skipped %ss\n" "${A[WARMUP_S]:-0}"
+            printf "  Peak           %s (%s%% of limit/host)\n" "$(hsize "${A[PEAK_MB]:-0}")" "${A[PEAK_PERC]:-?}"
+            printf "  Baseline floor %s (post-warmup)\n" "$(hsize "${A[BASELINE_MB]:-0}")"
+            printf "  End floor      %s\n" "$(hsize "${A[END_FLOOR_MB]:-0}")"
+            printf "  Floor growth   %s (%s%%)\n" "$(hsize "${A[FLOOR_GROWTH_MB]:-0}")" "${A[FLOOR_GROWTH_PCT]:-0}"
+            printf "  Floor trend    %s MiB/min\n" "${A[FLOOR_SLOPE_MB_PER_MIN]:-0}"
+            printf "  Usage shape    %s\n" "${spark_usage}"
+            printf "  Floor shape    %s\n" "${spark_floor}"
+            printf "  Verdict        %s\n" "${verdict}"
+          fi
+
+          {
+            echo "MEM_SAMPLES=${samples}"
+            echo "MEM_SOURCE=${source}"
+            echo "MEM_SEVERITY=${severity}"
+            echo "MEM_VERDICT=${verdict}"
+            if [[ "${samples}" -ge "${MIN_SAMPLES}" ]]; then
+              echo "MEM_DURATION_S=${A[DURATION_S]:-}"
+              echo "MEM_WARMUP_S=${A[WARMUP_S]:-}"
+              echo "MEM_PEAK_MB=${A[PEAK_MB]:-}"
+              echo "MEM_PEAK_PERC=${A[PEAK_PERC]:-}"
+              echo "MEM_MIN_MB=${A[MIN_MB]:-}"
+              echo "MEM_AVG_MB=${A[AVG_MB]:-}"
+              echo "MEM_BASELINE_MB=${A[BASELINE_MB]:-}"
+              echo "MEM_END_FLOOR_MB=${A[END_FLOOR_MB]:-}"
+              echo "MEM_FLOOR_GROWTH_MB=${A[FLOOR_GROWTH_MB]:-}"
+              echo "MEM_FLOOR_GROWTH_PCT=${A[FLOOR_GROWTH_PCT]:-}"
+              echo "MEM_FLOOR_SLOPE_MB_PER_MIN=${A[FLOOR_SLOPE_MB_PER_MIN]:-}"
+              echo "MEM_SPARK_USAGE=${spark_usage}"
+              echo "MEM_SPARK_FLOOR=${spark_floor}"
+            fi
+          } >> "${METRICS_FILE}"
+
       - name: Upload metrics artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -2029,6 +2971,17 @@ jobs:
           name: expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}/metrics.env
           retention-days: 30
+
+      - name: Upload memory samples artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-memory-${{ matrix.tag }}-run${{ matrix.run }}
+          path: |
+            ${{ runner.temp }}/mem-samples-${{ matrix.tag }}-run${{ matrix.run }}.csv
+            ${{ runner.temp }}/mem-sampler-${{ matrix.tag }}-run${{ matrix.run }}.out
+          retention-days: 30
+          if-no-files-found: ignore
 
       - name: Enforce run quality gates
         if: always()
@@ -2244,6 +3197,44 @@ jobs:
             echo ""
             echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
           } >> "${summary_file}"
+
+          # Memory (container) — leak / OOM watch per image (bisection view)
+          {
+            echo ""
+            echo "### Memory (container)"
+            echo ""
+            echo "Anonymous working set (managed heap + native allocs + RocksDB block cache; excludes reclaimable page cache when Src=anon). A rising post-warmup floor => a footprint that never clears."
+            echo ""
+            if [[ "${run_count}" -gt 1 ]]; then
+              echo "| # | Image Tag | Run | Date | Src | Peak (MiB) | Peak % | Baseline (MiB) | End floor (MiB) | Floor Δ (MiB) | Floor Δ % | Trend MiB/min | Floor shape | Verdict |"
+              echo "|---|-----------|-----|------|-----|-----------:|-------:|---------------:|----------------:|--------------:|----------:|--------------:|:--|:--|"
+            else
+              echo "| # | Image Tag | Date | Src | Peak (MiB) | Peak % | Baseline (MiB) | End floor (MiB) | Floor Δ (MiB) | Floor Δ % | Trend MiB/min | Floor shape | Verdict |"
+              echo "|---|-----------|------|-----|-----------:|-------:|---------------:|----------------:|--------------:|----------:|--------------:|:--|:--|"
+            fi
+          } >> "${summary_file}"
+
+          midx=0
+          for i in "${!tags[@]}"; do
+            mtag="${tags[$i]}"; mdate="${dates[$i]}"
+            for (( r=1; r<=run_count; r++ )); do
+              midx=$(( midx + 1 ))
+              mf="${METRICS_DIR}/expb-metrics-${mtag}-run${r}/metrics.env"
+              if [[ "${run_count}" -gt 1 ]]; then mprefix="| ${midx} | \`${mtag}\` | ${r} | ${mdate}"; else mprefix="| ${midx} | \`${mtag}\` | ${mdate}"; fi
+              msamp="$(load_metric "${mf}" "MEM_SAMPLES")"
+              mverdict="$(load_metric "${mf}" "MEM_VERDICT")"
+              if [[ -z "${msamp}" ]]; then
+                echo "${mprefix} | - | - | - | - | - | - | - | - | - | no data |" >> "${summary_file}"
+                continue
+              fi
+              mpeak="$(load_metric "${mf}" "MEM_PEAK_MB")"
+              if [[ -z "${mpeak}" ]]; then
+                echo "${mprefix} | $(load_metric "${mf}" "MEM_SOURCE") | - | - | - | - | - | - | - | - | ${mverdict} |" >> "${summary_file}"
+                continue
+              fi
+              echo "${mprefix} | $(load_metric "${mf}" "MEM_SOURCE") | ${mpeak} | $(load_metric "${mf}" "MEM_PEAK_PERC") | $(load_metric "${mf}" "MEM_BASELINE_MB") | $(load_metric "${mf}" "MEM_END_FLOOR_MB") | $(load_metric "${mf}" "MEM_FLOOR_GROWTH_MB") | $(load_metric "${mf}" "MEM_FLOOR_GROWTH_PCT") | $(load_metric "${mf}" "MEM_FLOOR_SLOPE_MB_PER_MIN") | $(load_metric "${mf}" "MEM_SPARK_FLOOR") | ${mverdict} |" >> "${summary_file}"
+            done
+          done
 
           echo "--- Multi-Image Summary ---"
           cat "${summary_file}"
