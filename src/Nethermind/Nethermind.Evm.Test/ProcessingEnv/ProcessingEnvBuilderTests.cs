@@ -53,6 +53,12 @@ public interface IOverridableWorldStateEnv : IOverridableEnv<IWorldState>, IAsyn
 {
 }
 
+// Uses the Null placeholder component; the wrapper forwards BuildAndOverride and resolves the getter.
+public interface INullComponentEnv : IOverridableEnv<Null>, IDisposable
+{
+    IWorldState WorldState { get; }
+}
+
 // No IDisposable: only valid with OwnedByParentLifetime, which hands scope disposal to the parent.
 public interface IOwnedTrackerEnv
 {
@@ -162,6 +168,34 @@ public class ProcessingEnvBuilderTests
 
         Assert.That(env.WorldState, Is.Not.Null);
         Assert.That(env.CodeInfoRepository, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task WithOverridableEnv_builds_the_world_state_scope_on_demand()
+    {
+        using IContainer container = BuildContainer();
+
+        await using IOverridableWorldStateEnv env = container.Resolve<IProcessingEnvBuilder>()
+            .WithOverridableEnv()
+            .BuildAs<IOverridableWorldStateEnv>();
+
+        // The no-arg overload must not open the world-state scope up front: were it eager, this on-demand
+        // build would throw because the env's single scope would already be open.
+        using Scope<IWorldState> scope = env.BuildAndOverride(null);
+        Assert.That(scope.Component, Is.Not.Null);
+    }
+
+    [Test]
+    public void BuildAs_supports_a_null_component_overridable_env_with_getters()
+    {
+        using IContainer container = BuildContainer();
+
+        using INullComponentEnv env = container.Resolve<IProcessingEnvBuilder>()
+            .WithOverridableEnv()
+            .BuildAs<INullComponentEnv>();
+
+        using (env.BuildAndOverride(null)) // Scope<Null>; only the scope lifetime matters
+            Assert.That(env.WorldState, Is.Not.Null);
     }
 
     [Test]

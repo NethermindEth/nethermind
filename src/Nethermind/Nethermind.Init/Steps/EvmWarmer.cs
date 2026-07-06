@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Init.Steps;
+using Nethermind.State.OverridableEnv;
 
 [RunnerStepDependencies(
     typeof(InitializeBlockchain)
@@ -22,12 +23,13 @@ public class EvmWarmer(IProcessingEnvBuilder envBuilder) : IStep
             .WithOverridableEnv()
             .BuildAs<IWarmupEnv>();
 
-        EthereumVirtualMachine.WarmUpEvmInstructions(warmupEnv.WorldState, warmupEnv.CodeInfoRepository);
+        using (warmupEnv.BuildAndOverride(null)) // Scope<Null>; only the override scope's lifetime is needed
+            EthereumVirtualMachine.WarmUpEvmInstructions(warmupEnv.WorldState, warmupEnv.CodeInfoRepository);
 
         return Task.CompletedTask;
     }
 
-    public interface IWarmupEnv : IDisposable
+    public interface IWarmupEnv : IOverridableEnv<Null>, IDisposable
     {
         IWorldState WorldState { get; }
         ICodeInfoRepository CodeInfoRepository { get; }

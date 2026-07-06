@@ -58,13 +58,12 @@ public class ProcessingEnvBuilder : IProcessingEnvBuilder
 
     public IProcessingEnvBuilder WithOverridableEnv()
     {
-        // Create and own an env from the world-state manager: the environment disposes both the env and
-        // its opened (un-overridden) world-state scope when it is disposed.
+        // Create and own an env from the world-state manager (the environment disposes it). Unlike the
+        // parameterized overload this owns the env's disposal; the caller opens the world-state scope on
+        // demand through the resolved IOverridableEnv<T> rather than it being built up front.
         IOverridableEnv env = _parentScope.Resolve<IOverridableEnvFactory>().Create();
-        IProcessingEnvBuilder result = env is IDisposable disposableEnv ? ThatDisposes(disposableEnv) : this; // disposed last
-        return result
-            .ThatDisposes(env.BuildAndOverride(null)) // disposed before the env
-            .WithOverridableEnv(env);
+        IProcessingEnvBuilder result = env is IDisposable disposableEnv ? ThatDisposes(disposableEnv) : this;
+        return result.WithOverridableEnv(env);
     }
 
     public IProcessingEnvBuilder WithReplacedComponent<T>(T instance) where T : class =>
