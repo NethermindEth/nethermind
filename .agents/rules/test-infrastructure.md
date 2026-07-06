@@ -27,17 +27,7 @@ Multi-instance setup for sync testing. Reference for setting up full component s
 
 ## Benchmark setup
 
-For benchmarks, use production DI modules with `DiagnosticMode.MemDb` overrides. Don't manually construct `WorldState`, `TrieStore`, `BlockProcessor` etc.
-
-Example from `Nethermind.Evm.Benchmark` (correct pattern):
-
-```csharp
-// Use production modules; override only what you need
-IContainer container = new ContainerBuilder()
-    .AddModule(new NethermindModule(spec, configProvider, logManager))
-    .AddModule(new TestEnvironmentModule(nodeKey, null))  // wires MemDb, test logging
-    .Build();
-```
+For benchmarks, use production DI modules with `DiagnosticMode.MemDb` overrides — see the canonical container setup in [di-patterns.md](di-patterns.md) "Test setup pattern". `Nethermind.Evm.Benchmark` uses the `TestNethermindModule` convenience wrapper (wires `PseudoNethermindModule` + `TestEnvironmentModule` in one module). Don't manually construct `WorldState`, `TrieStore`, `BlockProcessor` etc.
 
 ## DI anti-pattern — never manually new up infrastructure
 
@@ -48,21 +38,7 @@ ITransactionProcessor txProcessor = new TransactionProcessor(specProvider, world
 IBlockProcessor blockProcessor = new BlockProcessor(..., txProcessor, worldState, ...);
 ```
 
-**Correct — use DI with targeted overrides:**
-
-```csharp
-// Unit tests: direct DI with targeted overrides
-IContainer container = new ContainerBuilder()
-    .AddModule(new PseudoNethermindModule(spec, configProvider, logManager))
-    .AddModule(new TestEnvironmentModule(nodeKey, null))
-    .Build();
-
-// Benchmarks: production modules + DiagnosticMode.MemDb
-IContainer container = new ContainerBuilder()
-    .AddModule(new NethermindModule(spec, configProvider, LimboLogs.Instance))
-    .AddModule(new TestEnvironmentModule(nodeKey, null))
-    .Build();
-```
+**Correct** — direct DI with targeted overrides: `PseudoNethermindModule` for unit tests, full `NethermindModule` for benchmarks; the canonical snippets are in [di-patterns.md](di-patterns.md) "Test setup pattern".
 
 The rule: **if production modules already wire a component, use them — don't construct it yourself**.
 

@@ -93,15 +93,23 @@ builder
 
 ## Test setup pattern (preferred: direct DI)
 
+This is the canonical container setup — test-infrastructure.md references it rather than repeating it. Unit tests use `PseudoNethermindModule` (full production wiring without init steps); benchmarks use the full `NethermindModule` with MemDb overrides.
+
 ```csharp
-// Preferred — use production modules directly with test overrides
+// Unit tests
+IContainer container = new ContainerBuilder()
+    .AddModule(new PseudoNethermindModule(spec, configProvider, logManager))
+    .AddModule(new TestEnvironmentModule(nodeKey, null))
+    .Build();
+
+// Benchmarks
 IContainer container = new ContainerBuilder()
     .AddModule(new NethermindModule(spec, configProvider, logManager))
-    .AddModule(new TestEnvironmentModule(nodeKey, null))
+    .AddModule(new TestEnvironmentModule(nodeKey, null))  // wires MemDb, test logging
     .Build();
 ```
 
-Never add test-specific code to production modules. Overrides belong in `TestEnvironmentModule`, `TestBlockProcessingModule`, or a new test module passed to `Build`.
+`TestNethermindModule` is a convenience wrapper that combines `PseudoNethermindModule` + `TestEnvironmentModule` in one module (used by `Nethermind.Evm.Benchmark`).
 
 ## Anti-pattern
 - Using the form `.Add<IFoo>(ctx => new Foo(ctx.Resolve<Dep1>(), ctx.Resolve<Dep2>()))` is an anti-pattern. It will cause changes to the wiring when `Foo` adds new dependencies, which increases review load.

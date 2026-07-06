@@ -7,6 +7,8 @@ allowed-tools:
     Bash(git merge-base*),
     Bash(git log*),
     Bash(git status*),
+    Bash(git ls-remote*),
+    Bash(git fetch origin*),
     Read,
     Grep,
     Glob,
@@ -17,10 +19,12 @@ allowed-tools:
 
 Nethermind is an Ethereum execution client built on .NET. Consensus correctness is non-negotiable — a wrong opcode, a missed fork condition, or an Engine API violation means invalid blocks on a live network.
 
-**Only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists.**
-Be concise: one sentence per comment when possible. If uncertain, stay silent.
+**For domain findings, only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists — if uncertain, stay silent. Rule violations found by the project rules check are exempt from this threshold: always report them (see "When to stay silent").**
+Be concise: one sentence per comment when possible.
 
-**Subagent warning:** Subagents do not inherit full review context automatically. If you launch subagents for this review, you **must** paste the `Codebase Rules` and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
+`Codebase Rules` means the rule files under `.agents/rules/` (indexed in AGENTS.md).
+
+**Subagent warning:** Subagents do not inherit full review context automatically. If you launch subagents for this review, you **must** paste the relevant `Codebase Rules` files and all applicable domain review sections from this skill into the subagent prompt. After receiving subagent output, cross-check their findings against the rules in your own context.
 
 ---
 
@@ -78,8 +82,8 @@ Review each changed `.cs` file independently. Read the diff, check it, report fi
 - **Minimize context reads:** Only read files outside the diff to verify a specific finding (e.g., confirming a DI module registration). Do not speculatively read files "for context".
 - **Stay in the diff:** Findings must only come from changed files.
 - **Batch verification reads:** If reviewing a file surfaces multiple findings that each need a different context file, read all context files in one parallel batch — don't round-trip one at a time.
-- **Never fabricate:** If a category does not apply, write "N/A".
-- **MANDATORY: Never invent exceptions to rules.** If a `Codebase Rules` rule covers a pattern and the code matches that pattern, report it. Do not dismiss a violation by reasoning that the context "probably" justifies it — that is the author's call, not yours. If the rule is wrong, flag the violation and note the rule may need updating. If you believe the rule is wrong for this case, report the violation AND add a note that the rule may need an exception — but the violation still appears in the count.
+- **Never fabricate:** at checkpoints, state findings or "no findings" per category — never invent a finding to fill one. (The final report omits clean categories; checkpoints do not.)
+- **Never invent exceptions to rules** — see "When to stay silent". If a `Codebase Rules` rule covers a pattern and the code matches, report it; dismissing it is the author's call, not yours.
 
 ### Tool call discipline
 
@@ -170,8 +174,8 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 
 - EVM opcode with incorrect gas cost, wrong stack effect, or wrong memory expansion rule
 - Fork/EIP activation condition checked by block number when it should use timestamp (all forks from Cancun onward activate by timestamp), or applied at the wrong boundary
-- Engine API payload accepted or rejected contrary to the spec — each version has distinct required fields: `engine_newPayloadV1` (pre-Shanghai), `engine_newPayloadV2` (+ `withdrawals`), `engine_newPayloadV3` (+ `blobGasUsed`, `excessBlobGas`, `parentBeaconBlockRoot`), `engine_newPayloadV4` (+ `executionRequests`)
-- Blob transaction (EIP-4844) handling with incorrect blob gas accounting, wrong blob base fee calculation, missing KZG commitment verification, or blob gas limit not enforced (6 blobs per block pre-Electra)
+- Engine API payload accepted or rejected contrary to the spec — each version adds required fields (V2 + `withdrawals`; V3 + `blobGasUsed`, `excessBlobGas`, `parentBeaconBlockRoot`; V4 + `executionRequests`; newer versions per fork) — verify against the Engine API spec for the target fork
+- Blob transaction (EIP-4844) handling with incorrect blob gas accounting, wrong blob base fee calculation, missing KZG commitment verification, or per-fork blob limits not enforced (limits come from the active fork's blob schedule)
 - Wrong state root computation — trie updates, storage root recomputation, or nonce/balance changes that don't match the block header's `stateRoot`; this is the ground truth for block validity
 - Incorrect receipt fields (`cumulativeGasUsed`, bloom filter, logs, status) — receipts are hashed into `receiptsRoot` in the block header; wrong values propagate as invalid blocks to peers
 - System-level withdrawal processing (EIP-4895) applied out of order, to the wrong address, or with wrong amounts — withdrawals bypass the gas system and any error corrupts the state root
@@ -184,8 +188,8 @@ Wrong EVM behaviour produces invalid blocks, causing chain desync and validators
 
 ### Key code locations
 
-- EVM instruction handlers: `src/Nethermind/Nethermind.Evm/VirtualMachine.cs`
-- Gas cost tables: `src/Nethermind/Nethermind.Evm/GasCostOf.cs`
+- EVM instruction handlers: `src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.*.cs` (dispatch in `VirtualMachine.cs`)
+- Gas cost tables: `src/Nethermind/Nethermind.Core/GasCostOf.cs`
 - Engine API handlers: `src/Nethermind/Nethermind.Merge.Plugin/Handlers/`
 - Fork activation specs: `src/Nethermind/Nethermind.Specs/`
 - State root computation: `src/Nethermind/Nethermind.State/`

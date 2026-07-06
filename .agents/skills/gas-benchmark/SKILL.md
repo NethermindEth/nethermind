@@ -30,7 +30,7 @@ allowed-tools:
   - Read
   - Grep
   - Glob
-argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--fork FORK] [--dottrace] [--analyze-run RUN_ID] [--compare RUN_ID]"
+argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--fork FORK] [--dottrace|--no-dottrace] [--gas-size SIZE] [--no-restart] [--release TAG] [--gas-benchmarks-ref REF] [--analyze-run RUN_ID] [--compare RUN_ID]"
 ---
 
 # Gas Benchmark Pipeline
@@ -53,13 +53,7 @@ When called without arguments (`/gas-benchmark`), do NOT proceed with defaults. 
 3. **Ask for the network**: "Which network? (`perf-devnet-3`, `jochemnet`, `mainnet`)"
 
 4. **Ask for filter** — help the user discover available tests first:
-   a. After the release and network are known, list available test categories:
-      ```
-      gh release download <tag> --repo NethermindEth/gas-benchmarks \
-        --pattern "generated-tests-stateful-<network>.tar.gz" -D /tmp/gb-tests --clobber
-      tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
-        | sed 's|.*/||' | sed 's/\.txt$//' | sed 's/\[.*//' | sort -u | grep -v "^$\|funding\|gas-bump"
-      ```
+   a. After the release and network are known, list available test categories using the commands in "Filter reference — How to discover available tests" below.
    b. Show the user a categorized list of available tests. Example output:
       ```
       Available test categories for perf-devnet-3:
@@ -73,11 +67,7 @@ When called without arguments (`/gas-benchmark`), do NOT proceed with defaults. 
       - Describe what you're interested in (e.g., 'storage write scenarios with existing slots')
       - Leave empty to run all tests"
    d. If the user gives a natural-language description, map it to the right filter pattern by inspecting the test parameter names in the archive (e.g., `existing_slots_True`, `write_new_value_False`, `CacheStrategy.NO_CACHE`).
-   e. To show the user the full parameter space for a category:
-      ```
-      tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
-        | grep "setup/.*<category>" | sed 's|.*/setup/||; s/\.txt$//' | head -20
-      ```
+   e. To show the user the full parameter space for a category, use "Filter reference — How to explore parameters" below.
 
 5. **Ask about dotTrace**: "Do you want dotTrace profiling? (requires building a diag image, adds ~2min to build)"
 
@@ -96,7 +86,7 @@ Parse `$ARGUMENTS` for these flags:
 | `--filter` | (none) | Test filter pattern passed to repricing workflow |
 | `--network` | `perf-devnet-3` | Network name (perf-devnet-3, jochemnet, mainnet) |
 | `--fork` | `amsterdam` | Fork name (amsterdam, osaka) |
-| `--dottrace` | (ask user) | Enable dotTrace profiling — builds diag image, passes diagnostics flags |
+| `--dottrace` / `--no-dottrace` | interactive: ask; non-interactive: off | dotTrace profiling — builds diag image, passes diagnostics flags. Non-interactive runs enable it only when `--dottrace` is passed (the CI workflow defaults dottrace to true and passes `--dottrace` explicitly; it omits the flag when disabled). |
 | `--gas-size` | `100M` | Gas size filter (appended as `benchmark_<size>` to filter). Default 100M. |
 | `--no-restart` | (false) | Disable restart-before-testing for stateful tests (restart is on by default) |
 | `--release` | (discovered) | Override release tag — skips interactive selection |
@@ -319,21 +309,25 @@ cd /tmp/gb-results && unzip -o *.zip
 ```
 
 **Step 2 — Extract per-test timings from result files:**
-Each test produces a `nethermind_results_1_<test-name>.txt` file containing `engine_newPayloadV5` timing (the actual block processing time).
+Each test produces a `nethermind_results_1_<test-name>.txt` file containing the `engine_newPayloadV<N>` timing (the actual block processing time). The newPayload version is fork-dependent — detect it from the files rather than hardcoding:
 
 ```bash
 cd /tmp/gb-results/results
+NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
+[ -n "$NP" ] || { echo "No engine_newPayloadV<N> timing found in result files" >&2; exit 1; }
 ls nethermind_results_1_*.txt | while IFS= read -r f; do
-  ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
+  ms=$(grep -A3 "$NP:" "$f" | grep "Average:" | awk '{print $2}')
   name=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
   echo "$ms $name"
 done | sort -rn
 ```
 
-**Step 3 — Compute aggregates:**
+**Step 3 — Compute aggregates** (re-derive `NP` — shell state does not persist between tool calls):
 ```bash
+NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
+[ -n "$NP" ] || { echo "No engine_newPayloadV<N> timing found in result files" >&2; exit 1; }
 ls nethermind_results_1_*.txt | while IFS= read -r f; do
-  ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
+  ms=$(grep -A3 "$NP:" "$f" | grep "Average:" | awk '{print $2}')
   [ -n "$ms" ] && echo "$ms"
 done | awk '{sum+=$1; vals[NR]=$1; n=NR} END {
   asort(vals)
@@ -356,11 +350,14 @@ gh run download <base-run-id> --repo NethermindEth/gas-benchmarks \
 cd /tmp/gb-pr && unzip -o *.zip
 cd /tmp/gb-base && unzip -o *.zip
 
-# Compare per-test (sorted by delta)
+# Compare per-test (sorted by delta); detect the newPayload version PER RUN — the two runs may target different forks
 cd /tmp/gb-pr/results
+PR_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" nethermind_results_1_*.txt | head -1)
+BASE_NP=$(grep -ohm1 "engine_newPayloadV[0-9]*" /tmp/gb-base/results/nethermind_results_1_*.txt | head -1)
+[ -n "$PR_NP" ] && [ -n "$BASE_NP" ] || { echo "newPayload timing not found in one of the runs" >&2; exit 1; }
 ls nethermind_results_1_*.txt | while IFS= read -r f; do
-  pr_ms=$(grep -A3 "engine_newPayloadV5:" "$f" | grep "Average:" | awk '{print $2}')
-  base_ms=$(grep -A3 "engine_newPayloadV5:" "/tmp/gb-base/results/$f" 2>/dev/null \
+  pr_ms=$(grep -A3 "$PR_NP:" "$f" | grep "Average:" | awk '{print $2}')
+  base_ms=$(grep -A3 "$BASE_NP:" "/tmp/gb-base/results/$f" 2>/dev/null \
     | grep "Average:" | awk '{print $2}')
   if [ -n "$pr_ms" ] && [ -n "$base_ms" ]; then
     short=$(echo "$f" | sed 's/nethermind_results_1_//;s/\.txt$//')
@@ -378,6 +375,7 @@ Present results as a markdown table sorted by delta, then show aggregates (AVG, 
 
 Extract block operation counts:
 ```
+# the -v filter drops known noise rows from non-test blocks; the whitespace in "sstore     10" is exact and intentional
 grep -E "Block.*sload|Block.*sstore" <logs> | grep -v "sstore     10"
 ```
 Report sload/sstore/create counts for the heaviest test blocks.
@@ -440,15 +438,15 @@ If present:
 
 ## Phase 5 — Report
 
-Always include the block phase breakdown first:
+Always include the block phase breakdown first. Ranges and counts come from the run's logs — they differ per release; the values below are placeholders, not expected numbers:
 
 ```
 ### Block Phases
 | Phase | Block Range | Count | Description |
 |-------|------------|-------|-------------|
-| Gas bump | 24358001–24363001 | 5001 | Empty gas-limit ramp blocks |
-| Setup | 24363002–24363003 | 180 | Pre-state preparation |
-| Testing | 24363004–24363183 | 180 | Actual benchmark execution |
+| Gas bump | <first>-<last> | N | Empty gas-limit ramp blocks |
+| Setup | <first>-<last> | N | Pre-state preparation |
+| Testing | <first>-<last> | N | Actual benchmark execution |
 ```
 
 If testing block count is 0, display prominently:
@@ -470,8 +468,8 @@ Then the summary table (timings ONLY from testing blocks):
 | Testing blocks | N |
 | AVG processing | X ms |
 | MEDIAN | X ms |
+| P90 | X ms |
 | P95 | X ms |
-| P99 | X ms |
 | MAX | X ms |
 ```
 
@@ -481,43 +479,7 @@ If comparing against a baseline, include both timings and the delta/speedup perc
 
 ## CI integration
 
-The workflow `.github/workflows/gas-benchmark-analysis.yml` runs the full gas-benchmark pipeline in CI via Claude Code. It executes ALL phases (build → trigger → wait → analyze) and posts results as a PR comment.
-
-**Authorization:** Only members of the `NethermindEth/core` GitHub team can trigger via PR comments (verified via API team membership check).
-
-### Trigger 1: PR comment (full run)
-Comment on a PR to run the complete pipeline on the PR branch:
-```
-@claude-bench                                  # full run, all tests, dotTrace enabled
-@claude-bench --filter sstore_bloated          # full run with test filter
-@claude-bench --no-dottrace                    # full run without dotTrace
-@claude-bench --image nethermindeth/nethermind:my-tag  # skip build, use existing image
-```
-
-### Trigger 1b: PR comment (analyze-only)
-To analyze an already-completed run instead of starting a new one:
-```
-@claude-bench --analyze-run 25725558942
-@claude-bench --analyze-run 25725558942 --compare 25700000000
-```
-
-### Trigger 2: Manual dispatch
-```
-gh workflow run gas-benchmark-analysis.yml \
-  -f branch=my-feature-branch \
-  -f filter=sstore_bloated \
-  -f dottrace=true \
-  -f pr_number=12345
-```
-
-### Trigger 3: Repository dispatch (from gas-benchmarks repo)
-```
-gh api repos/NethermindEth/nethermind/dispatches \
-  -f event_type=gas-benchmark-analysis \
-  -f 'client_payload={"branch":"my-branch","filter":"bloated","pr_number":"12345"}'
-```
-
-All modes run this skill with the appropriate flags and post results as a PR comment (if a PR number is available) or to the workflow step summary.
+`.github/workflows/gas-benchmark-analysis.yml` runs this skill in CI via Claude Code — triggered by `@claude-bench` PR comments (restricted to `NethermindEth/core` team members), manual dispatch, or repository dispatch from the gas-benchmarks repo. CI passes the skill flags through verbatim; results are posted as a PR comment when a PR number is available, otherwise to the workflow step summary. The primary CI mode is `--analyze-run <RUN_ID>` (see "Analyze-only mode"); trigger syntax details live in the workflow file.
 
 ## Filter reference
 
