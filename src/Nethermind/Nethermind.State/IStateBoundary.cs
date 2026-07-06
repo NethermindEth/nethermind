@@ -33,6 +33,11 @@ public interface IStateBoundary
     /// </summary>
     ulong? BestPersistedState { get; }
 
+    /// <summary>
+    /// Like <see cref="BestPersistedState"/> but also returns the state root verified against the
+    /// persisted block. Returns <c>false</c> when there is no usable persisted state (nothing
+    /// persisted, still syncing, or a backend without one) — callers fall back to re-execution.
+    /// </summary>
     bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot);
 }
 
