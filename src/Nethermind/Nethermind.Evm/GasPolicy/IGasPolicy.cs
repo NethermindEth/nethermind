@@ -268,7 +268,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         }
         else
         {
-            childGas = requestedGas.IsUint64 && requestedGas.u0 <= gasAvailable ? requestedGas.u0 : gasAvailable;
+            // Pre-EIP-150: the full requested gas is charged; over-asking exceptionally halts the caller.
+            if (!requestedGas.IsUint64)
+            {
+                childGas = 0;
+                return false;
+            }
+            childGas = requestedGas.u0;
         }
         return TSelf.UpdateGas(ref gas, childGas);
     }
