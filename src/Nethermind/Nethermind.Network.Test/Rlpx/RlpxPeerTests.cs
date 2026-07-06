@@ -40,6 +40,7 @@ namespace Nethermind.Network.Test.Rlpx
                     SimulateSendLatencyMs = 0,
                 },
                 ipResolver,
+                Substitute.For<IPrivilegedIpProvider>(),
                 LimboLogs.Instance);
             await host.Init();
             await host.Shutdown();

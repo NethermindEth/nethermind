@@ -2,18 +2,23 @@
 
   <Import Project="../../Directory.Build.targets" />
 
-  <ItemGroup Condition="$(EnableZkEvm) == 'true'">
+  <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
     <Compile Remove="**/std/**/*.cs" />
     <None Include="**/std/**/*.cs" />
     <Compile Remove="**/*.std.cs" />
     <None Include="**/*.std.cs" />
   </ItemGroup>
 
-  <ItemGroup Condition="$(EnableZkEvm) != 'true'">
+  <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
     <Compile Remove="**/zkevm/**/*.cs" />
     <None Include="**/zkevm/**/*.cs" />
     <Compile Remove="**/*.zkevm.cs" />
     <None Include="**/*.zkevm.cs" />
+  </ItemGroup>
+
+  <!-- Replace ThreadStatic with a no-op attribute in zkEVM -->
+  <ItemGroup Condition="'$(EnableZkEvm)' == 'true' AND '@(ProjectReference)' != ''">
+    <Using Include="Nethermind.Core.Attributes.NoopThreadStaticAttribute" Alias="ThreadStaticAttribute" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(GenerateRpcJsonContext)' == 'true'">

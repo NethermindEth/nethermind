@@ -195,11 +195,7 @@ namespace Nethermind.EthStats.Integrations
 
         private Task SendHistoryAsync(EthStatsHistoryRequest request)
         {
-            if (!TryNormalizeHistoryRange(request, out ulong min, out ulong max))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Ignoring invalid ETH Stats history range {request.Min}-{request.Max}.");
-                return Task.CompletedTask;
-            }
+            NormalizeHistoryRange(request, out ulong min, out ulong max);
 
             List<EthStatsBlock> history = new((int)(max - min + 1));
             for (ulong blockNumber = min; blockNumber <= max; blockNumber++)
@@ -300,26 +296,15 @@ namespace Nethermind.EthStats.Integrations
             return Task.CompletedTask;
         }
 
-        internal static bool TryNormalizeHistoryRange(EthStatsHistoryRequest request, out ulong min, out ulong max)
+        internal static void NormalizeHistoryRange(EthStatsHistoryRequest request, out ulong min, out ulong max)
         {
             min = Math.Min(request.Min, request.Max);
             max = Math.Max(request.Min, request.Max);
-
-            if (max < 0)
-            {
-                min = 0;
-                max = 0;
-                return false;
-            }
-
-            min = Math.Max(0, min);
 
             if (max - min >= MaxHistoryBlocks)
             {
                 min = max - MaxHistoryBlocks + 1;
             }
-
-            return true;
         }
 
         private static EthStatsBlock CreateBlockModel(CoreBlock block)

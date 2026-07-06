@@ -96,4 +96,16 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels(20)
             .AssertChainLevel(0, 4)
             .AssertForceNewBeaconSync();
+
+    [Test]
+    public void Can_sync_using_chain_levels_over_large_gap_anchoring_at_front() =>
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 34)
+            .InsertBeaconPivot(7)
+            .InsertBeaconHeaders(4, 6)
+            .InsertBeaconBlocks(8, 33)
+            .SuggestBlocksUsingChainLevels()
+            .AssertBestKnownNumber(33)
+            .AssertBestSuggestedHeader(33)
+            .AssertBestSuggestedBody(33);
 }

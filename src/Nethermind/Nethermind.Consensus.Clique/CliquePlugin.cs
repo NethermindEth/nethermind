@@ -7,7 +7,9 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -23,43 +25,9 @@ namespace Nethermind.Consensus.Clique
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi;
-
-            (IApiWithStores _, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
-
-            _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
-
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager));
-
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return Task.CompletedTask;
-            }
-
-            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcModule cliqueRpcModule = new(
-                _nethermindApi.BlockProducerRunner as ICliqueBlockProducerRunner,
-                _snapshotManager!,
-                getFromApi.BlockTree!);
-
-            SingletonModulePool<ICliqueRpcModule> modulePool = new(cliqueRpcModule);
-            getFromApi.RpcModuleProvider!.Register(modulePool);
-
-            return Task.CompletedTask;
-        }
+        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
-
-        private INethermindApi? _nethermindApi;
-
-        private ISnapshotManager? _snapshotManager;
 
         public IModule Module => new CliqueModule();
     }
@@ -84,6 +52,7 @@ namespace Nethermind.Consensus.Clique
                 })
 
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
+                .AddLast<IBlockPreprocessorStep, AuthorRecoveryStep>()
                 .AddSingleton<ISealValidator, CliqueSealValidator>()
                 .AddSingleton<ISealer, CliqueSealer>()
 
@@ -92,6 +61,8 @@ namespace Nethermind.Consensus.Clique
                 .Bind<IBlockProducerRunnerFactory, CliqueBlockProducerFactory>()
 
                 .AddSingleton<IHealthHintService, CliqueHealthHintService>()
+
+                .RegisterSingletonJsonRpcModule<ICliqueRpcModule, CliqueRpcModule>()
                 ;
         }
     }
