@@ -28,13 +28,55 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
-            Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
-                // already recovered a sender for a signed tx in this block,
-                // so we assume the rest of txs in the block are already recovered
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            RecoverData(txs, releaseSpec);
+        }
+
+        /// <summary>
+        /// Exact per-tx check (senders and, when enabled, EIP-7702 authorities) so a partially
+        /// recovered block is completed rather than skipped by a first-tx heuristic.
+        /// </summary>
+        private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (!tx.IsSigned)
+                    continue;
+
+                if (tx.SenderAddress is null)
+                    return false;
+
+                if (checkAuthorities && tx.HasAuthorizationList)
+                {
+                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                    {
+                        if (tuple.Authority is null)
+                            return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Recovers senders (and EIP-7702 authorities) for transactions that are not yet part of a
+        /// constructed <see cref="Block"/>.
+        /// </summary>
+        /// <remarks>
+        /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
+        /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
+        /// </remarks>
+        /// <param name="txs">The transactions to recover senders and authorities for.</param>
+        /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
+        {
+            if (txs.Length == 0)
+                return;
+
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
@@ -48,6 +90,10 @@ namespace Nethermind.Consensus.Processing
                 {
                     Transaction tx = state.txs[i];
 
+                    // Materialize the lazily-deferred keccak here so the hash is computed on this
+                    // worker rather than later on the (serial) processing path. Typed txs already
+                    // force it via the sender-cache key; this also covers the legacy case.
+                    _ = tx.Hash;
                     tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
                     state.recover.RecoverAuthorities(tx, state.releaseSpec);
                     if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
@@ -59,6 +105,7 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
+                    _ = tx.Hash;
                     tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx, releaseSpec);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");

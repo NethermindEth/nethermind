@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,11 +22,13 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
     }
 
-    private static readonly ConcurrentDictionary<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
+    // Weak keys: transient spec wrappers (e.g. the per-block WithoutEip3607 decorator in
+    // eth_simulateV1) must not be retained forever by this process-wide cache.
+    private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
-        OpcodeTable table = _opcodeTablesBySpec.GetOrAdd(spec, static _ => new OpcodeTable());
+        OpcodeTable table = _opcodeTablesBySpec.GetValue(spec, static _ => new OpcodeTable());
 
         // Check if tracing instructions are inactive.
         if (!TTracingInst.IsActive)

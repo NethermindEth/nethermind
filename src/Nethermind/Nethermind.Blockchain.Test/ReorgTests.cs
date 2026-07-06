@@ -90,7 +90,7 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), CodeInfoRepositoryFactories.Caching);
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
@@ -117,10 +117,10 @@ public class ReorgTests
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            new RecoverSignatures(
+            [new RecoverSignatures(
                 ecdsa,
                 specProvider,
-                LimboLogs.Instance),
+                LimboLogs.Instance)],
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
