@@ -67,6 +67,12 @@ public class DeletionSubtreeCalculationTests
             Siblings("ab", 5).Concat(Siblings("ab5", 6)).ToArray()).SetName("Extension key '56': siblings at both levels");
         yield return new TestCaseData("ab", Extension("56"), Extension("56"),
             Array.Empty<string>()).SetName("Extension->Extension same key: nothing");
+
+        // Other->Branch: only the existing node's own child nibble is considered for deletion.
+        yield return new TestCaseData("ab", Branch(0b0000_0000_0010_0000, DummyValue), Leaf("50000000000000000000000000000000000000000000000000000000000"),
+            Array.Empty<string>()).SetName("Leaf->Branch: existing child 5 kept (new has hash at 5)");
+        yield return new TestCaseData("ab", Branch(0b0000_0000_0100_0000, DummyValue), Leaf("50000000000000000000000000000000000000000000000000000000000"),
+            new[] { "ab5" }).SetName("Leaf->Branch: new null at existing child 5 deletes ab5");
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -77,16 +83,10 @@ public class DeletionSubtreeCalculationTests
         existingNode?.ResolveKey(NullTrieNodeResolver.Instance, ref path);
 
         path = TreePath.FromHexString(hexPath);
-        SubtreeCollector collector = new();
-        FlatTreeSyncStore.ComputeDeletionSubtrees(path, node, existingNode, ref collector);
+        List<TreePath> subtrees = [];
+        FlatTreeSyncStore.ComputeDeletionSubtrees(path, node, existingNode, subtrees);
 
         TreePath[] expected = expectedRoots.Select(TreePath.FromHexString).ToArray();
-        Assert.That(collector.Roots, Is.EquivalentTo(expected));
-    }
-
-    private sealed class SubtreeCollector : FlatTreeSyncStore.ISubtreeSink
-    {
-        public List<TreePath> Roots { get; } = [];
-        public void Add(in TreePath subtreeRoot) => Roots.Add(subtreeRoot);
+        Assert.That(subtrees, Is.EquivalentTo(expected));
     }
 }

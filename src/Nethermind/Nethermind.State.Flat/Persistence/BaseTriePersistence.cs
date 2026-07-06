@@ -193,16 +193,6 @@ public static class BaseTriePersistence
             }
         }
 
-        /// <summary>Deletes every state trie node in the subtree rooted at <paramref name="subtreeRoot"/>.</summary>
-        /// <remarks>
-        /// The subtree covers all nodes whose path has <paramref name="subtreeRoot"/> as a prefix, i.e. value in
-        /// <c>[root.ToLowerBoundPath(), root.ToUpperBoundPath()]</c> and depth <c>&gt;= subtreeRoot.Length</c> (call it D).
-        /// A trie column whose maximum node length is below D can only hold ancestors of the subtree, so it is skipped;
-        /// in the fallback column the encoded length byte floors the scan at D so equal-value ancestors sort below the
-        /// lower bound. The deletion is inclusive of the root node itself — the leaf-heal caller relies on the
-        /// immediately following <see cref="SetStateTrieNode"/> re-writing it (the write batch is applied in order,
-        /// last write wins).
-        /// </remarks>
         [SkipLocalsInit]
         public void DeleteStateSubTree(in TreePath subtreeRoot)
         {
@@ -216,7 +206,7 @@ public static class BaseTriePersistence
             Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
 
-            // StateNodesTop (path length 0-5): skipped when the root is deeper than any node this column can hold
+            // StateNodesTop (path length 0-5)
             if (subtreeRoot.Length <= StateNodesTopThreshold)
             {
                 EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], subtreeRoot);
@@ -227,7 +217,7 @@ public static class BaseTriePersistence
                     StateNodesTopPathLength);
             }
 
-            // StateNodes (path length 6-15): skipped when the root is deeper than any node this column can hold
+            // StateNodes (path length 6-15)
             if (subtreeRoot.Length <= ShortenedPathThreshold)
             {
                 EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], subtreeRoot);
@@ -247,8 +237,6 @@ public static class BaseTriePersistence
                 firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
         }
 
-        /// <summary>Deletes every storage trie node in the subtree rooted at <paramref name="subtreeRoot"/> for the given account.</summary>
-        /// <remarks>See <see cref="DeleteStateSubTree"/> for the depth/ancestor semantics.</remarks>
         [SkipLocalsInit]
         public void DeleteStorageSubTree(in ValueHash256 addressHash, in TreePath subtreeRoot)
         {
@@ -264,7 +252,7 @@ public static class BaseTriePersistence
             Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
             Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
 
-            // StorageNodes (path length 0-15): skipped when the root is deeper than any node this column can hold
+            // StorageNodes (path length 0-15)
             if (subtreeRoot.Length <= ShortenedPathThreshold)
             {
                 EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, subtreeRoot);
