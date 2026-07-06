@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
@@ -17,11 +16,10 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 {
     private readonly IMetricsController _metricsController;
     private readonly ILogger _logger;
-    private readonly Options _options;
+    private readonly MonitoringOptions _options;
 
     private readonly string _exposeHost;
     private readonly int? _exposePort;
-    private readonly string _nodeName;
     private readonly string _pushGatewayUrl;
     private readonly int _intervalSeconds;
     private readonly CancellationTokenSource _timerCancellationSource;
@@ -46,9 +44,8 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
         _exposeHost = exposeHost;
         _exposePort = exposePort;
-        _nodeName = string.IsNullOrWhiteSpace(nodeName)
-            ? throw new ArgumentNullException(nameof(nodeName))
-            : nodeName;
+        if (string.IsNullOrWhiteSpace(nodeName))
+            throw new ArgumentNullException(nameof(nodeName));
         _pushGatewayUrl = pushGatewayUrl;
         _intervalSeconds = intervalSeconds <= 0
             ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
@@ -57,7 +54,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         _logger = logManager is null
             ? throw new ArgumentNullException(nameof(logManager))
             : logManager.GetClassLogger<MonitoringService>();
-        _options = GetOptions(metricsConfig);
+        _options = MonitoringOptions.FromConfig(metricsConfig);
     }
 
     public Task StartAsync()
@@ -110,23 +107,6 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     public void AddMetricsUpdateAction(Action callback) => _metricsController.AddMetricsUpdateAction(callback);
 
     public string Description => "Monitoring service";
-
-    private Options GetOptions(IMetricsConfig config)
-    {
-        string endpoint = _pushGatewayUrl?.Split("/").Last();
-        string group = endpoint?.Contains('-', StringComparison.Ordinal) == true
-            ? endpoint.Split("-")[0] : config.MonitoringGroup;
-        string instance = _nodeName.Replace("enode://", string.Empty).Split("@")[0];
-
-        return new(config.MonitoringJob, group, instance);
-    }
-
-    private class Options(string job, string group, string instance)
-    {
-        public string Job { get; } = job;
-        public string Instance { get; } = instance;
-        public string Group { get; } = group;
-    }
 
     public async ValueTask DisposeAsync()
     {

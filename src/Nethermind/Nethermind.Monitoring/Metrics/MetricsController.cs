@@ -179,18 +179,31 @@ namespace Nethermind.Monitoring.Metrics
             return CreateGauge(metricInfo.Name, metricInfo.Description, metricInfo.Tags, labels);
         }
 
-        // Tags that all metrics share
-        private static readonly Dictionary<string, string> _commonStaticTags = new()
+        // Tags that all metrics share. Built at construction time (not as a static initializer) so it captures
+        // the ProductInfo values only after they have been populated, and so empty values are never exported as
+        // empty labels (Prometheus drops those, causing scrape/push mismatches).
+        internal static Dictionary<string, string> BuildCommonStaticTags(IMetricsConfig metricsConfig)
         {
-            { nameof(ProductInfo.Instance), ProductInfo.Instance },
-            { nameof(ProductInfo.Network), ProductInfo.Network },
-            { nameof(ProductInfo.SyncType), ProductInfo.SyncType },
-            { nameof(ProductInfo.PruningMode), ProductInfo.PruningMode },
-            { nameof(ProductInfo.Version), ProductInfo.Version },
-            { nameof(ProductInfo.Commit), ProductInfo.Commit },
-            { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
-            { nameof(ProductInfo.SourceDate), ProductInfo.SourceDate.ToUnixTimeSeconds().ToString() },
-        };
+            MonitoringOptions options = MonitoringOptions.FromConfig(metricsConfig);
+            Dictionary<string, string> tags = [];
+
+            AddIfNotEmpty(tags, nameof(ProductInfo.Instance), options.Instance);
+            AddIfNotEmpty(tags, nameof(ProductInfo.Network), ProductInfo.Network);
+            AddIfNotEmpty(tags, nameof(ProductInfo.SyncType), ProductInfo.SyncType);
+            AddIfNotEmpty(tags, nameof(ProductInfo.PruningMode), ProductInfo.PruningMode);
+            AddIfNotEmpty(tags, nameof(ProductInfo.Version), ProductInfo.Version);
+            AddIfNotEmpty(tags, nameof(ProductInfo.Commit), ProductInfo.Commit);
+            AddIfNotEmpty(tags, nameof(ProductInfo.Runtime), ProductInfo.Runtime);
+            AddIfNotEmpty(tags, nameof(ProductInfo.SourceDate), ProductInfo.SourceDate.ToUnixTimeSeconds().ToString());
+            AddIfNotEmpty(tags, "nethermind_group", options.Group);
+
+            return tags;
+
+            static void AddIfNotEmpty(Dictionary<string, string> tags, string key, string? value)
+            {
+                if (!string.IsNullOrEmpty(value)) tags[key] = value;
+            }
+        }
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
         {
@@ -344,7 +357,7 @@ namespace Nethermind.Monitoring.Metrics
             if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
-                Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
+                Prometheus.Metrics.DefaultRegistry.SetStaticLabels(BuildCommonStaticTags(metricsConfig));
             }
 
             _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;

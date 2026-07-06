@@ -54,7 +54,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
         ProductInfo.Network = $"{(specProvider.ChainId == specProvider.NetworkId ? BlockchainIds.GetBlockchainName(specProvider.NetworkId) : specProvider.ChainId)}";
 
-        ProductInfo.Instance = metricsConfig.NodeName;
+        ProductInfo.Instance = MonitoringOptions.FromConfig(metricsConfig).Instance;
 
         ProductInfo.SyncType = syncConfig.FastSync
            ? syncConfig.SnapSync ? "Snap" : "Fast"

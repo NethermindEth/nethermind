@@ -22,6 +22,22 @@ namespace Nethermind.Monitoring.Test;
 
 public class MetricsTests
 {
+    private const string TestNodeName = "enode://abcdef@127.0.0.1:30303";
+    private const string TestInstance = "abcdef";
+    private const string TestNetwork = "test-network";
+    private const string TestSyncType = "Snap";
+
+    // Registry static labels can only be set once per process and only before the first export.
+    // Claim them here, deterministically, before any test runs so the exported label set is known.
+    // PruningMode is intentionally left empty to assert that empty values are omitted from the export.
+    [OneTimeSetUp]
+    public void InitializeStaticLabelsDeterministically()
+    {
+        ProductInfo.Network = TestNetwork;
+        ProductInfo.SyncType = TestSyncType;
+        _ = new MetricsController(new MetricsConfig { Enabled = true, NodeName = TestNodeName });
+    }
+
     public static class TestMetrics
     {
         [System.ComponentModel.Description("A test description")]
@@ -267,6 +283,77 @@ public class MetricsTests
         });
 
         Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
+    }
+
+    [Test]
+    public async Task Static_labels_are_exported_for_nethermind_and_default_runtime_metrics()
+    {
+        MetricsController metricsController = new(new MetricsConfig { Enabled = true, NodeName = TestNodeName });
+        metricsController.RegisterMetrics(typeof(TestMetrics));
+        TestMetrics.OneTwoThree = 1;
+        metricsController.UpdateAllMetrics();
+
+        using MemoryStream stream = new();
+        await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
+        string scrape = Encoding.UTF8.GetString(stream.ToArray());
+        string[] lines = scrape.Split('\n');
+
+        string nethermindSample = lines.First(l => l.StartsWith("nethermind_one_two_three{", StringComparison.Ordinal));
+        bool runtimeMetricCarriesInstance = lines.Any(l =>
+            (l.StartsWith("dotnet_", StringComparison.Ordinal) || l.StartsWith("process_", StringComparison.Ordinal))
+            && l.Contains($"Instance=\"{TestInstance}\"", StringComparison.Ordinal));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nethermindSample, Does.Contain($"Instance=\"{TestInstance}\""));
+            Assert.That(nethermindSample, Does.Contain($"Network=\"{TestNetwork}\""));
+            Assert.That(nethermindSample, Does.Contain($"SyncType=\"{TestSyncType}\""));
+            Assert.That(nethermindSample, Does.Contain("nethermind_group=\"nethermind\""));
+            Assert.That(runtimeMetricCarriesInstance, Is.True, "Default dotnet_/process_ metrics must carry the same static labels as nethermind_ metrics.");
+            Assert.That(scrape, Does.Not.Contain("PruningMode="), "Empty static label values must be omitted from the export.");
+        }
+    }
+
+    [Test]
+    public void Common_static_tags_skip_empty_values()
+    {
+        Dictionary<string, string> tags = MetricsController.BuildCommonStaticTags(new MetricsConfig { NodeName = string.Empty });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tags, Does.Not.ContainKey(nameof(ProductInfo.PruningMode)));
+            Assert.That(tags, Does.Not.ContainKey(nameof(ProductInfo.Instance)));
+            Assert.That(tags.Values, Has.None.Empty, "No static label may be exported with an empty value.");
+            Assert.That(tags, Does.ContainKey(nameof(ProductInfo.Version)));
+            Assert.That(tags, Does.ContainKey(nameof(ProductInfo.Runtime)));
+        }
+    }
+
+    [TestCase(TestNodeName, TestInstance)]
+    [TestCase("MyNode", "MyNode")]
+    public void Pusher_instance_grouping_equals_exported_instance_label(string nodeName, string expectedInstance)
+    {
+        MetricsConfig config = new() { NodeName = nodeName };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MonitoringOptions.FromConfig(config).Instance, Is.EqualTo(expectedInstance));
+            Assert.That(MetricsController.BuildCommonStaticTags(config)[nameof(ProductInfo.Instance)], Is.EqualTo(expectedInstance));
+        }
+    }
+
+    [TestCase("http://host:9091/metrics/nethermind-mainnet", "custom", "nethermind")]
+    [TestCase("http://host:9091/metrics", "custom", "custom")]
+    [TestCase(null, "custom", "custom")]
+    public void Group_is_derived_consistently_for_push_and_scrape(string pushGatewayUrl, string monitoringGroup, string expectedGroup)
+    {
+        MetricsConfig config = new() { PushGatewayUrl = pushGatewayUrl, MonitoringGroup = monitoringGroup };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MonitoringOptions.FromConfig(config).Group, Is.EqualTo(expectedGroup));
+            Assert.That(MetricsController.BuildCommonStaticTags(config)["nethermind_group"], Is.EqualTo(expectedGroup));
+        }
     }
 
     [Test]
