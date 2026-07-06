@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
@@ -316,11 +317,6 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// EIP-8246: SELFDESTRUCT no longer burns ETH
-        /// </summary>
-        bool IsEip8246Enabled { get; }
-
-        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
@@ -408,6 +404,33 @@ namespace Nethermind.Core.Specs
         public bool IsEip7594Enabled { get; }
 
         /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
+        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsNoTrace { get; set; }
+
+        /// <summary>
+        /// This property holds an array that, at runtime, is actually an array of function pointers
+        /// with the signature:
+        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
+        /// The array is lazily populated with JIT-optimized instructions for an EVM,
+        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
+        /// layering constraints.
+        /// </summary>
+        /// <remarks>
+        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
+        /// even though it internally represents a typed array of function pointers.
+        /// </remarks>
+        public Array? EvmInstructionsTraced { get; set; }
+
+        /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.
         /// Chain-specific implementations can override this to include their own precompiled contracts.
         /// </summary>
@@ -444,6 +467,11 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
 
         /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
