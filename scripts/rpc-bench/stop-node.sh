@@ -6,7 +6,7 @@
 # collect dotTrace snapshots, VERIFY the pristine DB snapshot is unchanged, and
 # tear down the isolated DB view. Exits non-zero if the snapshot was modified.
 
-set -uo pipefail
+set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
 source "$HERE/lib.sh"
@@ -42,8 +42,13 @@ fi
 # 3) Verify the pristine snapshot is unchanged (the hard DB-safety guarantee).
 # ---------------------------------------------------------------------------
 log "Verifying DB snapshot integrity..."
-db_fingerprint "$DB_SOURCE" "$STATE_DIR/db-final.txt"
-if ! diff -q "$STATE_DIR/db-baseline.txt" "$STATE_DIR/db-final.txt" >/dev/null 2>&1; then
+# A fingerprint failure must never look like a clean snapshot: flag it and fall
+# through to teardown + the final die (with set -e it would otherwise abort here
+# and skip the umount/scratch cleanup below).
+if ! db_fingerprint "$DB_SOURCE" "$STATE_DIR/db-final.txt"; then
+  log "::error::Failed to compute the final DB fingerprint — snapshot integrity could not be verified."
+  integrity_fail=1
+elif ! diff -q "$STATE_DIR/db-baseline.txt" "$STATE_DIR/db-final.txt" >/dev/null 2>&1; then
   log "::error::DB SNAPSHOT WAS MODIFIED during the run — this must never happen."
   log "Fingerprint diff (first 60 lines):"
   diff "$STATE_DIR/db-baseline.txt" "$STATE_DIR/db-final.txt" 2>/dev/null | head -n 60 || true
@@ -79,6 +84,6 @@ as_root rm -rf "$RUN_SCRATCH" 2>/dev/null || true
 log "  scratch removed."
 
 if [[ "$integrity_fail" == "1" ]]; then
-  die "DB integrity check FAILED — snapshot was modified (see diff above)."
+  die "DB integrity check FAILED — snapshot verification did not pass (see errors above)."
 fi
 log "=== Node stopped; snapshot verified pristine ==="

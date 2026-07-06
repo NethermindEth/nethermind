@@ -17,7 +17,13 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for flood results}"
 LABEL="${LABEL:-nethermind}"
 FLOOD_REPO="${FLOOD_REPO:-git+https://github.com/kamilchodola/flood.git}"
+# Pin the fork to a specific commit so a push to its default branch cannot
+# silently change CI behavior. Override FLOOD_REF (sha/tag/branch) or FLOOD_REPO.
+FLOOD_REF="${FLOOD_REF:-bd0d8e4e3d698cf5b5f141c2a36d86f5f5b5e1ef}"
 VEGETA_VERSION="${VEGETA_VERSION:-12.11.1}"
+# sha256 of vegeta_${VEGETA_VERSION}_linux_amd64.tar.gz from the official release
+# checksums; if you bump VEGETA_VERSION, update this too (or override both).
+VEGETA_SHA256="${VEGETA_SHA256:-1dbdb525fe82e084626e02e73405eb386a3ed1a894426e22f440f6565b3e5d17}"
 RATES="${RATES:-10 100 500}"
 DURATION="${DURATION:-30}"
 DEEP_CHECK="${DEEP_CHECK:-false}"
@@ -34,6 +40,8 @@ if ! command -v vegeta >/dev/null 2>&1; then
   log "Installing vegeta $VEGETA_VERSION..."
   tmp="$(mktemp -d)"
   curl -sSfL "https://github.com/tsenart/vegeta/releases/download/v${VEGETA_VERSION}/vegeta_${VEGETA_VERSION}_linux_amd64.tar.gz" -o "$tmp/vegeta.tgz"
+  echo "${VEGETA_SHA256}  $tmp/vegeta.tgz" | sha256sum -c - \
+    || die "vegeta tarball sha256 mismatch (expected ${VEGETA_SHA256}) — refusing to install an unverified binary"
   tar -xzf "$tmp/vegeta.tgz" -C "$tmp" vegeta
   if as_root install -m0755 "$tmp/vegeta" /usr/local/bin/vegeta 2>/dev/null; then
     log "  vegeta installed to /usr/local/bin"
@@ -49,7 +57,10 @@ vegeta --version || true
 # Install flood (kamilchodola fork). Prefer uv (guaranteed on this runner by
 # the expb workflow); fall back to pip like rpc-comparison.yml.
 # ---------------------------------------------------------------------------
-log "Installing flood from $FLOOD_REPO..."
+# Pin to FLOOD_REF unless the repo spec already carries its own '@<ref>'.
+flood_spec="$FLOOD_REPO"
+[[ -n "$FLOOD_REF" && "$FLOOD_REPO" != *@* ]] && flood_spec="${FLOOD_REPO}@${FLOOD_REF}"
+log "Installing flood from $flood_spec..."
 if command -v uv >/dev/null 2>&1; then
   # Pin Python 3.10: flood's 2023-era pins (checkthechain -> pyarrow 12.0.1)
   # only have prebuilt wheels up to cp311; newer interpreters force source
@@ -57,13 +68,13 @@ if command -v uv >/dev/null 2>&1; then
   # lxml 5.x split out (flood's results pipeline imports it via unpinned deps).
   # No explicit package name: uv infers it from the git source and exposes the
   # `flood` entry point regardless of the dist name.
-  uv tool install --force --python 3.10 --with lxml-html-clean "$FLOOD_REPO" \
-    || uv tool install --force --python 3.11 --with lxml-html-clean "$FLOOD_REPO"
+  uv tool install --force --python 3.10 --with lxml-html-clean "$flood_spec" \
+    || uv tool install --force --python 3.11 --with lxml-html-clean "$flood_spec"
   uv_bin="$(uv tool dir --bin)"
   export PATH="$uv_bin:$PATH"
 else
-  python3 -m pip install --user --force-reinstall "$FLOOD_REPO" \
-    || python3 -m pip install --user --break-system-packages --force-reinstall "$FLOOD_REPO"
+  python3 -m pip install --user --force-reinstall "$flood_spec" \
+    || python3 -m pip install --user --break-system-packages --force-reinstall "$flood_spec"
 fi
 command -v flood >/dev/null 2>&1 || die "flood not on PATH after install"
 
@@ -87,6 +98,11 @@ log "Will run ${#test_list[@]} flood test(s): ${test_list[*]}"
 deep=""
 [[ "$DEEP_CHECK" == "true" ]] && deep="--deep-check"
 
+# Word-split EXTRA_ARGS into an array so multiple flags still pass through as
+# separate args, but WITHOUT filename globbing — a literal '*'/'?' in a
+# user-supplied flag must not expand against the current directory.
+read -ra extra_args_arr <<< "$EXTRA_ARGS"
+
 # ---------------------------------------------------------------------------
 # Run each test as a single-node load test.
 # ---------------------------------------------------------------------------
@@ -94,13 +110,15 @@ for t in "${test_list[@]}"; do
   [[ -z "$t" ]] && continue
   od="$OUT_DIR/$t"
   log "flood $t ${LABEL}=$RPC_URL --rates $RATES --duration $DURATION $deep --output $od"
+  # $RATES and $deep are intentionally word-split (SC2086); EXTRA_ARGS is passed
+  # via an array so its flags word-split but do not glob-expand.
   # shellcheck disable=SC2086
   flood "$t" "${LABEL}=$RPC_URL" \
     --rates $RATES \
     --duration "$DURATION" \
     $deep \
     --output "$od" \
-    $EXTRA_ARGS 2>&1 | tee "$OUT_DIR/${t}.log" \
+    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/${t}.log" \
     || log "::warning::flood test '$t' exited non-zero (continuing)"
 done
 

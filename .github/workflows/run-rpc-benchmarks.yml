@@ -49,7 +49,7 @@ on:
       tool_config:
         description: >-
           Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"nethermind","extra_args":""}.
-          ethcallchaos: {"ref":"master","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000}.
+          ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
           Leave empty for defaults.
         required: false
         default: ""
@@ -373,7 +373,9 @@ jobs:
           set -euo pipefail
           cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
           get() { echo "${cfg}" | jq -r "$1 // empty"; }
-          export ECC_REF="$(get '.ref')";                     [[ -z "${ECC_REF}" ]] && export ECC_REF="master"
+          # Only override when a ref is supplied; otherwise the script's pinned
+          # commit default applies (single source of truth for the pin).
+          ecc_ref="$(get '.ref')";                            [[ -n "${ecc_ref}" ]] && export ECC_REF="${ecc_ref}"
           export ECC_CORPUS_DB="$(get '.corpus_db')"
           corpus_url="$(get '.corpus_url')"; [[ -n "${corpus_url}" ]] && export ECC_CORPUS_URL="${corpus_url}"
           export ECC_RATE="$(get '.rate')";                   [[ -z "${ECC_RATE}" ]] && export ECC_RATE="50"
@@ -463,7 +465,7 @@ jobs:
 
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
           path: |
@@ -476,7 +478,7 @@ jobs:
 
       - name: Upload dotTrace snapshot
         if: always() && needs.resolve.outputs.dottrace == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dottrace-rpcbench
           path: ${{ runner.temp }}/dottrace-rpcbench.zip
@@ -521,7 +523,11 @@ jobs:
   # ---------------------------------------------------------------------------
   generate-dottrace-reports:
     needs: [resolve, benchmark]
-    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.benchmark.result == 'success'
+    # Run whenever the benchmark actually executed (success OR failure): a node
+    # that errored out still leaves a .dtp snapshot, and the dotTrace report is
+    # often most valuable exactly then. Only skip if benchmark was skipped or
+    # cancelled. Missing snapshot artifacts are tolerated downstream.
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.benchmark.result != 'skipped' && needs.benchmark.result != 'cancelled'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -585,7 +591,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dottrace-reports
           path: reports/

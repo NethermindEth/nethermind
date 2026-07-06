@@ -25,7 +25,10 @@ RPC_URL="${RPC_URL:-http://localhost:8545}"
 : "${OUT_DIR:?output directory for EthCallChaos results}"
 : "${SCRATCH_ROOT:?writable scratch root}"
 ECC_REPO="${ECC_REPO:-https://github.com/kamilchodola/EthCallChaos.git}"
-ECC_REF="${ECC_REF:-master}"
+# Pin to a specific commit so a push to the repo's default branch cannot silently
+# change benchmark results (or run unreviewed code on the runner). Override
+# ECC_REF (sha/tag/branch) or ECC_REPO to move it.
+ECC_REF="${ECC_REF:-6c31f78097545cc2ec3265ce187a2c777a75b1d7}"
 ECC_CORPUS_DB="${ECC_CORPUS_DB:-}"          # optional path on the runner to a pristine corpus DB
 ECC_CORPUS_URL="${ECC_CORPUS_URL:-https://github.com/kamilchodola/EthCallChaos/releases/download/corpus-v1/ethcallchaos.db}"
 ECC_RATE="${ECC_RATE:-50}"                  # -> Rpc__MaxCallsPerSecond
@@ -54,7 +57,14 @@ mkdir -p "$work"
 # Fetch the tool source.
 # ---------------------------------------------------------------------------
 log "Cloning $ECC_REPO@$ECC_REF..."
-git clone --depth 1 --branch "$ECC_REF" "$ECC_REPO" "$work/src"
+# Shallow-fetch a single ref. This accepts a commit sha, tag, or branch (GitHub
+# serves reachable commit shas), unlike 'git clone --branch' which rejects a
+# bare sha — required so ECC_REF can default to a pinned commit.
+git init -q "$work/src"
+git -C "$work/src" remote add origin "$ECC_REPO"
+git -C "$work/src" fetch -q --depth 1 origin "$ECC_REF" \
+  || die "failed to fetch $ECC_REF from $ECC_REPO"
+git -C "$work/src" checkout -q FETCH_HEAD
 
 proj_dir="$work/src/src/EthCallChaos"
 [[ -d "$proj_dir" ]] || die "EthCallChaos project not found at $proj_dir"

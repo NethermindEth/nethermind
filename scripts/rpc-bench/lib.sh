@@ -33,7 +33,10 @@ assert_sane_dir() {
 # cannot defeat the check) and enforce that they are disjoint. Re-exports the
 # canonical values into the caller's variables.
 guard_paths() {
-  [[ -d "$DB_SOURCE" ]] || return 0   # caller handles the missing-dir error with better diagnostics
+  # Precondition: the caller must have already verified DB_SOURCE exists (with
+  # its own richer diagnostics). Fail hard rather than silently skip the
+  # security invariants below if that precondition is ever violated.
+  [[ -d "$DB_SOURCE" ]] || die "guard_paths: DB_SOURCE '$DB_SOURCE' is not a directory (caller must verify it exists first)"
   DB_SOURCE="$(realpath -e -- "$DB_SOURCE")" || die "cannot canonicalize DB_SOURCE"
   SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || die "cannot canonicalize SCRATCH_ROOT"
   assert_sane_dir "$DB_SOURCE" "DB_SOURCE"
