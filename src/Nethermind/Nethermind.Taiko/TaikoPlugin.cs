@@ -62,8 +62,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
-        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
-
         InitializeL1Precompiles();
 
         return Task.CompletedTask;
@@ -139,7 +137,8 @@ public class TaikoModule : Module
             .AddModule(new TaikoSynchronizerModule())
 
             .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
-            .AddScoped<IVirtualMachine<EthereumGasPolicy>, TaikoEthereumVirtualMachine>()
+            .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
+            .Bind<IVirtualMachine<EthereumGasPolicy>, IVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())

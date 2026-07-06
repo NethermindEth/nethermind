@@ -29,7 +29,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IBlockValidationModule[] blockValidationModules,
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
-        CompositeBlockPreprocessorStep compositeBlockPreprocessorStep,
+        IReadOnlyList<IBlockPreprocessorStep> blockPreprocessorSteps,
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
         ILogManager logManager,
@@ -57,7 +57,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     new BlockchainProcessor(
                         blockTree,
                         branchProcessor,
-                        compositeBlockPreprocessorStep,
+                        blockPreprocessorSteps,
                         worldStateManager.GlobalStateReader,
                         logManager,
                         new BlockchainProcessor.Options

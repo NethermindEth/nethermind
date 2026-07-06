@@ -101,36 +101,18 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            if (!syncConfig.FastSync)
+            using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
+            await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {
-                using DbBlocksLoader loader = new(blockTree, logManager);
-                await blockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                if (t.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
-                    }
-                });
-            }
-            else
-            {
-                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, logManager);
-                await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                    if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                }
+                else if (t.IsCanceled)
                 {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
-                    }
-                });
-            }
+                    if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
+                }
+            });
 
             blockProcessingQueue.ProcessingQueueEmpty += OnProcessingQueueEmpty;
             if (!blockProcessingQueue.IsEmpty) // Just in case the queue got empty before we subscribed

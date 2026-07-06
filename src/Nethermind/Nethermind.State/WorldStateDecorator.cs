@@ -147,6 +147,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void AddAccountRead(Address address)
         => State.AddAccountRead(address);
 
+    public virtual void RecordAccountAccess(Address address)
+        => State.RecordAccountAccess(address);
+
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
 

@@ -134,7 +134,7 @@ namespace Nethermind.State
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer)
+        public virtual void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
