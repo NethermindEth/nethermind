@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
-
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -64,7 +62,7 @@ public class ReviewBlockTreeTests
         // Tree head is block 4; gap blocks 5..8 are suggested but unprocessed, mirroring the
         // crash-gap shape where the state backend has persisted state ahead of the head. A null
         // persistedRoot means the persisted state matches the junction block's state root.
-        public RecoverySetup(ulong persistedNumber, Hash256? persistedRoot)
+        public RecoverySetup(ulong persistedNumber, Hash256 persistedRoot)
         {
             Tree = CoreBuild.A.BlockTree().OfChainLength(5).TestObject;
 
@@ -80,7 +78,7 @@ public class ReviewBlockTreeTests
 
             Hash256 junctionRoot = persistedRoot ?? GapBlocks[^1].StateRoot;
             IStateBoundary stateBoundary = Substitute.For<IStateBoundary>();
-            stateBoundary.TryGetBestPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256?>()).Returns(x =>
+            stateBoundary.TryGetBestPersistedState(out Arg.Any<ulong>(), out Arg.Any<Hash256>()).Returns(x =>
             {
                 x[0] = persistedNumber;
                 x[1] = junctionRoot;
