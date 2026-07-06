@@ -21,7 +21,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
+    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -29,7 +29,7 @@ internal static class InputGenerator
         byte[] data;
         Witness? witness;
 
-        (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host);
+        (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host, cancellationToken);
 
         using (witness)
         {
@@ -64,14 +64,14 @@ internal static class InputGenerator
         string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
         string path = Path.Join(output, fileName);
 
-        File.WriteAllBytes(path, data);
+        await File.WriteAllBytesAsync(path, data, cancellationToken);
 
         AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName}");
 
         return 0;
     }
 
-    private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host)
+    private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host, CancellationToken cancellationToken)
     {
         EthereumJsonSerializer serializer = new([new OwnedReadOnlyListConverter()]);
         using BasicJsonRpcClient client = new(host, serializer, NullLogManager.Instance);
@@ -85,6 +85,8 @@ internal static class InputGenerator
             .SpinnerStyle(Style.Parse("blue"))
             .StartAsync($"[orange1]Fetching block `{blockParam}`[/]", async ctx =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 string? rlpHex = await client.Post<string>("debug_getRawBlock", EnsureIsHexIfNumber(blockParam));
 
                 if (string.IsNullOrEmpty(rlpHex))
@@ -92,6 +94,8 @@ internal static class InputGenerator
                     AnsiConsole.MarkupLine($"[red]Block not found[/]");
                     return;
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 byte[] rlp = Convert.FromHexString(rlpHex![2..]);
 
@@ -106,6 +110,8 @@ internal static class InputGenerator
 
                 ctx.Status = $"[orange1]Fetching witness for block {blockNumber}[/]";
 
+                cancellationToken.ThrowIfCancellationRequested();
+
                 witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
 
                 if (witness is null)
@@ -118,6 +124,8 @@ internal static class InputGenerator
                     $"[green]✓[/] Fetched witness for block {blockNumber}: {GetWitnessSize(witness):N0} bytes");
 
                 ctx.Status = $"[orange1]Fetching chainId id[/]";
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 chainId = await client.Post<ulong?>("eth_chainId");
 

@@ -75,11 +75,12 @@ Command CreateRpcCommand()
     command.Options.Add(noZiskOption);
     command.Options.Add(outputOption);
 
-    command.SetAction(parseResult => RunCommand(() => InputGenerator.Generate(
+    command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputGenerator.Generate(
         parseResult.GetValue(blockOption)!,
         new Uri(parseResult.GetValue(urlOption)!, UriKind.Absolute),
         parseResult.GetValue(outputOption)!,
-        !parseResult.GetValue(noZiskOption)
+        !parseResult.GetValue(noZiskOption),
+        cancellationToken
     )));
 
     return command;
