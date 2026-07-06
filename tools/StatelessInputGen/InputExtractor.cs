@@ -203,6 +203,11 @@ internal static class InputExtractor
             ArrayPool<byte>.Shared.Return(buffer);
             throw new FormatException($"{InputBytesProperty} is not valid hex");
         }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
+        }
 
         return (buffer, dataLength);
     }
