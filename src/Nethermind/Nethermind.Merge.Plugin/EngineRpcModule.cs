@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -34,12 +35,14 @@ public partial class EngineRpcModule(
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
     IEngineRequestsTracker engineRequestsTracker,
+    IBlobCustodyTracker blobCustodyTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     ILogManager logManager) : IEngineRpcModule
 {
 
     private readonly IHandler<HashSet<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
+    private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker ?? throw new ArgumentNullException(nameof(blobCustodyTracker));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
 

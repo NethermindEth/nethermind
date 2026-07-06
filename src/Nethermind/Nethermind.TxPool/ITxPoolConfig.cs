@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -19,6 +19,11 @@ public interface ITxPoolConfig : IConfig
 
     [ConfigItem(Description = "The blobs support mode.", DefaultValue = nameof(BlobsSupportMode.StorageWithReorgs))]
     BlobsSupportMode BlobsSupport { get; set; }
+
+    [ConfigItem(
+        DefaultValue = "15",
+        Description = "The EIP-8070 full-provider selection probability for normal sparse blob-pool nodes, in percent. The default value `15` is 15%. Values are clamped to the inclusive range `0..100`. Nodes with at least 64 custody columns act as supernodes and request every announced cell.")]
+    int SparseBlobProviderProbabilityPercent { get; set; }
 
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }

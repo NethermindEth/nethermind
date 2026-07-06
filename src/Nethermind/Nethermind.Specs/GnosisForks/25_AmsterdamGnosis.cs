@@ -6,4 +6,3 @@ using Nethermind.Specs.Forks;
 namespace Nethermind.Specs.GnosisForks;
 
 public class AmsterdamGnosis() : NamedGnosisReleaseSpec<AmsterdamGnosis>(Amsterdam.Instance, OsakaGnosis.Instance);
-

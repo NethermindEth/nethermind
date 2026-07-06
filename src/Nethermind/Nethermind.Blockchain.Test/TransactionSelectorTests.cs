@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -154,18 +154,15 @@ namespace Nethermind.Blockchain.Test
                 ProperTransactionsSelectedTestCase maxTransactionsSelected = ProperTransactionsSelectedTestCase.Eip1559Default;
                 maxTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 maxTransactionsSelected.BaseFee = 1;
-                maxTransactionsSelected.Transactions.ForEach(static tx =>
-                {
-                    tx.Type = TxType.Blob;
-                    tx.BlobVersionedHashes = new byte[1][];
-                    tx.MaxFeePerBlobGas = 1;
-                    tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
-                });
-                maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[maxTransactionsSelected.ReleaseSpec.MaxBlobCount - 1][];
-                maxTransactionsSelected.Transactions[1].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[5][], new byte[5][], new byte[5][], ProofVersion.V0);
-                maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    maxTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).Take(2));
+                int maxBlobCount = checked((int)maxTransactionsSelected.ReleaseSpec.MaxBlobCount);
+                maxTransactionsSelected.Transactions =
+                [
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 3),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: maxBlobCount - 1, nonce: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 2),
+                ];
+                maxTransactionsSelected.ExpectedSelectedTransactions.Add(maxTransactionsSelected.Transactions[1]);
+                maxTransactionsSelected.ExpectedSelectedTransactions.Add(maxTransactionsSelected.Transactions[2]);
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
 
                 ProperTransactionsSelectedTestCase enoughTransactionsSelected =
@@ -173,19 +170,16 @@ namespace Nethermind.Blockchain.Test
                 enoughTransactionsSelected.ReleaseSpec = Cancun.Instance;
                 enoughTransactionsSelected.BaseFee = 1;
 
-                ulong maxBlobCount = enoughTransactionsSelected.ReleaseSpec.MaxBlobCount;
-                Transaction[] expectedSelectedTransactions =
-                    enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
-                expectedSelectedTransactions[0].Type = TxType.Blob;
-                expectedSelectedTransactions[0].BlobVersionedHashes = new byte[maxBlobCount][];
-                expectedSelectedTransactions[0].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[maxBlobCount][], new byte[maxBlobCount][], new byte[maxBlobCount][], ProofVersion.V0);
-                expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
-                expectedSelectedTransactions[1].Type = TxType.Blob;
-                expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
-                expectedSelectedTransactions[1].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
-                expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
-                enoughTransactionsSelected.ExpectedSelectedTransactions.AddRange(
-                    expectedSelectedTransactions.Where(static (_, index) => index != 1));
+                int fullBlockBlobCount = checked((int)enoughTransactionsSelected.ReleaseSpec.MaxBlobCount);
+                Transaction regularTransactionAfterBlobGap = enoughTransactionsSelected.Transactions[0];
+                enoughTransactionsSelected.Transactions =
+                [
+                    regularTransactionAfterBlobGap,
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: fullBlockBlobCount, nonce: 1),
+                    CreateBlobTransaction(TestItem.AddressA, TestItem.PrivateKeyA, maxFee: 10, blobCount: 1, nonce: 2),
+                ];
+                enoughTransactionsSelected.ExpectedSelectedTransactions.Add(enoughTransactionsSelected.Transactions[1]);
+                enoughTransactionsSelected.ExpectedSelectedTransactions.Add(regularTransactionAfterBlobGap);
                 yield return new TestCaseData(enoughTransactionsSelected).SetName(
                     "Enough shard blob transactions and others selected");
 

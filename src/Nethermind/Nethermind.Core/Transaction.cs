@@ -216,6 +216,11 @@ namespace Nethermind.Core
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
+        /// <summary>
+        /// Clears the cached encoded length after mutating fields that affect network serialization.
+        /// </summary>
+        public void ClearLengthCache() => _size = null;
+
         public string ToShortString()
         {
             string gasPriceString =
@@ -316,8 +321,9 @@ namespace Nethermind.Core
             }
         }
 
-        public void CopyTo(Transaction tx)
+        public void CopyTo(Transaction tx, bool copyHash = true)
         {
+            tx.Hash = copyHash ? Hash : null;
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
@@ -379,9 +385,31 @@ namespace Nethermind.Core
     }
 
     /// <summary>
-    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
-    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
+    public record ShardBlobNetworkWrapper(
+        byte[][] Blobs,
+        byte[][] Commitments,
+        byte[][] Proofs,
+        ProofVersion Version,
+        BlobCellMask CellMask = default,
+        byte[][]? Cells = null)
+    {
+        public bool HasFullBlobs()
+        {
+            for (int i = 0; i < Blobs.Length; i++)
+            {
+                if (Blobs[i].Length == 0)
+                {
+                    return false;
+                }
+            }
+
+            return Blobs.Length != 0;
+        }
+
+        public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
+    }
 
     public enum ProofVersion : byte
     {

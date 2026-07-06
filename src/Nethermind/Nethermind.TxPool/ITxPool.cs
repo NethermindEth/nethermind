@@ -61,6 +61,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[][]? cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+        bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells);
+        bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs);
+        bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

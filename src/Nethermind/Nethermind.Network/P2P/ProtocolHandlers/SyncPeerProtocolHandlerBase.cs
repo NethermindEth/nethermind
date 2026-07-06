@@ -184,11 +184,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        private bool ShouldNotifyTransaction(Hash256? hash) => hash is not null && NotifiedTransactions.Set(hash.ValueHash256);
+        private bool ShouldNotifyTransaction(Transaction tx, bool sendFullTx)
+            => sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx));
+
+        protected virtual bool ShouldNotifyTransactionCore(Transaction tx)
+            => NotifiedTransactions.Set(tx.Hash!.ValueHash256);
 
         public void SendNewTransaction(Transaction tx)
         {
-            if (ShouldNotifyTransaction(tx.Hash))
+            if (ShouldNotifyTransaction(tx, sendFullTx: false))
             {
                 SendNewTransactionCore(tx);
             }
@@ -208,7 +212,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             foreach (Transaction tx in txs)
             {
-                if (sendFullTx || ShouldNotifyTransaction(tx.Hash))
+                if (ShouldNotifyTransaction(tx, sendFullTx))
                 {
                     yield return tx;
                 }

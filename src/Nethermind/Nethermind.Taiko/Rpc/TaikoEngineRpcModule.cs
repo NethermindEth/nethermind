@@ -53,6 +53,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
         IEngineRequestsTracker engineRequestsTracker,
+        IBlobCustodyTracker blobCustodyTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
@@ -81,6 +82,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 getPayloadBodiesByRangeV2Handler,
                 newPayloadWithWitnessHandler,
                 engineRequestsTracker,
+                blobCustodyTracker,
                 specProvider,
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
@@ -13,6 +13,8 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
+    private readonly int _sparseBlobNetworkSize;
+
     public LightTransaction(Transaction fullTx)
     {
         Type = TxType.Blob;
@@ -29,6 +31,8 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
+        _sparseBlobNetworkSize = fullTx.TryCalculateSparseBlobNetworkSize() ?? 0;
         _size = fullTx.GetLength();
     }
 
@@ -45,7 +49,9 @@ public class LightTransaction : Transaction
         byte[][] blobVersionHashes,
         ulong poolIndex,
         int size,
-        ProofVersion proofVersion)
+        ProofVersion proofVersion,
+        BlobCellMask blobCellMask = default,
+        int sparseBlobNetworkSize = 0)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -60,10 +66,15 @@ public class LightTransaction : Transaction
         Timestamp = timestamp;
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
+        BlobCellMask = blobCellMask;
+        _sparseBlobNetworkSize = sparseBlobNetworkSize;
         _size = size;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+    public BlobCellMask BlobCellMask { get; set; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
+
+    public int GetSparseBlobNetworkSize() => _sparseBlobNetworkSize;
 }

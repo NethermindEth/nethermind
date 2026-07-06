@@ -69,6 +69,20 @@ public class SyncedTxGossipPolicyTests
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
     }
 
+    [Test]
+    public void Accept_tx_when_not_synced_allows_gossip_listening()
+    {
+        TxPoolConfig txPoolConfig = new() { AcceptTxWhenNotSynced = true };
+        MutableSelector selector = new(SyncMode.Disconnected);
+        SyncedTxGossipPolicy syncPolicy = new(selector, txPoolConfig);
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
+
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
+
+        selector.Current = SyncMode.FastSync;
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
+    }
+
     private class MutableSelector(SyncMode initial) : ISyncModeSelector
     {
         private SyncMode _current = initial;

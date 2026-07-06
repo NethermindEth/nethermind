@@ -251,6 +251,38 @@ public class PayloadAttributes
     }
 }
 
+/// <summary>
+/// Amsterdam payload attributes used by engine_forkchoiceUpdatedV4.
+/// </summary>
+public class PayloadAttributesV4 : PayloadAttributes
+{
+    public override PayloadAttributesValidationResult Validate(
+        ISpecProvider specProvider,
+        int fcuVersion,
+        [NotNullWhen(false)] out string? error)
+    {
+        PayloadAttributesValidationResult result = base.Validate(specProvider, fcuVersion, out error);
+        if (result != PayloadAttributesValidationResult.Success)
+        {
+            return result;
+        }
+
+        if (TargetGasLimit is null)
+        {
+            error = $"{nameof(TargetGasLimit)} must be provided";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        if (TargetGasLimit <= 0)
+        {
+            error = $"{nameof(TargetGasLimit)} must be greater than zero";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
+        }
+
+        return PayloadAttributesValidationResult.Success;
+    }
+}
+
 public enum PayloadAttributesValidationResult : byte { Success, InvalidPayloadAttributes, UnsupportedFork };
 
 public static class PayloadAttributesExtensions

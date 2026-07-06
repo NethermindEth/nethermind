@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
@@ -261,6 +261,7 @@ public class TxPoolContentListsTests
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IEngineRequestsTracker>(),
+            Substitute.For<IBlobCustodyTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),

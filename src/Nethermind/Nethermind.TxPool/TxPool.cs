@@ -232,8 +232,31 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
+        public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
+            => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
+
+        public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
+            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
+
+        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
+        {
+            if (!_blobTransactions.TryMergeCells(hash, cellMask, cells))
+            {
+                return false;
+            }
+
+            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
+            {
+                _broadcaster.Broadcast(transaction, isPersistent: false);
+            }
+
+            return true;
+        }
+
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args) => AddPendingDelegations(args.Value);
+
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -813,8 +836,9 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // evict all following txs to prevent nonce gaps between blob tx
-                evictNextTxs |= tx.SupportsBlobs;
+                // Only cascade later blob eviction when proof-version compatibility invalidates
+                // the whole nonce chain. Sparse blob entries may intentionally keep nonce gaps.
+                evictNextTxs |= tx.SupportsBlobs && allowLaterPoolReentrance;
             }
         }
 
@@ -844,7 +868,7 @@ namespace Nethermind.TxPool
 
                 if (tx is null)
                 {
-                    shouldBeDumped = true;
+                    shouldBeDumped = transactions.Min?.SupportsBlobs != true;
                 }
                 else if (balance < tx.ValueRef)
                 {

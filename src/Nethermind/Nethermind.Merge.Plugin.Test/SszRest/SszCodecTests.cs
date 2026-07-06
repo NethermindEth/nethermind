@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -597,6 +598,8 @@ public class SszCodecTests
         ulong expectedSlot = 0xAABBCCDD_11223344UL;
         ulong expectedTargetGasLimit = 0x0123456789ABCDEFUL;
 
+        BitArray expectedCustodyColumns = ToBitArray(BlobCellMask.FromIndices([1, 7, 127]));
+
         ForkchoiceUpdatedRequestWire wire = new()
         {
             ForkchoiceState = new ForkchoiceStateWire
@@ -617,7 +620,8 @@ public class SszCodecTests
                     SlotNumber = expectedSlot,
                     TargetGasLimit = expectedTargetGasLimit,
                 }
-            ]
+            ],
+            CustodyColumns = [new SszCustodyColumns { Bits = expectedCustodyColumns }]
         };
 
         byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
@@ -633,6 +637,38 @@ public class SszCodecTests
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
         Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+        Assert.That(decoded.CustodyColumns, Has.Length.EqualTo(1));
+        Assert.That(decoded.CustodyColumns![0].Bits, Is.Not.Null);
+        Assert.That(BitsEqual(decoded.CustodyColumns![0].Bits!, expectedCustodyColumns), Is.True);
+    }
+
+    private static BitArray ToBitArray(BlobCellMask mask)
+    {
+        BitArray result = new(BlobCellMask.CellCount);
+        foreach (int index in mask.EnumerateSetBits())
+        {
+            result.Set(index, true);
+        }
+
+        return result;
+    }
+
+    private static bool BitsEqual(BitArray left, BitArray right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i] != right[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     [Test]

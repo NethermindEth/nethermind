@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test;
 /// </summary>
 /// <param name="dbMode"></param>
 /// <param name="isPostMerge"></param>
-[Parallelizable(ParallelScope.Children)]
+[NonParallelizable]
 [TestFixtureSource(nameof(CreateTestCases))]
 public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 {
@@ -750,16 +750,22 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead)
         {
-            await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
+            await WaitForSyncFinished(cancellationToken);
 
             // Wait until head match
             BlockHeader serverHead = server.Resolve<IBlockTree>().Head?.Header!;
-            if (blockTree.Head?.Number == serverHead?.Number) return;
-            await Wait.ForEventCondition<BlockReplacementEventArgs>(
-                cancellationToken,
-                (h) => blockTree.BlockAddedToMain += h,
-                (h) => blockTree.BlockAddedToMain -= h,
-                (e) => e.Block.Number == serverHead?.Number);
+            if (blockTree.Head?.Number != serverHead?.Number)
+            {
+                await Wait.ForEventCondition<BlockReplacementEventArgs>(
+                    cancellationToken,
+                    (h) => blockTree.BlockAddedToMain += h,
+                    (h) => blockTree.BlockAddedToMain -= h,
+                    (e) => e.Block.Number == serverHead?.Number);
+            }
+
+            // The head can arrive before state range healing completes; final trie verification
+            // needs the state/snap runner to leave StateNodes after the head has been imported.
+            await WaitForSyncFinished(cancellationToken);
         }
 
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
@@ -770,6 +776,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 h => syncModeSelector.Changed -= h,
                 (e) => modeCheck(e.Current));
         }
+
+        private Task WaitForSyncFinished(CancellationToken cancellationToken) =>
+            WaitForSyncMode(static mode => mode is SyncMode.WaitingForBlock or SyncMode.None or SyncMode.Full, cancellationToken);
     }
 
     private class PostMergeTestEnv(
