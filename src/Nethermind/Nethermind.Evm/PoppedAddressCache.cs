@@ -8,27 +8,47 @@ using Nethermind.Core;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// Single-entry cache that reuses the most recently materialized <see cref="Address"/> popped from the EVM stack.
-/// Contracts frequently address the same account repeatedly (token transfer loops, repeated BALANCE/EXTCODE*
-/// checks, delegate targets), so reusing the previous instance removes one heap allocation per
-/// address-consuming opcode. A miss costs a 20-byte comparison before falling back to allocation.
-/// Not thread-safe; owned by a single <see cref="VirtualMachine{TGasPolicy}"/> instance.
+/// Four-entry FIFO cache reusing <see cref="Address"/> instances popped from the EVM stack —
+/// repeated and small alternating address working sets dominate real traffic, so reuse removes
+/// the per-pop allocation. Not thread-safe; owned by a single <see cref="VirtualMachine{TGasPolicy}"/>.
 /// </summary>
 public sealed class PoppedAddressCache
 {
-    private Address? _lastAddress;
+    private Address? _entry0;
+    private Address? _entry1;
+    private Address? _entry2;
+    private Address? _entry3;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Address GetOrCreate(ReadOnlySpan<byte> addressBytes)
     {
-        Address? last = _lastAddress;
-        if (last is not null && addressBytes.SequenceEqual(last.Bytes))
+        Address? front = _entry0;
+        if (front is not null && addressBytes.SequenceEqual(front.Bytes))
         {
-            return last;
+            return front;
         }
 
-        Address address = new(addressBytes);
-        _lastAddress = address;
-        return address;
+        return GetOrCreateBehindFront(addressBytes);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Address GetOrCreateBehindFront(ReadOnlySpan<byte> addressBytes)
+    {
+        // No reordering on hit: promotion would cost field writes and buys nothing at this size.
+        Address? entry = _entry1;
+        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+
+        entry = _entry2;
+        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+
+        entry = _entry3;
+        if (entry is not null && addressBytes.SequenceEqual(entry.Bytes)) return entry;
+
+        Address created = new(addressBytes);
+        _entry3 = _entry2;
+        _entry2 = _entry1;
+        _entry1 = _entry0;
+        _entry0 = created;
+        return created;
     }
 }
