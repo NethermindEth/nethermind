@@ -216,11 +216,16 @@ internal static class InputExtractor
         // The floor keeps a hash-only name representable even for very deep output directories
         int maxNameLength = Math.Max(maxLength - suffix.Length - extension.Length, hashLength + 1);
 
-        if (name.Length > maxNameLength)
+        // A hash of the full test name keeps names unique when sanitization collapses
+        // distinct punctuation into `_` or truncation drops the distinguishing tail
+        if (name != testName || name.Length > maxNameLength)
         {
-            // A hash of the full test name keeps truncated names unique
             string hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(testName)))[..hashLength];
-            name = $"{name[..(maxNameLength - hashLength - 1)]}-{hash}";
+
+            if (name.Length > maxNameLength - hashLength - 1)
+                name = name[..(maxNameLength - hashLength - 1)];
+
+            name = $"{name}-{hash}";
         }
 
         return $"{name}{suffix}{extension}";
