@@ -50,7 +50,11 @@ public static class PatriciaTrieWitnessGenerator
     /// <summary>How a key path was touched in this block.</summary>
     public enum AccessType : byte
     {
-        /// <summary>The key was read; only its lookup path is captured and it never keeps a sibling deletion from collapsing a branch.</summary>
+        /// <summary>
+        /// Path-only: the lookup path is captured but the slot is treated as unoccupied, so it never keeps a sibling
+        /// deletion from collapsing a branch. A key that still exists in the post-state must use <see cref="Upsert"/>
+        /// (even when only read), otherwise its occupancy is dropped and a collapse sibling can be under-captured.
+        /// </summary>
         Read,
 
         /// <summary>The key was removed.</summary>
