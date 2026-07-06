@@ -67,6 +67,7 @@ internal struct ExecutionMetricsCounters
         if (ExecutionMetricsFlag.IsActive) SelfDestructs++;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Flush()
     {
         if (!ExecutionMetricsFlag.IsActive) return;

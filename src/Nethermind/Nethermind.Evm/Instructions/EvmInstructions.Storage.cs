@@ -347,7 +347,6 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
         vm.MetricsCounters.IncrementSStore();
 
         VmState<TGasPolicy> vmState = vm.VmState;
@@ -456,7 +455,6 @@ public static partial class EvmInstructions
         where TUseNetGasStipendFix : struct, IFlag
         where TEip8037 : struct, IFlag
     {
-        // Increment the SSTORE opcode metric.
         vm.MetricsCounters.IncrementSStore();
 
         VmState<TGasPolicy> vmState = vm.VmState;
