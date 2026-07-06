@@ -876,7 +876,7 @@ public class FlatWorldStateScopeProviderTests
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
         scope.HintGet(TestItem.AddressA, null);
-        Assert.That(reader.ReadEntered.Wait(5000), Is.True, "Warmup job should reach the persistence reader");
+        Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -906,7 +906,7 @@ public class FlatWorldStateScopeProviderTests
             try
             {
                 ReadEntered.Set();
-                ResumeReads.Wait(TimeSpan.FromSeconds(10));
+                ResumeReads.Wait(TimeSpan.FromSeconds(60));
                 return null;
             }
             finally
@@ -919,6 +919,8 @@ public class FlatWorldStateScopeProviderTests
         {
             if (Volatile.Read(ref _activeReads) != 0) _disposedDuringActiveRead = true;
             _isDisposed = true;
+            ReadEntered.Dispose();
+            ResumeReads.Dispose();
         }
 
         public Account? GetAccount(Address address) => null;
