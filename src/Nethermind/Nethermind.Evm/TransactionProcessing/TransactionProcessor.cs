@@ -319,6 +319,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (destroyList is not null)
                 {
                     int count = destroyList.Count;
+                    bool removeSelfdestructBurn = spec.IsEip8246Enabled;
+                    bool tracingRefunds = tracer.IsTracingRefunds;
+                    long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     if (count > 1)
                     {
                         Address[] buffer = SafeArrayPool<Address>.Shared.Rent(count);
@@ -326,26 +329,37 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], removeSelfdestructBurn);
+                            if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, removeSelfdestructBurn);
+                        if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool removeSelfdestructBurn)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
-                    if (!balance.IsZero)
+                    // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
+                    // Burn (not SelfDestruct) log; EIP-8246 removes the burn and its log entirely.
+                    if (!balance.IsZero && !removeSelfdestructBurn)
                     {
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
                     worldState.ClearStorage(toBeDestroyed);
                     worldState.DeleteAccount(toBeDestroyed);
+
+                    // EIP-8246: preserve any remaining balance as a fresh nonce-0,
+                    // code-less account; an empty account stays deleted via EIP-161.
+                    if (removeSelfdestructBurn && !balance.IsZero)
+                    {
+                        worldState.CreateAccount(toBeDestroyed, balance);
+                    }
                 }
             }
 
@@ -1265,22 +1279,29 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
                         bool eip7708Enabled = spec.IsEip7708Enabled;
+                        bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
                         foreach (Address toBeDestroyed in destroyList)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                            if (eip7708Enabled)
+                            UInt256 balance = eip7708Enabled || removeSelfdestructBurn ? WorldState.GetBalance(toBeDestroyed) : default;
+
+                            // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
+                            if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
-                                UInt256 balance = WorldState.GetBalance(toBeDestroyed);
-                                if (!balance.IsZero)
-                                {
-                                    substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
-                                }
+                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
                             }
 
                             WorldState.ClearStorage(toBeDestroyed);
                             WorldState.DeleteAccount(toBeDestroyed);
+
+                            // EIP-8246: preserve any remaining balance as a fresh nonce-0,
+                            // code-less account; an empty account stays deleted via EIP-161.
+                            if (removeSelfdestructBurn && !balance.IsZero)
+                            {
+                                WorldState.CreateAccount(toBeDestroyed, balance);
+                            }
 
                             if (tracingRefunds)
                             {

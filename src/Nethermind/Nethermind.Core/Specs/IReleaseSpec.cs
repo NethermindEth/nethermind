@@ -437,6 +437,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

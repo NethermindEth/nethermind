@@ -44,6 +44,7 @@ public static partial class IReleaseSpecExtensions
         public bool TransientStorageEnabled => spec.IsEip1153Enabled;
         public bool WithdrawalsEnabled => spec.IsEip4895Enabled;
         public bool SelfdestructOnlyOnSameTransaction => spec.IsEip6780Enabled;
+        public bool RemoveSelfdestructBurn => spec.IsEip8246Enabled;
         public bool IsBeaconBlockRootAvailable => spec.IsEip4788Enabled;
         public bool IsBlockHashInStateAvailable => spec.IsEip7709Enabled;
         public bool MCopyIncluded => spec.IsEip5656Enabled;
