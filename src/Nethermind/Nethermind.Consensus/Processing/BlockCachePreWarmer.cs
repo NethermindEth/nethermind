@@ -34,7 +34,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
-    private const int IndependentTxWarmupThreshold = 128;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -194,11 +193,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
-            if (block.Transactions.Length >= IndependentTxWarmupThreshold)
-            {
-                WarmupTransactionsIndependently(blockState, parallelOptions);
-                return;
-            }
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
@@ -257,25 +251,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
-    }
-
-    private void WarmupTransactionsIndependently(BlockState blockState, ParallelOptions parallelOptions)
-    {
-        TxWarmingState baseState = new(this, blockState, parallelOptions.CancellationToken);
-        ParallelUnbalancedWork.For(
-            0,
-            blockState.Block.Transactions.Length,
-            parallelOptions,
-            baseState.InitThreadState,
-            static (txIndex, state) =>
-            {
-                if (state.CancellationToken.IsCancellationRequested) return state;
-                Transaction tx = state.BlockState.Block.Transactions[txIndex];
-                WarmupSingleTransaction(state.Scope!, tx, txIndex, state.BlockState, state.CancellationToken);
-
-                return state;
-            },
-            TxWarmingState.FinallyAction);
     }
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
@@ -493,44 +468,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         private static void DisposeThreadState(WarmingState<TPayload> state) => state.Dispose();
-    }
-
-    private readonly struct TxWarmingState(BlockCachePreWarmer preWarmer, BlockState blockState, CancellationToken cancellationToken) : IDisposable
-    {
-        public static Action<TxWarmingState> FinallyAction { get; } = DisposeThreadState;
-
-        private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly IReadOnlyTxProcessingScope? Scope;
-        public readonly BlockState BlockState = blockState;
-        public readonly CancellationToken CancellationToken = cancellationToken;
-
-        private TxWarmingState(BlockCachePreWarmer preWarmer, BlockState blockState, CancellationToken cancellationToken, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope)
-            : this(preWarmer, blockState, cancellationToken)
-        {
-            Env = env;
-            Scope = scope;
-        }
-
-        public TxWarmingState InitThreadState()
-        {
-            IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
-            IReadOnlyTxProcessingScope scope = env.Build(BlockState.Parent);
-            BlockExecutionContext context = new(BlockState.Block.Header, BlockState.Spec);
-            scope.TransactionProcessor.SetBlockExecutionContext(context);
-            return new(PreWarmer, BlockState, CancellationToken, env, scope);
-        }
-
-        public void Dispose()
-        {
-            Scope?.Dispose();
-            if (Env is not null)
-            {
-                PreWarmer._envPool.Return(Env);
-            }
-        }
-
-        private static void DisposeThreadState(TxWarmingState state) => state.Dispose();
     }
 
     /// <summary>
