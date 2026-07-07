@@ -14,11 +14,15 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
-/// Parallel BAL worker env: executes against a per-tx <see cref="BlockAccessListBasedWorldState"/>
-/// backed by a borrowed parent-reader snapshot.
+/// Parallel BAL worker env: bundles a tx processor with its traced world state (backed by a per-tx
+/// <see cref="BlockAccessListBasedWorldState"/> reading from a borrowed parent-reader snapshot) and
+/// adapter.
 /// </summary>
-internal sealed class ParallelBalEnv : BalEnv
+internal sealed class ParallelBalEnv : IBalProcessingEnv
 {
+    public TracedAccessWorldState WorldState { get; }
+    public ITransactionProcessor TxProcessor { get; }
+    public ITransactionProcessorAdapter TxProcessorAdapter { get; }
     private readonly BlockAccessListBasedWorldState _balWorldState;
     private ParentReaderLease? _parentReader;
 
@@ -29,23 +33,16 @@ internal sealed class ParallelBalEnv : BalEnv
         ILogManager logManager,
         ITransactionProcessorFactory txProcessorFactory,
         CodeInfoRepositoryFactory codeInfoRepositoryFactory)
-        : this(new BlockAccessListBasedWorldState(stateProvider, logManager),
-            blockHashProvider, specProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory)
-    { }
+    {
+        VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+        _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
+        WorldState = new TracedAccessWorldState(_balWorldState, parallel: true);
+        ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
+        TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager);
+        TxProcessorAdapter = new ExecuteTransactionProcessorAdapter(TxProcessor);
+    }
 
-    // Delegating ctor so the BAL-backed world state can be handed to the base (as the traced
-    // state's inner backing) and kept as a typed field for per-tx setup, without re-creating it.
-    private ParallelBalEnv(
-        BlockAccessListBasedWorldState balWorldState,
-        IBlockhashProvider blockHashProvider,
-        ISpecProvider specProvider,
-        ILogManager logManager,
-        ITransactionProcessorFactory txProcessorFactory,
-        CodeInfoRepositoryFactory codeInfoRepositoryFactory)
-        : base(balWorldState, parallel: true, blockHashProvider, specProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory)
-        => _balWorldState = balWorldState;
-
-    public override void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+    public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
     {
         if (_parentReader is not null) ThrowParentReaderStillAttached();
         if (parentReader is null) ThrowParentReaderUnavailable();
@@ -59,7 +56,7 @@ internal sealed class ParallelBalEnv : BalEnv
         _balWorldState.Setup(block);
     }
 
-    public override void ClearParentReader()
+    public void ClearParentReader()
     {
         _balWorldState.ClearParentReader();
         _parentReader?.Dispose();
@@ -67,7 +64,7 @@ internal sealed class ParallelBalEnv : BalEnv
     }
 
     // The only owned disposable is the borrowed parent-reader lease; ClearParentReader returns it.
-    public override void Dispose() => ClearParentReader();
+    public void Dispose() => ClearParentReader();
 
     [DoesNotReturn]
     private static void ThrowParentReaderStillAttached()
