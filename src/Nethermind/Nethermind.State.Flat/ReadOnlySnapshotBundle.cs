@@ -90,61 +90,25 @@ public sealed class ReadOnlySnapshotBundle(
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (TryGetSlotFromSnapshots(selfDestructStateIdx, key, sw, out byte[]? snapshotValue))
+        for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            return snapshotValue;
+            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            {
+                byte[]? res = slotValue?.ToEvmBytes();
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
+                return res;
+            }
+
+            if (i <= selfDestructStateIdx)
+            {
+                return null;
+            }
         }
 
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        return FinishPersistenceSlotRead(outSlotValue, sw);
-    }
-
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, in ValueHash256 addressHash)
-    {
-        GuardDispose();
-
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        if (TryGetSlotFromSnapshots(selfDestructStateIdx, key, sw, out byte[]? snapshotValue))
-        {
-            return snapshotValue;
-        }
-
-        SlotValue outSlotValue = new();
-        ValueHash256 slotHash = ValueKeccak.Zero;
-        StorageTree.ComputeKeyWithLookup(key.Key.Item2, ref slotHash);
-
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetStorageRaw(addressHash, slotHash, ref outSlotValue);
-        return FinishPersistenceSlotRead(outSlotValue, sw);
-    }
-
-    private bool TryGetSlotFromSnapshots(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, long sw, out byte[]? value)
-    {
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
-            {
-                value = slotValue?.ToEvmBytes();
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return true;
-            }
-
-            if (i <= selfDestructStateIdx)
-            {
-                value = null;
-                return true;
-            }
-        }
-
-        value = null;
-        return false;
-    }
-
-    private byte[]? FinishPersistenceSlotRead(in SlotValue outSlotValue, long sw)
-    {
         byte[]? value = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
