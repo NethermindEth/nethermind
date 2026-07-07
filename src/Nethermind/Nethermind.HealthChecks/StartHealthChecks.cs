@@ -17,12 +17,12 @@ namespace Nethermind.HealthChecks;
 /// networks, the consensus-client liveness tracker.
 /// </summary>
 /// <remarks>
-/// Depends on <see cref="RegisterRpcModules"/> so it runs after <c>InitializePlugins</c> has completed
-/// (transitively). That ordering is required: <see cref="HealthChecksPlugin.Init"/> performs the
-/// blocking startup disk guard, and the periodic <see cref="FreeDiskSpaceChecker"/> timer must not
-/// start — and potentially exit the process — until that guard has finished.
+/// Depends on <see cref="EnsureDiskSpace"/> because the periodic <see cref="FreeDiskSpaceChecker"/> timer
+/// must not start — and potentially exit the process — until the blocking startup disk guard has finished.
+/// Also depends on <see cref="RegisterRpcModules"/> so it runs after <c>InitializePlugins</c> has completed
+/// (transitively).
 /// </remarks>
-[RunnerStepDependencies(typeof(RegisterRpcModules))]
+[RunnerStepDependencies(typeof(RegisterRpcModules), typeof(EnsureDiskSpace))]
 public class StartHealthChecks(
     IHealthChecksConfig healthChecksConfig,
     IMergeConfig mergeConfig,
