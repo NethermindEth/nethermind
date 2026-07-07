@@ -24,29 +24,12 @@ namespace Nethermind.BalRecorder;
 public class BalRecordingBlockProcessor(
     IBlockProcessor inner,
     IRecordedBalStore store,
-    IBlockAccessListManager balManager) : IBlockProcessor, IBlockProcessingPreparer
+    IBlockAccessListManager balManager) : IBlockProcessor
 {
     public event Action? TransactionsExecuted
     {
         add => inner.TransactionsExecuted += value;
         remove => inner.TransactionsExecuted -= value;
-    }
-
-    public void PrepareForProcessing(Block suggestedBlock, ProcessingOptions options, IReleaseSpec spec)
-    {
-        balManager.ForceConstructGeneratedBlockAccessList = store.RecordingEnabled;
-        if (inner is IBlockProcessingPreparer preparer)
-        {
-            preparer.PrepareForProcessing(suggestedBlock, options, spec);
-        }
-    }
-
-    public void ClearPreparedForProcessing()
-    {
-        if (inner is IBlockProcessingPreparer preparer)
-        {
-            preparer.ClearPreparedForProcessing();
-        }
     }
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)

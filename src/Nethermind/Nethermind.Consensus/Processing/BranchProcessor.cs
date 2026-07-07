@@ -90,7 +90,6 @@ public class BranchProcessor(
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, preWarmCancellation.Token);
-            PrepareBlockProcessor(suggestedBlock, options, spec);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, prefetchCancellation.Token);
 
             blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
@@ -116,7 +115,6 @@ public class BranchProcessor(
                 preWarmCancellation ??= new CancellationTokenSource();
                 prefetchCancellation ??= new CancellationTokenSource();
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, preWarmCancellation.Token);
-                PrepareBlockProcessor(suggestedBlock, options, spec);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, prefetchCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -206,7 +204,6 @@ public class BranchProcessor(
             try
             {
                 blockProcessor.TransactionsExecuted -= CancelPrefetch;
-                ClearPreparedBlockProcessor();
                 worldStateCloser?.Dispose();
             }
             finally
@@ -235,22 +232,6 @@ public class BranchProcessor(
                 spec,
                 token,
                 beaconBlockRootHandler);
-
-    private void PrepareBlockProcessor(Block suggestedBlock, ProcessingOptions options, IReleaseSpec spec)
-    {
-        if (blockProcessor is IBlockProcessingPreparer preparer)
-        {
-            preparer.PrepareForProcessing(suggestedBlock, options, spec);
-        }
-    }
-
-    private void ClearPreparedBlockProcessor()
-    {
-        if (blockProcessor is IBlockProcessingPreparer preparer)
-        {
-            preparer.ClearPreparedForProcessing();
-        }
-    }
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
