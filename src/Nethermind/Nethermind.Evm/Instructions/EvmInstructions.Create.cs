@@ -77,8 +77,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TEip8037 : struct, IFlag
     {
-        // Increment metrics counter for contract creation operations.
-        Metrics.IncrementCreates();
+        vm.MetricsCounters.IncrementCreates();
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;

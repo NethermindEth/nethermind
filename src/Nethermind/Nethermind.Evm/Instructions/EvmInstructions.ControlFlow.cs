@@ -200,8 +200,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment metrics for self-destruct operations.
-        Metrics.IncrementSelfDestructs();
+        vm.MetricsCounters.IncrementSelfDestructs();
 
         VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
