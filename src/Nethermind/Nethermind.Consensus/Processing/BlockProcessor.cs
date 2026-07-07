@@ -134,9 +134,6 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        // StartWriteBatch cancels pending BAL hinting during CommitState; drain it first so
-        // warmed reads survive for transaction workers instead of racing with write-batch setup.
-        _balManager.WaitForBalWarmup();
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);

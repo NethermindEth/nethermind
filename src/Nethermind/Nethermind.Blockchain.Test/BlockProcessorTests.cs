@@ -376,58 +376,6 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ProcessOne_waits_for_bal_read_warmup_before_transactions_execute()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
-        IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-        int waitCalls = 0;
-        int executeCalls = 0;
-
-        balManager.Enabled.Returns(true);
-        balManager.When(static b => b.WaitForBalWarmup()).Do(_ => waitCalls++);
-        transactionsExecutor
-            .ProcessTransactions(
-                Arg.Any<Block>(),
-                Arg.Any<ProcessingOptions>(),
-                Arg.Any<BlockReceiptsTracer>(),
-                Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                executeCalls++;
-                Assert.That(waitCalls, Is.EqualTo(1), "BAL read warming should be drained before transaction execution");
-                return [];
-            });
-
-        BlockProcessor processor = new(
-            HoodiSpecProvider.Instance,
-            TestBlockValidator.AlwaysValid,
-            NoBlockRewards.Instance,
-            transactionsExecutor,
-            stateProvider,
-            NullReceiptStorage.Instance,
-            Substitute.For<IBeaconBlockRootHandler>(),
-            Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            Substitute.For<IWithdrawalProcessor>(),
-            Substitute.For<IExecutionRequestsProcessor>(),
-            balManager);
-
-        using IDisposable scope = stateProvider.BeginScope(null);
-        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
-        Block block = Build.A.Block.WithHeader(header).TestObject;
-        IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block.Header);
-
-        processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waitCalls, Is.EqualTo(1));
-            Assert.That(executeCalls, Is.EqualTo(1));
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_prewarmer_after_block_processing()
     {
         TokenCapturingPreWarmer preWarmer = new();
