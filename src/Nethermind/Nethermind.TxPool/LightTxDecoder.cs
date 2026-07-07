@@ -68,9 +68,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
             proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 2) >= 1 ? (ProofVersion)ctx.ReadByte() : default,
+            // Entries persisted before the mask field was added always hold full blobs.
             blobCellMask: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
                 ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
-                : default,
+                : BlobCellMask.Full,
             sparseBlobNetworkSize: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
                 ? ctx.DecodePositiveInt()
                 : 0);

@@ -633,6 +633,46 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task GetBlobsV4_should_serialize_blob_cells_with_spec_name_over_json_rpc()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance, configurer: ConfigureBlobPoolAvailable);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Amsterdam.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        AcceptTxResult txResult = chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None);
+        Assert.That(txResult, Is.EqualTo(AcceptTxResult.Accepted));
+
+        string response = await RpcTest.TestSerializedRequest(
+            rpcModule,
+            "engine_getBlobsV4",
+            chain.JsonSerializer.Serialize(new[] { blobTx.BlobVersionedHashes![0]!.ToHexString(true) }),
+            "0x01000000000000000000000000000000");
+        string serializedEntry = chain.JsonSerializer.Serialize(new BlobCellsAndProofs
+        {
+            Available = true,
+            BlobCells = [new byte[] { 1 }],
+            Proofs = []
+        });
+
+        JsonNode? responseJson = JsonNode.Parse(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseJson?["error"], Is.Null);
+            Assert.That(responseJson?["result"]?[0]?["blob_cells"], Is.Not.Null);
+            Assert.That(response, Does.Not.Contain("\"blobCells\""));
+            Assert.That(serializedEntry, Does.Contain("\"blob_cells\""));
+            Assert.That(serializedEntry, Does.Not.Contain("\"blobCells\""));
+        }
+    }
+
     private static void ConfigureBlobPoolAvailable(ContainerBuilder builder)
     {
         IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
@@ -720,7 +760,8 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
-            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Empty));
+            // The invalid bitarray is ignored, leaving the all-cells default in place.
+            Assert.That(blobCustodyTracker.CurrentMask, Is.EqualTo(BlobCellMask.Full));
         }
     }
 

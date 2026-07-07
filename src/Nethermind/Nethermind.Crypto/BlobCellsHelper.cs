@@ -126,25 +126,77 @@ public static class BlobCellsHelper
             return false;
         }
 
-        cells = new byte[blobCount * cellsPerBlob][];
-        int sourceCellsPerBlob = wrapper.CellMask.Count;
+        cells = SelectFlattenedCells(wrapper.Cells, wrapper.CellMask, availableMask, blobCount);
+        return true;
+    }
+
+    /// <summary>
+    /// Computes the mask of cells present (non-empty) for every blob in a flattened cell array,
+    /// validating cell sizes along the way.
+    /// </summary>
+    /// <returns><c>false</c> when the array shape or any cell size is invalid.</returns>
+    public static bool TryGetPresentCellMask(byte[][] flattenedCells, BlobCellMask cellMask, int blobCount, out BlobCellMask presentMask)
+    {
+        presentMask = BlobCellMask.Empty;
+        int cellsPerBlob = cellMask.Count;
+        if (cellsPerBlob == 0 || blobCount <= 0 || flattenedCells.Length != blobCount * cellsPerBlob)
+        {
+            return false;
+        }
+
+        int position = 0;
+        foreach (int cellIndex in cellMask.EnumerateSetBits())
+        {
+            bool presentForAllBlobs = true;
+            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
+            {
+                int length = flattenedCells[blobIndex * cellsPerBlob + position].Length;
+                if (length is not 0 and not Ckzg.BytesPerCell)
+                {
+                    presentMask = BlobCellMask.Empty;
+                    return false;
+                }
+
+                presentForAllBlobs &= length == Ckzg.BytesPerCell;
+            }
+
+            if (presentForAllBlobs)
+            {
+                presentMask |= new BlobCellMask(UInt128.One << cellIndex);
+            }
+
+            position++;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Copies the columns of <paramref name="selectedMask"/> (a subset of <paramref name="sourceMask"/>)
+    /// out of a flattened cell array into a new flattened array.
+    /// </summary>
+    public static byte[][] SelectFlattenedCells(byte[][] flattenedCells, BlobCellMask sourceMask, BlobCellMask selectedMask, int blobCount)
+    {
+        int sourceCellsPerBlob = sourceMask.Count;
+        int selectedCellsPerBlob = selectedMask.Count;
+        byte[][] cells = new byte[blobCount * selectedCellsPerBlob][];
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
-            int outIndex = blobIndex * cellsPerBlob;
+            int outIndex = blobIndex * selectedCellsPerBlob;
+            int sourceIndex = blobIndex * sourceCellsPerBlob;
             int sourcePosition = 0;
-            foreach (int cellIndex in wrapper.CellMask.EnumerateSetBits())
+            foreach (int cellIndex in sourceMask.EnumerateSetBits())
             {
-                if (availableMask.Contains(cellIndex))
+                if (selectedMask.Contains(cellIndex))
                 {
-                    cells[outIndex] = wrapper.Cells[blobIndex * sourceCellsPerBlob + sourcePosition];
-                    outIndex++;
+                    cells[outIndex++] = flattenedCells[sourceIndex + sourcePosition];
                 }
 
                 sourcePosition++;
             }
         }
 
-        return true;
+        return cells;
     }
 
     public static byte[][] SelectProofs(ShardBlobNetworkWrapper wrapper, int blobIndex, BlobCellMask requestedMask)

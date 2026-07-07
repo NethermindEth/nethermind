@@ -232,6 +232,9 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
             => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
 
+        public bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
+            => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
+
         public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
             => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
 

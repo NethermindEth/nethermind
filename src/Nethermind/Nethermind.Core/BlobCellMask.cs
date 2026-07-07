@@ -32,6 +32,7 @@ public readonly record struct BlobCellMask(UInt128 Value)
 
     public BlobCellMask Intersect(BlobCellMask other) => new(Value & other.Value);
     public BlobCellMask Union(BlobCellMask other) => new(Value | other.Value);
+    public BlobCellMask Except(BlobCellMask other) => new(Value & ~other.Value);
 
     public SetBitEnumerator EnumerateSetBits() => new(Value);
 

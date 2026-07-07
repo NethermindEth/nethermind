@@ -6,12 +6,15 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsMessage72>
 {
-    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(GetCellsMessage72.Hashes));
+    // Decode limit is deliberately far above the response cap: geth batches up to 128 hashes
+    // per GetCells and the excess is simply left unanswered, not a protocol violation.
+    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
 
     public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
     {

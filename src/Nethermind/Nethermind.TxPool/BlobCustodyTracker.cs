@@ -9,7 +9,10 @@ namespace Nethermind.TxPool;
 public class BlobCustodyTracker : IBlobCustodyTracker
 {
     private readonly object _sync = new();
-    private BlobCellMask _currentMask = BlobCellMask.Empty;
+    // Custody defaults to all cells (supernode behavior) until the consensus client provides
+    // the node's actual custody via engine_forkchoiceUpdatedV4, matching geth. An empty default
+    // would leave the node sampling almost nothing and unable to serve engine_getBlobsV4.
+    private BlobCellMask _currentMask = BlobCellMask.Full;
 
     public BlobCellMask CurrentMask
     {

@@ -1675,6 +1675,40 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_refresh_pending_blob_cell_mask_after_merging_cells_in_persistent_pool()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx);
+            sparseBlobTx.NetworkWrapper = fullWrapper;
+            ConvertToSparseBlobTransaction(sparseBlobTx, initialMask);
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobCellMask(sparseBlobTx.Hash!, out BlobCellMask lightMask), Is.True);
+            Assert.That(lightMask, Is.EqualTo(initialMask));
+
+            Assert.That(_txPool.TryMergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells), Is.True);
+            Assert.That(_txPool.TryGetPendingBlobCellMask(sparseBlobTx.Hash!, out lightMask), Is.True);
+            Assert.That(lightMask, Is.EqualTo(initialMask | additionalMask));
+        }
+
+        [Test]
         public void should_reject_invalid_sparse_cells_merge()
         {
             _txPool = CreatePool(

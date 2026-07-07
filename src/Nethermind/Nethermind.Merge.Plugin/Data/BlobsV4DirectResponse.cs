@@ -114,7 +114,7 @@ public sealed class BlobsV4DirectResponse : IStreamableResult, IReadOnlyList<Blo
                 return;
             }
 
-            writer.Write("{\"available\":true,\"blobCells\":["u8);
+            writer.Write("{\"available\":true,\"blob_cells\":["u8);
 
             byte[]?[]? blobCells = item.BlobCells;
             if (blobCells is not null)
