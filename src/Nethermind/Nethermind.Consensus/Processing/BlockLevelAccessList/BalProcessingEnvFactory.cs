@@ -9,7 +9,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
-/// <summary>Default <see cref="IBalProcessingEnvFactory"/> producing <see cref="TxProcessorWithWorldState"/> workers.</summary>
+/// <summary>
+/// Default <see cref="IBalProcessingEnvFactory"/> producing <see cref="ParallelBalEnv"/> or
+/// <see cref="SequentialBalEnv"/> workers.
+/// </summary>
 public sealed class BalProcessingEnvFactory(
     IBlockhashProvider blockHashProvider,
     ISpecProvider specProvider,
@@ -19,5 +22,7 @@ public sealed class BalProcessingEnvFactory(
     CodeInfoRepositoryFactory codeInfoRepositoryFactory) : IBalProcessingEnvFactory
 {
     public IBalProcessingEnv Create(bool parallel)
-        => new TxProcessorWithWorldState(parallel, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
+        => parallel
+            ? new ParallelBalEnv(blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory)
+            : new SequentialBalEnv(blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
 }
