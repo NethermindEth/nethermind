@@ -20,8 +20,10 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
 
-    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
+    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScopeDecorator
     {
+        public IWorldStateScopeProvider.IScope InnerScope => baseScope;
+
         public void Dispose()
         {
             baseScope.Dispose();

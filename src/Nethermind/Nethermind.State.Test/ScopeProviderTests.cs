@@ -359,6 +359,30 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_TrieHintSink_RegisteredThroughScopeDecorators()
+    {
+        using Context ctx = new(useFlat);
+
+        // The production main-processing chain wraps the backend provider in metrics (and optionally
+        // operation-logging) decorators before the prewarmer decorator; the sink lookup must unwrap them.
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), _ => { });
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
+
+        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(null))
+        {
+            if (useFlat)
+                Assert.That(caches.TrieHintSink, Is.Not.Null);
+            else
+                Assert.That(caches.TrieHintSink, Is.Null);
+        }
+
+        Assert.That(caches.TrieHintSink, Is.Null);
+    }
+
+    [Test]
     public void Test_TrieHintSink_NotRegisteredWhenDisabledOrPopulator()
     {
         using Context ctx = new(useFlat);

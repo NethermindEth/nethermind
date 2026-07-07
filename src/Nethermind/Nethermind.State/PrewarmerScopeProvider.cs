@@ -61,9 +61,30 @@ public class PrewarmerScopeProvider(
         if (!isPrewarmer && registerTrieHintSink)
         {
             // Null for backends that do not support trie warm-up hints (e.g. non-flat layouts).
-            preBlockCaches.TrieHintSink = scope as IPrewarmTrieHintSink;
+            preBlockCaches.TrieHintSink = FindTrieHintSink(scope);
         }
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, registerTrieHintSink, metrics);
+    }
+
+    /// <summary>
+    /// Unwraps scope decorators (metrics, operation logging) to reach the backend scope, since the
+    /// hint sink capability lives on the innermost (e.g. flat) scope.
+    /// </summary>
+    private static IPrewarmTrieHintSink? FindTrieHintSink(IWorldStateScopeProvider.IScope scope)
+    {
+        while (true)
+        {
+            switch (scope)
+            {
+                case IPrewarmTrieHintSink sink:
+                    return sink;
+                case IWorldStateScopeProvider.IScopeDecorator decorator:
+                    scope = decorator.InnerScope;
+                    break;
+                default:
+                    return null;
+            }
+        }
     }
 
     public PreBlockCaches? Caches => preBlockCaches;

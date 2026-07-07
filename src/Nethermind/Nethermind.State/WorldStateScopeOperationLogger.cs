@@ -28,8 +28,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
-    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
+    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScopeDecorator
     {
+        public IWorldStateScopeProvider.IScope InnerScope => innerScope;
+
         public void Dispose()
         {
             innerScope.Dispose();
