@@ -391,83 +391,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
-                if (Bal is null)
-                {
-                    WarmingState<Block> baseState = new(envPool, block, parent);
-
-                    ParallelUnbalancedWork.For(
-                        0,
-                        block.Transactions.Length,
-                        parallelOptions,
-                        baseState.InitThreadState,
-                    static (i, state) =>
-                    {
-                        Transaction tx = state.Payload.Transactions[i];
-                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
-
-                        return state;
-                    },
-                    WarmingState<Block>.FinallyAction);
-                }
+                // Transaction warmup already resolves sender/recipient accounts while warming
+                // storage. Keep this worker limited to system access lists so it does not compete
+                // with storage-heavy transaction warmup.
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
         }
-
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
-        {
-            try
-            {
-                if (sender is not null)
-                {
-                    worldState.WarmUp(sender);
-                }
-
-                if (to is not null)
-                {
-                    worldState.WarmUp(to);
-                }
-            }
-            catch (MissingTrieNodeException)
-            {
-            }
-        }
-    }
-
-    private readonly struct WarmingState<TPayload>(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent) : IDisposable
-    {
-        public static Action<WarmingState<TPayload>> FinallyAction { get; } = DisposeThreadState;
-
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> EnvPool = envPool;
-        private readonly IReadOnlyTxProcessorSource? Env;
-        public readonly TPayload Payload = payload;
-        public readonly IReadOnlyTxProcessingScope? Scope;
-
-        private WarmingState(ObjectPool<IReadOnlyTxProcessorSource> envPool, TPayload payload, BlockHeader parent, IReadOnlyTxProcessorSource env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, parent)
-        {
-            Env = env;
-            Scope = scope;
-        }
-
-        public WarmingState<TPayload> InitThreadState()
-        {
-            IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
-        }
-
-        public void Dispose()
-        {
-            Scope?.Dispose();
-            if (Env is not null)
-            {
-                EnvPool.Return(Env);
-            }
-        }
-
-        private static void DisposeThreadState(WarmingState<TPayload> state) => state.Dispose();
     }
 
     /// <summary>
