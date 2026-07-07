@@ -60,8 +60,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         _api = (TaikoNethermindApi)api;
 
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
         InitializeL1Precompiles();
 
         return Task.CompletedTask;
@@ -154,6 +152,7 @@ public class TaikoModule : Module
 
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             // Validators
