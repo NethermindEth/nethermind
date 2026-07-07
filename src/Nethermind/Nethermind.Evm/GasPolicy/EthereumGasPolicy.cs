@@ -150,8 +150,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // EELS refill_frame_state_gas: the child's net spill refills gas_left and only
-        // (used - spill) returns to the reservoir, else a later top-level halt under-burns.
+        // The child's net spill refills gas_left and only (used - spill) returns to the
+        // reservoir, else a later top-level halt under-burns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
@@ -168,8 +168,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // EELS refill_frame_state_gas on halt: only the reservoir-funded portion returns to the
-        // parent; the spilled portion refills gas_left, which the halt burns as regular gas.
+        // On a halt only the reservoir-funded portion returns to the parent; the spilled
+        // portion refills gas_left, which the halt burns as regular gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
@@ -343,8 +343,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long toGasLeft = 0;
         if (trackSpillRefund)
         {
-            // Source-based LIFO refill (EELS credit_state_gas_refund): gas_left first (up to the
-            // spill), then the reservoir, so a reverted sub-frame's spill does not inflate it.
+            // Source-based LIFO refill: gas_left first (up to the spill), then the reservoir,
+            // so a reverted sub-frame's spill does not inflate it.
             toGasLeft = Math.Min(appliedRefund, GetUnrefundedStateGasSpill(in gas));
             gas.StateGasSpillRefunded += toGasLeft;
         }
@@ -566,7 +566,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         spec.GetBaseDataCost(tx) + tokensInCallData * GasCostOf.TxDataZero;
 
     /// <summary>
-    /// EIP-2780 recipient charge on top of TX_BASE_COST, mirroring EELS <c>calculate_intrinsic_cost</c>.
+    /// EIP-2780 recipient charge on top of TX_BASE_COST.
     /// </summary>
     /// <remarks>
     /// State-independent by design: a flat cold touch for a non-self recipient, plus transfer-log and

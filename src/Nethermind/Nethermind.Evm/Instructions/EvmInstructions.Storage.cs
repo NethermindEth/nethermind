@@ -487,7 +487,7 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // EELS orders get_storage before charge_gas, so the slot read is BAL-recorded even when
+        // The spec reads the slot before charging gas, so the read is BAL-recorded even when
         // the access or write charge below runs out of gas.
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
