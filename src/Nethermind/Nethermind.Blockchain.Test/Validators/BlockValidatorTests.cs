@@ -265,9 +265,9 @@ public class BlockValidatorTests
 
     // WithPrecompileChanges yields 25 BAL items (2935=2, 4788=3, 7002=5, 7251=5, 8282 deposit=5, 8282 exit=5);
     // the size cap is itemCount <= gasLimit / Eip7928Constants.ItemCost (2000), so the boundary is 25*2000 = 50000.
-    [TestCase(50_000, true)]
-    [TestCase(49_999, false)]
-    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
@@ -341,9 +341,9 @@ public class BlockValidatorTests
         AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    [TestCase(30_000ul, true)]
+    [TestCase(29_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(ulong gasLimit, bool expectedValid)
     {
         // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
         // (BlockDecoder does not decode BAL). The pre-execution check in
