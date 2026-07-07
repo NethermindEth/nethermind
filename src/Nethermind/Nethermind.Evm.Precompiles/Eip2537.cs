@@ -4,7 +4,9 @@
 using System;
 using Nethermind.Core;
 using G1 = Nethermind.Crypto.Bls.P1;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2 = Nethermind.Crypto.Bls.P2;
+using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -196,9 +198,76 @@ internal static partial class Eip2537
         return result;
     }
 
+    // decodes to affine layout and checks point is on curve
+    internal static Result TryDecodeRaw(this G1Affine p, ReadOnlySpan<byte> raw)
+    {
+        if (raw.Length != LenG1)
+            return Errors.InvalidFieldLength;
+
+        Result result = ValidRawFp(raw[..LenFp]) && ValidRawFp(raw[LenFp..]);
+
+        if (result)
+        {
+            // set to infinity point by default
+            p.Zero();
+
+            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
+            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..];
+
+            bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
+
+            if (isInfinity)
+                return Result.Success;
+
+            p.Decode(fp0, fp1);
+
+            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+        }
+
+        return result;
+    }
 
     // decodes and checks point is on curve
     internal static Result TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
+    {
+        if (raw.Length != LenG2)
+            return Errors.InvalidFieldLength;
+
+        Result result =
+            ValidRawFp(raw[..LenFp]) &&
+            ValidRawFp(raw[LenFp..(2 * LenFp)]) &&
+            ValidRawFp(raw[(2 * LenFp)..(3 * LenFp)]) &&
+            ValidRawFp(raw[(3 * LenFp)..]);
+
+        if (result)
+        {
+            // set to infinity point by default
+            p.Zero();
+
+            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
+            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..(2 * LenFp)];
+            ReadOnlySpan<byte> fp2 = raw[(2 * LenFp + LenFpPad)..(3 * LenFp)];
+            ReadOnlySpan<byte> fp3 = raw[(3 * LenFp + LenFpPad)..];
+
+            bool isInfinity =
+                !fp0.ContainsAnyExcept((byte)0) &&
+                !fp1.ContainsAnyExcept((byte)0) &&
+                !fp2.ContainsAnyExcept((byte)0) &&
+                !fp3.ContainsAnyExcept((byte)0);
+
+            if (isInfinity)
+                return Result.Success;
+
+            p.Decode(fp0, fp1, fp2, fp3);
+
+            return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
+        }
+
+        return result;
+    }
+
+    // decodes to affine layout and checks point is on curve
+    internal static Result TryDecodeRaw(this G2Affine p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != LenG2)
             return Errors.InvalidFieldLength;
@@ -317,7 +386,7 @@ internal static partial class Eip2537
 
     private static Result DecodeAndCheckSubgroupG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
+        G1Affine p = new(pointBuffer.Span[(dest * G1Affine.Sz)..]);
         Result result = p.TryDecodeRaw(rawPoint.Span);
 
         return result
@@ -327,7 +396,7 @@ internal static partial class Eip2537
 
     private static Result DecodeAndCheckSubgroupG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
+        G2Affine p = new(pointBuffer.Span[(dest * G2Affine.Sz)..]);
         Result result = p.TryDecodeRaw(rawPoint.Span);
 
         return result
