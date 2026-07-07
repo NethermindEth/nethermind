@@ -103,9 +103,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
     // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
     private bool _isTracingActionsCached;
-    private bool _isTracingAccessCached;
-    public bool IsTracingActions => _isTracingActionsCached;
-    public bool IsTracingAccess => _isTracingAccessCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -151,7 +148,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
         _isTracingActionsCached = txTracer.IsTracingActions;
-        _isTracingAccessCached = txTracer.IsTracingAccess;
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.

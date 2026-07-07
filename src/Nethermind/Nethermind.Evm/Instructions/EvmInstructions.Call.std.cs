@@ -31,7 +31,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (TTracingInst.IsActive || vm.IsTracingActions || !vm.CanExecutePrecompileCallDirectly(precompile, codeSource))
+        if (TTracingInst.IsActive || vm.TxTracer.IsTracingActions || !vm.CanExecutePrecompileCallDirectly(precompile, codeSource))
         {
             result = default;
             return false;
