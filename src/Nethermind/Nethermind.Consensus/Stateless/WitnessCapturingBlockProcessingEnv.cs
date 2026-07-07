@@ -94,8 +94,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<Lazy<IParallelBalEnvManager>>(),
                 ctx.Resolve<Lazy<ISequentialBalEnvManager>>()))
-                // Leaving the parent-reader pool args unset keeps _hasParentReaderPool false, which
-                // disables parallel execution (ParallelExecutionEnabled) so the sequential env is used.
+            // Leaving the parent-reader pool args unset keeps _hasParentReaderPool false, which
+            // disables parallel execution (ParallelExecutionEnabled) so the sequential env is used.
             .AddModule(validationModules));
 
         IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
