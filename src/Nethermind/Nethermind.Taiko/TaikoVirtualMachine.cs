@@ -43,6 +43,9 @@ public class TaikoVirtualMachine(
             : null;
     }
 
+    protected override bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
+        base.CanExecutePrecompileCallDirectly(precompile, codeSource) && precompile is not IContextAwarePrecompile;
+
     protected override CallResult ExecutePrecompileCall(
         VmState<EthereumGasPolicy> state,
         IPrecompile precompile,
