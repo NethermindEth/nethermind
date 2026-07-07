@@ -84,17 +84,15 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IWorldState>(recorder)
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
+            // Witness code-info: a non-caching repository so every code read reaches the world
+            // state and is captured. The DI BlockAccessListManager's env inherits it, since
+            // AutofacBalProcessingEnvFactory resolves the processor graph from this scope.
+            // Note: overriding ICodeInfoRepository here makes the BAL env incompatible with plugins
+            // that override it, but it's required — the default caching repo would hide code reads
+            // from witness capture.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => ManualBlockAccessListManagerFactory.Create(
-                ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
-            // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
+            // Validation tx executor; everything else (incl. IBlockAccessListManager) is inherited
+            // from root and re-resolved against the overridden world state and code-info.
             .AddModule(validationModules));
 
         IBlockProcessor processor = scope.Resolve<IBlockProcessor>();

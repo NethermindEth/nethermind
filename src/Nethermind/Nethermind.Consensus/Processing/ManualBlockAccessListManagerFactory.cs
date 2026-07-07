@@ -71,23 +71,19 @@ public static class ManualBlockAccessListManagerFactory
             {
                 BlockAccessListBasedWorldState balWorldState = new(stateProvider, logManager);
                 TracedAccessWorldState worldState = new(balWorldState, parallel: true);
-                (ITransactionProcessor processor, ITransactionProcessorAdapter adapter) = CreateProcessor(worldState);
-                return new ParallelBalEnv(balWorldState, worldState, processor, adapter);
+                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
+                ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor));
             }
             else
             {
                 TracedAccessWorldState worldState = new(stateProvider, parallel: false);
-                (ITransactionProcessor processor, ITransactionProcessorAdapter adapter) = CreateProcessor(worldState);
-                return new SequentialBalEnv(worldState, processor, adapter);
+                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
+                ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+                return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor));
             }
-        }
-
-        private (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter) CreateProcessor(TracedAccessWorldState worldState)
-        {
-            VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-            ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
-            ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-            return (processor, new ExecuteTransactionProcessorAdapter(processor));
         }
     }
 }

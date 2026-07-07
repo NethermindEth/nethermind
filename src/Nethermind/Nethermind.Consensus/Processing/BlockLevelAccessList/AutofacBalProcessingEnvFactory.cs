@@ -31,7 +31,7 @@ public sealed class AutofacBalProcessingEnvFactory(
                 .AddScoped<IWorldState>(worldState)
                 .AddScoped<TracedAccessWorldState>(worldState)
                 .AddScoped<BlockAccessListBasedWorldState>(balWorldState)
-                // The BAL env only ever executes; force the execute adapter even in a producer scope.
+                // Pin the execute adapter (see the sequential branch for why).
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped<IBalProcessingEnv, ParallelBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
@@ -42,6 +42,10 @@ public sealed class AutofacBalProcessingEnvFactory(
             ILifetimeScope scope = parentLifetime.BeginLifetimeScope(builder => builder
                 .AddScoped<IWorldState>(worldState)
                 .AddScoped<TracedAccessWorldState>(worldState)
+                // Odd, but kept to preserve pre-DI behavior: this sequential env is used during block
+                // production too (parallel is off while building), where the producer scope overrides
+                // ITransactionProcessorAdapter with a build-up adapter. The manual factory always used
+                // the execute adapter regardless, so pin it here to keep that same (execute) behavior.
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 .AddScoped<IBalProcessingEnv, SequentialBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();

@@ -91,16 +91,15 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IHeaderFinder>(capturingHeaderFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
+            // Witness code-info: a non-caching repository so every code read reaches the world
+            // state and is captured. The DI BlockAccessListManager's env inherits it, since
+            // AutofacBalProcessingEnvFactory resolves the processor graph from this scope.
+            // Note: overriding ICodeInfoRepository here makes the BAL env incompatible with plugins
+            // that override it, but it's required — the default caching repo would hide code reads
+            // from witness capture.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => ManualBlockAccessListManagerFactory.Create(
-                ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
-                ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+            // IBlockAccessListManager is inherited from root and re-resolved here against the
+            // overridden witness world state and code-info (via AutofacBalProcessingEnvFactory).
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
