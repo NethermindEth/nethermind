@@ -7,7 +7,6 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
