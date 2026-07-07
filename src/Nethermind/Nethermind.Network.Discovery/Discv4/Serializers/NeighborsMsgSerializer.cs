@@ -26,11 +26,11 @@ public sealed class NeighborsMsgSerializer(
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
-        IPEndPoint discoveryAddress = address;
+        IPEndPoint discoveryAddress = GetAddress(ip, ctx.DecodeInt());
+        IPEndPoint address = discoveryAddress;
         if (count > 3)
         {
-            discoveryAddress = GetAddress(ip, ctx.DecodeInt());
+            address = GetAddress(ip, ctx.DecodeInt());
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);

@@ -145,8 +145,8 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         int length = GetLengthSerializeNode(node);
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, node.Address.Address);
-        writer.Encode(GetSerializedTcpPort(node));
         writer.Encode(node.DiscoveryPort);
+        writer.Encode(GetSerializedTcpPort(node));
         writer.Encode(node.Id.Bytes);
     }
 
@@ -154,8 +154,8 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     {
         int tcpPort = GetSerializedTcpPort(node);
         int length = IPAddressRlp.GetLength(node.Address.Address);
-        length += Rlp.LengthOf(tcpPort);
         length += Rlp.LengthOf(node.DiscoveryPort);
+        length += Rlp.LengthOf(tcpPort);
         length += Rlp.LengthOf(node.Id.Bytes);
         return length;
     }

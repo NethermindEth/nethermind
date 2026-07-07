@@ -329,6 +329,38 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void NeighborsMessage_Serializes_Node_Ports_In_Discv4_Order()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.2", 30303, 30304);
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[] { node })
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
+        int nodeEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
+        int firstPort = ctx.DecodeInt();
+        int secondPort = ctx.DecodeInt();
+        ReadOnlySpan<byte> encodedId = ctx.DecodeByteArraySpan();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encodedIp, Is.EqualTo(new byte[] { 192, 168, 1, 2 }));
+            Assert.That(firstPort, Is.EqualTo(node.DiscoveryPort));
+            Assert.That(secondPort, Is.EqualTo(node.Port));
+            Assert.That(encodedId.SequenceEqual(node.Id.Bytes), Is.True);
+            Assert.That(ctx.Position, Is.EqualTo(nodeEnd));
+            Assert.That(ctx.Position, Is.EqualTo(nodesEnd));
+        }
+    }
+
+    [Test]
     public void NeighborsMessage_UsesDiscoveryPortWhenTcpPortIsUnknown()
     {
         Node discoveryOnlyNode = Node.FromDiscoveryEndpoint(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("192.168.1.2"), 30304));
