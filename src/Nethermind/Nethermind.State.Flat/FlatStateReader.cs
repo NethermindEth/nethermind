@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -18,6 +19,13 @@ public class FlatStateReader(
     ILogManager logManager
 ) : IStateReader
 {
+    // Read-path clean cache for trie-node RLP, keyed by node hash. Trie nodes are content-addressed,
+    // so a hash always maps to the same bytes: the cache is immutable and needs no invalidation, even
+    // across new blocks. It lets repeated eth_getProof walks reuse the shared top-of-trie nodes instead
+    // of re-reading them from RocksDB on every call.
+    private const int TrieNodeRlpCacheCapacity = 1 << 18;
+    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(TrieNodeRlpCacheCapacity);
+
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
         using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
@@ -59,7 +67,7 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
             ?? throw new InvalidOperationException($"State at {baseBlock} not found");
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, _trieNodeRlpCache);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
