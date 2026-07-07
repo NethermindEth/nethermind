@@ -271,9 +271,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Code_insert_refund_credits_regular_gas_not_state_under_eip8038()
     {
-        // EIP-8038: the per-authorization code-insert (EIP-7702 existing-authority) refund returns the
-        // worst-case ACCOUNT_WRITE to the regular-gas refund counter and leaves the state-gas dimension
-        // untouched (the NEW_ACCOUNT / AUTH_BASE state refunds are applied separately, pre-execution).
+        // The existing-authority refund returns the worst-case ACCOUNT_WRITE to the regular refund
+        // counter and leaves the state dimension untouched (state refunds apply pre-execution).
         EthereumGasPolicy gas = new()
         {
             Value = 0,
@@ -498,9 +497,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.Refund(ref parent, in child);
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
 
-        // Source-based LIFO: the child's 200 spill was refunded to its gas_left and folded into the
-        // parent's gas_left by Refund, so nothing returns to the parent reservoir. The spill stays
-        // recorded (and fully refunded) so Calculate8037BlockRegularGas excludes it from regular gas.
+        // LIFO: the child's spill was refunded to gas_left, so nothing returns to the parent
+        // reservoir; the fully-refunded spill is excluded from block regular gas.
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
         Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(200L));
         Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
@@ -696,9 +694,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Reset_for_halt_preserves_state_gas_spill_burned()
     {
-        // ResetForHalt zeros live state-gas tracking (StateGasUsed/Reservoir/Spill) but MUST NOT
-        // reset StateGasSpillBurned: that counter is tx-wide cumulative and is consumed by the
-        // top-level halt formula AFTER ResetForHalt to reattribute the burn.
+        // ResetForHalt zeros live state-gas tracking but must NOT reset the tx-wide cumulative
+        // StateGasSpillBurned, which the halt formula consumes afterwards.
         EthereumGasPolicy gas = new()
         {
             Value = 0,
@@ -778,9 +775,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.RefundStateGas(ref outer, (long)GasCostOf.CreateState, stateGasFloor: 0);
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in outer);
 
-        // Source-based LIFO: both spills were drawn from gas_left, so refunding them up the frames
-        // returns the gas to gas_left (Value) rather than the reservoir, which stays 0. The spills
-        // are fully refunded (StateGasSpillRefunded) and so excluded from block regular gas.
+        // LIFO: both spills came from gas_left, so the refunds return there and the reservoir stays
+        // 0; the fully-refunded spills are excluded from block regular gas.
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
             Is.EqualTo((0L, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
         Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState));

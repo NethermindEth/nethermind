@@ -6,14 +6,13 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test;
 
 /// <summary>
-/// Pins the EIP-8038 gas parameters to the final repriced values scheduled in Amsterdam by
-/// glamsterdam-devnet-6, and guards the derivation relationships so the derived values stay
-/// consistent with the base parameters.
+/// Pins the EIP-8038 gas parameters and guards the derivation relationships so the derived
+/// values stay consistent with the base parameters.
 /// </summary>
 public class Eip8038ConstantsTests
 {
     [Test]
-    public void Base_parameters_match_the_devnet6_repriced_values()
+    public void Base_parameters_match_the_eip8038_values()
     {
         ulong coldAccountAccess = Eip8038Constants.ColdAccountAccess;
         ulong warmAccess = Eip8038Constants.WarmAccess;
@@ -34,7 +33,7 @@ public class Eip8038ConstantsTests
     }
 
     [Test]
-    public void Derived_parameters_match_the_devnet6_repriced_values() =>
+    public void Derived_parameters_match_the_eip8038_derivations() =>
         Assert.Multiple(() =>
         {
             Assert.That(Eip8038Constants.CallValue, Is.EqualTo(10300));

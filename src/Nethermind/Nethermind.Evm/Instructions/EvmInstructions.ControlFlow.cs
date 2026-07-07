@@ -240,8 +240,7 @@ public static partial class EvmInstructions
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
-        // Charge gas if transferring to a dead or non-existent account. EIP-2780 reprices only the CALL
-        // value tiers; SELFDESTRUCT keeps the legacy new-account charge and defers its log cost to EIP-7708.
+        // Charge gas if transferring to a dead or non-existent account (unchanged by EIP-2780).
         bool inheritorAccountExists = state.AccountExists(inheritor);
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
@@ -252,9 +251,8 @@ public static partial class EvmInstructions
         bool outOfGas = false;
         if (chargesNewAccount)
         {
-            // EIP-8038: sending a positive balance to an empty beneficiary costs ACCOUNT_WRITE regular
-            // gas in addition to the NEW_ACCOUNT state gas. Charge regular first so a regular-gas OOG does
-            // not spill state gas.
+            // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
+            // charge regular first so a regular-gas OOG does not spill state gas.
             if (spec.IsEip8038Enabled)
                 outOfGas = !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite);
             if (!outOfGas)

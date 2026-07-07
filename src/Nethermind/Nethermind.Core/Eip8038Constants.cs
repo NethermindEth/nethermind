@@ -8,12 +8,12 @@ namespace Nethermind.Core;
 /// (regular + state) gas model.
 /// </summary>
 /// <remarks>
-/// Scheduled in Amsterdam by glamsterdam-devnet-6 with the final repriced values below. The derived
-/// parameters are expressed via the EIP's derivation formulas so they recompute from the base values.
+/// Derived parameters are expressed via the EIP's derivation formulas so they recompute
+/// from the base values.
 /// </remarks>
 public static class Eip8038Constants
 {
-    // Base parameters (final values per EIP-8038, glamsterdam-devnet-6).
+    // Base parameters.
 
     /// <summary>Cold account-touch cost (<c>COLD_ACCOUNT_ACCESS</c>).</summary>
     public const ulong ColdAccountAccess = 3000; // was 2600 (EIP-2929)
@@ -33,7 +33,7 @@ public static class Eip8038Constants
     /// <summary>Stipend forwarded with a value-bearing call (unchanged from EIP-2929).</summary>
     public const ulong CallStipend = GasCostOf.CallStipend; // 2300
 
-    // Derived parameters (EIP-8038 derivation formulas; recompute from the base values above).
+    // Derived parameters.
 
     /// <summary><c>CALL_VALUE = ACCOUNT_WRITE + CALL_STIPEND</c>.</summary>
     public const ulong CallValue = AccountWrite + CallStipend; // 10300
@@ -51,9 +51,8 @@ public static class Eip8038Constants
     public const ulong StorageClearRefund = (StorageWrite + ColdStorageAccess) * 4800 / 5000; // 12480
 
     /// <summary>
-    /// EIP-7702 per-authorization regular gas: <c>ACCOUNT_WRITE + REGULAR_PER_AUTH_BASE_COST</c>, where
-    /// the latter is the auth-tuple calldata floor (101 bytes × 16), an ECRECOVER (3000), a cold account
-    /// touch, and two warm accesses.
+    /// EIP-7702 per-authorization regular gas: <c>ACCOUNT_WRITE + REGULAR_PER_AUTH_BASE_COST</c>
+    /// (auth-tuple calldata floor + ECRECOVER + one cold and two warm accesses).
     /// </summary>
     public const ulong PerAuthBaseRegular = AccountWrite + (101 * 16 + 3000 + ColdAccountAccess + 2 * WarmAccess); // 15816
 }
