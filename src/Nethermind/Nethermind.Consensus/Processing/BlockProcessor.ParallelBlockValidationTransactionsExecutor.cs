@@ -32,10 +32,6 @@ public partial class BlockProcessor
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
-        private static readonly ParallelOptions TxExecutionParallelOptions = new()
-        {
-            MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount + 4, Environment.ProcessorCount * 2)
-        };
         private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
@@ -160,7 +156,7 @@ public partial class BlockProcessor
                     ParallelUnbalancedWork.For(
                         0,
                         len,
-                        TxExecutionParallelOptions,
+                        ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
                         static (i, state) =>
