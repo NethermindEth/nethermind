@@ -622,4 +622,104 @@ public class BlockCachePreWarmerTests
             }
         }
     }
+
+    /// <summary>
+    /// Verifies the PreWarmSkipStartedTxs behavior: transactions the main thread has already started
+    /// (reported via OnBeforeTxExecution) are not speculatively warmed, while transactions the main thread
+    /// has not reached are warmed as usual. Warming is observed by counting speculative Warmup executions.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        Block block = BuildTwoSenderBlock();
+
+        // Control: main thread has not started any tx, so every tx is speculatively warmed.
+        int warmedWhenNoneStarted = 0;
+        using (ManualResetEventSlim openGate = new(initialState: true))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmedWhenNoneStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance, skipStartedTxs: true);
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        }
+        Assert.That(warmedWhenNoneStarted, Is.EqualTo(block.Transactions.Length),
+            "with the main thread not started, all transactions must be speculatively warmed");
+
+        // Skip: main thread reports it has started every tx (while warming is gated before building its scopes),
+        // so all speculative warming must be skipped.
+        int warmedWhenAllStarted = 0;
+        using (ManualResetEventSlim gate = new(initialState: false))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, gate, () => Interlocked.Increment(ref warmedWhenAllStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance, skipStartedTxs: true);
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(BuildParentHeader()))
+            {
+                Task task = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+                // Advance the prewarmer's view of main-thread progress past every tx while warming is gated at env.Build.
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    preWarmer.OnBeforeTxExecution(block.Transactions[i]);
+                }
+                gate.Set();
+                task.GetAwaiter().GetResult();
+            }
+        }
+        Assert.That(warmedWhenAllStarted, Is.EqualTo(0),
+            "transactions the main thread has already started must not be speculatively warmed");
+    }
+
+    /// <summary>
+    /// Pool policy that gates <see cref="IReadOnlyTxProcessorSource.Build"/> on a signal and counts speculative
+    /// (<see cref="Nethermind.Evm.ExecutionOptions.Warmup"/>) transaction executions, so a test can advance the
+    /// prewarmer's main-thread progress before warming builds its scopes and then observe how many txs were warmed.
+    /// </summary>
+    private sealed class WarmupCountingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim gate,
+        Action onWarmup)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CountingEnv(IReadOnlyTxProcessorSource inner, ManualResetEventSlim gate, Action onWarmup) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                gate.Wait();
+                return new CountingScope(inner.Build(baseBlock), onWarmup);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingScope(IReadOnlyTxProcessingScope inner, Action onWarmup) : IReadOnlyTxProcessingScope
+        {
+            private readonly CountingTxProcessor _processor = new(inner.TransactionProcessor, onWarmup);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, Action onWarmup)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) onWarmup();
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+    }
 }
