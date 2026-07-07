@@ -145,7 +145,7 @@ public class Eip8037BlockGasInclusionCheckTests
     [Test]
     public void Calculate_block_regular_gas_subtracts_state_component()
     {
-        // EELS amsterdam/fork.py: tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
+        // tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas).
         Assert.That(
             Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 379_970, blockStateGas: 281_520),
             Is.EqualTo(98_450));

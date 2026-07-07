@@ -779,7 +779,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    // AUTH_BASE refill (EELS set_delegation): clearing always refills, twice when installed
+                    // AUTH_BASE refill: clearing always refills, twice when installed
                     // earlier in THIS tx; setting refills when the slot holds a delegation now or at tx start.
                     if (clearsDelegation)
                     {
@@ -1549,11 +1549,11 @@ namespace Nethermind.Evm.TransactionProcessing
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
             Debug.Assert(stateReservoir >= 0 && (ulong)stateReservoir <= tx.GasLimit,
                 $"EIP-8037 halt-path invariant violated: reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
-            // EELS: tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left; on a halt gas_left is
+            // tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left; on a halt gas_left is
             // zeroed so the regular dimension is fully spent and only the state reservoir remains unused.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
-            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: EELS adds it to
-            // refund_counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
+            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
+            // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
             ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
             long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
@@ -1561,7 +1561,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // On an exceptional halt spilled state gas ends up in gas_left and is burned as regular;
             // only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            // Block regular gas = before_refund - state (EELS tx_regular_gas); refunds and the calldata
+            // Block regular gas = before_refund - state (tx_regular_gas); refunds and the calldata
             // floor adjust only the sender charge, never this dimension.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");

@@ -40,7 +40,7 @@ public static class Eip8037BlockGasInclusionCheck
         return Outcome.Ok;
     }
 
-    // EELS: tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas); block gasUsed =
+    // EIP-8037: tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas); block gasUsed =
     // max(ΣregularPreRefund, Σstate). The EIP-7623/7976 calldata floor is sender-only and must
     // not inflate this dimension.
     public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas)
