@@ -219,9 +219,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (sink is null && storageChangeCount > 0)
+                    if (storageChangeCount > 0)
                     {
-                        QueueStorageChangeTrieHints(address, storageRoot, storageChanges, snapshot);
+                        FlatStorageTree storageWarmer = new(
+                            this,
+                            _warmer,
+                            _snapshotBundle,
+                            _configuration,
+                            _concurrencyQuota,
+                            storageRoot,
+                            address,
+                            _logManager);
+
+                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                        {
+                            UInt256 key = slotChanges.Key;
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                Interlocked.Increment(ref _outstandingWarmups);
+                        }
                     }
 
                     if (accounts is not null)
@@ -231,11 +247,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 });
 
-                if (sink is not null)
-                {
-                    RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
-                    RunStorageChangeTrieHints(accountChanges, accounts!, parallelOptions, snapshot);
-                }
+                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -243,51 +255,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 accountChanges.Dispose();
             }
         }, token);
-    }
-
-    private void RunStorageChangeTrieHints(
-        ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        Account?[] accounts,
-        ParallelOptions parallelOptions,
-        int snapshot)
-    {
-        Parallel.For(0, accountChanges.Count, parallelOptions, i =>
-        {
-            if (parallelOptions.CancellationToken.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
-
-            Account? account = accounts[i];
-            if (account is null) return;
-
-            ReadOnlyAccountChanges ac = accountChanges[i];
-            ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
-            if (storageChanges.Length == 0) return;
-
-            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-            if (storageRoot == Keccak.EmptyTreeHash) return;
-
-            QueueStorageChangeTrieHints(ac.Address, storageRoot, storageChanges, snapshot);
-        });
-    }
-
-    private void QueueStorageChangeTrieHints(Address address, Hash256 storageRoot, ReadOnlySlotChanges[] storageChanges, int snapshot)
-    {
-        FlatStorageTree storageWarmer = new(
-            this,
-            _warmer,
-            _snapshotBundle,
-            _configuration,
-            _concurrencyQuota,
-            storageRoot,
-            address,
-            _logManager);
-
-        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
-        {
-            UInt256 key = slotChanges.Key;
-            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                Interlocked.Increment(ref _outstandingWarmups);
-        }
     }
 
     private void RunSinkSlotReads(
@@ -318,32 +285,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-            ReadOnlySpan<ReadOnlySlotChanges> changed = ac.StorageChanges;
-            ReadOnlySpan<UInt256> reads = ac.StorageReads;
-            int slotIndex = 0;
-            int readIndex = 0;
-            while (slotIndex < changed.Length || readIndex < reads.Length)
-            {
-                UInt256 slot;
-                if (readIndex >= reads.Length)
-                {
-                    slot = changed[slotIndex++].Key;
-                }
-                else
-                {
-                    slot = reads[readIndex];
-                    if (slotIndex < changed.Length && changed[slotIndex].Key.CompareTo(in slot) <= 0)
-                    {
-                        slot = changed[slotIndex++].Key;
-                    }
-                    else
-                    {
-                        readIndex++;
-                    }
-                }
-
-                jobs[idx++] = (address, selfDestructIdx, slot);
-            }
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            foreach (UInt256 readKey in ac.StorageReads)
+                jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
