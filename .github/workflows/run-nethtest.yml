@@ -121,6 +121,29 @@ jobs:
       eest_version: ${{ steps.resolve.outputs.eest_version }}
       zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
     steps:
+      # Build the runner ONCE here and share it as an artifact, instead of rebuilding the
+      # identical binary in every matrix job (~80s/job of pure redundancy). Test jobs
+      # download it and run the DLL directly.
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind.Test.Runner
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+
+      - name: Upload runner artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethtest-runner
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
+          retention-days: 1
+          include-hidden-files: true
+
       - name: Generate matrix
         id: generate
         env:
@@ -299,9 +322,11 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Build Nethermind.Test.Runner
-        working-directory: src/Nethermind
-        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+      - name: Download runner artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nethtest-runner
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
 
       - name: Select fixture release
         id: eest_release
@@ -640,8 +665,8 @@ jobs:
           }
 
           set +e
-          dotnet run --no-build --no-launch-profile -c Release \
-            --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
+          # Run the prebuilt runner directly (built once in prepare-matrix, downloaded above).
+          dotnet artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll \
             $RUNNER_FLAG \
             --input "${{ steps.fixtures.outputs.fixture_dir }}" \
             --jsonout \

@@ -142,8 +142,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             return;
         }
 
+        // Always lead with the failing test's name, then the reason, so a failure line
+        // identifies *which* test failed instead of only printing the exception/error.
         string status = result.LoadFailure is not null ? "EXCEPTION" : "FAIL";
-        string message = result.LoadFailure ?? result.Name;
+        string? reason = result.LoadFailure ?? result.Error;
+        string message = reason is null ? result.Name : $"{result.Name} - {reason}";
         WriteStatus(status, progress, message, false);
     }
 
