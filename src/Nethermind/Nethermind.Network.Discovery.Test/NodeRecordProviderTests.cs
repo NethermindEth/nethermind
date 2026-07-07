@@ -123,6 +123,21 @@ public class NodeRecordProviderTests
     }
 
     [Test]
+    public async Task GetCurrentAsync_PublishesIpv4EntriesForIpv4MappedIpv6ExternalIp()
+    {
+        NodeRecord record = await CreateRecord(IPAddress.Parse("::ffff:192.0.2.1"));
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp), Is.EqualTo(30303));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(30303));
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip6), Is.Null);
+        }
+    }
+
+    [Test]
     public async Task GetCurrentAsync_PublishesIp6EntriesForIpv6ExternalIp()
     {
         NodeRecord record = await CreateRecord(IPAddress.Parse("2001:db8::1"));
