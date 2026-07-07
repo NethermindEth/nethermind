@@ -91,7 +91,7 @@ public class BackgroundTaskSchedulerBenchmarks
             await Task.Delay(BlockProcessingDurationMs);
 
             // Block done — resume normal task execution
-            _branchProcessor.RaiseBlocksProcessed();
+            _branchProcessor.RaiseBranchProcessingCompleted();
 
             // Wait for all scheduled tasks to drain before next cycle
             SpinWait spin = default;
@@ -144,7 +144,7 @@ public class BackgroundTaskSchedulerBenchmarks
     private sealed class StubBranchProcessor : IBranchProcessor
     {
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
-        public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed;
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
 #pragma warning disable CS0067 // Event is never used
         public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         public event EventHandler<BlockEventArgs>? BlockProcessing;
@@ -157,8 +157,8 @@ public class BackgroundTaskSchedulerBenchmarks
         public void RaiseBlocksProcessing() =>
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs([]));
 
-        public void RaiseBlocksProcessed() =>
-            BlocksProcessed?.Invoke(this, new BlocksProcessingEventArgs([]));
+        public void RaiseBranchProcessingCompleted() =>
+            BranchProcessingCompleted?.Invoke(this, new BranchProcessingCompletedEventArgs([], 0));
     }
 
     /// <summary>

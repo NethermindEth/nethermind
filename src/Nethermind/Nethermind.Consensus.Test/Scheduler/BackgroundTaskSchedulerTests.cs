@@ -102,7 +102,7 @@ public class BackgroundTaskSchedulerTests
         await waitSignal.WaitOneAsync(CancellationToken.None);
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
         await Task.Delay(10);
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
         Assert.That(() => wasCancelled, Is.EqualTo(true).After(10, 1));
     }
 
@@ -128,7 +128,7 @@ public class BackgroundTaskSchedulerTests
         Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
         Assert.That(cancelledCount, Is.EqualTo(5));
 
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
 
         int postBlockCount = 0;
         CountdownEvent postBlockRan = new(3);
@@ -163,19 +163,17 @@ public class BackgroundTaskSchedulerTests
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
         Assert.That(waitSignal.WaitOne(TimeSpan.FromMilliseconds(500)), Is.False, "task should remain paused until the whole branch finishes");
 
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
         Assert.That(waitSignal.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
     }
 
-    [TestCase(false, TestName = "Test_branch_completion_without_block_processed_restores_uncancelled_token")]
-    [TestCase(true, TestName = "Test_branch_completion_with_fresh_args_restores_uncancelled_token")]
-    public async Task Test_branch_completion_restores_uncancelled_token(bool useFreshCompletionArgs)
+    [Test]
+    public async Task Test_branch_completion_restores_uncancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
-        BlocksProcessingEventArgs completionArgs = useFreshCompletionArgs ? new BlocksProcessingEventArgs(null) : branchProcessing;
-        RaiseBlocksProcessed(completionArgs);
+        RaiseBranchProcessingCompleted(branchProcessing);
 
         bool wasCancelled = true;
         ManualResetEvent waitSignal = new(false);
@@ -209,7 +207,7 @@ public class BackgroundTaskSchedulerTests
         Assert.That(wasCancelled, Is.True, "expired task should receive a cancelled token during block processing");
 
         // After block processing, new tasks execute normally
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
 
         ManualResetEvent postBlockSignal = new(false);
         scheduler.TryScheduleTask(1, (_, token) =>
@@ -245,7 +243,7 @@ public class BackgroundTaskSchedulerTests
             Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks freed queue space");
         }
 
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
     }
 
     [Test]
@@ -273,7 +271,7 @@ public class BackgroundTaskSchedulerTests
             Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks were drained");
         }
 
-        RaiseBlocksProcessed(branchProcessing);
+        RaiseBranchProcessingCompleted(branchProcessing);
     }
 
     [Test]
@@ -298,7 +296,7 @@ public class BackgroundTaskSchedulerTests
         await Task.Delay(2000);
 
         // --- Phase 2: End block processing, verify queue accepts tasks and runs them normally ---
-        RaiseBlocksProcessed(phase1BranchProcessing);
+        RaiseBranchProcessingCompleted(phase1BranchProcessing);
 
         int phase2Count = capacity / 2;
         for (int i = 0; i < phase2Count; i++)
@@ -329,7 +327,7 @@ public class BackgroundTaskSchedulerTests
         await Task.Delay(2000);
 
         // End block processing — verify normal operation with new tasks
-        RaiseBlocksProcessed(phase3BranchProcessing);
+        RaiseBranchProcessingCompleted(phase3BranchProcessing);
 
         int phase3ExecutedCount = 0;
         int longLivedCount = capacity / 4;
@@ -368,11 +366,11 @@ public class BackgroundTaskSchedulerTests
 
     private BlocksProcessingEventArgs RaiseBlocksProcessing()
     {
-        BlocksProcessingEventArgs args = new(null);
+        BlocksProcessingEventArgs args = new([]);
         _branchProcessor.BlocksProcessing += Raise.EventWith(args);
         return args;
     }
 
-    private void RaiseBlocksProcessed(BlocksProcessingEventArgs args) =>
-        _branchProcessor.BlocksProcessed += Raise.EventWith(args);
+    private void RaiseBranchProcessingCompleted(BlocksProcessingEventArgs args) =>
+        _branchProcessor.BranchProcessingCompleted += Raise.EventWith(new BranchProcessingCompletedEventArgs(args.Blocks, 0));
 }

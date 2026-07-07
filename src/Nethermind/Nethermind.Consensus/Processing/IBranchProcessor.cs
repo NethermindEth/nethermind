@@ -38,9 +38,13 @@ public interface IBranchProcessor
     event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
 
     /// <summary>
-    /// Fired after processing a branch, which may contain multiple blocks, regardless of the processing result.
+    /// Fired after a branch-processing attempt completes or fails.
     /// </summary>
-    event EventHandler<BlocksProcessingEventArgs> BlocksProcessed;
+    /// <remarks>
+    /// This is a completion signal. The event args distinguish the attempted branch from the
+    /// number of blocks that actually completed processing.
+    /// </remarks>
+    event EventHandler<BranchProcessingCompletedEventArgs> BranchProcessingCompleted;
 
     /// <summary>
     /// Fired when a block is being processed.

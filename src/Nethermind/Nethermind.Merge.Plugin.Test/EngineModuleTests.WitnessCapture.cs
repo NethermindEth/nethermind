@@ -644,10 +644,10 @@ public partial class EngineModuleTests
             remove => inner.BlocksProcessing -= value;
         }
 
-        public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
         {
-            add => inner.BlocksProcessed += value;
-            remove => inner.BlocksProcessed -= value;
+            add => inner.BranchProcessingCompleted += value;
+            remove => inner.BranchProcessingCompleted -= value;
         }
 
         public event EventHandler<BlockEventArgs>? BlockProcessing

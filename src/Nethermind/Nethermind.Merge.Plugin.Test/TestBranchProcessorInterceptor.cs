@@ -39,10 +39,10 @@ public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor,
         remove => baseBlockProcessor.BlocksProcessing -= value;
     }
 
-    public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
     {
-        add => baseBlockProcessor.BlocksProcessed += value;
-        remove => baseBlockProcessor.BlocksProcessed -= value;
+        add => baseBlockProcessor.BranchProcessingCompleted += value;
+        remove => baseBlockProcessor.BranchProcessingCompleted -= value;
     }
 
     public event EventHandler<BlockEventArgs>? BlockProcessing

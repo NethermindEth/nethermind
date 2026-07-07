@@ -66,7 +66,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _capacity = capacity;
 
         _branchProcessor.BlocksProcessing += BranchProcessorOnBranchesProcessing;
-        _branchProcessor.BlocksProcessed += BranchProcessorOnBranchesProcessed;
+        _branchProcessor.BranchProcessingCompleted += BranchProcessorOnBranchProcessingCompleted;
 
         // TaskScheduler to run tasks at BelowNormal priority
         _scheduler = new BelowNormalPriorityTaskScheduler(
@@ -105,7 +105,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
     }
 
-    private void BranchProcessorOnBranchesProcessed(object? sender, BlocksProcessingEventArgs e)
+    private void BranchProcessorOnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
         CancellationTokenSource? oldTokenSource = null;
         TaskCompletionSource? signal = null;
@@ -252,7 +252,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         if (Interlocked.CompareExchange(ref _disposed, true, false)) return;
 
         _branchProcessor.BlocksProcessing -= BranchProcessorOnBranchesProcessing;
-        _branchProcessor.BlocksProcessed -= BranchProcessorOnBranchesProcessed;
+        _branchProcessor.BranchProcessingCompleted -= BranchProcessorOnBranchProcessingCompleted;
 
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();

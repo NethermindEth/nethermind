@@ -103,6 +103,9 @@ public class BlockchainProcessorTests
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
                 BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                int processedBlocksCount = 0;
+                Exception? processingException = null;
+
                 try
                 {
                     while (true)
@@ -128,6 +131,7 @@ public class BlockchainProcessorTests
                                 }
 
                                 BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                processedBlocksCount = i + 1;
                                 nextBlock = i + 1;
                             }
 
@@ -141,15 +145,22 @@ public class BlockchainProcessorTests
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    processingException = ex;
+                    throw;
+                }
                 finally
                 {
-                    BlocksProcessed?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(suggestedBlocks, processedBlocksCount, processingException));
                 }
             }
 
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
-            public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessed;
+            public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
 
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
