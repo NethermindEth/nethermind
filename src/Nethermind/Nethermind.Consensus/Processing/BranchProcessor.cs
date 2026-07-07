@@ -36,6 +36,8 @@ public class BranchProcessor(
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
+
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     private void PreCommitBlock(BlockHeader block)
@@ -72,6 +74,9 @@ public class BranchProcessor(
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+        BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
+        int processedBlocksCount = 0;
+        Exception? processingException = null;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -87,7 +92,8 @@ public class BranchProcessor(
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
-            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
@@ -140,6 +146,7 @@ public class BranchProcessor(
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
                 QueueClearCaches(preWarmTask);
+                processedBlocksCount = i + 1;
 
                 if (notReadOnly)
                 {
@@ -181,6 +188,7 @@ public class BranchProcessor(
         }
         catch (Exception ex) // try to restore at all cost
         {
+            processingException = ex;
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             QueueClearCaches(preWarmTask);
@@ -189,8 +197,20 @@ public class BranchProcessor(
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
-            worldStateCloser?.Dispose();
+            try
+            {
+                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                worldStateCloser?.Dispose();
+            }
+            finally
+            {
+                if (blocksProcessingEventArgs is not null)
+                {
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(blocksProcessingEventArgs.Blocks, processedBlocksCount, processingException));
+                }
+            }
         }
 
         static void WaitAndClear(ref Task? task)
