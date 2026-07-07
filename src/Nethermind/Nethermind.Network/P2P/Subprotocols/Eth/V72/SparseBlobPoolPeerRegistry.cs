@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CkzgLib;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +22,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private const int MaxTrackedTransactions = 8192;
     private const int MinIndependentProviderAnnouncements = 2;
     private const int MaxFullFallbackRequests = 12;
+    /// <summary>
+    /// How long requested cells count as in flight before they may be re-requested,
+    /// covering peers that never answer or disconnect mid-request.
+    /// </summary>
+    private static readonly TimeSpan DefaultCellRequestTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultSaturationTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ScheduledActionTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DefaultMaxAdmissionDelay = TimeSpan.FromMilliseconds(64);
@@ -38,7 +42,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private readonly Lock _custodyLock = new();
     private readonly TimeSpan _saturationTimeout;
     private readonly TimeSpan _maxAdmissionDelay;
-    private BlobCellMask _custodyMask;
+    private readonly TimeSpan _cellRequestTimeout;
+    // Mirrors the custody tracker's all-cells default so the first real custody update does not
+    // request the whole delta as if nothing had been fetched yet.
+    private BlobCellMask _custodyMask = BlobCellMask.Full;
 
     public SparseBlobPoolPeerRegistry(
         ITxPool txPool,
@@ -55,7 +62,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager,
         TimeSpan saturationTimeout,
-        TimeSpan maxAdmissionDelay)
+        TimeSpan maxAdmissionDelay,
+        TimeSpan? cellRequestTimeout = null)
     {
         if (saturationTimeout < TimeSpan.Zero)
         {
@@ -73,6 +81,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _logger = (logManager ?? throw new ArgumentNullException(nameof(logManager))).GetClassLogger<SparseBlobPoolPeerRegistry>();
         _saturationTimeout = saturationTimeout;
         _maxAdmissionDelay = maxAdmissionDelay;
+        _cellRequestTimeout = cellRequestTimeout ?? DefaultCellRequestTimeout;
         _blobCustodyTracker.CustodyChanged += OnCustodyChanged;
     }
 
@@ -137,13 +146,119 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
-        ISparseBlobPoolPeer? peer = SelectPeer(state, requestMask, lastResortPeerId);
-        if (peer is null)
+        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask))
         {
-            return false;
+            requestMask = requestMask.Except(localMask);
         }
 
-        return peer.TrySendGetCells(hash, requestMask);
+        ISparseBlobPoolPeer? firstPeer = null;
+        BlobCellMask firstMask = BlobCellMask.Empty;
+        List<(ISparseBlobPoolPeer Peer, BlobCellMask Mask)>? morePeers = null;
+        bool placedAll;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        lock (state.Lock)
+        {
+            if (now < state.InFlightUntil)
+            {
+                requestMask = requestMask.Except(state.InFlightMask);
+            }
+            else
+            {
+                state.InFlightMask = BlobCellMask.Empty;
+            }
+
+            if (requestMask.IsEmpty)
+            {
+                // Everything is already held locally or being fetched.
+                return true;
+            }
+
+            // Requests are trimmed per peer, so keep selecting until the whole mask is placed or
+            // no announcer remains; each selected peer takes its entire overlap, bounding the loop
+            // by the number of announcers. Reserving before sending deduplicates concurrent
+            // requests for the same cells.
+            while (!requestMask.IsEmpty
+                && SelectPeer(state, requestMask, lastResortPeerId, out BlobCellMask sendMask) is { } peer)
+            {
+                // The deadline is armed only on the empty->non-empty transition; extending it on
+                // every reservation would let a dead request's bits stay in flight indefinitely.
+                if (state.InFlightMask.IsEmpty)
+                {
+                    state.InFlightUntil = now + _cellRequestTimeout;
+                }
+
+                state.InFlightMask |= sendMask;
+                requestMask = requestMask.Except(sendMask);
+                if (firstPeer is null)
+                {
+                    firstPeer = peer;
+                    firstMask = sendMask;
+                }
+                else
+                {
+                    (morePeers ??= []).Add((peer, sendMask));
+                }
+            }
+
+            if (firstPeer is null)
+            {
+                return false;
+            }
+
+            placedAll = requestMask.IsEmpty;
+        }
+
+        placedAll &= TrySendReserved(state, hash, firstPeer, firstMask);
+        if (morePeers is not null)
+        {
+            foreach ((ISparseBlobPoolPeer peer, BlobCellMask sendMask) in morePeers)
+            {
+                placedAll &= TrySendReserved(state, hash, peer, sendMask);
+            }
+        }
+
+        // A false return makes the caller park the whole mask; the in-flight and local-pool
+        // subtraction above deduplicates the already-placed part on retry.
+        return placedAll;
+    }
+
+    private static bool TrySendReserved(TrackedSparseBlobTx state, Hash256 hash, ISparseBlobPoolPeer peer, BlobCellMask sendMask)
+    {
+        if (peer.TrySendGetCells(hash, sendMask))
+        {
+            return true;
+        }
+
+        lock (state.Lock)
+        {
+            state.InFlightMask = state.InFlightMask.Except(sendMask);
+        }
+
+        return false;
+    }
+
+    public void OnCellsRequestCompleted(Hash256 hash, BlobCellMask completedMask)
+    {
+        if (completedMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            return;
+        }
+
+        lock (state.Lock)
+        {
+            state.InFlightMask = state.InFlightMask.Except(completedMask);
+        }
+    }
+
+    public void RemoveAnnouncement(PublicKey peerId, Hash256 hash)
+    {
+        if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            lock (state.Lock)
+            {
+                state.Announcements.Remove(peerId);
+            }
+        }
     }
 
     public int RequestCellsForCustodyChange(BlobCellMask newCustodyMask, bool requestAllAnnouncedCells)
@@ -303,43 +418,81 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return _transactions[key];
     }
 
-    private ISparseBlobPoolPeer? SelectPeer(TrackedSparseBlobTx state, BlobCellMask requestMask, PublicKey lastResortPeerId)
+    /// <summary>
+    /// Picks a peer to serve <paramref name="requestMask"/> and trims the request to what the
+    /// peer announced. Must be called under <c>state.Lock</c>.
+    /// </summary>
+    /// <remarks>
+    /// Cell responses are all-or-nothing per transaction, so a peer asked for cells outside its
+    /// announcement replies empty. Peers whose announcement covers the whole request are preferred;
+    /// otherwise the request is trimmed to a partial announcer's mask and the caller keeps
+    /// selecting peers for the remainder.
+    /// </remarks>
+    private ISparseBlobPoolPeer? SelectPeer(TrackedSparseBlobTx state, BlobCellMask requestMask, PublicKey lastResortPeerId, out BlobCellMask sendMask)
     {
-        lock (state.Lock)
+        sendMask = requestMask;
+        if (state.Announcements.Count == 0)
         {
-            if (state.Announcements.Count == 0)
-            {
-                return null;
-            }
-
-            ISparseBlobPoolPeer? lastResortPeer = null;
-            ISparseBlobPoolPeer? selectedPeer = null;
-            int candidateCount = 0;
-            foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
-            {
-                if ((announcement.Value & requestMask).IsEmpty
-                    || !_peers.TryGetValue(announcement.Key, out ISparseBlobPoolPeer? peer)
-                    || peer.IsClosing)
-                {
-                    continue;
-                }
-
-                if (peer.Id == lastResortPeerId)
-                {
-                    lastResortPeer ??= peer;
-                    continue;
-                }
-
-                candidateCount++;
-                if (Random.Shared.Next(candidateCount) == 0)
-                {
-                    selectedPeer = peer;
-                }
-            }
-
-            // Prefer a random announced provider rather than always leaning on the same peer.
-            return selectedPeer ?? lastResortPeer;
+            return null;
         }
+
+        ISparseBlobPoolPeer? lastResortPeer = null;
+        BlobCellMask lastResortMask = BlobCellMask.Empty;
+        ISparseBlobPoolPeer? coveringPeer = null;
+        ISparseBlobPoolPeer? partialPeer = null;
+        BlobCellMask partialMask = BlobCellMask.Empty;
+        int coveringCount = 0;
+        int partialCount = 0;
+        foreach (KeyValuePair<PublicKey, BlobCellMask> announcement in state.Announcements)
+        {
+            BlobCellMask overlap = announcement.Value & requestMask;
+            if (overlap.IsEmpty
+                || !_peers.TryGetValue(announcement.Key, out ISparseBlobPoolPeer? peer)
+                || peer.IsClosing)
+            {
+                continue;
+            }
+
+            if (peer.Id == lastResortPeerId)
+            {
+                lastResortPeer ??= peer;
+                lastResortMask = overlap;
+                continue;
+            }
+
+            // Reservoir sampling keeps the pick uniform without materializing candidate lists.
+            if (overlap == requestMask)
+            {
+                coveringCount++;
+                if (Random.Shared.Next(coveringCount) == 0)
+                {
+                    coveringPeer = peer;
+                }
+            }
+            else
+            {
+                partialCount++;
+                if (Random.Shared.Next(partialCount) == 0)
+                {
+                    partialPeer = peer;
+                    partialMask = overlap;
+                }
+            }
+        }
+
+        if (coveringPeer is not null)
+        {
+            return coveringPeer;
+        }
+
+        if (partialPeer is not null)
+        {
+            sendMask = partialMask;
+            return partialPeer;
+        }
+
+        sendMask = lastResortMask;
+        return lastResortPeer;
     }
 
     private AcceptTxResult? TrySubmit(Hash256 hash, TrackedSparseBlobTx state)
@@ -620,10 +773,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     private bool HasFullLocalBlobTransaction(Hash256 hash)
-        => _txPool.TryGetPendingBlobTransaction(hash, out Transaction? blobTx)
-            && blobTx is not null
-            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-            && wrapper.GetAvailableCellMask().IsFull;
+        => _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask)
+            && availableMask.IsFull;
 
     private bool IsActivePeer(ISparseBlobPoolPeer peer)
         => _peers.TryGetValue(peer.Id, out ISparseBlobPoolPeer? registeredPeer)
@@ -652,14 +803,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     private BlobCellMask GetMissingLocalMask(Hash256 hash, BlobCellMask requestedMask)
-    {
-        if (_txPool.TryGetBlobCells(hash, requestedMask, out BlobCellMask availableMask, out _))
-        {
-            return new BlobCellMask(requestedMask.Value & ~availableMask.Value);
-        }
-
-        return requestedMask;
-    }
+        => _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask)
+            ? requestedMask.Except(availableMask)
+            : requestedMask;
 
     private bool TryRemoveState(Hash256 hash, TrackedSparseBlobTx state)
         => ((ICollection<KeyValuePair<ValueHash256, TrackedSparseBlobTx>>)_transactions)
@@ -691,64 +837,20 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
-        int requestedCellsPerBlob = pending.CellMask.Count;
         int blobCount = blobVersionedHashes.Length;
-        if (pending.Cells.Length != blobCount * requestedCellsPerBlob)
+        if (!BlobCellsHelper.TryGetPresentCellMask(pending.Cells, pending.CellMask, blobCount, out BlobCellMask availableMask))
         {
-            error = $"Wrong sparse blob cells count for {hash}.";
+            error = $"Wrong sparse blob cells shape for {hash}.";
             return false;
         }
 
-        BlobCellMask availableMask = BlobCellMask.Empty;
-        int availableCount = 0;
-        int requestedPosition = 0;
-        foreach (int cellIndex in pending.CellMask.EnumerateSetBits())
-        {
-            bool presentForAllBlobs = true;
-            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-            {
-                byte[] cell = pending.Cells[blobIndex * requestedCellsPerBlob + requestedPosition];
-                if (cell.Length is not 0 and not Ckzg.BytesPerCell)
-                {
-                    error = $"Invalid sparse blob cell size {cell.Length} for {hash}.";
-                    return false;
-                }
-
-                presentForAllBlobs &= cell.Length == Ckzg.BytesPerCell;
-            }
-
-            if (presentForAllBlobs)
-            {
-                availableMask |= new BlobCellMask(UInt128.One << cellIndex);
-                availableCount++;
-            }
-
-            requestedPosition++;
-        }
-
-        if (availableCount == 0)
+        if (availableMask.IsEmpty)
         {
             error = $"No requested sparse blob cells available for {hash}.";
             return false;
         }
 
-        byte[][] flattenedCells = new byte[blobCount * availableCount][];
-        for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
-        {
-            int outputIndex = blobIndex * availableCount;
-            int inputIndex = blobIndex * requestedCellsPerBlob;
-            int requestIndex = 0;
-            foreach (int cellIndex in pending.CellMask.EnumerateSetBits())
-            {
-                if (availableMask.Contains(cellIndex))
-                {
-                    flattenedCells[outputIndex++] = pending.Cells[inputIndex + requestIndex];
-                }
-
-                requestIndex++;
-            }
-        }
-
+        byte[][] flattenedCells = BlobCellsHelper.SelectFlattenedCells(pending.Cells, pending.CellMask, availableMask, blobCount);
         ShardBlobNetworkWrapper sparseWrapper = wrapper with { CellMask = availableMask, Cells = flattenedCells };
         if (!BlobCellsHelper.ValidateCells(sparseWrapper))
         {
@@ -790,8 +892,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return TimeSpan.FromMilliseconds(delay);
     }
 
-    private readonly record struct PendingCellsBuffer(BlobCellMask CellMask, byte[][] Cells, PublicKey SourcePeerId);
-
     private enum SparseBlobAttachFailureSource
     {
         Cells,
@@ -812,5 +912,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public int FullFallbackRequests { get; set; }
         public bool Submitted { get; set; }
         public bool Submitting { get; set; }
+        public BlobCellMask InFlightMask { get; set; }
+        public DateTimeOffset InFlightUntil { get; set; }
     }
 }

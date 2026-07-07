@@ -165,6 +165,29 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
+    /// <summary>
+    /// Gets the cell availability mask of a pooled blob transaction without touching blob payloads,
+    /// the blob cache, or persistent storage.
+    /// </summary>
+    /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
+    public bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (!base.TryGetValueNonLocked(hash, out Transaction? blobTx))
+        {
+            availableMask = default;
+            return false;
+        }
+
+        availableMask = blobTx switch
+        {
+            LightTransaction lightTx => lightTx.BlobCellMask,
+            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
+            _ => default
+        };
+        return true;
+    }
+
     public virtual bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
     {
         ShardBlobNetworkWrapper? wrapper = null;
@@ -296,8 +319,9 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     }
 
     /// <summary>
-    /// For tests only - to test sorting
+    /// Gets the in-memory (light) pool entry without touching the blob cache or persistent storage.
     /// </summary>
+    /// <remarks>Must be called under the pool lock.</remarks>
     internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
         => base.TryGetValueNonLocked(hash, out lightBlobTx);
 

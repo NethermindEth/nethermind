@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -14,6 +15,7 @@ namespace Nethermind.TxPool;
 public class LightTransaction : Transaction
 {
     private readonly int _sparseBlobNetworkSize;
+    private StrongBox<BlobCellMask>? _blobCellMask;
 
     public LightTransaction(Transaction fullTx)
     {
@@ -72,7 +74,20 @@ public class LightTransaction : Transaction
     }
 
     public ProofVersion? ProofVersion { get; set; }
-    public BlobCellMask BlobCellMask { get; set; }
+
+    /// <summary>
+    /// Cell availability mask of the pooled sparse blob transaction.
+    /// </summary>
+    /// <remarks>
+    /// Updated under the blob pool lock when cells are merged, but read without the lock on
+    /// announcement paths. The value is published via an immutable box because a 16-byte struct
+    /// write is not atomic and a torn mask would be recorded in per-peer announcement caches.
+    /// </remarks>
+    public BlobCellMask BlobCellMask
+    {
+        get => _blobCellMask?.Value ?? default;
+        set => _blobCellMask = new StrongBox<BlobCellMask>(value);
+    }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 

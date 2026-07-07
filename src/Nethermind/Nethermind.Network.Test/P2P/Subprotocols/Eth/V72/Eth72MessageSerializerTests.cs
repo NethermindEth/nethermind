@@ -132,17 +132,20 @@ public class Eth72MessageSerializerTests
     }
 
     [Test]
-    public void GetCellsMessageSerializer_should_reject_more_than_response_hash_limit()
+    public void GetCellsMessageSerializer_should_accept_geth_sized_request_batches()
     {
+        // geth batches up to 128 hashes per GetCells request; decoding must not treat
+        // requests above our own response cap as a protocol violation.
         GetCellsMessageSerializer72 serializer = new();
-        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes + 1];
+        Hash256[] hashes = new Hash256[2 * Eth72ProtocolHandler.MaxCellsResponseHashes];
         Array.Fill(hashes, Hash256.Zero);
         using GetCellsMessage72 message = new(hashes, BlobCellMask.FromIndices([1]).ToBytes());
 
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpLimitException>());
+        using GetCellsMessage72 deserialized = serializer.Deserialize(buffer);
+        Assert.That(deserialized.Hashes.Length, Is.EqualTo(hashes.Length));
     }
 
     [Test]

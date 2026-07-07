@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
@@ -22,7 +23,7 @@ public class NewPooledTransactionHashesMessage72(
     public override string Protocol => "eth";
 
     public NewPooledTransactionHashesMessage72(byte[] types, int[] sizes, Hash256[] hashes, byte[] cellMask)
-        : this(new ArrayOwnedReadOnlyList<byte>(types), new ArrayOwnedReadOnlyList<int>(sizes), new ArrayOwnedReadOnlyList<Hash256>(hashes), cellMask)
+        : this(types.ToPooledList(), sizes.ToPooledList(), hashes.ToPooledList(), cellMask)
     {
     }
 
@@ -55,28 +56,5 @@ public class NewPooledTransactionHashesMessage72(
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         public void Dispose() => list.Dispose();
-    }
-
-    private sealed class ArrayOwnedReadOnlyList<T>(T[] items) : IOwnedReadOnlyList<T>
-    {
-        public int Count => items.Length;
-
-        public T this[int index] => items[index];
-
-        public ReadOnlySpan<T> AsSpan() => items;
-
-        public IEnumerator<T> GetEnumerator()
-        {
-            for (int i = 0; i < items.Length; i++)
-            {
-                yield return items[i];
-            }
-        }
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public void Dispose()
-        {
-        }
     }
 }
