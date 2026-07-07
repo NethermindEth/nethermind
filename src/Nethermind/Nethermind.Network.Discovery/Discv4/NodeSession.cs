@@ -18,7 +18,7 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     private int _authenticatedRequestFailureCount;
     private long _lastPingSentTicks;
     private long _lastPingToken;
-    private readonly object _endpointBondLock = new();
+    private readonly Lock _endpointBondLock = new();
     private EndpointBondTable _receivedPings;
     private EndpointBondTable _receivedPongs;
     private EndpointBondTable _pendingBondingPings;
