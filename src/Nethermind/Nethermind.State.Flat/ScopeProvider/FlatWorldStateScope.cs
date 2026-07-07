@@ -20,9 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IPrewarmTrieHintSink
 {
-    private const int ScopeDisposeWarmupDrainTimeoutMilliseconds = 1000;
-    private const int PreCommitWarmupDrainTimeoutMilliseconds = 8;
-
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -98,7 +95,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
-        WaitForOutstandingWarmups(ScopeDisposeWarmupDrainTimeoutMilliseconds, warnOnTimeout: true);
+        WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
     }
@@ -121,25 +118,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
 
-    private void WaitForOutstandingWarmups(int timeoutMilliseconds, bool warnOnTimeout)
+    private void WaitForOutstandingWarmups()
     {
         if (Volatile.Read(ref _outstandingWarmups) == 0) return;
 
         OnWaitingForWarmups?.Invoke();
 
         SpinWait spinWait = new();
-        long startTimestamp = Stopwatch.GetTimestamp();
-        long timeoutTicks = timeoutMilliseconds * Stopwatch.Frequency / 1000;
+        Stopwatch stopwatch = Stopwatch.StartNew();
         while (Volatile.Read(ref _outstandingWarmups) != 0)
         {
-            if (Stopwatch.GetTimestamp() - startTimestamp > timeoutTicks)
+            if (stopwatch.ElapsedMilliseconds > 1000)
             {
-                if (warnOnTimeout)
-                {
-                    ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                    if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
-                }
-
+                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
                 return;
             }
             spinWait.SpinOnce();
@@ -414,7 +406,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
-        WaitForOutstandingWarmups(PreCommitWarmupDrainTimeoutMilliseconds, warnOnTimeout: false);
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 

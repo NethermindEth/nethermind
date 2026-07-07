@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -811,34 +810,6 @@ public class FlatWorldStateScopeProviderTests
     }
 
     #endregion
-
-    [Test]
-    public void StartWriteBatch_GivesOutstandingWarmups_BoundedDrainWindow()
-    {
-        using TestContext ctx = new();
-        FlatWorldStateScope scope = ctx.Scope;
-
-        scope.IncrementOutstandingWarmups();
-        ManualResetEventSlim waitEntered = new(false);
-        scope.OnWaitingForWarmups = () => waitEntered.Set();
-
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        try
-        {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch _ = scope.StartWriteBatch(1);
-        }
-        finally
-        {
-            stopwatch.Stop();
-            scope.DecrementOutstandingWarmups();
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waitEntered.IsSet, Is.True, "StartWriteBatch should enter the warmup drain when jobs are outstanding");
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)), "StartWriteBatch drain should be bounded");
-        }
-    }
 
     [Test]
     public async Task Dispose_WaitsForOutstandingWarmups_BeforeDisposingBundle()
