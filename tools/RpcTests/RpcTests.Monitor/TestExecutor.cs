@@ -20,8 +20,6 @@ internal class TestExecutor(RpcClient target, RpcClient? reference, EmptyTestsTr
 
         Console.WriteLine($"{test.Definition.FilePath} @ {test.RecentNumber}/{test.Head.Number}\n{request.ToCompactString()}\n");
 
-        // TODO: add test identifier to request params
-        // TODO: inject custom IRcpClient implementation finding corresponding test
         JsonNode? expectedStatic = test.Definition.Response?.Compile(test);
 
         // retry reference node, but require testee to reply on the first attempt
