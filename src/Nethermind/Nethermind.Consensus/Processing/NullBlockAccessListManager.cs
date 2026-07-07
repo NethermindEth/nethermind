@@ -26,7 +26,6 @@ public class NullBlockAccessListManager : IBlockAccessListManager
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
     public void WaitForBalWarmup() { }
-    public bool WaitForBalWarmup(TimeSpan timeout) => true;
     public void Setup(Block block) { }
     public void SpendGas(ulong gas) { }
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -35,12 +34,6 @@ public interface IBlockAccessListManager
     /// — they only mean fewer pre-block cache hits.
     /// </remarks>
     void WaitForBalWarmup();
-
-    /// <summary>
-    /// Waits up to <paramref name="timeout"/> for BAL read-warming to complete.
-    /// </summary>
-    /// <returns><c>true</c> when the warmup task completed or no task exists; <c>false</c> on timeout.</returns>
-    bool WaitForBalWarmup(TimeSpan timeout);
 
     void Setup(Block block);
     void SpendGas(ulong gas);

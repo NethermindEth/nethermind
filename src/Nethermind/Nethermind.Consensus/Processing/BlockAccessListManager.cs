@@ -191,33 +191,6 @@ public partial class BlockAccessListManager(
     {
         Task? task = _balWarmupTask;
         if (task is null) return;
-
-        CompleteBalWarmupTask(task);
-    }
-
-    public bool WaitForBalWarmup(TimeSpan timeout)
-    {
-        Task? task = _balWarmupTask;
-        if (task is null) return true;
-
-        if (!task.IsCompleted)
-        {
-            try
-            {
-                if (!task.Wait(timeout)) return false;
-            }
-            catch
-            {
-                // The completion helper observes and classifies the task fault below.
-            }
-        }
-
-        CompleteBalWarmupTask(task);
-        return true;
-    }
-
-    private void CompleteBalWarmupTask(Task task)
-    {
         _balWarmupTask = null;
 
         try
