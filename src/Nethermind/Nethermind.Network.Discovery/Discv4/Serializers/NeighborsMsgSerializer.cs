@@ -34,7 +34,7 @@ public sealed class NeighborsMsgSerializer(
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
-        return new Node(new PublicKey(id), address, discoveryAddress);
+        return new Node(new PublicKey(id), address, discoveryAddress.Port);
     }
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)

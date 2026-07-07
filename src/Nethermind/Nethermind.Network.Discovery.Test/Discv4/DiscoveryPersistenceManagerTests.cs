@@ -153,6 +153,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Preserve_Tcp_And_Discovery_Ports(CancellationToken cancellationToken)
+        {
+            NetworkNode networkNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            _networkStorage.UpdateNodes([networkNode]);
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+
+            await _discv4Adapter.Received(1).Ping(
+                Arg.Is<Node>(n =>
+                    n.Id.Equals(networkNode.NodeId) &&
+                    n.Host == networkNode.Host &&
+                    n.Port == 30303 &&
+                    n.DiscoveryPort == 30304),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =
@@ -176,6 +194,35 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await cts.CancelAsync();
 
             Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
+        }
+
+        [Test]
+        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Tcp_And_Discovery_Ports()
+        {
+            Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 30304);
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+
+            _kademlia.IterateNodes().Returns([node]);
+
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
+
+            while (_discoveryDb.Count == 0)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                await Task.Delay(10, cts.Token);
+            }
+
+            await cts.CancelAsync();
+
+            NetworkStorage reloadedStorage = new(_discoveryDb, LimboLogs.Instance);
+            NetworkNode[] persistedNodes = reloadedStorage.GetPersistedNodes();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                Assert.That(persistedNodes[0].Port, Is.EqualTo(30303));
+                Assert.That(persistedNodes[0].DiscoveryPort, Is.EqualTo(30304));
+            }
         }
 
         [Test]

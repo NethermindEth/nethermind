@@ -184,6 +184,14 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
         }
 
+        [Test]
+        public void To_string_aligned_short_uses_common_port_cache()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+
+            Assert.That(node.ToString(Node.Format.AlignedShort), Is.EqualTo("      127.0.0.1:30303"));
+        }
+
         private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int? tcpPort, int? udpPort)
         {
             NodeRecord enr = new();

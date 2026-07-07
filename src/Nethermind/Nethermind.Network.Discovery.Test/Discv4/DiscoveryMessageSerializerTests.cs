@@ -329,6 +329,28 @@ public class DiscoveryMessageSerializerTests
     }
 
     [Test]
+    public void NeighborsMessage_UsesDiscoveryPortWhenTcpPortIsUnknown()
+    {
+        Node discoveryOnlyNode = Node.FromDiscoveryEndpoint(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("192.168.1.2"), 30304));
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[] { discoveryOnlyNode })
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.Nodes, Has.Count.EqualTo(1));
+            Assert.That(discoveryOnlyNode.Port, Is.Zero);
+            Assert.That(deserializedMessage.Nodes[0].Port, Is.EqualTo(30304));
+            Assert.That(deserializedMessage.Nodes[0].DiscoveryPort, Is.EqualTo(30304));
+        }
+    }
+
+    [Test]
     public void NeighborsMessage_Drops_Empty_List_Node_Entries()
     {
         // A misbehaving peer can encode a node entry as an RLP empty list (0xc0);

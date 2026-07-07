@@ -67,6 +67,22 @@ public class NodeSourceToDiscV4FeederTests
 
     [Test]
     [CancelAfter(1000)]
+    public async Task Test_ShouldNotAddNodeWhenLimitIsZero(CancellationToken token)
+    {
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 0);
+
+        await feeder.Run().WaitAsync(token);
+
+        discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Any<Node>());
+    }
+
+    [Test]
+    [CancelAfter(1000)]
     public async Task Test_ShouldSkipNodeWithoutDiscoveryEndpointAndContinueToLimit(CancellationToken token)
     {
         TestNodeSource source = new();

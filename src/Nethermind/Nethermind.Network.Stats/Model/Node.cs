@@ -197,7 +197,7 @@ namespace Nethermind.Stats.Model
             }
             else if (networkNode.DiscoveryPort != networkNode.Port)
             {
-                SetDiscoveryEndpoint(GetIPEndPoint(networkNode.Host, networkNode.DiscoveryPort));
+                DiscoveryPort = networkNode.DiscoveryPort;
             }
         }
 
@@ -252,7 +252,7 @@ namespace Nethermind.Stats.Model
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
 
-            node = new Node(key, tcpEndpoint, discoveryEndpoint)
+            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
             {
                 Enr = enr
             };
@@ -260,7 +260,7 @@ namespace Nethermind.Stats.Model
         }
 
         public static Node FromDiscoveryEndpoint(PublicKey id, IPEndPoint discoveryAddress)
-            => new(id, new IPEndPoint(discoveryAddress.Address, 0), discoveryAddress);
+            => new(id, new IPEndPoint(discoveryAddress.Address, 0), discoveryAddress.Port);
 
         private static bool TryGetEnrEndpoint(IPAddress ip, int? port, [MaybeNullWhen(false)] out IPEndPoint endpoint)
         {
@@ -292,7 +292,7 @@ namespace Nethermind.Stats.Model
         }
 
         public Node(PublicKey id, string host, int port, int discoveryPort, bool isStatic = false)
-            : this(id, GetIPEndPoint(host, port), GetIPEndPoint(host, discoveryPort), isStatic)
+            : this(id, GetIPEndPoint(host, port), discoveryPort, isStatic)
         {
         }
 
@@ -305,16 +305,16 @@ namespace Nethermind.Stats.Model
             UseDefaultDiscoveryEndpoint();
         }
 
-        public Node(PublicKey id, IPEndPoint address, IPEndPoint discoveryAddress, bool isStatic = false)
+        public Node(PublicKey id, IPEndPoint address, int discoveryPort, bool isStatic = false)
             : this(id, address, isStatic)
-            => SetDiscoveryEndpoint(discoveryAddress);
+            => DiscoveryPort = discoveryPort;
 
         private static readonly string[] _ports = CreateCommonPortStrings();
 
         private static string[] CreateCommonPortStrings()
         {
             string[] ports = new string[100];
-            for (int i = 0; ports.Length < 100; i++)
+            for (int i = 0; i < ports.Length; i++)
             {
                 ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
             }
@@ -330,8 +330,6 @@ namespace Nethermind.Stats.Model
             _paddedPort = null;
             _discoveryAddress = null;
         }
-
-        private void SetDiscoveryEndpoint(IPEndPoint discoveryAddress) => DiscoveryPort = discoveryAddress.Port;
 
         private void ClearDiscoveryEndpoint()
         {

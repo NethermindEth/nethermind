@@ -20,12 +20,12 @@ namespace Nethermind.Network
         {
             int contentEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
             ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit);
-            return IsEnrString(firstItem)
-                ? DecodeEnrFormat(ref decoderContext, firstItem, contentEnd)
+            return IsNodeString(firstItem)
+                ? DecodeNodeStringFormat(ref decoderContext, firstItem, contentEnd)
                 : DecodeLegacyFormat(ref decoderContext, firstItem);
         }
 
-        private static NetworkNode DecodeEnrFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
+        private static NetworkNode DecodeNodeStringFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
         {
             string nodeString = Encoding.UTF8.GetString(firstItem);
             long reputation = decoderContext.DecodeLong();
@@ -60,7 +60,7 @@ namespace Nethermind.Network
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             writer.StartSequence(contentLength);
-            if (!item.IsEnr)
+            if (!ShouldEncodeNodeString(item))
             {
                 EncodeLegacyFormat(ref writer, item);
                 return;
@@ -82,7 +82,7 @@ namespace Nethermind.Network
             writer.Encode(item.Reputation);
         }
 
-        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => item.IsEnr
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => ShouldEncodeNodeString(item)
             ? Rlp.LengthOf(item.ToString())
                 + Rlp.LengthOf(item.Reputation)
             : Rlp.LengthOf(item.NodeId.Bytes)
@@ -91,8 +91,11 @@ namespace Nethermind.Network
                 + 1
                 + Rlp.LengthOf(item.Reputation);
 
-        private static bool IsEnrString(ReadOnlySpan<byte> value) =>
+        private static bool ShouldEncodeNodeString(NetworkNode item) => item.IsEnr || item.DiscoveryPort != item.Port;
+
+        private static bool IsNodeString(ReadOnlySpan<byte> value) =>
             value.Length != PublicKey.LengthInBytes &&
-            value is [(byte)'e', (byte)'n', (byte)'r', (byte)':', ..];
+            value is [(byte)'e', (byte)'n', (byte)'r', (byte)':', ..]
+                or [(byte)'e', (byte)'n', (byte)'o', (byte)'d', (byte)'e', (byte)':', ..];
     }
 }

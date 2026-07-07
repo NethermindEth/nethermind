@@ -145,19 +145,22 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         int length = GetLengthSerializeNode(node);
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, node.Address.Address);
-        writer.Encode(node.Port);
+        writer.Encode(GetSerializedTcpPort(node));
         writer.Encode(node.DiscoveryPort);
         writer.Encode(node.Id.Bytes);
     }
 
     protected static int GetLengthSerializeNode(Node node)
     {
+        int tcpPort = GetSerializedTcpPort(node);
         int length = IPAddressRlp.GetLength(node.Address.Address);
-        length += Rlp.LengthOf(node.Port);
+        length += Rlp.LengthOf(tcpPort);
         length += Rlp.LengthOf(node.DiscoveryPort);
         length += Rlp.LengthOf(node.Id.Bytes);
         return length;
     }
+
+    private static int GetSerializedTcpPort(Node node) => node.Port == 0 ? node.DiscoveryPort : node.Port;
 
     protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
     {
