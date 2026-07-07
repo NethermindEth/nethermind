@@ -55,7 +55,7 @@ public sealed class AuraBlockProductionBalProcessingEnvFactory(
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
                 // AuRa producer scope doesn't decorate IWithdrawalProcessor; add the production wrap here.
                 .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
-                .AddScoped<IBalProcessingEnv, SequentialBalEnv>());
+                .AddScoped<IBalProcessingEnv, SequentialBalEnvManager.SequentialBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
         }
     }

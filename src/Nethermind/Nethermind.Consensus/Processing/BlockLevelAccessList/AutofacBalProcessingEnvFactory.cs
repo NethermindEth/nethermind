@@ -48,7 +48,7 @@ public sealed class AutofacBalProcessingEnvFactory(
                 // ITransactionProcessorAdapter with a build-up adapter. The manual factory always used
                 // the execute adapter regardless, so pin it here to keep that same (execute) behavior.
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped<IBalProcessingEnv, SequentialBalEnv>());
+                .AddScoped<IBalProcessingEnv, SequentialBalEnvManager.SequentialBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
         }
     }
