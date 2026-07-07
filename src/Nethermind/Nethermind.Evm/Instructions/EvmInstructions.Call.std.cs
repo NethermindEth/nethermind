@@ -9,7 +9,6 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
