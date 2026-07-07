@@ -326,17 +326,17 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], tracer.IsTracingStorage);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, tracer.IsTracingStorage);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool isTracingStorage)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     if (!balance.IsZero)
@@ -344,7 +344,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
-                    worldState.MarkStorageDestroyed(toBeDestroyed);
+                    if (isTracingStorage) worldState.ClearStorage(toBeDestroyed);
+                    else worldState.MarkStorageDestroyed(toBeDestroyed);
                     worldState.DeleteAccount(toBeDestroyed);
                 }
             }
@@ -1285,7 +1286,8 @@ namespace Nethermind.Evm.TransactionProcessing
                                 }
                             }
 
-                            WorldState.MarkStorageDestroyed(toBeDestroyed);
+                            if (tracer.IsTracingStorage) WorldState.ClearStorage(toBeDestroyed);
+                            else WorldState.MarkStorageDestroyed(toBeDestroyed);
                             WorldState.DeleteAccount(toBeDestroyed);
 
                             if (tracingRefunds)
