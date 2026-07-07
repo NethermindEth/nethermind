@@ -12,9 +12,13 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// RAII wrapper around a borrowed read-only tx-processing env: holds the pooled source plus the
 /// scope built against the parent state root, and returns the source to its pool when disposed.
-/// Used by parallel workers so each tx gets its own snapshot reader without contending on the
-/// mutable state provider.
 /// </summary>
+/// <remarks>
+/// Rented by <see cref="ParallelBalEnvManager"/> and handed to <see cref="ParallelBalEnv"/> via
+/// <see cref="IBalProcessingEnv.Setup"/>, so each parallel worker reads from its own parent-state
+/// snapshot without contending on the mutable state provider. Public only because it appears on the
+/// public <see cref="IBalProcessingEnv"/> contract.
+/// </remarks>
 public sealed class ParentReaderLease(
     IReadOnlyTxProcessorSource source,
     ObjectPool<IReadOnlyTxProcessorSource> envPool,

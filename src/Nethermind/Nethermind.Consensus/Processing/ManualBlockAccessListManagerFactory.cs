@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing;
 /// Manual (non-DI) construction of a <see cref="BlockAccessListManager"/>: builds the tx-processor
 /// pool managers (over a hand-built <see cref="ManualMainnetBalProcessingEnvFactory"/>) and wires
 /// them into a manager. The DI path injects the managers directly; this exists for the
-/// stateless/witness envs and tests that construct the manager outside the container.
+/// stateless env and tests that construct the manager outside the container.
 /// </summary>
 public static class ManualBlockAccessListManagerFactory
 {
@@ -49,7 +49,7 @@ public static class ManualBlockAccessListManagerFactory
 
     /// <summary>
     /// Hand-wired <see cref="IBalProcessingEnvFactory"/> for <b>Ethereum mainnet only</b>, used by the
-    /// stateless/witness envs and tests where the DI container is not available. It builds all worker
+    /// stateless env and tests where the DI container is not available. It builds all worker
     /// components (virtual machine, traced world state, mainnet <see cref="TransactionProcessor{TGasPolicy}"/>
     /// and <see cref="WithdrawalProcessor"/>, and the adapter) by hand and hands them to a
     /// <see cref="ParallelBalEnv"/> or <see cref="SequentialBalEnv"/>. The DI path uses
