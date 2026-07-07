@@ -111,7 +111,7 @@ public partial class BlockAccessListManager(
         IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
         ITransactionProcessorFactory? transactionProcessorFactory = null)
     {
-        BalProcessingEnvFactory envFactory = new(
+        ManualMainnetBalProcessingEnvFactory envFactory = new(
             blockHashProvider, specProvider, stateProvider, logManager,
             transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory);
         return new BlockAccessListManager(

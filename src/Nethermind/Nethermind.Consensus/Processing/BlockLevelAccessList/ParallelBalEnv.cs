@@ -18,7 +18,8 @@ internal sealed class ParallelBalEnv(
     BlockAccessListBasedWorldState balWorldState,
     TracedAccessWorldState worldState,
     ITransactionProcessor txProcessor,
-    ITransactionProcessorAdapter txProcessorAdapter) : IBalProcessingEnv
+    ITransactionProcessorAdapter txProcessorAdapter,
+    IDisposable? lifetimeScope = null) : IBalProcessingEnv
 {
     private readonly BlockAccessListBasedWorldState _balWorldState = balWorldState;
     private ParentReaderLease? _parentReader;
@@ -48,8 +49,12 @@ internal sealed class ParallelBalEnv(
         _parentReader = null;
     }
 
-    // The only owned disposable is the borrowed parent-reader lease; ClearParentReader returns it.
-    public void Dispose() => ClearParentReader();
+    public void Dispose()
+    {
+        // Return the borrowed parent-reader lease, then dispose the owning DI scope (Autofac path).
+        ClearParentReader();
+        lifetimeScope?.Dispose();
+    }
 
     [DoesNotReturn]
     private static void ThrowParentReaderStillAttached()

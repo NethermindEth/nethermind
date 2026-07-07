@@ -11,11 +11,13 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
-/// Default <see cref="IBalProcessingEnvFactory"/>: builds all worker components (virtual machine,
-/// traced world state, tx processor and adapter) and hands them to a <see cref="ParallelBalEnv"/>
-/// or <see cref="SequentialBalEnv"/>.
+/// Manual (non-DI) <see cref="IBalProcessingEnvFactory"/>: builds all worker components (virtual
+/// machine, traced world state, tx processor and adapter) by hand and hands them to a
+/// <see cref="ParallelBalEnv"/> or <see cref="SequentialBalEnv"/>. Used by the stateless/witness
+/// envs and tests that construct outside the container; the DI path uses
+/// <see cref="AutofacBalProcessingEnvFactory"/>.
 /// </summary>
-public sealed class BalProcessingEnvFactory(
+public sealed class ManualMainnetBalProcessingEnvFactory(
     IBlockhashProvider blockHashProvider,
     ISpecProvider specProvider,
     IWorldState stateProvider,

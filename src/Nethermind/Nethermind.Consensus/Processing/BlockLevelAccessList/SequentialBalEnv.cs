@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -9,10 +10,13 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Sequential BAL env: executes against the mutable state provider directly.</summary>
+/// <remarks><paramref name="lifetimeScope"/> is the owning DI scope (Autofac path) disposed with
+/// the env, or <c>null</c> when built manually.</remarks>
 internal sealed class SequentialBalEnv(
     TracedAccessWorldState worldState,
     ITransactionProcessor txProcessor,
-    ITransactionProcessorAdapter txProcessorAdapter) : IBalProcessingEnv
+    ITransactionProcessorAdapter txProcessorAdapter,
+    IDisposable? lifetimeScope = null) : IBalProcessingEnv
 {
     public TracedAccessWorldState WorldState { get; } = worldState;
     public ITransactionProcessor TxProcessor { get; } = txProcessor;
@@ -27,5 +31,5 @@ internal sealed class SequentialBalEnv(
 
     public void ClearParentReader() { }
 
-    public void Dispose() { }
+    public void Dispose() => lifetimeScope?.Dispose();
 }
