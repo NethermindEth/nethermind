@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// Builds <see cref="IBalProcessingEnv"/> workers bound to the block-processing state. One factory
 /// backs both pools; the <c>parallel</c> flag selects BAL-backed vs plain world state.
 /// </summary>
-internal interface IBalProcessingEnvFactory
+public interface IBalProcessingEnvFactory
 {
     IBalProcessingEnv Create(bool parallel);
 }

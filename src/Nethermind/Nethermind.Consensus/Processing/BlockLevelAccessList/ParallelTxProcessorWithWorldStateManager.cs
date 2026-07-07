@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// gets a pooled <see cref="ParentReaderLease"/> — a snapshot of the parent-state world from which
 /// the BAL-backed world state reads any value the suggested BAL doesn't carry at the current index.
 /// </summary>
-internal class ParallelTxProcessorWithWorldStateManager : IParallelTxProcessorWithWorldStateManager
+public class ParallelTxProcessorWithWorldStateManager : IParallelTxProcessorWithWorldStateManager
 {
     private const int DefaultTxCount = 10000;
     private static readonly int ProcessorPoolSize = RuntimeInformation.ProcessorCount;
@@ -60,9 +60,9 @@ internal class ParallelTxProcessorWithWorldStateManager : IParallelTxProcessorWi
 
     public ParallelTxProcessorWithWorldStateManager(
         IBalProcessingEnvFactory envFactory,
-        PrewarmerEnvFactory? prewarmerEnvFactory,
-        PreBlockCaches? preBlockCaches,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
+        PrewarmerEnvFactory? prewarmerEnvFactory = null,
+        PreBlockCaches? preBlockCaches = null,
+        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
     {
         _envFactory = envFactory;
         _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);

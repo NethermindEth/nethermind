@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 ///   * <see cref="ISequentialTxProcessorWithWorldStateManager"/> reuses a single processor for the
 ///     whole block.
 /// </summary>
-internal interface ITxProcessorWithWorldStateManager : IDisposable
+public interface ITxProcessorWithWorldStateManager : IDisposable
 {
     void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
     IBalProcessingEnv Get(uint? balIndex = null);

@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// Used by parallel workers so each tx gets its own snapshot reader without contending on the
 /// mutable state provider.
 /// </summary>
-internal sealed class ParentReaderLease(
+public sealed class ParentReaderLease(
     IReadOnlyTxProcessorSource source,
     ObjectPool<IReadOnlyTxProcessorSource> envPool,
     IReadOnlyTxProcessingScope scope) : IDisposable

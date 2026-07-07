@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// with the transaction processor (and its adapter) bound to it. The BAL manager interacts with
 /// rented/shared workers only through this surface, never the concrete pool type.
 /// </summary>
-internal interface IBalProcessingEnv
+public interface IBalProcessingEnv
 {
     TracedAccessWorldState WorldState { get; }
     ITransactionProcessor TxProcessor { get; }

@@ -92,7 +92,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+            .AddScoped<IBlockAccessListManager>(ctx => BlockAccessListManager.Create(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
                 ctx.Resolve<IBlockhashProvider>(),

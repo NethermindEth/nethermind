@@ -6,4 +6,4 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// A <see cref="ITxProcessorWithWorldStateManager"/> that reuses a single worker for the whole block.
 /// </summary>
-internal interface ISequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager;
+public interface ISequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager;

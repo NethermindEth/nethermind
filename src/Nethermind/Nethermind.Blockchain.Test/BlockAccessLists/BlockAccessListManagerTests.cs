@@ -29,7 +29,7 @@ public class BlockAccessListManagerTests
         public IWorldState WorldState { get; } = Substitute.For<IWorldState>();
         public BlockAccessListManager Manager { get; }
 
-        public Harness() => Manager = new BlockAccessListManager(
+        public Harness() => Manager = BlockAccessListManager.Create(
             WorldState,
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlockhashProvider>(),

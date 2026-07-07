@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
@@ -72,6 +73,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
 
             .AddSingleton<CodeInfoRepositoryFactory>(CodeInfoRepositoryFactories.Caching)
+            .AddScoped<IBalProcessingEnvFactory, BalProcessingEnvFactory>()
+            .AddScoped<IParallelTxProcessorWithWorldStateManager, ParallelTxProcessorWithWorldStateManager>()
+            .AddScoped<ISequentialTxProcessorWithWorldStateManager, SequentialTxProcessorWithWorldStateManager>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()

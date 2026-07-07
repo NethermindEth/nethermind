@@ -6,7 +6,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// A <see cref="ITxProcessorWithWorldStateManager"/> backed by a bounded pool of parallel workers.
 /// </summary>
-internal interface IParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
+public interface IParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
 {
     /// <summary>
     /// Detaches the worker's populated BAL into the per-tx slot and recycles the processor

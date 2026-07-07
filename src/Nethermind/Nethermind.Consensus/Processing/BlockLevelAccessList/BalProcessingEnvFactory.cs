@@ -10,7 +10,7 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Default <see cref="IBalProcessingEnvFactory"/> producing <see cref="TxProcessorWithWorldState"/> workers.</summary>
-internal sealed class BalProcessingEnvFactory(
+public sealed class BalProcessingEnvFactory(
     IBlockhashProvider blockHashProvider,
     ISpecProvider specProvider,
     IWorldState stateProvider,

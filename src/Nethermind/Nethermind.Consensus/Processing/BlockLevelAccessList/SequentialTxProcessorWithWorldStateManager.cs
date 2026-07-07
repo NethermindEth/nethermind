@@ -10,7 +10,7 @@ using Nethermind.Evm;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Reuses a single <see cref="IBalProcessingEnv"/> worker for the whole block.</summary>
-internal class SequentialTxProcessorWithWorldStateManager : ISequentialTxProcessorWithWorldStateManager
+public class SequentialTxProcessorWithWorldStateManager : ISequentialTxProcessorWithWorldStateManager
 {
     private readonly IBalProcessingEnv _txProcessorWithWorldState;
 

@@ -49,7 +49,7 @@ public class StatelessBlockProcessingEnv(
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
-        BlockAccessListManager blockAccessListManager = new(
+        BlockAccessListManager blockAccessListManager = BlockAccessListManager.Create(
             WorldState,
             specProvider,
             blockhashProvider,

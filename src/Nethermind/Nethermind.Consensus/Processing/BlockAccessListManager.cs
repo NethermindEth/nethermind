@@ -42,31 +42,22 @@ namespace Nethermind.Consensus.Processing;
 /// </remarks>
 public partial class BlockAccessListManager(
     IWorldState stateProvider,
-    ISpecProvider specProvider,
-    IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
-    CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+    Lazy<IParallelTxProcessorWithWorldStateManager> parallelTxProcessorWithWorldStateManager,
+    Lazy<ISequentialTxProcessorWithWorldStateManager> sequentialTxProcessorWithWorldStateManager,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    ITransactionProcessorFactory? transactionProcessorFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
-    private readonly Lazy<IParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new ParallelTxProcessorWithWorldStateManager(
-            new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
-                transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory),
-            prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
-    private readonly Lazy<ISequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new SequentialTxProcessorWithWorldStateManager(
-            new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
-                transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory)));
+    private readonly Lazy<IParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager = parallelTxProcessorWithWorldStateManager;
+    private readonly Lazy<ISequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager = sequentialTxProcessorWithWorldStateManager;
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;
@@ -101,6 +92,39 @@ public partial class BlockAccessListManager(
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
     private bool _hasGeneratedRequiredReadAccountMismatch;
+
+    /// <summary>
+    /// Manual (non-DI) construction helper: builds the tx-processor pool managers from the given
+    /// dependencies and wires them into a manager. The DI path injects the managers directly; this
+    /// exists for stateless/witness envs and tests that construct the manager outside the container.
+    /// </summary>
+    public static BlockAccessListManager Create(
+        IWorldState stateProvider,
+        ISpecProvider specProvider,
+        IBlockhashProvider blockHashProvider,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig,
+        IWithdrawalProcessorFactory withdrawalProcessorFactory,
+        CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+        PrewarmerEnvFactory? prewarmerEnvFactory = null,
+        PreBlockCaches? preBlockCaches = null,
+        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+        ITransactionProcessorFactory? transactionProcessorFactory = null)
+    {
+        BalProcessingEnvFactory envFactory = new(
+            blockHashProvider, specProvider, stateProvider, logManager,
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory);
+        return new BlockAccessListManager(
+            stateProvider,
+            logManager,
+            blocksConfig,
+            withdrawalProcessorFactory,
+            new Lazy<IParallelTxProcessorWithWorldStateManager>(() => new ParallelTxProcessorWithWorldStateManager(envFactory, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory)),
+            new Lazy<ISequentialTxProcessorWithWorldStateManager>(() => new SequentialTxProcessorWithWorldStateManager(envFactory)),
+            prewarmerEnvFactory,
+            preBlockCaches,
+            readOnlyTxProcessingEnvFactory);
+    }
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(

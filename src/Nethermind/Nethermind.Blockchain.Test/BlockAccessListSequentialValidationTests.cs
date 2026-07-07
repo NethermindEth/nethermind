@@ -124,7 +124,7 @@ public class BlockAccessListSequentialValidationTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
-        BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = BlockAccessListManager.Create(
             stateProvider,
             specProvider,
             Substitute.For<IBlockhashProvider>(),
