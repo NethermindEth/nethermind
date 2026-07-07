@@ -320,7 +320,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
-        public const int MIN_ENTRIES_TO_BATCH = 16;
+        public const int MIN_ENTRIES_TO_BATCH = 64;
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
