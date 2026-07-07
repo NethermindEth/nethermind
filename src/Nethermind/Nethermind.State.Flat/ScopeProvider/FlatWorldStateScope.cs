@@ -18,7 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IPrewarmTrieHintSink
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -32,6 +32,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    // Storage trees used only as prewarm-hint warm-up targets (see IPrewarmTrieHintSink). Separate from
+    // _storages because hints arrive concurrently from prewarm workers while _storages is main-thread-only.
+    private readonly ConcurrentDictionary<AddressAsKey, FlatStorageTree?> _hintWarmStorages = new();
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -343,6 +346,42 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
+    void IPrewarmTrieHintSink.HintAccountWarm(Address address)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (_snapshotBundle.ShouldQueuePrewarm(address)
+            && _warmer.PushAddressJob(this, address, _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    void IPrewarmTrieHintSink.HintSlotWarm(Address address, in UInt256 index)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
+
+        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
+        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
+        _hintWarmStorages.GetOrAdd(address, static (key, scope) =>
+        {
+            Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            // An empty pre-state storage root has no trie nodes to load, so there is nothing to warm.
+            return storageRoot == Keccak.EmptyTreeHash
+                ? null
+                : new FlatStorageTree(
+                    scope,
+                    scope._warmer,
+                    scope._snapshotBundle,
+                    scope._configuration,
+                    scope._concurrencyQuota,
+                    storageRoot,
+                    key.Value,
+                    scope._logManager);
+        }, this);
+
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
@@ -379,6 +418,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _stateTree.Commit();
 
         _storages.Clear();
+        _hintWarmStorages.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;

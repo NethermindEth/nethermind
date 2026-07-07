@@ -26,12 +26,15 @@ namespace Nethermind.State;
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics, PreBlockCaches? populatorCaches = null)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
+    // Non-null only on populator (prewarm) world states; carries speculative slot writes to the main
+    // scope as trie warm-up hints (see IPrewarmTrieHintSink).
+    private readonly PreBlockCaches? _populatorCaches = populatorCaches;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
@@ -63,6 +66,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        // A speculative write predicts a commit-time storage-trie update for this slot, so let the
+        // main scope start loading the slot's trie path now (deduplicated by the sink).
+        if (_populatorCaches is not null && !storageCell.IsHash)
+        {
+            _populatorCaches.TrieHintSink?.HintSlotWarm(storageCell.Address, storageCell.Index);
+        }
     }
 
     /// <summary>

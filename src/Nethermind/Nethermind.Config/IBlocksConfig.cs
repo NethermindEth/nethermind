@@ -46,6 +46,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Whether speculative (prewarm) execution pushes trie warm-up hints for touched accounts and written storage slots, so the commit-path trie nodes are loaded ahead of the final commit. Only affects the flat state layout; warming is advisory and never affects consensus.", DefaultValue = "True", HiddenFromDocs = true)]
+    bool PreWarmTrieHints { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
