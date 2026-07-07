@@ -79,10 +79,15 @@ public class BranchProcessor(
         int processedBlocksCount = 0;
         Exception? processingException = null;
 
-        // Blockhash prefetch is only useful while transactions are executing. The cache prewarmer
-        // keeps running until the block finishes so storage-root updates can consume its warm reads.
-        void CancelPrefetch() => prefetchCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelPrefetch;
+        // Transaction-phase background work is only useful while transactions are executing.
+        // Stop it before storage-root calculation so the block-processing thread does not wait
+        // for speculative prewarming that arrived too late to help transaction execution.
+        void CancelTransactionPhaseBackgroundWork()
+        {
+            prefetchCancellation?.Cancel();
+            preWarmCancellation?.Cancel();
+        }
+        blockProcessor.TransactionsExecuted += CancelTransactionPhaseBackgroundWork;
 
         try
         {
@@ -203,7 +208,7 @@ public class BranchProcessor(
         {
             try
             {
-                blockProcessor.TransactionsExecuted -= CancelPrefetch;
+                blockProcessor.TransactionsExecuted -= CancelTransactionPhaseBackgroundWork;
                 worldStateCloser?.Dispose();
             }
             finally
