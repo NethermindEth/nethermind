@@ -15,9 +15,6 @@ namespace Nethermind.HealthChecks
 {
     public class HealthChecksPlugin : INethermindPlugin
     {
-        private INethermindApi _api;
-        private IHealthChecksConfig _healthChecksConfig;
-
         public string Name => "HealthChecks";
 
         public string Description => "Endpoints that takes care of node`s health";
@@ -27,26 +24,7 @@ namespace Nethermind.HealthChecks
         public bool MustInitialize => true;
         public bool Enabled => true; // Always enabled
 
-        private FreeDiskSpaceChecker FreeDiskSpaceChecker => _api.Context.Resolve<FreeDiskSpaceChecker>();
-
-        public Task Init(INethermindApi api)
-        {
-            _api = api;
-            _healthChecksConfig = _api.Config<IHealthChecksConfig>();
-
-            //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
-            EnsureEnoughFreeSpace();
-
-            return Task.CompletedTask;
-        }
-
-        private void EnsureEnoughFreeSpace()
-        {
-            if (_healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
-            {
-                FreeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(_api.TimerFactory);
-            }
-        }
+        public Task Init(INethermindApi api) => Task.CompletedTask;
 
         public IModule Module => new HealthCheckPluginModule();
     }
@@ -69,6 +47,7 @@ namespace Nethermind.HealthChecks
 
                 .RegisterSingletonJsonRpcModule<IHealthRpcModule, HealthRpcModule>()
 
+                .AddStep(typeof(EnsureDiskSpace))
                 .AddStep(typeof(StartHealthChecks))
                 ;
         }
