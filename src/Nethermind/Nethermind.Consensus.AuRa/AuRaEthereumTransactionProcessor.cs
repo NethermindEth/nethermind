@@ -28,18 +28,3 @@ public sealed class AuRaEthereumTransactionProcessor(
         new AuRaSystemTransactionProcessor<EthereumGasPolicy>(
             _blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 }
-
-/// <summary>Builds AuRa-aware worker tx processors for the BAL pool.</summary>
-public sealed class AuRaTransactionProcessorFactory : ITransactionProcessorFactory
-{
-    public ITransactionProcessor Create(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider specProvider,
-        IWorldState worldState,
-        IVirtualMachine virtualMachine,
-        ICodeInfoRepository codeInfoRepository,
-        ILogManager logManager)
-        => new AuRaEthereumTransactionProcessor(
-            blobBaseFeeCalculator, specProvider, worldState, virtualMachine,
-            codeInfoRepository, logManager);
-}

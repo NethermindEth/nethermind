@@ -99,7 +99,6 @@ namespace Nethermind.Consensus.AuRa
                         new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
 
                 .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
-                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()

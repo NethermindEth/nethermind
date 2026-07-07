@@ -33,13 +33,10 @@ public static class ManualBlockAccessListManagerFactory
         CodeInfoRepositoryFactory codeInfoRepositoryFactory,
         PrewarmerEnvFactory? prewarmerEnvFactory = null,
         PreBlockCaches? preBlockCaches = null,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-        ITransactionProcessorFactory? transactionProcessorFactory = null)
+        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
     {
         ManualMainnetBalProcessingEnvFactory envFactory = new(
-            blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory,
-            withdrawalProcessorFactory);
+            blockHashProvider, specProvider, stateProvider, logManager, codeInfoRepositoryFactory, withdrawalProcessorFactory);
         return new BlockAccessListManager(
             stateProvider,
             logManager,
@@ -62,7 +59,6 @@ public static class ManualBlockAccessListManagerFactory
         ISpecProvider specProvider,
         IWorldState stateProvider,
         ILogManager logManager,
-        ITransactionProcessorFactory txProcessorFactory,
         CodeInfoRepositoryFactory codeInfoRepositoryFactory,
         IWithdrawalProcessorFactory withdrawalProcessorFactory) : IBalProcessingEnvFactory
     {
@@ -74,7 +70,7 @@ public static class ManualBlockAccessListManagerFactory
                 TracedAccessWorldState worldState = new(balWorldState, parallel: true);
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
-                ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+                ITransactionProcessor processor = new TransactionProcessor<EthereumGasPolicy>(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
                 return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
             }
             else
@@ -82,7 +78,7 @@ public static class ManualBlockAccessListManagerFactory
                 TracedAccessWorldState worldState = new(stateProvider, parallel: false);
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
-                ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+                ITransactionProcessor processor = new TransactionProcessor<EthereumGasPolicy>(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
                 return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
             }
         }
