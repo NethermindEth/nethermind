@@ -214,7 +214,9 @@ jobs:
                   emit "$type" sequential full '' '' '' 4 2
                 fi
                 if run_flat; then
-                  emit "$type" flat_sequential full 1 '' '' 4 3
+                  # Flat + 4 workers is memory-heavy for the state set; 3 chunks GC-thrashed
+                  # until the idle watchdog killed a chunk, 4 is the proven-stable floor.
+                  emit "$type" flat_sequential full 1 '' '' 4 4
                 fi
                 ;;
               syncTest)
