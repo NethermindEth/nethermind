@@ -371,8 +371,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList)
     {
-        // EIP-2780 reduces the intrinsic base; the calldata floor must track it, otherwise the
-        // legacy 21,000 floor would dominate and negate the reduction for value transfers.
+        // EIP-2780 reduces the intrinsic base; the calldata floor must track it or the legacy
+        // floor would dominate and negate the reduction.
         ulong floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         return spec switch
         {

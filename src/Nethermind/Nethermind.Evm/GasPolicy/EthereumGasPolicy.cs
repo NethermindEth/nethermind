@@ -182,9 +182,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // EELS refill_frame_state_gas: the reverting child refills its net spill into gas_left and
-        // returns only (used - spill) to the reservoir; crediting spill to the reservoir would leave
-        // it inflated, returning gas a later top-level halt should burn.
+        // EELS refill_frame_state_gas: the child's net spill refills gas_left and only
+        // (used - spill) returns to the reservoir, else a later top-level halt under-burns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
@@ -201,9 +200,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // EELS refill_frame_state_gas on halt restores the reservoir by (used - spilled) and refills the
-        // spilled portion into gas_left, which the halt then BURNS as regular gas. So only the
-        // reservoir-funded portion returns to the parent; the child's net (unrefunded) spill stays burned.
+        // EELS refill_frame_state_gas on halt: only the reservoir-funded portion returns to the
+        // parent; the spilled portion refills gas_left, which the halt burns as regular gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasSpill += childGas.StateGasSpill;
@@ -214,9 +212,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // Code deposit failure exceptionally halts the child create frame after it merged into the
-        // parent: EELS refills spilled state gas into gas_left and then burns it, so only the
-        // reservoir-funded portion returns to the parent reservoir.
+        // Code deposit failure halts the child create frame after it merged into the parent;
+        // spilled state gas is burned, so only the reservoir-funded portion returns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
@@ -265,8 +262,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             accessTracker.WarmUp(address);
         }
 
-        // WarmUp first so the warm path skips IsPrecompile; charged gas matches (!IsPrecompile && WarmUp).
-        // Precompiles are pre-warmed at tx start, so WarmUp(precompile) is already-warm and the reorder is moot.
+        // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at
+        // tx start, so the reorder does not change what is charged.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
             true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
@@ -378,9 +375,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long toGasLeft = 0;
         if (trackSpillRefund)
         {
-            // Source-based LIFO refill (EELS credit_state_gas_refund): return to the pools the charge
-            // drew from — gas_left first (up to the spill), then the reservoir — so a reverted sub-frame's
-            // spilled state gas does not leave the caller's reservoir inflated.
+            // Source-based LIFO refill (EELS credit_state_gas_refund): gas_left first (up to the
+            // spill), then the reservoir, so a reverted sub-frame's spill does not inflate it.
             toGasLeft = Math.Min(appliedRefund, GetUnrefundedStateGasSpill(in gas));
             gas.StateGasSpillRefunded += toGasLeft;
         }
@@ -441,9 +437,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
         // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
         // paying for state-gas that did not commit.
-        // StateGasSpillBurned is intentionally preserved: it records spill from inner-frame
-        // reverts that was burned earlier in the tx and must remain available to the halt
-        // formula so the spill can be reattributed from state to regular dimension.
+        // StateGasSpillBurned is preserved: the top-level halt formula still needs it to
+        // reattribute earlier burned spill from the state to the regular dimension.
         gas.StateReservoir = initialStateReservoir;
         gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
@@ -453,9 +448,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec)
     {
         if (codeInsertRefunds == 0UL) return 0;
-        // EIP-8038: per existing-authority EIP-7702 refund, the worst-case ACCOUNT_WRITE charged in the
-        // intrinsic is returned to the regular-gas refund counter (the NEW_ACCOUNT/AUTH_BASE state refunds
-        // are applied separately in Apply8037DelegationRefunds).
+        // EIP-8038: per existing authority, the worst-case ACCOUNT_WRITE charged in the intrinsic
+        // returns to the refund counter (state refunds are applied in Apply8037DelegationRefunds).
         if (spec.IsEip8038Enabled) return Eip8038Constants.AccountWrite * codeInsertRefunds;
         if (spec.IsEip8037Enabled) return 0;
         return (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
@@ -611,10 +605,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// EIP-2780 recipient charge on top of TX_BASE_COST, mirroring EELS <c>calculate_intrinsic_cost</c>.
     /// </summary>
     /// <remarks>
-    /// State-independent by design (per review, intrinsic gas must not read state): a flat cold touch
-    /// for a non-self recipient, plus the EIP-7708 transfer log and value-move costs on value transfers.
-    /// The new-account surcharge is a separate NEW_ACCOUNT state charge; the EIP-7702 delegation-target
-    /// touch is charged at execution time.
+    /// State-independent by design: a flat cold touch for a non-self recipient, plus transfer-log and
+    /// value-move costs on value transfers. New-account and delegation costs are charged elsewhere.
     /// </remarks>
     private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec)
     {

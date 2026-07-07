@@ -170,9 +170,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
     }
 
-    private void AddAccountToState(Address address, UInt256 nonce = default, byte[]? code = null, UInt256 balance = default)
+    private void AddAccountToState(Address address, ulong nonce = default, byte[]? code = null, UInt256 balance = default)
     {
-        TestState.CreateAccount(address, balance, (ulong)nonce);
+        TestState.CreateAccount(address, balance, nonce);
         if (code is not null)
         {
             TestState.InsertCode(address, ValueKeccak.Compute(code), code, SpecProvider.GenesisSpec);
@@ -355,10 +355,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
     }
 
-    private static Transaction BuildCallTx(Address to, UInt256 value = default, UInt256 nonce = default) =>
+    private static Transaction BuildCallTx(Address to, UInt256 value = default, ulong nonce = default) =>
         Build.A.Transaction
             .To(to)
-            .WithNonce((ulong)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(1_000_000)
             .WithGasPrice(1)
             .WithValue(value)
@@ -442,7 +442,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
+        UInt256 gasUsed = new(callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
         // With EIP-8037's higher CostPerStateByte, some CREATE/SELFDESTRUCT cases now run out
@@ -507,7 +507,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
+        UInt256 gasUsed = new(callOutputTracer.GasSpent);
 
         ReadOnlyAccountChanges accountChangesA = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
@@ -942,7 +942,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, factoryCode);
 
         Transaction firstTx = BuildCallTx(_callTargetAddress, value: (UInt256)firstCreateBalance);
-        Transaction secondTx = BuildCallTx(_callTargetAddress, nonce: UInt256.One);
+        Transaction secondTx = BuildCallTx(_callTargetAddress, nonce: 1);
 
         // Two tx slices need to merge into a single BlockAccessListAtIndex view for the
         // per-tx assertion shape; ExecuteCallTxs materialises that combined slice.
@@ -989,7 +989,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        UInt256 gasUsed = new((ulong)tracer.GasSpent);
+        ulong gasUsed = tracer.GasSpent;
         AccountChangesAtIndex? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
         AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(_callTargetAddress);
 
@@ -1142,7 +1142,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then ConsumeAccountAccessGas
         // for codeSource (cold), then for delegated (cold) — we cap at codeSource cold + 1 short.
         ulong pushOperandsCost = 7 * GasCostOf.VeryLow;
-        // EIP-8038 raised the cold account access charge to 3000 (ColdAccountAccess).
         ulong executionGas = pushOperandsCost + GasCostOf.Call + Eip8038Constants.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
 
         Transaction tx = Build.A.Transaction
@@ -1168,8 +1167,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(120_000_000UL, 30_000_000UL, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
-    [TestCase(120_000_000UL, 30_000UL, false, TestName = "EIP2935_system_call_records_no_storage_access_when_state_gas_not_affordable")]
+    [TestCase(120_000_000ul, 30_000_000ul, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
+    [TestCase(120_000_000ul, 30_000ul, false, TestName = "EIP2935_system_call_records_no_storage_access_when_state_gas_not_affordable")]
     public void Eip2935_system_call_bal_respects_eip8037_state_gas(ulong blockGasLimit, ulong systemCallGasLimit, bool shouldStoreParentHash)
     {
         InitWorldState(TestState);
@@ -1191,7 +1190,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             GasPrice = header.BaseFeePerGas,
             SenderAddress = Address.SystemUser,
             To = Eip2935Constants.BlockHashHistoryAddress,
-            Value = UInt256.Zero,
+            Value = 0ul,
         };
         systemCall.Hash = systemCall.CalculateHash();
 
@@ -1814,8 +1813,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                // EIP-8038 raised the cold storage access charge to 3000 (ColdStorageAccess); budget enough
-                // to complete the SLOAD (recording the read) then OOG on the following PUSH.
+                // Budget enough to complete the SLOAD (recording the read) then OOG on the next PUSH.
                 Eip8038Constants.ColdStorageAccess + GasCostOf.VeryLow + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sload_oog_post_state_access" };
@@ -1882,8 +1880,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                // EIP-8038 raised the cold account access charge to 3000 (ColdAccountAccess); budget enough
-                // to complete the cold access to the beneficiary (recording it) then OOG on the send.
+                // Budget enough to complete the cold beneficiary access (recording it) then OOG on the send.
                 GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess + GasCostOf.VeryLow,
                 EvmExceptionType.OutOfGas)
             { TestName = "selfdestruct_oog_post_state_access" };
@@ -1982,7 +1979,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressA, 10.Ether);
         TestState.Commit(SpecProvider.GenesisSpec);
 
-        ulong blockGasLimit = 100_000;
+        ulong blockGasLimit = 100_000ul;
         BlockHeader header = Build.A.BlockHeader
             .WithGasLimit(blockGasLimit)
             .WithNumber(1)

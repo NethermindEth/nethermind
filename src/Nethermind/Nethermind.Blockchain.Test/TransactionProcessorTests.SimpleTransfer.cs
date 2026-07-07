@@ -139,8 +139,8 @@ public partial class TransactionProcessorTests
 
         (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(specProvider);
 
-        // devnet-6 (EIP-8037) charges NEW_ACCOUNT state gas when a value transfer materialises a new
-        // recipient; the gas limit must cover it or the transfer OOGs before emitting the 7708 log.
+        // EIP-8037 charges NEW_ACCOUNT state gas when a value transfer materialises a new recipient;
+        // the gas limit must cover it or the transfer OOGs before emitting the transfer log.
         Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false, gasLimit: 300_000);
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(1_000_000).TestObject;
         SimpleTransferLogTracer tracer = new(isTracingLogs);
@@ -164,9 +164,8 @@ public partial class TransactionProcessorTests
         }
     }
 
-    // EIP-8037: a value transfer that materialises a new (dead) recipient on the EVM path
-    // (an authorization-list tx bypasses the simple-transfer fast path) must pay NEW_ACCOUNT
-    // state gas exactly once, mirroring the ExecuteSimpleTransfer charge.
+    // EIP-8037: on the EVM path (auth-list txs bypass the simple-transfer fast path) a new (dead)
+    // recipient pays NEW_ACCOUNT state gas exactly once, mirroring ExecuteSimpleTransfer.
     [Test]
     public void Eip8037_evm_path_value_transfer_to_dead_recipient_charges_new_account_state_gas()
     {
@@ -198,9 +197,8 @@ public partial class TransactionProcessorTests
         }
     }
 
-    // EIP-8037 (devnet-6 v6.1.0): a value transfer that funds an empty precompile materialises a new
-    // account, so it pays NEW_ACCOUNT state gas like any other dead recipient. Regression for the
-    // earlier `!IsPrecompile` exemption that under-charged value transfers to precompile addresses.
+    // Funding an empty precompile materialises a new account and pays NEW_ACCOUNT state gas;
+    // regression for an `!IsPrecompile` exemption that under-charged it.
     [Test]
     public void Eip8037_value_transfer_to_dead_precompile_charges_new_account_state_gas()
     {

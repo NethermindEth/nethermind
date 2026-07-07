@@ -36,11 +36,8 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
     /// Test-only Amsterdam variant with the EIP-8037 two-dimensional gas model disabled.
     /// </summary>
     /// <remarks>
-    /// This combines EIP-8038 access repricing with the single-dimension gas model, which is an
-    /// intentionally inconsistent spec: EIP-8038 access costs apply, but paths gated on the
-    /// <c>TEip8037</c> flag fall back to legacy values (e.g. the SSTORE write component charges
-    /// <c>SSet</c> rather than the EIP-8038 <c>StorageWrite</c>). It exists only to isolate
-    /// EIP-8037 behavior in tests and is not a semantically valid Amsterdam configuration.
+    /// Intentionally inconsistent (EIP-8038 access costs on the one-dimensional gas model);
+    /// exists only to isolate EIP-8037 behavior in tests.
     /// </remarks>
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
 }

@@ -69,9 +69,8 @@ public class Eip7981Tests
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         (int addressCount, int storageKeyCount) = accessList.Count;
-        // devnet-6 (EIP-2780 + EIP-8038) intrinsic: TX_BASE(12000) + recipient COLD touch (To is a
-        // non-create, non-self account) + per access-list entry + EIP-7981 floor tokens. The calldata
-        // floor (EIP-7976) is TX_BASE + floor tokens only — no recipient/access-entry component.
+        // Standard intrinsic: TX_BASE + recipient cold touch + per access-list entry + floor tokens;
+        // the calldata floor is TX_BASE + floor tokens only (no recipient/access-entry component).
         ulong expectedStandard = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
             + (ulong)addressCount * Eip8038Constants.AccessListAddressCost
@@ -110,9 +109,8 @@ public class Eip7981Tests
         yield return new TestCaseData(new byte[] { 0 }, 1, 0, true)
             .SetName("1 zero byte + 1 address: standard wins");
 
-        // floorWins: enough calldata that the floor's 16/token premium over standard's 4/token
-        // outgrows the standard's fixed recipient + access-entry costs. Crossover for one address +
-        // recipient (≈6000 fixed) needs >~500 calldata tokens, so 800 zero bytes pushes the floor above.
+        // floorWins: enough calldata that the floor's per-token premium outgrows the standard's
+        // fixed recipient + access-entry costs.
         yield return new TestCaseData(new byte[800], 1, 0, false)
             .SetName("800 zero bytes + 1 address: floor wins");
 
