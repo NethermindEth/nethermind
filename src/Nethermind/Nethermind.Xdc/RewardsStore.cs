@@ -64,10 +64,14 @@ internal sealed class RewardsStore(
         }
 
         Block block = e.Block;
-        _ = Task.Run(() => SaveEpochRewards(xdcHeader.Hash, xdcHeader.ProcessedRewards))
-            .ContinueWith(
-                t => _logger.Error($"Failed to persist epoch rewards for block {block.Number}.", t.Exception),
-                TaskContinuationOptions.OnlyOnFaulted);
+        try
+        {
+            SaveEpochRewards(xdcHeader.Hash, xdcHeader.ProcessedRewards);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Failed to persist epoch rewards for block #{block.Number}.", ex);
+        }
     }
 
     public void SaveEpochRewards(Hash256 epochBlockHash, BlockReward[] rewards)
