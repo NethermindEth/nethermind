@@ -69,7 +69,6 @@ namespace Nethermind.Api
         public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
-        public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();

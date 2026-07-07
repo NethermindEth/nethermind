@@ -147,7 +147,7 @@ public abstract class BlockchainTestBase
         // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
         if (isEngineTest || isPostMerge)
         {
-            containerBuilder.AddModule(new TestMergeModule(configProvider));
+            containerBuilder.AddModule(new TestMergeModule());
         }
 
         // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.

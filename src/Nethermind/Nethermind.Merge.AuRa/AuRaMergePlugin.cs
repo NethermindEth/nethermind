@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Api.Steps;
@@ -95,6 +96,8 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
 
+                .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
                 .AddSingleton<AuRaTerminalBlockDisposer>()
@@ -102,6 +105,8 @@ namespace Nethermind.Merge.AuRa
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
+
+                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
                 ;
     }
 }
