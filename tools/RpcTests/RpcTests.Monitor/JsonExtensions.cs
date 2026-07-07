@@ -36,19 +36,7 @@ internal static class JsonExtensions
             return false;
         }
 
-        public bool RemoveAt(JsonPath path)
-        {
-            if (path.Navigate(node) is not { Parent: { } parent } old)
-                return false;
-
-            switch (parent)
-            {
-                case JsonObject obj: obj.Remove(old.GetPropertyName()); break;
-                case JsonArray arr: arr.RemoveAt(old.GetElementIndex()); break;
-            }
-
-            return true;
-        }
+        public bool RemoveAt(JsonPath path) => path.RemoveAllFrom(node);
     }
 
     extension(JsonNode request)
