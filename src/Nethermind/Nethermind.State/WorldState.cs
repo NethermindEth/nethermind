@@ -55,7 +55,10 @@ namespace Nethermind.State
         {
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
-            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
+            // Populator (prewarm) world states report speculative slot writes as trie warm-up hints
+            // for the main scope; the main world state gets null and pays only a dead branch.
+            PreBlockCaches? populatorCaches = scopeProvider is IPreBlockCaches { IsWarmWorldState: false } populator ? populator.Caches : null;
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics, populatorCaches);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
         }

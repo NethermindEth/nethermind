@@ -338,6 +338,136 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Test_TrieHintSink_RegisteredForMainScopeLifetime()
+    {
+        using Context ctx = new(useFlat);
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
+
+        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(null))
+        {
+            // Flat scopes support trie warm-up hints; the trie-store backend does not and must stay null.
+            if (useFlat)
+                Assert.That(caches.TrieHintSink, Is.Not.Null);
+            else
+                Assert.That(caches.TrieHintSink, Is.Null);
+        }
+
+        Assert.That(caches.TrieHintSink, Is.Null, "sink must be unregistered when the scope is disposed");
+    }
+
+    [Test]
+    public void Test_TrieHintSink_NotRegisteredWhenDisabledOrPopulator()
+    {
+        using Context ctx = new(useFlat);
+
+        PreBlockCaches caches = new();
+
+        PrewarmerScopeProvider mainDisabled = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        using (mainDisabled.BeginScope(null))
+        {
+            Assert.That(caches.TrieHintSink, Is.Null);
+        }
+
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true, registerTrieHintSink: true);
+        using (populator.BeginScope(null))
+        {
+            Assert.That(caches.TrieHintSink, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Test_PopulatorGetMiss_PushesAccountTrieWarmHint()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        CollectingTrieHintSink sink = new();
+        caches.TrieHintSink = sink;
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
+        {
+            scope.Get(TestItem.AddressA); // miss: resolves from the base tree and hints
+            scope.Get(TestItem.AddressA); // hit: no further hint
+        }
+
+        Assert.That(sink.AccountHints, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public void Test_FlatScope_TrieWarmHints_Smoke()
+    {
+        // Trie warm-up hints are only supported by the flat scope.
+        Assume.That(useFlat, Is.True);
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(baseBlock))
+        {
+            IPrewarmTrieHintSink sink = caches.TrieHintSink;
+            Assert.That(sink, Is.Not.Null);
+
+            Assert.DoesNotThrow(() =>
+            {
+                sink.HintAccountWarm(TestItem.AddressA);
+                sink.HintSlotWarm(TestItem.AddressA, 1);
+                // Account with an empty pre-state storage root: hint must be dropped without queueing.
+                sink.HintSlotWarm(TestItem.AddressB, 1);
+                // Unknown account: also dropped.
+                sink.HintSlotWarm(TestItem.AddressC, 1);
+                // Deduplicated re-hints.
+                sink.HintAccountWarm(TestItem.AddressA);
+                sink.HintSlotWarm(TestItem.AddressA, 1);
+            });
+            // Scope dispose waits for outstanding warm-ups, proving the pushed jobs drain cleanly.
+        }
+    }
+
+    private class CollectingTrieHintSink : IPrewarmTrieHintSink
+    {
+        public ConcurrentBag<Address> AccountHints { get; } = [];
+        public ConcurrentBag<(Address, UInt256)> SlotHints { get; } = [];
+
+        public void HintAccountWarm(Address address) => AccountHints.Add(address);
+
+        public void HintSlotWarm(Address address, in UInt256 index) => SlotHints.Add((address, index));
+    }
+
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
