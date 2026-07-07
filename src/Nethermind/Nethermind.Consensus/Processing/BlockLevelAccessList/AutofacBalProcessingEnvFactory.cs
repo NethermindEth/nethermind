@@ -13,8 +13,8 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// DI <see cref="IBalProcessingEnvFactory"/>: each env is resolved from its own child lifetime
 /// scope (with the traced world state overriding <see cref="IWorldState"/>), so the transaction
-/// processor and its whole graph are container-wired against that state. The child scope is handed
-/// to the env and disposed with it, releasing every component resolved within it.
+/// processor and its whole graph are container-wired against that state. The child scope is
+/// injected into the resolved env and disposed with it, releasing every component resolved within.
 /// </summary>
 public sealed class AutofacBalProcessingEnvFactory(
     ILifetimeScope parentLifetime,
@@ -27,23 +27,24 @@ public sealed class AutofacBalProcessingEnvFactory(
         {
             BlockAccessListBasedWorldState balWorldState = new(stateProvider, logManager);
             TracedAccessWorldState worldState = new(balWorldState, parallel: true);
-            (ITransactionProcessor processor, ITransactionProcessorAdapter adapter, ILifetimeScope scope) = Resolve(worldState);
-            return new ParallelBalEnv(balWorldState, worldState, processor, adapter, scope);
+            ILifetimeScope scope = parentLifetime.BeginLifetimeScope(builder => builder
+                .AddScoped<IWorldState>(worldState)
+                .AddScoped<TracedAccessWorldState>(worldState)
+                .AddScoped<BlockAccessListBasedWorldState>(balWorldState)
+                // The BAL env only ever executes; force the execute adapter even in a producer scope.
+                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                .AddScoped<IBalProcessingEnv, ParallelBalEnv>());
+            return scope.Resolve<IBalProcessingEnv>();
         }
         else
         {
             TracedAccessWorldState worldState = new(stateProvider, parallel: false);
-            (ITransactionProcessor processor, ITransactionProcessorAdapter adapter, ILifetimeScope scope) = Resolve(worldState);
-            return new SequentialBalEnv(worldState, processor, adapter, scope);
+            ILifetimeScope scope = parentLifetime.BeginLifetimeScope(builder => builder
+                .AddScoped<IWorldState>(worldState)
+                .AddScoped<TracedAccessWorldState>(worldState)
+                .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                .AddScoped<IBalProcessingEnv, SequentialBalEnv>());
+            return scope.Resolve<IBalProcessingEnv>();
         }
-    }
-
-    private (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter, ILifetimeScope Scope) Resolve(TracedAccessWorldState worldState)
-    {
-        ILifetimeScope scope = parentLifetime.BeginLifetimeScope(builder => builder.AddScoped<IWorldState>(worldState));
-        ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
-        // Always the execute adapter: the block-producer scope overrides ITransactionProcessorAdapter
-        // with a build-up variant, but the BAL env only ever executes.
-        return (processor, new ExecuteTransactionProcessorAdapter(processor), scope);
     }
 }

@@ -319,7 +319,7 @@ public class BlockhashProviderTests
 
         using IDisposable balScope = balWorldState.BeginScope(current.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
-        BlockAccessListManager balManager = BlockAccessListManager.Create(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             balWorldState,
             specProvider,
             Substitute.For<IBlockhashProvider>(),

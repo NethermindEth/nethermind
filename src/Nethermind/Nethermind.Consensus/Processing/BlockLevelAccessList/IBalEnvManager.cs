@@ -12,13 +12,13 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// Hands out the per-block <see cref="IBalProcessingEnv"/> worker(s) and drives their per-tx
 /// lifecycle. Two implementations exist:
-///   * <see cref="IParallelTxProcessorWithWorldStateManager"/> rents/returns a processor per tx
+///   * <see cref="IParallelBalEnvManager"/> rents/returns a processor per tx
 ///     index from a bounded pool, staging each tx's BAL slice so the validator can merge them in
 ///     canonical order.
-///   * <see cref="ISequentialTxProcessorWithWorldStateManager"/> reuses a single processor for the
+///   * <see cref="ISequentialBalEnvManager"/> reuses a single processor for the
 ///     whole block.
 /// </summary>
-public interface ITxProcessorWithWorldStateManager : IDisposable
+public interface IBalEnvManager : IDisposable
 {
     void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
     IBalProcessingEnv Get(uint? balIndex = null);

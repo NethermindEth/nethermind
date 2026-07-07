@@ -269,7 +269,7 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// Hook called by <see cref="BlockLevelAccessList.ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after each
+    /// Hook called by <see cref="BlockLevelAccessList.IBalEnvManager.MergeAndReturnBal"/> after each
     /// per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
     /// </summary>
     /// <remarks>

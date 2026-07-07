@@ -85,7 +85,7 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
-            .AddScoped<IBlockAccessListManager>(ctx => BlockAccessListManager.Create(
+            .AddScoped<IBlockAccessListManager>(ctx => ManualBlockAccessListManagerFactory.Create(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
                 ctx.Resolve<IBlockhashProvider>(),

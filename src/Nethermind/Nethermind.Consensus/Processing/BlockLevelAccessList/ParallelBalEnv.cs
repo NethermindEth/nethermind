@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -19,7 +20,7 @@ internal sealed class ParallelBalEnv(
     TracedAccessWorldState worldState,
     ITransactionProcessor txProcessor,
     ITransactionProcessorAdapter txProcessorAdapter,
-    IDisposable? lifetimeScope = null) : IBalProcessingEnv
+    ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
 {
     private readonly BlockAccessListBasedWorldState _balWorldState = balWorldState;
     private ParentReaderLease? _parentReader;

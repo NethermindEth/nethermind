@@ -40,7 +40,7 @@ public class Eip8037BlockGasIntegrationTests
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        return BlockAccessListManager.Create(
+        return ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
@@ -186,7 +186,7 @@ public class Eip8037BlockGasIntegrationTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
-        BlockAccessListManager balManager = BlockAccessListManager.Create(
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(
             stateProvider,
             specProvider,
             Substitute.For<IBlockhashProvider>(),

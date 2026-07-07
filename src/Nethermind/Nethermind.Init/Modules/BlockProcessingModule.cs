@@ -74,8 +74,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddSingleton<CodeInfoRepositoryFactory>(CodeInfoRepositoryFactories.Caching)
             .AddScoped<IBalProcessingEnvFactory, AutofacBalProcessingEnvFactory>()
-            .AddScoped<IParallelTxProcessorWithWorldStateManager, ParallelTxProcessorWithWorldStateManager>()
-            .AddScoped<ISequentialTxProcessorWithWorldStateManager, SequentialTxProcessorWithWorldStateManager>()
+            .AddScoped<IParallelBalEnvManager, ParallelBalEnvManager>()
+            .AddScoped<ISequentialBalEnvManager, SequentialBalEnvManager>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()

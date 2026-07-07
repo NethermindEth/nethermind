@@ -10,11 +10,11 @@ using Nethermind.Evm;
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Reuses a single <see cref="IBalProcessingEnv"/> worker for the whole block.</summary>
-public class SequentialTxProcessorWithWorldStateManager : ISequentialTxProcessorWithWorldStateManager
+public class SequentialBalEnvManager : ISequentialBalEnvManager
 {
     private readonly IBalProcessingEnv _balEnv;
 
-    public SequentialTxProcessorWithWorldStateManager(IBalProcessingEnvFactory envFactory)
+    public SequentialBalEnvManager(IBalProcessingEnvFactory envFactory)
     {
         _balEnv = envFactory.Create(parallel: false);
         _balEnv.WorldState.SetGeneratingBlockAccessList(new());

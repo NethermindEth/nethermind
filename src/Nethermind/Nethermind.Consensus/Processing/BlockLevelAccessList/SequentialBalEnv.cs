@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -16,7 +16,7 @@ internal sealed class SequentialBalEnv(
     TracedAccessWorldState worldState,
     ITransactionProcessor txProcessor,
     ITransactionProcessorAdapter txProcessorAdapter,
-    IDisposable? lifetimeScope = null) : IBalProcessingEnv
+    ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
 {
     public TracedAccessWorldState WorldState { get; } = worldState;
     public ITransactionProcessor TxProcessor { get; } = txProcessor;

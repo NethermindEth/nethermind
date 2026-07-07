@@ -163,7 +163,7 @@ public class StartBlockProducerAuRa(
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        BlockAccessListManager balManager = BlockAccessListManager.Create(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory,
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory,
             CodeInfoRepositoryFactories.Caching, transactionProcessorFactory: transactionProcessorFactory);
 
         BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(

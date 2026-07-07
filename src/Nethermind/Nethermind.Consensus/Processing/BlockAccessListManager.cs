@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Processing;
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
 ///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
-/// The tx-processor pool itself lives in standalone types (<see cref="ITxProcessorWithWorldStateManager"/>
+/// The tx-processor pool itself lives in standalone types (<see cref="IBalEnvManager"/>
 /// and its parallel/sequential implementations, <see cref="IBalProcessingEnv"/> and its factory).
 /// </summary>
 /// <remarks>
@@ -45,8 +45,8 @@ public partial class BlockAccessListManager(
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
-    Lazy<IParallelTxProcessorWithWorldStateManager> parallelTxProcessorWithWorldStateManager,
-    Lazy<ISequentialTxProcessorWithWorldStateManager> sequentialTxProcessorWithWorldStateManager,
+    Lazy<IParallelBalEnvManager> parallelBalEnvManager,
+    Lazy<ISequentialBalEnvManager> sequentialBalEnvManager,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
@@ -54,10 +54,10 @@ public partial class BlockAccessListManager(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
-    private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
+    private IBalEnvManager? _balEnvManager;
     private Task? _balWarmupTask;
-    private readonly Lazy<IParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager = parallelTxProcessorWithWorldStateManager;
-    private readonly Lazy<ISequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager = sequentialTxProcessorWithWorldStateManager;
+    private readonly Lazy<IParallelBalEnvManager> _parallelBalEnvManager = parallelBalEnvManager;
+    private readonly Lazy<ISequentialBalEnvManager> _sequentialBalEnvManager = sequentialBalEnvManager;
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;
@@ -92,39 +92,6 @@ public partial class BlockAccessListManager(
     // can't see (no lane data on either side). Forces the validator's fallback walk so the
     // same "missing account changes" error fires as on the sequential path.
     private bool _hasGeneratedRequiredReadAccountMismatch;
-
-    /// <summary>
-    /// Manual (non-DI) construction helper: builds the tx-processor pool managers from the given
-    /// dependencies and wires them into a manager. The DI path injects the managers directly; this
-    /// exists for stateless/witness envs and tests that construct the manager outside the container.
-    /// </summary>
-    public static BlockAccessListManager Create(
-        IWorldState stateProvider,
-        ISpecProvider specProvider,
-        IBlockhashProvider blockHashProvider,
-        ILogManager logManager,
-        IBlocksConfig blocksConfig,
-        IWithdrawalProcessorFactory withdrawalProcessorFactory,
-        CodeInfoRepositoryFactory codeInfoRepositoryFactory,
-        PrewarmerEnvFactory? prewarmerEnvFactory = null,
-        PreBlockCaches? preBlockCaches = null,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-        ITransactionProcessorFactory? transactionProcessorFactory = null)
-    {
-        ManualMainnetBalProcessingEnvFactory envFactory = new(
-            blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory);
-        return new BlockAccessListManager(
-            stateProvider,
-            logManager,
-            blocksConfig,
-            withdrawalProcessorFactory,
-            new Lazy<IParallelTxProcessorWithWorldStateManager>(() => new ParallelTxProcessorWithWorldStateManager(envFactory, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory)),
-            new Lazy<ISequentialTxProcessorWithWorldStateManager>(() => new SequentialTxProcessorWithWorldStateManager(envFactory)),
-            prewarmerEnvFactory,
-            preBlockCaches,
-            readOnlyTxProcessingEnvFactory);
-    }
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -243,11 +210,11 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             if (ParallelExecutionEnabled)
-                _txProcessorWithWorldStateManager = _parallelTxProcessorWithWorldStateManager.Value;
+                _balEnvManager = _parallelBalEnvManager.Value;
             else
-                _txProcessorWithWorldStateManager = _sequentialTxProcessorWithWorldStateManager.Value;
+                _balEnvManager = _sequentialBalEnvManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
+            _balEnvManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
         }
     }
 
@@ -263,7 +230,7 @@ public partial class BlockAccessListManager(
     public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null)
     {
         CheckInitialized();
-        return _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+        return _balEnvManager.Get(balIndex).TxProcessorAdapter;
     }
 
     public void NextTransaction()
@@ -272,7 +239,7 @@ public partial class BlockAccessListManager(
         {
             CheckInitialized();
             MergeAndReturnBal();
-            _txProcessorWithWorldStateManager.NextTransaction();
+            _balEnvManager.NextTransaction();
         }
     }
 
@@ -281,7 +248,7 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Rollback();
+            _balEnvManager.Rollback();
         }
     }
 
@@ -293,19 +260,19 @@ public partial class BlockAccessListManager(
             // pool slot. Workers therefore never block on the validator — but the validator
             // still merges per-tx slots into the target in order, preserving incremental
             // validation semantics.
-            _parallelTxProcessorWithWorldStateManager.Value.Return(balIndex);
+            _parallelBalEnvManager.Value.Return(balIndex);
         }
     }
 
     public void Dispose()
     {
-        if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
+        if (_parallelBalEnvManager.IsValueCreated)
         {
-            _parallelTxProcessorWithWorldStateManager.Value.Dispose();
+            _parallelBalEnvManager.Value.Dispose();
         }
-        if (_sequentialTxProcessorWithWorldStateManager.IsValueCreated)
+        if (_sequentialBalEnvManager.IsValueCreated)
         {
-            _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
+            _sequentialBalEnvManager.Value.Dispose();
         }
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
@@ -323,21 +290,21 @@ public partial class BlockAccessListManager(
     /// value to identify the per-tx slot to detach.
     /// </remarks>
     private void MergeAndReturnBal(uint balIndex = 0)
-        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
+        => _balEnvManager!.MergeAndReturnBal(
             balIndex,
             _currentGeneratedBlockAccessList,
             RegisterGeneratedSlice);
 
     private void CheckInitialized()
     {
-        if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));
+        if (_balEnvManager is null) ThrowNotInitialized(nameof(_balEnvManager));
         if (_gasRemaining is null) ThrowNotInitialized(nameof(_gasRemaining));
         if (_blockExecutionContext is null) ThrowNotInitialized(nameof(_blockExecutionContext));
     }
 
     private void Reset()
     {
-        _txProcessorWithWorldStateManager = null;
+        _balEnvManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
         _parentStateRoot = null;
