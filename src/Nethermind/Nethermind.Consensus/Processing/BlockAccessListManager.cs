@@ -30,7 +30,8 @@ namespace Nethermind.Consensus.Processing;
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
 ///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
-///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
+/// The tx-processor pool itself lives in standalone types (<see cref="ITxProcessorWithWorldStateManager"/>
+/// and its parallel/sequential implementations, <see cref="IBalProcessingEnv"/> and its factory).
 /// </summary>
 /// <remarks>
 /// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
@@ -56,13 +57,13 @@ public partial class BlockAccessListManager(
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
-    private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(
+    private readonly Lazy<IParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
+        new(() => new ParallelTxProcessorWithWorldStateManager(
             new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
                 transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory),
             prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
-    private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(
+    private readonly Lazy<ISequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
+        new(() => new SequentialTxProcessorWithWorldStateManager(
             new BalProcessingEnvFactory(blockHashProvider, specProvider, stateProvider, logManager,
                 transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory)));
     private const int GasValidationChunkSize = 8;
@@ -216,7 +217,9 @@ public partial class BlockAccessListManager(
     {
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
+            _txProcessorWithWorldStateManager = ParallelExecutionEnabled
+                ? _parallelTxProcessorWithWorldStateManager.Value
+                : (ITxProcessorWithWorldStateManager)_sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
         }

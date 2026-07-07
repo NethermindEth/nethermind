@@ -1,0 +1,24 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
+
+namespace Nethermind.Consensus.Processing;
+
+/// <summary>
+/// The per-worker BAL processing environment the pool hands out: a traced world state bundled
+/// with the transaction processor (and its adapter) bound to it. The BAL manager interacts with
+/// rented/shared workers only through this surface, never the concrete pool type.
+/// </summary>
+internal interface IBalProcessingEnv
+{
+    TracedAccessWorldState WorldState { get; }
+    ITransactionProcessor TxProcessor { get; }
+    ITransactionProcessorAdapter TxProcessorAdapter { get; }
+
+    void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader);
+    void ClearParentReader();
+}
