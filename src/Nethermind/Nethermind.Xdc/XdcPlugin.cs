@@ -5,7 +5,6 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -19,5 +18,4 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => XdcConstants.XDPoS;
     public IModule Module => new XdcModule();
 
-    public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 }

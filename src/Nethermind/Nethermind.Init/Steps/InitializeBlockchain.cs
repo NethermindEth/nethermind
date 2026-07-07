@@ -20,7 +20,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)

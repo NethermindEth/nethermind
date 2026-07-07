@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -25,7 +24,6 @@ namespace Nethermind.Consensus.Clique
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
