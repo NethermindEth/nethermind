@@ -488,6 +488,24 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Destroy_only_round_does_not_leak_into_next_transaction()
+    {
+        // tx1 destroys a contract without touching any storage cell; tx2 (same block)
+        // revives the address and writes — a leaked mark would drop tx2's write at commit.
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.MarkStorageDestroyed(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(cell, _values[7]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[7]), "revived contract's write must survive the previous round's destroy mark");
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);

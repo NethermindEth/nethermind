@@ -118,6 +118,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
+            _destroyedThisRound.Clear();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -349,17 +350,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     public override void Commit(IStorageTracer tracer)
     {
-        if (_changes.Count == 0 && _originalValues.Count != 0)
+        if (_changes.Count == 0)
         {
-            if (tracer.IsTracingStorage)
+            if (_originalValues.Count != 0)
             {
-                foreach (StorageCell cell in _originalValues.Keys)
+                if (tracer.IsTracingStorage)
                 {
-                    tracer.ReportStorageRead(cell);
+                    foreach (StorageCell cell in _originalValues.Keys)
+                    {
+                        tracer.ReportStorageRead(cell);
+                    }
                 }
+
+                _originalValues.Clear();
             }
 
-            _originalValues.Clear();
             _destroyedThisRound.Clear();
             return;
         }
