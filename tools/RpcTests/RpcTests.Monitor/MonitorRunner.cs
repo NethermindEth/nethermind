@@ -6,10 +6,21 @@ using Nethermind.RpcTests.Monitor.Notifiers;
 
 namespace Nethermind.RpcTests.Monitor;
 
-internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsReporter stats, HttpClient client)
+internal class MonitorRunner(
+    ExecutionArgs args,
+    INotifier notifier,
+    IStatsReporter stats,
+    RpcClient target,
+    RpcClient? reference,
+    ReorgTracker reorgTracker,
+    BlockProvider blockProvider,
+    EmptyTestsTracker emptyTests
+)
 {
+    private static readonly TimeSpan ReorgsPeriodOnFail = TimeSpan.FromMinutes(15);
+
     private readonly TestDefinition[] _tests = TestLoader.Load(args.TestGlobs, requiresResponse: args.ReferenceUrl is null);
-    private readonly TestExecutor _executor = new(stats, client);
+    private readonly TestExecutor _executor = new(target, reference, emptyTests, stats);
     private readonly ErrorReporter _errorReporter = new(notifier, stats);
 
     public async Task RunAsync(CancellationToken ct)
@@ -20,13 +31,21 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
 
         (ITargetBlock<BlockInfo> startBlock, IDataflowBlock endBlock) = BuildPipeline(ct);
 
-        HeadMonitor headMonitor = new(args.TargetUrl, _errorReporter);
+        HeadMonitor headMonitor = new(args.TargetUrl, notifier, _errorReporter);
         try
         {
             Console.WriteLine($"Monitoring {args.TargetUrl}");
             await foreach (BlockInfo head in headMonitor.SubscribeAsync(ct))
             {
+                stats.RecordHeadUpdate();
                 Console.WriteLine($"New head: {head}");
+
+                blockProvider.OnNewHead(head);
+                if (reorgTracker.OnNewHead(head) is { } reorg)
+                {
+                    stats.RecordReorg();
+                    Console.WriteLine($"Reorg detected: {reorg}");
+                }
 
                 if (!startBlock.Post(head))
                     Console.Error.WriteLine($"Head #{head:#} skipped — pipeline busy");
@@ -94,12 +113,15 @@ internal class MonitorRunner(ExecutionArgs args, INotifier notifier, IStatsRepor
     {
         try
         {
-            if (await _executor.ExecuteAsync(args, test, ct) is not { } testFailure)
+            test = test with { Recent = await blockProvider.GetAsync(test.RecentNumber, ct) };
+
+            if (await _executor.ExecuteAsync(test, ct) is not { } testFailure)
                 return null;
 
             stats.RecordTestFailure();
             Console.Error.WriteLine($"Mismatch on test \"{test.Definition.FilePath}\" at block #{test.Head:#}");
-            return testFailure;
+
+            return testFailure with { RecentReorgs = reorgTracker.GetReorgs(ReorgsPeriodOnFail) };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

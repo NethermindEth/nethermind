@@ -173,11 +173,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 // as normally, test blockchain don't use INethermindApi at all.
                 .AddModule(new AuRaModule(ChainSpec))
 
-                .AddDecorator<AuRaNethermindApi>((_, api) =>
-                {
-                    api.EngineSigner = NullSigner.Instance;
-                    return api;
-                })
+                .AddSingleton<ISigner>(NullSigner.Instance)
                 .AddModule(new AuRaMergeModule())
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
