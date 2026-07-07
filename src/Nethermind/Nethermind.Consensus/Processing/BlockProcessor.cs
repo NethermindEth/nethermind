@@ -150,17 +150,24 @@ public partial class BlockProcessor(
         }
 
         // Blooms are consumed only by the receipts root and by EndBlockTrace's header-bloom
-        // accumulation, so both bloom-dependent steps run in one background task across the
-        // rewards/withdrawals/requests stages. Execution requests read receipt logs, which are
-        // populated during execution, not by CalculateBlooms.
+        // accumulation (execution requests read receipt logs, populated during execution), so
+        // they run in the background across the rewards/withdrawals/requests stages. The
+        // receipts root continues on the same thread and stays overlapped with the storage-
+        // and state-root stages, joined at the end as before.
+        Task? bloomsTask = null;
         Task<Hash256>? receiptsRootTask = null;
         if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
         {
-            receiptsRootTask = Task.Run(() =>
-            {
-                CalculateBlooms(receipts);
-                return CalculateReceiptsRoot(receipts, spec, block);
-            });
+            bloomsTask = Task.Run(() => CalculateBlooms(receipts));
+            receiptsRootTask = bloomsTask.ContinueWith(
+                t =>
+                {
+                    t.GetAwaiter().GetResult();
+                    return CalculateReceiptsRoot(receipts, spec, block);
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
         else
         {
@@ -177,13 +184,8 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        if (receiptsRootTask is not null)
-        {
-            // EndBlockTrace accumulates the header bloom from per-receipt blooms, so the
-            // background bloom work must be complete before it runs.
-            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
-            receiptsRootTask = null;
-        }
+        // EndBlockTrace accumulates the header bloom from per-receipt blooms.
+        bloomsTask?.GetAwaiter().GetResult();
 
         ReceiptsTracer.EndBlockTrace();
 
