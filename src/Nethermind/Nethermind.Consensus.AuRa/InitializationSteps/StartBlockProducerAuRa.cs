@@ -73,8 +73,6 @@ public class StartBlockProducerAuRa(
     IAuRaStepCalculator stepCalculator,
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
     IWorldStateManager worldStateManager,
-    IWithdrawalProcessorFactory withdrawalProcessorFactory,
-    ITransactionProcessorFactory transactionProcessorFactory,
     ILifetimeScope lifetimeScope,
     ILogManager logManager)
 {
@@ -164,8 +162,7 @@ public class StartBlockProducerAuRa(
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        AuraBalProcessingEnvFactory balEnvFactory = new(blockhashProvider, specProvider, worldState, logManager,
-            transactionProcessorFactory, CodeInfoRepositoryFactories.Caching, withdrawalProcessorFactory);
+        AuraBlockProductionBalProcessingEnvFactory balEnvFactory = new(lifetimeScope, worldState, logManager);
         BlockAccessListManager balManager = new(
             worldState,
             logManager,
