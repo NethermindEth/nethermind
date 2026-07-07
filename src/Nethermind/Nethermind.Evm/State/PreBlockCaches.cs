@@ -20,7 +20,7 @@ public class PreBlockCaches
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private volatile IPrewarmTrieHintSink? _trieHintSink;
 
@@ -29,6 +29,7 @@ public class PreBlockCaches
     public PreBlockCaches(PreBlockCachesConfig config)
     {
         _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
         _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
@@ -75,6 +76,9 @@ public class PreBlockCaches
 
 public sealed record PreBlockCachesConfig
 {
+    // 2^16 × 2 ways = 131072 entries for dense account-access real blocks.
+    public int StateCacheSetsBits { get; init; } = 16;
+
     // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
     public int StorageCacheSetsBits { get; init; } = 17;
 }
