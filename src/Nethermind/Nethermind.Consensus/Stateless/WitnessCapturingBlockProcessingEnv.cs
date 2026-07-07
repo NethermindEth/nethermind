@@ -87,14 +87,15 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             // that swap the code-info repository.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
             // Force sequential BAL execution: the parallel path reads from a parent-state snapshot
-            // that bypasses the recording world state, so its reads never reach the witness. Rebuild
-            // the manager without a parent-reader pool (no pool -> ParallelExecutionEnabled is false).
+            // that bypasses the recording world state, so its reads never reach the witness.
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<Lazy<IParallelBalEnvManager>>(),
                 ctx.Resolve<Lazy<ISequentialBalEnvManager>>()))
+                // Leaving the parent-reader pool args unset keeps _hasParentReaderPool false, which
+                // disables parallel execution (ParallelExecutionEnabled) so the sequential env is used.
             .AddModule(validationModules));
 
         IBlockProcessor processor = scope.Resolve<IBlockProcessor>();
