@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -67,6 +68,14 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
-                });
+                })
+
+                // When PreWarmSkipStartedTxs is enabled, decorate the tx adapter so the main thread reports its
+                // per-transaction progress to the prewarmer (which then skips already-started txs). Left undecorated
+                // when disabled, so the default-off path pays nothing.
+                .AddDecorator<ITransactionProcessorAdapter>((ctx, baseAdapter) =>
+                    ctx.Resolve<IBlocksConfig>().PreWarmSkipStartedTxs
+                        ? new PrewarmerTxAdapter(baseAdapter, ctx.Resolve<BlockCachePreWarmer>(), ctx.Resolve<IWorldState>())
+                        : baseAdapter);
     }
 }
