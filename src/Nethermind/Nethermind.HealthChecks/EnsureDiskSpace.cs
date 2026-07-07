@@ -9,7 +9,9 @@ using Nethermind.Init.Steps;
 
 namespace Nethermind.HealthChecks;
 
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(
+    dependencies: [typeof(InitializeBlockTree)],
+    dependents: [typeof(InitializeBlockchain)])]
 public class EnsureDiskSpace(
     IHealthChecksConfig healthChecksConfig,
     FreeDiskSpaceChecker freeDiskSpaceChecker,
