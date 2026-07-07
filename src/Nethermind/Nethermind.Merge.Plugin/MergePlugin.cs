@@ -9,20 +9,21 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Container;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -37,11 +38,11 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
+using Nethermind.Trie.Pruning;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -52,9 +53,7 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
     private ILogger _logger;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
-    protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
-    private IBlockCacheService _blockCacheService = null!;
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
 
     public virtual string Name => "Merge";
@@ -72,7 +71,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
-        _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
@@ -87,18 +85,8 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
             EnsureJsonRpcUrl();
 
-            _blockCacheService = _api.Context.Resolve<IBlockCacheService>();
             _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
             _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-            if (_txPoolConfig.BlobsSupport.SupportsReorgs())
-            {
-                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_api.BlockTree!, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
-                _api.DisposeStack.Push(processedTransactionsDbCleaner);
-            }
-
-            _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
-
-            _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
         }
 
         return Task.CompletedTask;
@@ -184,16 +172,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 
     private bool HasTtd() => _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
 
-    public Task InitNetworkProtocol()
-    {
-        if (MergeEnabled)
-        {
-            ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        }
-
-        return Task.CompletedTask;
-    }
-
     public bool MustInitialize { get => true; }
 
     public virtual IModule Module => new MergePluginModule();
@@ -221,9 +199,13 @@ public class MergePluginModule : Module
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
+            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
             .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
-            .AddModule(new BaseMergePluginModule());
+            .AddModule(new BaseMergePluginModule())
+
+            .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>();
 }
 
 /// <summary>
@@ -250,7 +232,16 @@ public class BaseMergePluginModule : Module
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+
+            .AddSingleton<ProcessedTransactionsDbCleaner>()
+
+            // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
+            .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
             .AddDecorator<IBetterPeerStrategy, MergeBetterPeerStrategy>()
+
+            .AddSingleton<IMainProcessingModule, WitnessCapturingMainProcessingModule>()
+            .AddSingleton<WitnessRendezvous>()
+            .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .ResolveOnServiceActivation<IPeerRefresher, ISynchronizer>()
@@ -292,6 +283,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+                .AddSingleton<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

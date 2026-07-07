@@ -90,10 +90,10 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    public virtual ValueHash256 CalculateHash()
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this);
+        _headerDecoder.Encode(ref writer, this, behaviors);
         return writer.GetHash();
     }
 
@@ -144,8 +144,6 @@ public class XdcBlockHeader(
         header.Nonce = Nonce;
         header.TxRoot = TxRoot;
         header.TotalDifficulty = TotalDifficulty;
-        header.AuRaStep = AuRaStep;
-        header.AuRaSignature = AuRaSignature;
         header.ReceiptsRoot = ReceiptsRoot;
         header.BaseFeePerGas = BaseFeePerGas;
         header.WithdrawalsRoot = WithdrawalsRoot;
@@ -177,8 +175,6 @@ public class XdcBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,

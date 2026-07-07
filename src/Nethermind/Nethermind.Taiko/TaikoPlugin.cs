@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
@@ -58,10 +59,6 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public Task Init(INethermindApi api)
     {
         _api = (TaikoNethermindApi)api;
-
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
-        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         InitializeL1Precompiles();
 
@@ -139,6 +136,7 @@ public class TaikoModule : Module
 
             .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
             .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
+            .Bind<IVirtualMachine<EthereumGasPolicy>, IVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
@@ -154,6 +152,7 @@ public class TaikoModule : Module
 
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             // Validators

@@ -47,9 +47,6 @@ namespace Nethermind.Init.Steps
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
-            _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
-
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =

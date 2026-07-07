@@ -36,7 +36,6 @@ namespace Nethermind.Hive.Test
         {
             INethermindPlugin plugin = new HivePlugin(new HiveConfig() { Enabled = true });
             plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
-            plugin.InitRpcModules();
         }
 
         [Test]

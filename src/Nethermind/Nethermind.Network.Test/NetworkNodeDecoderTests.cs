@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test
                 Assert.That(decodedEnr!.ToString(), Is.EqualTo(enr.ToString()));
                 Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
                 Assert.That(decoded.Host, Is.EqualTo("8.8.8.8"));
-                Assert.That(decoded.Port, Is.EqualTo(30304));
+                Assert.That(decoded.Port, Is.EqualTo(30303));
                 Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
             }
         }

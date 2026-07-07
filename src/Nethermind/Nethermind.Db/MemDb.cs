@@ -135,6 +135,8 @@ namespace Nethermind.Db
 
         public virtual IDbMeta.DbMetric GatherMetric() => new() { Size = Count };
 
+        public long EstimatedCount => Count;
+
         private IEnumerable<KeyValuePair<byte[], byte[]?>> OrderedDb => _db.OrderBy(kvp => kvp.Key, Bytes.Comparer);
     }
 }
