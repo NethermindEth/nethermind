@@ -35,8 +35,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
-    // Index of the last tx the main thread has started (via PrewarmerTxAdapter); reset per block. Warming skips
-    // txs at or below it — re-warming a tx the main thread already started is redundant and contends with it.
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
 
