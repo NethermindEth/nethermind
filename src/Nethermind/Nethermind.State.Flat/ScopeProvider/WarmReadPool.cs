@@ -31,10 +31,9 @@ public sealed class WarmReadPool : IDisposable
 
     private sealed class Batch
     {
-        public const int ClaimSize = 8;
         public Action<int> Work = null!;
         public int JobCount;
-        public int NextIndex;
+        public int NextIndex = -1;
         public CountdownEvent Done = null!;
         public CancellationToken Token;
         public Exception? FirstException;
@@ -117,15 +116,9 @@ public sealed class WarmReadPool : IDisposable
             {
                 while (!batch.Token.IsCancellationRequested)
                 {
-                    int start = Interlocked.Add(ref batch.NextIndex, Batch.ClaimSize) - Batch.ClaimSize;
-                    if (start >= batch.JobCount) break;
-
-                    int end = Math.Min(start + Batch.ClaimSize, batch.JobCount);
-                    for (int j = start; j < end; j++)
-                    {
-                        if (batch.Token.IsCancellationRequested) break;
-                        batch.Work(j);
-                    }
+                    int j = Interlocked.Increment(ref batch.NextIndex);
+                    if (j >= batch.JobCount) break;
+                    batch.Work(j);
                 }
             }
             catch (Exception ex)
