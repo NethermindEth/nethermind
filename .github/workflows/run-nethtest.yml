@@ -181,14 +181,24 @@ jobs:
                 # jobs never approach the 16 GB runner limit; chunk counts here are sized for
                 # wall-clock, not memory.
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 4
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
                   # unfiltered, so the Amsterdam parallel/batch-read variant classes also
                   # ran under the default (patricia) layout — including parallel-full,
                   # which is the production configuration. Mirror that coverage here.
-                  emit "$type" parallel amsterdam '' true false 1 2
-                  emit "$type" batchread amsterdam '' false true 4 2
-                  emit "$type" parallelfull amsterdam '' true true 1 2
+                  # engineTest fixtures run ~2x slower than blockTest, so engine keeps a
+                  # couple of chunks on the slow variants (merging engine parallel /
+                  # parallel-full would exceed the 15 min wall) while block collapses to one.
+                  if [ "$type" = "engineTest" ]; then
+                    emit "$type" sequential   full      '' false false 4 3
+                    emit "$type" parallel     amsterdam '' true  false 1 2
+                    emit "$type" batchread    amsterdam '' false true  4 1
+                    emit "$type" parallelfull amsterdam '' true  true  1 2
+                  else
+                    emit "$type" sequential   full      '' false false 4 2
+                    emit "$type" parallel     amsterdam '' true  false 1 1
+                    emit "$type" batchread    amsterdam '' false true  4 1
+                    emit "$type" parallelfull amsterdam '' true  true  1 1
+                  fi
                 fi
                 if run_flat; then
                   # The flat in-memory backend never prunes, so state accumulates across a
@@ -198,22 +208,25 @@ jobs:
                   # threshold, while denser ones (parallel at 3-5 chunks, parallel-full at 4)
                   # tripped the limit. Engine is the heaviest combination, so it runs smaller.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_sequential full 1 false false 2 10
+                    emit "$type" flat_sequential full 1 false false 2 8
+                    emit "$type" flat_batchread amsterdam 1 false true 4 2
                   else
                     emit "$type" flat_sequential full 1 false false 4 4
+                    emit "$type" flat_batchread amsterdam 1 false true 4 1
                   fi
                   emit "$type" flat_parallel amsterdam 1 true false 1 10
-                  emit "$type" flat_batchread amsterdam 1 false true 4 2
-                  # parallel-full (parallel + batch-read prewarm) retains the most memory per
-                  # test, so it keeps the smallest chunks of the flat group.
-                  emit "$type" flat_parallelfull amsterdam 1 true true 1 14
+                  # parallel-full retains the most memory per test but has the widest OOM
+                  # margin (10 chunks ~= 2.1k tests each vs the ~5.5k that tripped the limit),
+                  # so it absorbs the biggest wall-headroom cut.
+                  emit "$type" flat_parallelfull amsterdam 1 true true 1 10
                 fi
                 ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 2
+                  # patricia state set runs ~14 min merged into one chunk - under the wall.
+                  emit "$type" sequential full '' '' '' 4 1
                 fi
                 if run_flat; then
                   # Flat + 4 workers is memory-heavy for the state set; 3 chunks GC-thrashed
@@ -241,8 +254,9 @@ jobs:
               zkevmTest)
                 # Stateless witness execution builds its own in-memory state, so the
                 # layout and BAL toggles are irrelevant - sequential group only.
+                # ~20s per chunk, so a single runner is plenty.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 2
+                  emit "$type" sequential full '' '' '' 4 1
                 fi
                 ;;
               *)
