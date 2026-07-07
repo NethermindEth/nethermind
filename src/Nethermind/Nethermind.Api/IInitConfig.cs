@@ -72,7 +72,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Dynamically rebalance resizeable caches within the process memory limit.", DefaultValue = "false", HiddenFromDocs = true)]
     bool AdaptiveCacheEnabled { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Optional process working-set limit, in bytes, used by adaptive caching. Defaults to the runtime-detected host or container memory limit.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Optional process working-set limit, in bytes, used by adaptive caching. Defaults to and cannot exceed the runtime-detected safe process memory limit, preserving host or container headroom.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? AdaptiveCacheMemoryLimit { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]

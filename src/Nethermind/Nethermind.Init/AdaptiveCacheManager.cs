@@ -14,11 +14,13 @@ namespace Nethermind.Init;
 
 internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
 {
-    // Non-cache allocations retain 75% of the detected process limit. The two memory-pressure
-    // thresholds provide hysteresis so a cache is not grown immediately after pressure subsides.
-    private const int CacheBudgetPercent = 25;
-    private const int HighMemoryPressurePercent = 75;
-    private const int LowMemoryPressurePercent = 60;
+    // The pressure band preserves headroom for workload spikes and provides hysteresis so caches
+    // are not grown immediately after pressure subsides.
+    private const int CacheBudgetPercent = 35;
+    private const int EmergencyMemoryPressurePercent = 100;
+    private const int HighMemoryPressurePercent = 90;
+    private const int LowMemoryPressurePercent = 75;
+    private const int EmergencyShrinkPercent = 50;
     private const int PressureShrinkPercent = 75;
     private const int SaturatedPercent = 85;
     private static readonly TimeSpan RebalanceInterval = TimeSpan.FromSeconds(10);
@@ -76,6 +78,12 @@ internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
             if (_disposed || _caches.Count == 0) return;
 
             long totalCapacity = GetTotalCapacity();
+            if (workingSet >= Percentage(_memoryLimit, EmergencyMemoryPressurePercent))
+            {
+                ShrinkAll(EmergencyShrinkPercent);
+                return;
+            }
+
             if (workingSet >= Percentage(_memoryLimit, HighMemoryPressurePercent))
             {
                 ShrinkAll(PressureShrinkPercent);
@@ -90,7 +98,7 @@ internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
 
             if (workingSet <= Percentage(_memoryLimit, LowMemoryPressurePercent))
             {
-                GrowMostConstrained(totalCapacity);
+                GrowConstrainedCaches(totalCapacity);
             }
         }
     }
@@ -183,31 +191,26 @@ internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
         }
     }
 
-    private void GrowMostConstrained(long totalCapacity)
+    private void GrowConstrainedCaches(long totalCapacity)
     {
         long available = _cacheBudget - totalCapacity;
         if (available <= 0) return;
 
-        IAdaptiveCache? candidate = null;
-        double highestUtilization = (double)SaturatedPercent / 100;
         for (int i = 0; i < _caches.Count; i++)
         {
             IAdaptiveCache cache = _caches[i];
             if (cache.Capacity >= cache.MaximumCapacity || cache.Capacity == 0) continue;
 
             double utilization = (double)cache.Usage / cache.Capacity;
-            if (utilization >= highestUtilization)
-            {
-                candidate = cache;
-                highestUtilization = utilization;
-            }
+            if (utilization < (double)SaturatedPercent / 100) continue;
+
+            long previous = cache.Capacity;
+            long growth = Math.Max(cache.MinimumCapacity, previous / 4);
+            long target = Math.Min(cache.MaximumCapacity, previous + Math.Min(growth, available));
+            Resize(cache, target, "cache demand");
+            available -= cache.Capacity - previous;
+            if (available <= 0) return;
         }
-
-        if (candidate is null) return;
-
-        long growth = Math.Max(candidate.MinimumCapacity, candidate.Capacity / 4);
-        long target = Math.Min(candidate.MaximumCapacity, candidate.Capacity + Math.Min(growth, available));
-        Resize(candidate, target, "cache demand");
     }
 
     private long GetTotalCapacity()
@@ -234,8 +237,14 @@ internal sealed class AdaptiveCacheManager : IAdaptiveCacheManager, IDisposable
     private static long GetMemoryLimit(ulong? configuredLimit)
     {
         long detected = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-        if (configuredLimit is null) return detected;
-        return (long)Math.Min(configuredLimit.Value, (ulong)long.MaxValue);
+        return GetMemoryLimit(configuredLimit, detected);
+    }
+
+    internal static long GetMemoryLimit(ulong? configuredLimit, long detectedLimit)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(detectedLimit);
+        if (configuredLimit is null) return detectedLimit;
+        return (long)Math.Min(configuredLimit.Value, (ulong)detectedLimit);
     }
 
     private static long Percentage(long value, int percent) => checked(value / 100 * percent);

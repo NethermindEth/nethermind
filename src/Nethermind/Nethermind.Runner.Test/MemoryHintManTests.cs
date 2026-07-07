@@ -145,40 +145,44 @@ namespace Nethermind.Runner.Test
         public void Adaptive_cache_budget_reclaims_capacity_from_least_utilized_cache()
         {
             using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
-            TestAdaptiveCache underused = new("underused", 200 * AdaptiveMB, 50 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache underused = new("underused", 300 * AdaptiveMB, 50 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
             TestAdaptiveCache saturated = new("saturated", 100 * AdaptiveMB, 100 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
             manager.Register(underused);
             manager.Register(saturated);
 
-            manager.Rebalance(650 * AdaptiveMB);
+            manager.Rebalance(800 * AdaptiveMB);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(underused.Capacity, Is.EqualTo(150 * AdaptiveMB));
+                Assert.That(underused.Capacity, Is.EqualTo(250 * AdaptiveMB));
                 Assert.That(saturated.Capacity, Is.EqualTo(100 * AdaptiveMB));
             }
         }
 
         [Test]
-        public void Adaptive_cache_budget_grows_most_constrained_cache_when_memory_is_available()
+        public void Adaptive_cache_budget_grows_saturated_caches_when_memory_is_available()
         {
             using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
-            TestAdaptiveCache saturated = new("saturated", 100 * AdaptiveMB, 90 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
-            TestAdaptiveCache idle = new("idle", 100 * AdaptiveMB, 10 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
-            manager.Register(saturated);
-            manager.Register(idle);
+            TestAdaptiveCache first = new("first", 100 * AdaptiveMB, 90 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
+            TestAdaptiveCache second = new("second", 100 * AdaptiveMB, 100 * AdaptiveMB, 25 * AdaptiveMB, 1000 * AdaptiveMB);
+            manager.Register(first);
+            manager.Register(second);
 
             manager.Rebalance(500 * AdaptiveMB);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(saturated.Capacity, Is.EqualTo(125 * AdaptiveMB));
-                Assert.That(idle.Capacity, Is.EqualTo(100 * AdaptiveMB));
+                Assert.That(first.Capacity, Is.EqualTo(125 * AdaptiveMB));
+                Assert.That(second.Capacity, Is.EqualTo(125 * AdaptiveMB));
             }
         }
 
-        [Test]
-        public void Adaptive_cache_budget_shrinks_all_caches_under_memory_pressure()
+        [TestCase(900, 300, 75)]
+        [TestCase(1000, 200, 50)]
+        public void Adaptive_cache_budget_shrinks_all_caches_under_memory_pressure(
+            long workingSetMb,
+            long expectedFirstMb,
+            long expectedSecondMb)
         {
             using AdaptiveCacheManager manager = new(1000 * AdaptiveMB, LimboLogs.Instance);
             TestAdaptiveCache first = new("first", 400 * AdaptiveMB, 400 * AdaptiveMB, 50 * AdaptiveMB, 1000 * AdaptiveMB);
@@ -186,14 +190,24 @@ namespace Nethermind.Runner.Test
             manager.Register(first);
             manager.Register(second);
 
-            manager.Rebalance(900 * AdaptiveMB);
+            manager.Rebalance(workingSetMb * AdaptiveMB);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(first.Capacity, Is.EqualTo(300 * AdaptiveMB));
-                Assert.That(second.Capacity, Is.EqualTo(75 * AdaptiveMB));
+                Assert.That(first.Capacity, Is.EqualTo(expectedFirstMb * AdaptiveMB));
+                Assert.That(second.Capacity, Is.EqualTo(expectedSecondMb * AdaptiveMB));
             }
         }
+
+        [TestCase(null, 1000, 1000)]
+        [TestCase(500UL, 1000, 500)]
+        [TestCase(2000UL, 1000, 1000)]
+        public void Adaptive_cache_memory_limit_never_exceeds_detected_limit(
+            ulong? configuredLimit,
+            long detectedLimit,
+            long expectedLimit) => Assert.That(
+                AdaptiveCacheManager.GetMemoryLimit(configuredLimit, detectedLimit),
+                Is.EqualTo(expectedLimit));
 
         private sealed class TestAdaptiveCache(
             string name,
