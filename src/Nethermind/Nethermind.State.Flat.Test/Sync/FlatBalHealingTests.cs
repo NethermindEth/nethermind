@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -208,6 +209,23 @@ public class FlatBalHealingTests
         reassembler.TryReassemble(Arg.Any<IReadOnlyCollection<Hash256>>()).Returns((Hash256?)null);
         FlatBalHealing healing = new(_blockTree, _balStore, reassembler, _syncStore, _persistence, _codeDb, LimboLogs.Instance);
 
+        SeedInitialState(Acc(TestItem.AddressA, 100));
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        BlockHeader lastPivot = SetupBlock(11, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
+
+        bool result = await healing.Run(firstPivot, lastPivot, [], default);
+
+        Assert.That(result, Is.False);
+        _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
+    }
+
+    [Test]
+    public async Task Falls_back_when_apply_throws()
+    {
+        IBlockAccessListStore throwingStore = Substitute.For<IBlockAccessListStore>();
+        throwingStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
+        throwingStore.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new InvalidOperationException("boom"));
+        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, _syncStore, _persistence, _codeDb, LimboLogs.Instance);
 
         SeedInitialState(Acc(TestItem.AddressA, 100));
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);

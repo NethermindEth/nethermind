@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence;
@@ -12,9 +11,8 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
-/// <see cref="IScopedTrieStore"/> for the state trie that reads/writes trie nodes through an
-/// <see cref="IPersistence"/> reader/write-batch pair. Writes only trie <em>nodes</em>; flat account
-/// leaves are the caller's responsibility. Used by flat snap sync and BAL healing.
+/// Trie store adapter that writes trie nodes to IPersistence.IWriteBatch; flat account leaves are the caller's responsibility.
+/// Uses IPersistenceReader for IsPersisted queries during snap sync.
 /// </summary>
 public sealed class PersistenceTrieStoreAdapter(
     IPersistence.IPersistenceReader reader,
@@ -46,9 +44,8 @@ public sealed class PersistenceTrieStoreAdapter(
 }
 
 /// <summary>
-/// <see cref="IScopedTrieStore"/> for a single account's storage trie that reads/writes trie nodes
-/// through an <see cref="IPersistence"/> reader/write-batch pair. Writes only trie <em>nodes</em>;
-/// flat storage leaves are the caller's responsibility. Used by flat snap sync and BAL healing.
+/// Storage trie store adapter that writes trie nodes to IPersistence.IWriteBatch; flat storage leaves are the caller's responsibility.
+/// Uses IPersistenceReader for IsPersisted queries during snap sync.
 /// </summary>
 public sealed class PersistenceStorageTrieStoreAdapter(
     IPersistence.IPersistenceReader reader,

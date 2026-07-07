@@ -35,7 +35,7 @@ public class FlatBalHealing(
     {
         if (_logger.IsInfo) _logger.Info($"Starting FlatBalHealing from block {firstPivot.Number} to {lastPivot.Number}.");
 
-        int capacity = (int)Math.Min(lastPivot.Number.SaturatingSub(firstPivot.Number), int.MaxValue);
+        int capacity = (int)Math.Min(lastPivot.Number.SaturatingSub(firstPivot.Number), MaxInitialCapacity);
         ArrayPoolListRef<(ulong Number, Hash256 Hash)> toApply = new(capacity);
         try
         {
@@ -62,6 +62,15 @@ public class FlatBalHealing(
             store.FinalizeSync(lastPivot);
 
             return Task.FromResult(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return Task.FromResult(false);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("BAL healing failed — falling back to traditional state sync.", e);
+            return Task.FromResult(false);
         }
         finally
         {
@@ -98,6 +107,7 @@ public class FlatBalHealing(
         return true;
     }
     private const int BalsChunkSize = 256;
+    private const int MaxInitialCapacity = 1024;
 
     private bool ApplyBals(Hash256 reassembledRoot, BlockHeader lastPivot, ReadOnlySpan<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
