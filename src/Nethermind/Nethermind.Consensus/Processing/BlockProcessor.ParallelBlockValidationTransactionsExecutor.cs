@@ -279,9 +279,14 @@ public partial class BlockProcessor
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
-        /// natural block order. Keep it empty so heavy estimated-work transactions are not stranded
-        /// behind an unsorted CPU-scaled prefix on storage-heavy blocks.</summary>
-        internal static int GetCanonicalExecutionLead(int txCount) => 0;
+        /// natural block order. Chosen so single- and small-tx blocks don't pay the sort cost;
+        /// larger blocks reorder the tail to surface the heaviest gas-limit txs first, which
+        /// reduces tail-latency stragglers in <see cref="ParallelUnbalancedWork.For"/>.</summary>
+        internal static int GetCanonicalExecutionLead(int txCount)
+        {
+            int lead = Math.Max(8, Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount * 2);
+            return Math.Min(txCount, lead);
+        }
 
         internal static void BuildTxExecutionOrder(Transaction[] txs, int[] txExecutionOrder, int canonicalLead)
         {
