@@ -75,25 +75,16 @@ internal class XdcBlockProcessorTests
     }
 
     [Test]
-    public void ProcessOne_CopiesProcessedRewardsToSuggestedHeader()
+    public void PostValidation_CopiesProcessedRewardsToSuggestedHeader()
     {
-        XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().WithNumber(1).TestObject;
-        Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;
+        XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().TestObject;
+        XdcBlockHeader processedHeader = suggestedHeader.CreateHeaderForProcessing();
         BlockReward[] rewards = [new(Address.FromNumber(1), (UInt256)42)];
-        IRewardCalculator rewardCalculator = Substitute.For<IRewardCalculator>();
-        rewardCalculator.CalculateRewards(Arg.Any<Block>()).Returns(callInfo =>
-        {
-            Block processedBlock = callInfo.Arg<Block>();
-            ((XdcBlockHeader)processedBlock.Header).ProcessedRewards = rewards;
-            return rewards;
-        });
-        TestableXdcBlockProcessor processor = new(rewardCalculator);
+        processedHeader.ProcessedRewards = rewards;
+        Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;
+        Block processedBlock = suggestedBlock.WithReplacedHeader(processedHeader);
 
-        processor.ProcessOne(
-            suggestedBlock,
-            ProcessingOptions.NoValidation,
-            NullBlockTracer.Instance,
-            Substitute.For<IReleaseSpec>());
+        _processor.PostValidation(suggestedBlock, processedBlock, [], ProcessingOptions.NoValidation);
 
         Assert.That(suggestedHeader.ProcessedRewards, Is.SameAs(rewards));
     }
@@ -117,6 +108,9 @@ internal class XdcBlockProcessorTests
 
         public new Block PrepareBlockForProcessing(Block block)
             => base.PrepareBlockForProcessing(block);
+
+        public new void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+            => base.PostValidation(suggestedBlock, processedBlock, receipts, options);
 
         private static IBlockProcessor.IBlockTransactionsExecutor CreateTransactionsExecutor()
         {
