@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Evm.State;
 using Nethermind.Int256;

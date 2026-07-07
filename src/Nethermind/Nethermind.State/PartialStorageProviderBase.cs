@@ -144,6 +144,10 @@ namespace Nethermind.State
             if (_changes.Count == 0)
             {
                 if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
+
+                // Reset() is skipped on this path; drop the per-address view so rounds whose
+                // writes were fully reverted do not leak index entries into later rounds.
+                _cellsByAddress.Clear();
             }
             else
             {

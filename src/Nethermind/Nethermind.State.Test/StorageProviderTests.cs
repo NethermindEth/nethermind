@@ -488,6 +488,68 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Selfdestruct_zeroes_cells_only_read_this_round()
+    {
+        // Reads skip the write registry, so read-only cells are tracked solely via original-value
+        // capture; ClearStorage must still zero them (same-block CREATE2 revival semantics).
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(new byte[] { 7 }), "precondition: committed value visible");
+
+            provider.ClearStorage(TestItem.AddressA);
+
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "read-only cell must be zeroed by ClearStorage");
+        }
+    }
+
+    [Test]
+    public void Selfdestruct_zeroes_reverted_writes_with_captured_originals()
+    {
+        // A reverted write is pruned from the write registry, but its original-value capture
+        // survives the Restore — so ClearStorage still zeroes the cell. Documents the
+        // pre-existing full-scan behavior that the per-address index must preserve.
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Snapshot snapshot = provider.TakeSnapshot();
+            provider.Set(cell, [9]);
+            provider.Restore(snapshot);
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(new byte[] { 7 }), "precondition: revert restored the committed value");
+
+            provider.ClearStorage(TestItem.AddressA);
+
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "cell with captured original must be zeroed even after its write was reverted");
+        }
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
