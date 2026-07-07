@@ -44,7 +44,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
-    private int _originalValueCaptureRound = 1;
 
     /// <summary>
     /// Reset the storage state
@@ -52,7 +51,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void Reset(bool resetBlockChanges = true)
     {
         base.Reset();
-        ClearOriginalValues();
+        _originalValues.Clear();
         _committedThisRound.Clear();
         _destroyedThisRound.Clear();
         if (resetBlockChanges)
@@ -231,7 +230,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         base.CommitCore(tracer);
-        ClearOriginalValues();
+        _originalValues.Clear();
         _committedThisRound.Clear();
         _destroyedThisRound.Clear();
 
@@ -339,16 +338,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private void ClearOriginalValues()
-    {
-        _originalValues.Clear();
-        _originalValueCaptureRound++;
-        if (_originalValueCaptureRound == 0)
-        {
-            _originalValueCaptureRound = 1;
-        }
-    }
-
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
         foreach ((StorageCell address, StorageChangeTrace change) in trace)
@@ -382,7 +371,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     }
                 }
 
-                ClearOriginalValues();
+                _originalValues.Clear();
             }
 
             _destroyedThisRound.Clear();
@@ -566,7 +555,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                valueChanges = valueChanges.WithAfter(value);
+                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
 
             if (!storageCell.IsHash)
@@ -590,12 +579,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash && valueChange.OriginalValueCaptureRound != _provider._originalValueCaptureRound)
-            {
-                _provider.CaptureOriginalValue(storageCell, valueChange.After);
-                valueChange = valueChange.WithOriginalValueCaptureRound(_provider._originalValueCaptureRound);
-            }
-
+            if (!storageCell.IsHash) _provider.CaptureOriginalValue(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -716,11 +700,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public static readonly StorageChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
         public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
 
-        public StorageChangeTrace(byte[]? before, byte[]? after, int originalValueCaptureRound = 0)
+        public StorageChangeTrace(byte[]? before, byte[]? after)
         {
             After = after ?? StorageTree.ZeroBytes;
             Before = before ?? StorageTree.ZeroBytes;
-            OriginalValueCaptureRound = originalValueCaptureRound;
         }
 
         public StorageChangeTrace(byte[]? after)
@@ -733,10 +716,5 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
-        public readonly int OriginalValueCaptureRound;
-
-        public StorageChangeTrace WithAfter(byte[]? after) => new(Before, after, OriginalValueCaptureRound);
-
-        public StorageChangeTrace WithOriginalValueCaptureRound(int originalValueCaptureRound) => new(Before, After, originalValueCaptureRound);
     }
 }
