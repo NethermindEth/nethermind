@@ -176,8 +176,14 @@ public class ParallelBalEnvManager : IParallelBalEnvManager
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>No-op: each tx runs in its own rented env, so there is no shared per-block cursor to
+    /// advance (the sequential manager, by contrast, clears and increments its single world state here).</remarks>
     public void NextTransaction() { }
 
+    /// <inheritdoc/>
+    /// <remarks>No-op: a failed tx's env is simply never merged, so there is nothing to undo at the
+    /// manager level.</remarks>
     public void Rollback() { }
 
     public void Dispose()
