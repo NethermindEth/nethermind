@@ -127,8 +127,6 @@ namespace Nethermind.Init.Steps
 
                 await stepWrapper.WaitForDependencies(dependencies, cancellationToken);
 
-                // Log once the dependencies are satisfied, so it names the step that is actually executing rather
-                // than one still queued waiting on its dependencies.
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepWrapper.StepInfo}");
 
                 await stepWrapper.RunStep(cancellationToken);
