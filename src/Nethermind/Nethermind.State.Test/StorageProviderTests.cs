@@ -506,6 +506,54 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Destroy_of_committed_storage_reads_zero()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(new byte[] { 7 }), "precondition: committed value visible");
+
+            provider.MarkStorageDestroyed(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "committed prior-block storage must read zero after destroy");
+        }
+    }
+
+    [Test]
+    public void Same_block_revival_reads_zero_for_unrewritten_slots()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell rewritten = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+
+        provider.Set(rewritten, _values[1]);
+        provider.Set(untouched, _values[2]);
+        provider.MarkStorageDestroyed(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(rewritten, _values[3]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "revived contract's rewritten slot must hold the new value");
+        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
