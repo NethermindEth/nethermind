@@ -214,7 +214,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 Assert.That(persistedEnr!.ToString(), Is.EqualTo(enr.ToString()));
                 Assert.That(persistedNode.NodeId, Is.EqualTo(TestItem.PrivateKeyA.PublicKey));
                 Assert.That(persistedNode.Host, Is.EqualTo("8.8.8.8"));
-                Assert.That(persistedNode.Port, Is.EqualTo(30304));
+                Assert.That(persistedNode.Port, Is.EqualTo(30303));
+                Assert.That(persistedNode.DiscoveryPort, Is.EqualTo(30304));
             }
         }
 
