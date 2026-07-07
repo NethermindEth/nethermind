@@ -145,10 +145,8 @@ public class BackgroundTaskSchedulerBenchmarks
     {
         public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
         public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
-#pragma warning disable CS0067 // Event is never used
-        public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
-        public event EventHandler<BlockEventArgs>? BlockProcessing;
-#pragma warning restore CS0067
+        public event EventHandler<BlockProcessedEventArgs>? BlockProcessed { add { } remove { } }
+        public event EventHandler<BlockEventArgs>? BlockProcessing { add { } remove { } }
 
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
@@ -175,8 +173,6 @@ public class BackgroundTaskSchedulerBenchmarks
         public ProofVersion CurrentProofVersion => ProofVersion.V0;
         public bool IsSyncing => false;
         public bool IsProcessingBlock => false;
-#pragma warning disable CS0067 // Event is never used
-        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
-#pragma warning restore CS0067
+        public event EventHandler<BlockReplacementEventArgs>? HeadChanged { add { } remove { } }
     }
 }
