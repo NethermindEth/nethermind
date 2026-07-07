@@ -17,7 +17,7 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposable
 {
-    private const int DefaultMaxEntriesPerKind = 1 << 21;
+    private const int DefaultMaxEntriesPerKind = 1 << 19;
 
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
