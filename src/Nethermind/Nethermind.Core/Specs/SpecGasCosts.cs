@@ -57,8 +57,6 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             ? GasCostOf.SReset - GasCostOf.ColdSLoad
             : GasCostOf.SReset;
 
-        // EIP-8038 folds the warm-access charge into the SSTORE access cost itself (see
-        // ConsumeStorageAccessGas), so no separate net-metered charge is added on top.
         ulong netMeteredSStoreCost = NetMeteredSStoreCost =
             spec.IsEip8038Enabled ? GasCostOf.Free
             : hotCold ? GasCostOf.WarmStateRead
