@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -98,6 +99,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ClearStorage(Address address);
 
     void RecalculateStateRoot();
+
+    /// <summary>
+    /// Starts computing storage roots of already-final contracts in the background; account
+    /// application is deferred to the next commitRoots commit. <paramref name="exclude"/> must
+    /// contain every contract whose storage may still be written before that commit.
+    /// </summary>
+    void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude) { }
 
     void DeleteAccount(Address address);
 

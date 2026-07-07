@@ -5,6 +5,8 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -127,6 +129,7 @@ namespace Nethermind.State
         }
         public void Reset(bool resetBlockChanges = true)
         {
+            AbortEarlyStorageRoots();
             DebugGuardInScope();
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
@@ -339,16 +342,62 @@ namespace Nethermind.State
 
         public bool HasStateForBlock(BlockHeader? header) => ScopeProvider.HasRoot(header);
 
+        private IWorldStateScopeProvider.IWorldStateWriteBatch? _earlyWriteBatch;
+        private Task? _earlyStorageRootsTask;
+        private readonly ConcurrentQueue<IWorldStateScopeProvider.AccountUpdated> _earlyAccountUpdates = new();
+
+        public void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude)
+        {
+            DebugGuardInScope();
+            if (_earlyWriteBatch is not null) return;
+
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+            // Account-root application mutates account state, which later block stages still
+            // touch from the main thread — buffer the updates and apply them at commit.
+            writeBatch.OnAccountUpdated += (_, updatedAccount) => _earlyAccountUpdates.Enqueue(updatedAccount);
+            _earlyWriteBatch = writeBatch;
+            _earlyStorageRootsTask = Task.Run(() => _persistentStorageProvider.FlushToTreeExcept(writeBatch, exclude));
+        }
+
+        private void AbortEarlyStorageRoots()
+        {
+            if (_earlyWriteBatch is null) return;
+            _earlyStorageRootsTask!.GetAwaiter().GetResult();
+            _earlyWriteBatch.Dispose();
+            _earlyWriteBatch = null;
+            _earlyStorageRootsTask = null;
+            _earlyAccountUpdates.Clear();
+        }
+
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
+
+            // The early task enumerates and prunes _toUpdateRoots; it must complete before the
+            // provider commit below repopulates that dictionary with the late (system-contract)
+            // storage writes.
+            IWorldStateScopeProvider.IWorldStateWriteBatch? earlyBatch = null;
+            if (commitRoots && _earlyWriteBatch is not null)
+            {
+                earlyBatch = _earlyWriteBatch;
+                _earlyWriteBatch = null;
+                _earlyStorageRootsTask!.GetAwaiter().GetResult();
+                _earlyStorageRootsTask = null;
+            }
+
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
+                    earlyBatch ?? _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                while (_earlyAccountUpdates.TryDequeue(out IWorldStateScopeProvider.AccountUpdated? updated))
+                {
+                    _stateProvider.SetState(updated.Address, updated.Account);
+                }
+
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);

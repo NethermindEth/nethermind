@@ -231,8 +231,41 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.Clear();
     }
 
+    /// <summary>
+    /// Computes storage roots for the currently dirty contracts except <paramref name="exclude"/>,
+    /// which stay in <see cref="_toUpdateRoots"/> for the final flush. Runs off the main thread
+    /// while later block stages execute; those stages must not write storage of the processed
+    /// contracts (guaranteed by excluding the execution-request system contracts).
+    /// </summary>
+    internal void FlushToTreeExcept(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, IReadOnlySet<AddressAsKey> exclude)
+    {
+        if (_toUpdateRoots.Count == 0)
+            return;
+
+        using ArrayPoolList<AddressAsKey> processed = new(_toUpdateRoots.Count);
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
+        {
+            if (kv.Value && !exclude.Contains(kv.Key))
+            {
+                processed.Add(kv.Key);
+            }
+        }
+
+        if (processed.Count == 0)
+            return;
+
+        UpdateRootHashes(writeBatch, processed);
+
+        foreach (AddressAsKey key in processed.AsSpan())
+        {
+            _toUpdateRoots.Remove(key);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys);
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
