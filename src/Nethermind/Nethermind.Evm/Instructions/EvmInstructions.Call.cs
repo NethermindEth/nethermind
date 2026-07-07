@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -91,8 +92,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        vm.MetricsCounters.IncrementCalls();
 
         // Clear previous return data.
         vm.ReturnData = null;
@@ -248,9 +248,17 @@ public static partial class EvmInstructions
                 }
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
-            Metrics.IncrementEmptyCalls();
+            vm.MetricsCounters.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
+        }
+
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.IsPrecompile &&
+            TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+                vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
+                codeInfo.Precompile!, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
+        {
+            return inlineResult;
         }
 
         return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
@@ -345,6 +353,30 @@ public static partial class EvmInstructions
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
+
+    /// <summary>
+    /// Attempts to execute a STATICCALL into a precompile inline, without renting a full child call frame.
+    /// </summary>
+    /// <remarks>
+    /// The implementation is build-specific: mainline runs the precompile directly, while the zkEVM guest
+    /// declines (returns <c>false</c>) so the call flows through its dedicated <c>InlinePrecompileCall</c> path.
+    /// </remarks>
+    /// <returns><c>true</c> when the call was handled inline (with the outcome in <paramref name="result"/>); otherwise <c>false</c>.</returns>
+    private static partial bool TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        in UInt256 dataOffset,
+        UInt256 dataLength,
+        in UInt256 outputOffset,
+        UInt256 outputLength,
+        IPrecompile precompile,
+        Address target,
+        Address codeSource,
+        ulong gasLimitUl,
+        out EvmExceptionType result)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag;
 
     /// <summary>
     /// Executes the RETURN opcode.
