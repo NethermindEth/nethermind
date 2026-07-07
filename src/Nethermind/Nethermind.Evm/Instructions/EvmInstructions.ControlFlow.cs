@@ -223,7 +223,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -236,7 +236,7 @@ public static partial class EvmInstructions
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
 
-        if (vm.TxTracer.IsTracingActions)
+        if (vm.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // Charge gas if transferring to a dead or non-existent account.
