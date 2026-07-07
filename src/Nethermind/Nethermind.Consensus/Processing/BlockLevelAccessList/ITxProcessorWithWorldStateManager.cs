@@ -7,7 +7,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
 /// Hands out the per-block <see cref="IBalProcessingEnv"/> worker(s) and drives their per-tx

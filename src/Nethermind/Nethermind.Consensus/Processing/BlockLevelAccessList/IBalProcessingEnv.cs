@@ -6,7 +6,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
 /// The per-worker BAL processing environment the pool hands out: a traced world state bundled

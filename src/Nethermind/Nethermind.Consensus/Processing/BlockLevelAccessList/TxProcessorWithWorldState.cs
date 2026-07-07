@@ -11,7 +11,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
 /// Bundles a tx processor with its world states (BAL-backed in parallel mode, plain in sequential)

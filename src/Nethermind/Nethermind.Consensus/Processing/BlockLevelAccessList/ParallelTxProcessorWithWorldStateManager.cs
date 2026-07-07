@@ -16,7 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
 /// Rents/returns processors per tx index from a bounded pool and stages each tx's BAL slice in

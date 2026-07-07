@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

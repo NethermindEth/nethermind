@@ -7,7 +7,7 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>
 /// RAII wrapper around a borrowed read-only tx-processing env: holds the pooled source plus the

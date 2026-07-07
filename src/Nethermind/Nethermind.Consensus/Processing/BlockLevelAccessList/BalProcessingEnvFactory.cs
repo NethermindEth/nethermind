@@ -7,7 +7,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Default <see cref="IBalProcessingEnvFactory"/> producing <see cref="TxProcessorWithWorldState"/> workers.</summary>
 internal sealed class BalProcessingEnvFactory(

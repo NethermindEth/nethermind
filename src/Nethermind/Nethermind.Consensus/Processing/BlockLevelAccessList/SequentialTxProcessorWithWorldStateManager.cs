@@ -7,7 +7,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 /// <summary>Reuses a single <see cref="IBalProcessingEnv"/> worker for the whole block.</summary>
 internal class SequentialTxProcessorWithWorldStateManager : ISequentialTxProcessorWithWorldStateManager

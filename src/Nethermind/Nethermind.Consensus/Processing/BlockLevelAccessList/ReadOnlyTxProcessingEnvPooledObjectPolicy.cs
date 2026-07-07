@@ -4,7 +4,7 @@
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
 internal sealed class ReadOnlyTxProcessingEnvPooledObjectPolicy(
     IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>

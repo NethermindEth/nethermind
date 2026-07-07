@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
