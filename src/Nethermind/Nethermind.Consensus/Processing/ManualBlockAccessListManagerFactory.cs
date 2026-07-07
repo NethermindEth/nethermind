@@ -52,7 +52,7 @@ public static class ManualBlockAccessListManagerFactory
     /// stateless env and tests where the DI container is not available. It builds all worker
     /// components (virtual machine, traced world state, mainnet <see cref="TransactionProcessor{TGasPolicy}"/>
     /// and <see cref="WithdrawalProcessor"/>, and the adapter) by hand and hands them to a
-    /// <see cref="ParallelBalEnv"/> or <see cref="SequentialBalEnv"/>. The DI path uses
+    /// <see cref="ParallelBalEnvManager.ParallelBalEnv"/> or <see cref="SequentialBalEnv"/>. The DI path uses
     /// <see cref="AutofacBalProcessingEnvFactory"/> instead, which resolves the chain-specific graph.
     /// </summary>
     private sealed class ManualMainnetBalProcessingEnvFactory(
@@ -71,7 +71,7 @@ public static class ManualBlockAccessListManagerFactory
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
                 ITransactionProcessor processor = new TransactionProcessor<EthereumGasPolicy>(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), new WithdrawalProcessor(worldState, logManager));
+                return new ParallelBalEnvManager.ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), new WithdrawalProcessor(worldState, logManager));
             }
             else
             {

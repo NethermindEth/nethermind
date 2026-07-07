@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// gets a pooled <see cref="ParentReaderLease"/> — a snapshot of the parent-state world from which
 /// the BAL-backed world state reads any value the suggested BAL doesn't carry at the current index.
 /// </summary>
-public class ParallelBalEnvManager : IParallelBalEnvManager
+public partial class ParallelBalEnvManager : IParallelBalEnvManager
 {
     private const int DefaultTxCount = 10000;
     private static readonly int ProcessorPoolSize = RuntimeInformation.ProcessorCount;

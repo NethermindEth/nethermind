@@ -25,7 +25,7 @@ public sealed class SequentialBalEnv(
     public ITransactionProcessorAdapter TxProcessorAdapter { get; } = txProcessorAdapter;
     public IWithdrawalProcessor WithdrawalProcessor { get; } = withdrawalProcessor;
 
-    public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+    public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParallelBalEnvManager.ParentReaderLease? parentReader)
     {
         WorldState.Clear();
         WorldState.SetIndex(balIndex);

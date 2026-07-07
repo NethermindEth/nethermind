@@ -34,7 +34,7 @@ public sealed class AutofacBalProcessingEnvFactory(
                 .AddScoped<BlockAccessListBasedWorldState>(balWorldState)
                 // Pin the execute adapter (see the sequential branch for why).
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-                .AddScoped<IBalProcessingEnv, ParallelBalEnv>());
+                .AddScoped<IBalProcessingEnv, ParallelBalEnvManager.ParallelBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
         }
         else

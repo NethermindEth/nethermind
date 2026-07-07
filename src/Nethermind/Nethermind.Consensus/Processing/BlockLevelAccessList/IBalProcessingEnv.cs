@@ -23,6 +23,6 @@ public interface IBalProcessingEnv : IDisposable
     ITransactionProcessorAdapter TxProcessorAdapter { get; }
     IWithdrawalProcessor WithdrawalProcessor { get; }
 
-    void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader);
+    void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParallelBalEnvManager.ParentReaderLease? parentReader);
     void ClearParentReader();
 }
