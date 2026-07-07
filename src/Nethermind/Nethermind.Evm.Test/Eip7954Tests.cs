@@ -22,7 +22,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
     public void MaxCodeSize_and_MaxInitCodeSize_are_correct()
     {
         Assert.That(Spec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
-        Assert.That(Spec.MaxInitCodeSize, Is.EqualTo(2UL * CodeSizeConstants.MaxCodeSizeEip7954));
+        Assert.That(Spec.MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
     }
 
     [TestCase(true, 55000, ExpectedResult = false, TestName = "InitCode_between_old_and_new_limit_accepted")]

@@ -24,21 +24,21 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> ConstantsTestCases()
     {
-        yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1530UL).SetName("CostPerStateByte");
-        yield return new TestCaseData(GasCostOf.SSetState).Returns(97920UL).SetName("SSetState");
-        yield return new TestCaseData(GasCostOf.CreateState).Returns(183600UL).SetName("CreateState");
-        yield return new TestCaseData(GasCostOf.NewAccountState).Returns(183600UL).SetName("NewAccountState");
-        yield return new TestCaseData(GasCostOf.PerAuthBaseState).Returns(35190UL).SetName("PerAuthBaseState");
-        yield return new TestCaseData(Eip8037Constants.SystemCallStateReservoir).Returns(1566720UL).SetName("SystemCallStateReservoir");
-        yield return new TestCaseData(Eip8037Constants.SystemCallGasLimit).Returns(31566720UL).SetName("SystemCallGasLimit");
+        yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1530ul).SetName("CostPerStateByte");
+        yield return new TestCaseData(GasCostOf.SSetState).Returns(97920ul).SetName("SSetState");
+        yield return new TestCaseData(GasCostOf.CreateState).Returns(183600ul).SetName("CreateState");
+        yield return new TestCaseData(GasCostOf.NewAccountState).Returns(183600ul).SetName("NewAccountState");
+        yield return new TestCaseData(GasCostOf.PerAuthBaseState).Returns(35190ul).SetName("PerAuthBaseState");
+        yield return new TestCaseData(Eip8037Constants.SystemCallStateReservoir).Returns(1566720ul).SetName("SystemCallStateReservoir");
+        yield return new TestCaseData(Eip8037Constants.SystemCallGasLimit).Returns(31566720ul).SetName("SystemCallGasLimit");
     }
 
     [TestCaseSource(nameof(ConstantsTestCases))]
     public ulong Constants_are_calculated_correctly(ulong actual) => actual;
 
-    [TestCase(1, ExpectedResult = 6UL)]
-    [TestCase(32, ExpectedResult = 6UL)]
-    [TestCase(33, ExpectedResult = 12UL)]
+    [TestCase(1, ExpectedResult = 6ul)]
+    [TestCase(32, ExpectedResult = 6ul)]
+    [TestCase(33, ExpectedResult = 12ul)]
     public ulong Code_deposit_regular_cost(int codeLength)
     {
         CodeDepositHandler.CalculateCost(Amsterdam.Instance, codeLength, out ulong regularCost, out _);
@@ -79,7 +79,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
                     0L
                 )));
 
-        for (int i = 0; i < (int)Eip8037Constants.SystemMaxSstoresPerCall; i++)
+        for (ulong i = 0ul; i < Eip8037Constants.SystemMaxSstoresPerCall; i++)
         {
             Assert.That(EthereumGasPolicy.ConsumeStateGas(ref availableGas, (long)GasCostOf.SSetState), Is.True);
         }
@@ -124,23 +124,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Gas_policy_exposes_state_costs() =>
-        Assert.That(
-            (
-                EthereumGasPolicy.GetStorageSetStateCost(),
-                EthereumGasPolicy.GetCreateStateCost(),
-                EthereumGasPolicy.GetNewAccountStateCost(),
-                EthereumGasPolicy.GetPerAuthBaseStateCost()
-            ),
-            Is.EqualTo(
-                (
-                    GasCostOf.SSetState,
-                    GasCostOf.CreateState,
-                    GasCostOf.NewAccountState,
-                    GasCostOf.PerAuthBaseState
-                )));
-
-    [Test]
     public void Generic_code_deposit_cost_uses_fixed_state_pricing()
     {
         EthereumGasPolicy gas = default;
@@ -179,11 +162,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         IntrinsicGas<EthereumGasPolicy> splitIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
-        // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; access-list entries repriced to COLD_ACCOUNT_ACCESS /
+        // Amsterdam (EIP-2780 + EIP-8038): access-list entries repriced to COLD_ACCOUNT_ACCESS /
         // COLD_STORAGE_ACCESS; the value-bearing recipient touch adds COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE.
         ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
         ulong accessListBaseCost = Eip8038Constants.AccessListAddressCost + 3 * Eip8038Constants.AccessListStorageKeyCost;
-        ulong accessListFloorTokens = (20UL + 3 * 32UL) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
+        ulong accessListFloorTokens = (20ul + 3ul * 32ul) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
         ulong accessListFloorCost = accessListFloorTokens * Amsterdam.Instance.GasCosts.TotalCostFloorPerToken;
         ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + accessListBaseCost + accessListFloorCost;
         ulong expectedFloorGas = GasCostOf.TransactionEip2780 + accessListFloorCost;

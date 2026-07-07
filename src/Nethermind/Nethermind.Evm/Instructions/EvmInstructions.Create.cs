@@ -120,16 +120,8 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        ulong extraCost = initCodeWordCost + create2HashCost;
-        // EIP-8038 reprices the CREATE/CREATE2 account-creation regular cost to CREATE_ACCESS.
-        ulong createBaseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
-            : TEip8037.IsActive ? GasCostOf.CreateRegular
-            : GasCostOf.Create;
-        ulong gasCost = createBaseCost + extraCost;
-        bool createOutOfGas = !TGasPolicy.UpdateGas(ref gas, gasCost);
-        if (createOutOfGas) goto OutOfGas;
+        if (!TGasPolicy.ConsumeCreateGas<TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
+            goto OutOfGas;
 
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, ref vm.VmState.Memory))

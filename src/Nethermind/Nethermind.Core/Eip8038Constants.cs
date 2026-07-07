@@ -16,13 +16,13 @@ public static class Eip8038Constants
     // Base parameters.
 
     /// <summary>Cold account-touch cost (<c>COLD_ACCOUNT_ACCESS</c>).</summary>
-    public const ulong ColdAccountAccess = 3000; // was 2600 (EIP-2929)
+    public const ulong ColdAccountAccess = 3000;
 
     /// <summary>Warm state-access cost (<c>WARM_ACCESS</c>).</summary>
-    public const ulong WarmAccess = GasCostOf.WarmStateRead; // 100 (unchanged)
+    public const ulong WarmAccess = GasCostOf.WarmStateRead;
 
     /// <summary>Cold storage-slot access cost (<c>COLD_STORAGE_ACCESS</c>).</summary>
-    public const ulong ColdStorageAccess = 3000; // was 2100 (EIP-2929)
+    public const ulong ColdStorageAccess = 3000;
 
     /// <summary>The account-write component of value-bearing <c>*CALL</c>s (<c>CALL_VALUE - CALL_STIPEND</c>).</summary>
     public const ulong AccountWrite = 8000;
@@ -31,28 +31,28 @@ public static class Eip8038Constants
     public const ulong StorageWrite = 10000;
 
     /// <summary>Stipend forwarded with a value-bearing call (unchanged from EIP-2929).</summary>
-    public const ulong CallStipend = GasCostOf.CallStipend; // 2300
+    public const ulong CallStipend = GasCostOf.CallStipend;
 
     // Derived parameters.
 
     /// <summary><c>CALL_VALUE = ACCOUNT_WRITE + CALL_STIPEND</c>.</summary>
-    public const ulong CallValue = AccountWrite + CallStipend; // 10300
+    public const ulong CallValue = AccountWrite + CallStipend;
 
     /// <summary><c>CREATE_ACCESS = ACCOUNT_WRITE + COLD_STORAGE_ACCESS</c>, charged in regular gas by CREATE/CREATE2.</summary>
     public const ulong CreateAccess = AccountWrite + ColdStorageAccess;
 
     /// <summary>Access-list address entry cost, redefined to <c>COLD_ACCOUNT_ACCESS</c>.</summary>
-    public const ulong AccessListAddressCost = ColdAccountAccess; // 3000 (was 2400)
+    public const ulong AccessListAddressCost = ColdAccountAccess;
 
     /// <summary>Access-list storage-key entry cost, redefined to <c>COLD_STORAGE_ACCESS</c>.</summary>
-    public const ulong AccessListStorageKeyCost = ColdStorageAccess; // 3000 (was 1900)
+    public const ulong AccessListStorageKeyCost = ColdStorageAccess;
 
     /// <summary><c>STORAGE_CLEAR_REFUND = (STORAGE_WRITE + COLD_STORAGE_ACCESS) * 4800 / 5000</c>.</summary>
-    public const ulong StorageClearRefund = (StorageWrite + ColdStorageAccess) * 4800 / 5000; // 12480
+    public const ulong StorageClearRefund = (StorageWrite + ColdStorageAccess) * 4800 / 5000;
 
     /// <summary>
     /// EIP-7702 per-authorization regular gas: <c>ACCOUNT_WRITE + REGULAR_PER_AUTH_BASE_COST</c>
     /// (auth-tuple calldata floor + ECRECOVER + one cold and two warm accesses).
     /// </summary>
-    public const ulong PerAuthBaseRegular = AccountWrite + (101 * 16 + 3000 + ColdAccountAccess + 2 * WarmAccess); // 15816
+    public const ulong PerAuthBaseRegular = AccountWrite + (101 * 16 + 3000 + ColdAccountAccess + 2 * WarmAccess);
 }
