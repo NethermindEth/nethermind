@@ -1035,9 +1035,8 @@ public class BlockProcessorTests
     [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
+        gasResults[0].TrySetResult(new GasValidationResult(1, 2, null));
 
         BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
 
@@ -1095,11 +1094,8 @@ public class BlockProcessorTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null)
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
-    }
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
+        new(blockGasUsed, blockStateGasUsed, exception);
 
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {

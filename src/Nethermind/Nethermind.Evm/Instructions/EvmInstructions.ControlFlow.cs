@@ -240,7 +240,7 @@ public static partial class EvmInstructions
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
-        // Charge gas if transferring to a dead or non-existent account (unchanged by EIP-2780).
+        // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {

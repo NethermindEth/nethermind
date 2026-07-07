@@ -238,14 +238,14 @@ public partial class TransactionProcessorTests
             .WithGasLimit(30_000_000)
             .TestObject;
 
-    private Transaction BuildSetCodeTransfer(Address recipient, UInt256 value, PrivateKey sender, PrivateKey authority, UInt256 nonce) =>
+    private Transaction BuildSetCodeTransfer(Address recipient, UInt256 value, PrivateKey sender, PrivateKey authority, ulong nonce) =>
         Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
             .WithGasLimit(1_000_000)
-            .WithNonce((ulong)nonce)
+            .WithNonce(nonce)
             .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, Address.Zero, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, eip155Enabled)
             .TestObject;
@@ -290,13 +290,13 @@ public partial class TransactionProcessorTests
             .SetName("Delegated recipient with executable target enters VM");
     }
 
-    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList, long gasLimit = 100_000)
+    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList, ulong gasLimit = 100_000)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
-            .WithGasLimit((ulong)gasLimit);
+            .WithGasLimit(gasLimit);
 
         if (withAuthorizationList)
         {
