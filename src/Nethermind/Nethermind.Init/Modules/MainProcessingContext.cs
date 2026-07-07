@@ -32,8 +32,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IReadOnlyList<IBlockPreprocessorStep> blockPreprocessorSteps,
         IBlockTree blockTree,
         IProcessExitSource processExitSource,
-        ILogManager logManager,
-        IStateBoundary? stateBoundary = null)
+        ILogManager logManager)
     {
 
         IWorldStateScopeProvider worldState = worldStateManager.GlobalWorldState;
@@ -66,8 +65,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                             DumpOptions = initConfig.AutoDump
                         },
                         processingStats,
-                        blockTracers,
-                        stateBoundary)
+                        blockTracers)
                     {
                         IsMainProcessor = true // Manual construction because of this flag
                     })

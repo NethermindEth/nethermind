@@ -42,8 +42,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IBranchProcessor _branchProcessor;
     private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
     private readonly IStateReader _stateReader;
-    private readonly IStateBoundary? _stateBoundary;
-    private bool _persistedStateRecoveryDone;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
@@ -96,7 +94,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
     /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
-    /// <param name="stateBoundary">Source of the persisted-state boundary used to recover a head left behind the persisted state.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -105,8 +102,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
-        IEnumerable<IBlockTracer>? blockTracers = null,
-        IStateBoundary? stateBoundary = null)
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
@@ -114,7 +110,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _preprocessorSteps = preprocessorSteps;
         _stateReader = stateReader;
         _options = options;
-        _stateBoundary = stateBoundary;
 
         _stats = processingStats;
         _loopCancellationSource = new CancellationTokenSource();
@@ -490,15 +485,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-
-        if (!readonlyChain
-            && !options.ContainsFlag(ProcessingOptions.ForceProcessing)
-            && !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead)
-            && TrySkipBlockBelowPersistedState(suggestedBlock))
-        {
-            return suggestedBlock;
-        }
-
         if (!readonlyChain) _stats.CaptureStartStats();
 
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
@@ -556,67 +542,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         return lastProcessed;
-    }
-
-    private bool TrySkipBlockBelowPersistedState(Block suggestedBlock)
-    {
-        // Recovery only applies while the head lags the persisted state, which the head can only leave once
-        // (persisted state never overtakes a caught-up head). Latch it off so the per-block hot path stops
-        // paying for the boundary lookup for the rest of the run.
-        if (_persistedStateRecoveryDone) return false;
-
-        if (_stateBoundary is null
-            || !_stateBoundary.TryGetBestPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
-        {
-            _persistedStateRecoveryDone = true;
-            return false;
-        }
-
-        Block? head = _blockTree.Head;
-        if (head is null)
-        {
-            return false;
-        }
-
-        if (head.Number >= persistedNumber)
-        {
-            _persistedStateRecoveryDone = true;
-            return false;
-        }
-
-        if (suggestedBlock.Number > persistedNumber)
-        {
-            return false;
-        }
-
-        if (suggestedBlock.Number < persistedNumber)
-        {
-            if (_logger.IsInfo) _logger.Info($"Skipping re-execution of {suggestedBlock.ToString(Block.Format.Short)}: its post-state is already part of persisted state {persistedNumber}.");
-            return true;
-        }
-
-        if (suggestedBlock.StateRoot != persistedRoot)
-        {
-            if (_logger.IsError) _logger.Error($"Persisted state {persistedNumber} has root {persistedRoot} but suggested block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} expects {suggestedBlock.StateRoot}; persisted state is on a different fork.");
-            return false;
-        }
-
-        FastForwardHeadToPersistedState(suggestedBlock);
-        return true;
-    }
-
-    private void FastForwardHeadToPersistedState(Block suggestedBlock)
-    {
-        if (_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, suggestedBlock))
-        {
-            if (_logger.IsInfo) _logger.Info($"Fast-forwarded head to {suggestedBlock.ToString(Block.Format.Short)} matching the persisted state.");
-        }
-        else
-        {
-            // Deliberately not falling through to normal processing: without state for the parent it would
-            // declare the block invalid and delete it with all its descendants. Later blocks retry the walk.
-            if (_logger.IsError) _logger.Error($"Could not fast-forward head to persisted state block {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
-        }
     }
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
