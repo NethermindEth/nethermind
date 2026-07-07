@@ -18,6 +18,8 @@ namespace Nethermind.Synchronization.FastSync;
 
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
+    IBalHealing balHealing,
+    IStateSyncPivot stateSyncPivot,
     TreeSync treeSync,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
@@ -49,8 +51,12 @@ public class StateSyncRunner(
                 if (syncConfig.SnapSync)
                 {
                     if (_logger.IsInfo) _logger.Info("Starting snap sync.");
+                    BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+
+                    if (firstPivot is not null && await RunBalHealing(firstPivot, token))
+                        return;
                 }
 
                 await RunStateSyncRounds(token);
@@ -68,6 +74,33 @@ public class StateSyncRunner(
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
+    }
+
+    public async Task<bool> RunBalHealing(BlockHeader firstPivot, CancellationToken token)
+    {
+        stateSyncPivot.UpdateHeaderForcefully();
+        BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
+
+        if (lastPivot is null)
+        {
+            if (_logger.IsInfo) _logger.Info("BAL healing skipped - no pivot header available.");
+            return false;
+        }
+
+        bool healingComplete = await balHealing.Run(firstPivot, lastPivot, stateSyncPivot.UpdatedStorages, token);
+
+        if (!healingComplete)
+        {
+            if (_logger.IsError) _logger.Error("BAL healing unavailable or failed — falling back to traditional state sync.");
+            return false;
+        }
+
+        if (_logger.IsInfo) _logger.Info("BAL healing completed — skipping traditional state sync.");
+
+        if (syncConfig.VerifyTrieOnStateSyncFinished)
+            verifyTrieStarter?.TryStartVerifyTrie(lastPivot);
+
+        return true;
     }
 
     public async Task RunStateSyncRounds(CancellationToken token)
