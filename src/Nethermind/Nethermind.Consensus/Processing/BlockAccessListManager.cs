@@ -242,9 +242,10 @@ public partial class BlockAccessListManager(
     {
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ParallelExecutionEnabled
-                ? _parallelTxProcessorWithWorldStateManager.Value
-                : (ITxProcessorWithWorldStateManager)_sequentialTxProcessorWithWorldStateManager.Value;
+            if (ParallelExecutionEnabled)
+                _txProcessorWithWorldStateManager = _parallelTxProcessorWithWorldStateManager.Value;
+            else
+                _txProcessorWithWorldStateManager = _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
         }
@@ -301,6 +302,10 @@ public partial class BlockAccessListManager(
         if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
+        }
+        if (_sequentialTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
         }
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

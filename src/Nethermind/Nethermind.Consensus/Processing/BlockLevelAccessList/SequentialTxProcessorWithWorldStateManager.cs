@@ -34,7 +34,7 @@ public class SequentialTxProcessorWithWorldStateManager : ISequentialTxProcessor
 
     public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-    public void Dispose() { }
+    public void Dispose() => _txProcessorWithWorldState.Dispose();
 
     public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
     {

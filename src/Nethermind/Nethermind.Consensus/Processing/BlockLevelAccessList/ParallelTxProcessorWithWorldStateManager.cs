@@ -180,7 +180,12 @@ public class ParallelTxProcessorWithWorldStateManager : IParallelTxProcessorWith
 
     public void Rollback() { }
 
-    public void Dispose() => (_parentReaderEnvPool as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        foreach (IBalProcessingEnv? env in _inUse) env?.Dispose();
+        while (_processors.TryDequeue(out IBalProcessingEnv? env)) env.Dispose();
+        (_parentReaderEnvPool as IDisposable)?.Dispose();
+    }
 
     private int ClampBalIndex(uint balIndex)
         => (int)uint.Min(balIndex, (uint)_lastBalIndex);

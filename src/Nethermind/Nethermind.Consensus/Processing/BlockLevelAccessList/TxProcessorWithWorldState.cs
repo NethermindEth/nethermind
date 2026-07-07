@@ -74,6 +74,9 @@ internal class TxProcessorWithWorldState : IBalProcessingEnv
         _parentReader = null;
     }
 
+    // The only owned disposable is the borrowed parent-reader lease; ClearParentReader returns it.
+    public void Dispose() => ClearParentReader();
+
     [DoesNotReturn]
     private static void ThrowParentReaderStillAttached()
         => throw new InvalidOperationException("Previous parent reader was not cleared before reusing this processor.");

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -13,7 +14,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// with the transaction processor (and its adapter) bound to it. The BAL manager interacts with
 /// rented/shared workers only through this surface, never the concrete pool type.
 /// </summary>
-public interface IBalProcessingEnv
+public interface IBalProcessingEnv : IDisposable
 {
     TracedAccessWorldState WorldState { get; }
     ITransactionProcessor TxProcessor { get; }

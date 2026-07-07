@@ -20,16 +20,6 @@ public readonly struct BlockExecutionContext
     public readonly IReleaseSpec Spec;
     public readonly ValueHash256 PrevRandao;
     public readonly bool IsGenesis;
-
-    /// <summary>
-    /// True when the owning transaction processor is a BAL parallel-execution worker.
-    /// </summary>
-    /// <remarks>
-    /// Parallel workers execute transactions independently against a per-tx snapshot, so they
-    /// must neither accumulate <c>header.GasUsed</c> nor gate admission on cumulative block gas.
-    /// Set only on the parallel <c>BlockAccessListManager</c> worker path; <c>false</c> everywhere
-    /// else (default) so all existing construction sites keep sequential semantics.
-    /// </remarks>
     public readonly bool Parallel;
 
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
