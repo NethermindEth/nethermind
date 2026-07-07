@@ -10,14 +10,12 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -95,6 +93,15 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             // reads, which witness capture needs. This means the witness path does not work on chains
             // that swap the code-info repository.
             .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            // Force sequential BAL execution: the parallel path reads from a parent-state snapshot
+            // that bypasses the recording world state, so its reads never reach the witness. Rebuild
+            // the manager without a parent-reader pool (no pool -> ParallelExecutionEnabled is false).
+            .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
+                ctx.Resolve<IWorldState>(),
+                ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IBlocksConfig>(),
+                ctx.Resolve<Lazy<IParallelBalEnvManager>>(),
+                ctx.Resolve<Lazy<ISequentialBalEnvManager>>()))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
