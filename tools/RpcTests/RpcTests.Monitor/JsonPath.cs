@@ -148,14 +148,14 @@ internal sealed class JsonPath
         public bool IsWildcard => key is null && IndexValue < 0;
 
         public string KeyValue => key!;
-        public int IndexValue { get; } = index;
+        public int IndexValue => index;
 
-        public JsonNode? Navigate(JsonNode node) => (key, IndexValue, node) switch
+        public JsonNode? Navigate(JsonNode node) => (key, index, node) switch
         {
             (not null, _, JsonObject obj) => obj[key],
             (not null, _, JsonArray) => throw new JsonException($"Object expected, got array at '{key}'."),
-            (null, >= 0, JsonArray array) => array[IndexValue],
-            (null, >= 0, JsonObject) => throw new JsonException($"Array expected, got object at '{key}'."),
+            (null, >= 0, JsonArray array) => array[index],
+            (null, >= 0, JsonObject) => throw new JsonException($"Array expected, got object at '{index}'."),
             (null, < 0, JsonArray) => throw new JsonException("Wildcard can't be used for navigation."),
             _ => throw new JsonException("Invalid path segment."),
         };
