@@ -23,6 +23,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+    private readonly ValueHash256 _addressPath;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -42,7 +43,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _trieCacheWarmer = trieCacheWarmer;
         _bundle = bundle;
         _address = address;
-        _addressHash = address.ToAccountPath.ToHash256();
+        _addressPath = address.ToAccountPath;
+        _addressHash = _addressPath.ToHash256();
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
@@ -67,7 +69,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, in _addressHash, index, _selfDestructKnownStateIdx);
+        byte[]? value = _bundle.GetSlot(_address, in _addressPath, index, _selfDestructKnownStateIdx);
         if (value is null || value.Length == 0)
         {
             value = StorageTree.ZeroBytes;
