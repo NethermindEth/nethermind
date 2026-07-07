@@ -395,7 +395,7 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_after_transactions_execute()
+    public void BranchProcessor_keeps_prewarmer_running_after_transactions_execute()
     {
         TokenCapturingPreWarmer preWarmer = new();
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -421,8 +421,8 @@ public class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(processor.PrewarmWasCancelledAfterTransactionsExecuted, Is.True,
-                "prewarmer CancellationToken should be cancelled after transaction execution");
+            Assert.That(processor.PrewarmWasCancelledAfterTransactionsExecuted, Is.False,
+                "prewarmer CancellationToken should remain active after transaction execution");
             Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
                 "prewarmer CancellationToken should still be cancelled after block processing completes");
         }
