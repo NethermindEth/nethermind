@@ -581,10 +581,22 @@ public class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
+        // Advance past the flat snapshot retention so the destroy-block diff is pruned
+        // from memory and the final read can only be served by the persisted store.
+        for (int i = 0; i < 4; i++)
+        {
+            using (provider.BeginScope(baseBlock))
+            {
+                provider.Commit(Frontier.Instance);
+                provider.CommitTree(baseBlock.Number + 1);
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+            }
+        }
+
         using (provider.BeginScope(baseBlock))
         {
             provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the database, not only from the in-block marker");
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
         }
     }
 
