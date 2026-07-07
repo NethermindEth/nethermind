@@ -151,7 +151,8 @@ public class PrewarmerScopeProvider(
         {
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
+            Account? account = preBlockCache.GetOrAdd(in addressAsKey, this, static (in AddressAsKey key, ScopeWrapper scope) => scope.GetFromBaseTree(in key), out bool cacheHit);
+            if (cacheHit)
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                 // Consumers seed the scope-local cache on a hit for their later commit; populators don't.
@@ -160,9 +161,6 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                account = GetFromBaseTree(in addressAsKey);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                preBlockCache.Set(in addressAsKey, account);
                 // First resolve of this account in the block: give the main scope a head start on
                 // warming its account-trie path for the final commit (deduplicated by the sink).
                 if (isPrewarmer) preBlockCaches.TrieHintSink?.HintAccountWarm(address);
@@ -228,16 +226,14 @@ public class PrewarmerScopeProvider(
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            byte[] value = preBlockCache.GetOrAdd(in storageCell, this, static (in StorageCell cell, StorageTreeWrapper tree) => tree.LoadFromTreeStorage(in cell), out bool cacheHit)!;
+            if (cacheHit)
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
             }
             else
             {
-                value = LoadFromTreeStorage(in storageCell);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;

@@ -235,6 +235,25 @@ public sealed class SeqlockCache<TKey, TValue>
         return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
     }
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory, out bool cacheHit)
+    {
+        long hashCode = key.GetHashCode64();
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
+        long hashPart = (hashCode >> HashShift) & HashMask;
+
+        if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
+        {
+            cacheHit = true;
+            return value;
+        }
+
+        cacheHit = false;
+        return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
+    }
+
     /// <summary>
     /// Cold path for GetOrAdd: invokes factory and stores the result.
     /// Kept out-of-line so the hot path (cache hit) compiles to a lean method body
