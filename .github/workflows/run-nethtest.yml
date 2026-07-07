@@ -202,20 +202,21 @@ jobs:
                 if run_flat; then
                   # The flat in-memory backend NEVER PRUNES, so state accumulates across a
                   # chunk: it is both slower per test (heap grows -> GC pressure) and bounded
-                  # by the 16 GB runner limit, hence the denser split than patricia. Chunk
-                  # counts keep every job under ~8 min wall AND below the OOM thresholds
-                  # (parallel tripped at ~4.3k tests/chunk, parallel-full at ~5.3k); the
-                  # merges below stay well under those. Engine is the heaviest combination.
+                  # by the 16 GB runner limit, hence the denser split than patricia. The
+                  # parallel-exec chunks run short (~2-4 min) but each job pays ~50s fixed
+                  # overhead, so they are merged down to the memory floor: on this v7.3.2 set
+                  # parallel OOMed at 5 chunks and parallel-full at 4, so 6 / 5 are the safe
+                  # minimums. Engine is the heaviest combination.
                   if [ "$type" = "engineTest" ]; then
                     emit "$type" flat_sequential  full      1 false false 2 9
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 8
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
                     emit "$type" flat_batchread   amsterdam 1 false true  4 3
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 7
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
                   else
                     emit "$type" flat_sequential  full      1 false false 4 6
-                    emit "$type" flat_parallel    amsterdam 1 true  false 1 7
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
                     emit "$type" flat_batchread   amsterdam 1 false true  4 2
-                    emit "$type" flat_parallelfull amsterdam 1 true true  1 6
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
                   fi
                 fi
                 ;;
