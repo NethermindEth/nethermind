@@ -55,7 +55,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount / 4, 1)
+            ? Math.Max(Environment.ProcessorCount / 2, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
@@ -65,8 +65,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             _processors[i] = new Processor(this);
         }
     }
-
-    internal int WorkerCount => _processors.Length;
 
     private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
     {
