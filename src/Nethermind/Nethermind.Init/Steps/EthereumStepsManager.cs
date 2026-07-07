@@ -107,10 +107,7 @@ namespace Nethermind.Init.Steps
             List<Task> allRequiredSteps = [];
             foreach (StepWrapper stepWrapper in stepInfoMap.Values)
             {
-                StepInfo stepInfo = stepWrapper.StepInfo;
-                Task task = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
-                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
-                allRequiredSteps.Add(task);
+                allRequiredSteps.Add(ExecuteStep(stepWrapper, stepInfoMap, cancellationToken));
             }
             return allRequiredSteps;
         }
@@ -127,7 +124,14 @@ namespace Nethermind.Init.Steps
                         throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} was not created.");
                     dependencies.AddRange(value);
                 }
-                await stepWrapper.StartExecute(dependencies, cancellationToken);
+
+                await stepWrapper.WaitForDependencies(dependencies, cancellationToken);
+
+                // Log once the dependencies are satisfied, so it names the step that is actually executing rather
+                // than one still queued waiting on its dependencies.
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepWrapper.StepInfo}");
+
+                await stepWrapper.RunStep(cancellationToken);
 
                 if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
@@ -271,11 +275,15 @@ namespace Nethermind.Init.Steps
 
             private readonly TaskCompletionSource _taskCompletedSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
+            public async Task WaitForDependencies(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {
                 cancellationToken.Register(() => _taskCompletedSource.TrySetCanceled());
 
                 await Task.WhenAll(dependentSteps.Select(s => s.StepTask));
+            }
+
+            public async Task RunStep(CancellationToken cancellationToken)
+            {
                 try
                 {
                     await Step.Execute(cancellationToken);
