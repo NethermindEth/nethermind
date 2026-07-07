@@ -18,22 +18,22 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
 {
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        ReportProgress(transaction);
+        ReportProgress();
         return baseAdapter.Execute(transaction, txTracer);
     }
 
     public TransactionResult Execute<TGasPolicy>(Transaction transaction, ITxTracer txTracer, in IntrinsicGas<TGasPolicy> intrinsicGas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        ReportProgress(transaction);
+        ReportProgress();
         return baseAdapter.Execute(transaction, txTracer, in intrinsicGas);
     }
 
-    private void ReportProgress(Transaction transaction)
+    private void ReportProgress()
     {
         if (worldState.ScopeProvider is IPreBlockCaches { IsWarmWorldState: true })
         {
-            preWarmer.OnBeforeTxExecution(transaction);
+            preWarmer.OnBeforeTxExecution();
         }
     }
 

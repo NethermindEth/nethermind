@@ -659,7 +659,7 @@ public class BlockCachePreWarmerTests
                 // Advance the prewarmer's view of main-thread progress past every tx while warming is gated at env.Build.
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    preWarmer.OnBeforeTxExecution(block.Transactions[i]);
+                    preWarmer.OnBeforeTxExecution();
                 }
                 gate.Set();
                 task.GetAwaiter().GetResult();

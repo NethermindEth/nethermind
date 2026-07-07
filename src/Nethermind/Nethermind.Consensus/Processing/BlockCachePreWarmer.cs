@@ -112,7 +112,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
-    public void OnBeforeTxExecution(Transaction transaction) => Interlocked.Increment(ref _mainThreadTxIndex);
+    /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
+    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
     public CacheType ClearCaches()
     {
