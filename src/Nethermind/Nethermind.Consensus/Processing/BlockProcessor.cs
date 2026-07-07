@@ -45,7 +45,7 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager)
-    : IBlockProcessor
+    : IBlockProcessor, IBlockProcessingPreparer
 {
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
@@ -62,6 +62,9 @@ public partial class BlockProcessor(
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
+    private Block? _preparedBlock;
+    private IReleaseSpec? _preparedSpec;
+    private ProcessingOptions _preparedOptions;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -71,25 +74,52 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
+    public void PrepareForProcessing(Block suggestedBlock, ProcessingOptions options, IReleaseSpec spec)
+    {
+        if (IsPreparedForProcessing(suggestedBlock, options, spec)) return;
+
+        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
+        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
+        _preparedBlock = suggestedBlock;
+        _preparedOptions = options;
+        _preparedSpec = spec;
+    }
+
+    public void ClearPreparedForProcessing()
+    {
+        _preparedBlock = null;
+        _preparedSpec = null;
+    }
+
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
+        PrepareForProcessing(suggestedBlock, options, spec);
 
-        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
-
-        ApplyDaoTransition(suggestedBlock);
-        Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+        try
         {
-            StoreTxReceipts(block, receipts, spec);
-        }
+            ApplyDaoTransition(suggestedBlock);
+            Block block = PrepareBlockForProcessing(suggestedBlock);
+            TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+            {
+                StoreTxReceipts(block, receipts, spec);
+            }
 
-        return (block, receipts);
+            return (block, receipts);
+        }
+        finally
+        {
+            ClearPreparedForProcessing();
+        }
     }
+
+    private bool IsPreparedForProcessing(Block suggestedBlock, ProcessingOptions options, IReleaseSpec spec) =>
+        ReferenceEquals(_preparedBlock, suggestedBlock) &&
+        _preparedOptions == options &&
+        ReferenceEquals(_preparedSpec, spec);
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {

@@ -46,4 +46,21 @@ namespace Nethermind.Consensus.Processing
             void StopTxTimer(int i, long txStart) { }
         }
     }
+
+    /// <summary>
+    /// Optional hook for block processors that can prepare block-scoped state before
+    /// <see cref="IBlockProcessor.ProcessOne"/> is entered.
+    /// </summary>
+    public interface IBlockProcessingPreparer
+    {
+        /// <summary>
+        /// Prepares block-scoped processing state for the supplied block.
+        /// </summary>
+        void PrepareForProcessing(Block suggestedBlock, ProcessingOptions options, IReleaseSpec spec);
+
+        /// <summary>
+        /// Clears prepared state that was not consumed by <see cref="IBlockProcessor.ProcessOne"/>.
+        /// </summary>
+        void ClearPreparedForProcessing();
+    }
 }
