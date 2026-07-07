@@ -89,7 +89,7 @@ namespace Nethermind.Core
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
-        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain)
+        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain, bool keepExistingMetadata = false)
         {
             BlockInfo[] blockInfos = BlockInfos;
 
@@ -100,10 +100,10 @@ namespace Nethermind.Core
             }
             else
             {
-                // Metadata flags are recorded by independent writers (e.g. beacon sync inserting the same
-                // hash that FindHeader concurrently created a level entry for); an upsert that lacks a flag
-                // must not erase it. Intentional clearing mutates level entries directly, never through here.
-                blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata;
+                if (keepExistingMetadata)
+                    blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata;
+                else if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
+                    blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
 
                 if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
                     blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;

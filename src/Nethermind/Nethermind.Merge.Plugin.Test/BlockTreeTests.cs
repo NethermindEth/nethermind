@@ -206,24 +206,6 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Beacon_metadata_survives_racing_plain_header_insert()
-    {
-        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
-
-        BlockHeader beaconHeader = syncedTree.FindHeader(14, BlockTreeLookupOptions.None)!;
-        notSyncedTree.Insert(beaconHeader,
-            BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
-
-        // A FindHeader racing the beacon insert re-creates the level entry without beacon metadata;
-        // Insert with no options takes the same plain UpdateOrCreateLevel path.
-        notSyncedTree.Insert(beaconHeader);
-
-        BlockInfo? info = notSyncedTree.GetInfo(beaconHeader.Number, beaconHeader.Hash!).Info;
-        Assert.That(info!.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain),
-            Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
-    }
-
-    [Test]
     public void Can_fill_beacon_headers_gap()
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
