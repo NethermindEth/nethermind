@@ -623,11 +623,7 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>
-    /// Verifies the PreWarmSkipStartedTxs behavior: transactions the main thread has already started
-    /// (reported via OnBeforeTxExecution) are not speculatively warmed, while transactions the main thread
-    /// has not reached are warmed as usual. Warming is observed by counting speculative Warmup executions.
-    /// </summary>
+    /// <summary>Started transactions are skipped by warming; un-started ones are warmed (counted via speculative Warmup executions).</summary>
     [Test]
     public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
     {
@@ -642,7 +638,7 @@ public class BlockCachePreWarmerTests
         {
             WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmedWhenNoneStarted));
             using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
-                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance, skipStartedTxs: true);
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
             await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
         }
         Assert.That(warmedWhenNoneStarted, Is.EqualTo(block.Transactions.Length),
@@ -655,7 +651,7 @@ public class BlockCachePreWarmerTests
         {
             WarmupCountingPolicy policy = new(envFactory, preBlockCaches, gate, () => Interlocked.Increment(ref warmedWhenAllStarted));
             using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
-                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance, skipStartedTxs: true);
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
 
             IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
             using (mainWorldState.BeginScope(BuildParentHeader()))
@@ -674,11 +670,7 @@ public class BlockCachePreWarmerTests
             "transactions the main thread has already started must not be speculatively warmed");
     }
 
-    /// <summary>
-    /// Pool policy that gates <see cref="IReadOnlyTxProcessorSource.Build"/> on a signal and counts speculative
-    /// (<see cref="Nethermind.Evm.ExecutionOptions.Warmup"/>) transaction executions, so a test can advance the
-    /// prewarmer's main-thread progress before warming builds its scopes and then observe how many txs were warmed.
-    /// </summary>
+    /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>
     private sealed class WarmupCountingPolicy(
         PrewarmerEnvFactory factory,
         PreBlockCaches caches,

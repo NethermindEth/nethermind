@@ -70,12 +70,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 })
 
-                // When PreWarmSkipStartedTxs is enabled, decorate the tx adapter so the main thread reports its
-                // per-transaction progress to the prewarmer (which then skips already-started txs). Left undecorated
-                // when disabled, so the default-off path pays nothing.
-                .AddDecorator<ITransactionProcessorAdapter>((ctx, baseAdapter) =>
-                    ctx.Resolve<IBlocksConfig>().PreWarmSkipStartedTxs
-                        ? new PrewarmerTxAdapter(baseAdapter, ctx.Resolve<BlockCachePreWarmer>(), ctx.Resolve<IWorldState>())
-                        : baseAdapter);
+                // Report main-thread tx progress to the prewarmer so it can skip warming already-started txs.
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
     }
 }
