@@ -73,6 +73,8 @@ namespace Nethermind.Config
 
         public int PreWarmSequentialShadowMinTx { get; set; } = 64;
 
+        public bool PreWarmOverlayPass { get; set; } = false;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 

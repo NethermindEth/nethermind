@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -45,6 +46,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Run a concurrent single-scope sequential (index-order) warming pass to recover cross-tx-divergent reads.
     private readonly bool _sequentialShadow;
     private readonly int _sequentialShadowMinTx;
+    // Run a second bounded-parallel pass, pre-seeded with pass-1's speculative write-set, to warm divergent reads in parallel.
+    private readonly bool _overlayPass;
 
     // Tracks the block currently being prewarmed so the main processing thread (via PrewarmerTxAdapter)
     // can report its transaction progress, letting the prewarmer skip already-started transactions.
@@ -71,6 +74,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _diagnostics = blocksConfig.PreWarmDiagnostics;
         _sequentialShadow = blocksConfig.PreWarmSequentialShadow;
         _sequentialShadowMinTx = blocksConfig.PreWarmSequentialShadowMinTx;
+        _overlayPass = blocksConfig.PreWarmOverlayPass;
     }
 
     internal BlockCachePreWarmer(
@@ -179,14 +183,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
+                bool heavy = suggestedBlock.Transactions.Length >= _sequentialShadowMinTx;
+
                 // Optional sequential-shadow pass: runs concurrently with the parallel per-sender pass, sharing
                 // the pre-block cache. Executing all txs in index order in one scope makes each tx see prior
                 // txs' writes, so it warms the cross-tx-dependent (divergent) slots the parallel pass misses.
-                Task shadow = _sequentialShadow && suggestedBlock.Transactions.Length >= _sequentialShadowMinTx
+                Task shadow = _sequentialShadow && heavy
                     ? Task.Run(() => WarmupSequentialShadow(blockState, parallelOptions.CancellationToken))
                     : Task.CompletedTask;
 
+                // Optional overlay pass: pass 1 (below) captures each tx's speculative storage writes into a shared
+                // overlay; pass 2 then runs bounded-parallel workers that pre-seed the overlay and warm index-chunks,
+                // so cross-tx-dependent (divergent) reads resolve accurately — in parallel, ahead of the serial main.
+                ConcurrentDictionary<StorageCell, byte[]>? overlay = _overlayPass && heavy ? new() : null;
+                if (overlay is not null) blockState.WriteCollector = new StorageWriteCollector(overlay);
+
                 WarmupTransactions(blockState, parallelOptions);
+
+                if (overlay is not null && !parallelOptions.CancellationToken.IsCancellationRequested)
+                {
+                    WarmupOverlayPass(blockState, overlay, parallelOptions);
+                }
+
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
 
                 try { shadow.Wait(parallelOptions.CancellationToken); }
@@ -398,6 +416,90 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <summary>
+    /// Second warming pass: a bounded set of parallel workers, each pre-seeded with pass-1's captured storage
+    /// write-set (<paramref name="overlay"/>), warms an index-contiguous chunk of the block's transactions.
+    /// </summary>
+    /// <remarks>
+    /// Pre-seeding the overlay makes a transaction's cross-transaction-dependent reads resolve to the written
+    /// values rather than the stale parent-state values, so a transaction that (from parent state) reverts early
+    /// or branches differently now follows the accurate path and reads — and thus warms — the divergent slots the
+    /// parallel per-sender pass misses. Unlike a single-scope in-order pass (which is serial and cannot outrun the
+    /// serial main thread), this pass parallelises those divergent cold reads across workers, so it can warm them
+    /// ahead of the read-bound main thread. The overlay is a snapshot of pass-1 writes (approximate: it includes
+    /// later transactions' writes too), which is fine for warming — warming can only over- or under-approximate the
+    /// read set, never affect committed state. Runs on discarded scratch scopes.
+    /// </remarks>
+    private void WarmupOverlayPass(BlockState blockState, ConcurrentDictionary<StorageCell, byte[]> overlay, ParallelOptions parallelOptions)
+    {
+        try
+        {
+            Block block = blockState.Block;
+            int nTx = block.Transactions.Length;
+            if (nTx == 0 || overlay.IsEmpty) return;
+
+            KeyValuePair<StorageCell, byte[]>[] seed = overlay.ToArray();
+            int workers = Math.Min(_concurrencyLevel, nTx);
+            int chunk = (nTx + workers - 1) / workers;
+
+            ParallelUnbalancedWork.For(0, workers, parallelOptions, (blockState, block, seed, chunk, nTx, token: parallelOptions.CancellationToken),
+                static (w, state) =>
+                {
+                    (BlockState bs, Block blk, KeyValuePair<StorageCell, byte[]>[] seed, int chunk, int nTx, CancellationToken token) = state;
+                    if (token.IsCancellationRequested) return state;
+
+                    IReadOnlyTxProcessorSource env = bs.PreWarmer._envPool.Get();
+                    try
+                    {
+                        using IReadOnlyTxProcessingScope scope = env.Build(bs.Parent);
+                        IWorldState worldState = scope.WorldState;
+
+                        // Pre-seed the accurate-ish intermediate state so divergent reads resolve to written values.
+                        foreach (KeyValuePair<StorageCell, byte[]> kv in seed)
+                        {
+                            StorageCell cell = kv.Key;
+                            try { worldState.Set(in cell, kv.Value); }
+                            catch (MissingTrieNodeException) { }
+                        }
+
+                        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(blk.Header, bs.Spec));
+
+                        int start = w * chunk;
+                        int end = Math.Min(start + chunk, nTx);
+                        for (int i = start; i < end; i++)
+                        {
+                            if (token.IsCancellationRequested) return state;
+                            Transaction tx = blk.Transactions[i];
+                            if (tx.SenderAddress is null) continue;
+                            WarmupSequentialTx(scope, tx, bs, token);
+                        }
+                    }
+                    finally
+                    {
+                        bs.PreWarmer._envPool.Return(env);
+                    }
+                    return state;
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            // Block completed — stop.
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Error in overlay pre-warming pass", ex);
+        }
+    }
+
+    /// <summary>Captures speculative SSTORE writes during pass-1 warming into a shared overlay for the overlay pass.</summary>
+    private sealed class StorageWriteCollector(ConcurrentDictionary<StorageCell, byte[]> writes) : TxTracer
+    {
+        public override bool IsTracingOpLevelStorage => true;
+
+        public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+            => writes[new StorageCell(address, in storageIndex)] = newValue.ToArray();
+    }
+
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
@@ -461,7 +563,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 return;
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            // When the overlay pass is active, capture this tx's speculative storage writes for pass 2's pre-seed.
+            ITxTracer tracer = blockState.WriteCollector ?? (ITxTracer)NullTxTracer.Instance;
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, tracer);
             blockState.RecordWarmed();
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
@@ -648,6 +752,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec)
     {
+        // Set for the overlay pass: pass-1 warming captures speculative storage writes through this tracer.
+        public StorageWriteCollector? WriteCollector { get; set; }
+
         // Written only by the single main thread (in order) via IncrementTransactionCounter; read by prewarmer threads.
         private int _lastExecutedTransaction = -1;
         // Diagnostic coverage counters, incremented from prewarmer threads.

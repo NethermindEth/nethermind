@@ -58,8 +58,11 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to run a concurrent single-scope 'sequential shadow' warming pass over the block's transactions in index order (alongside the parallel per-sender pass). Because a single scope executed in order makes each transaction see the prior transactions' writes, this pass warms the cross-transaction-dependent (divergent) storage slots that the parallel per-sender pass — executing each transaction from the parent state — misses. Sharing the pre-block cache with the parallel pass, it only pays cold reads for those divergent slots. 0-disabled.", DefaultValue = "False", HiddenFromDocs = true)]
     bool PreWarmSequentialShadow { get; set; }
 
-    [ConfigItem(Description = "Minimum transaction count for the sequential-shadow warming pass to run on a block (gates the extra pass to heavy blocks where cross-transaction divergence matters). Ignored when PreWarmSequentialShadow is disabled.", DefaultValue = "64", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Minimum transaction count for the sequential-shadow / overlay warming passes to run on a block (gates the extra pass to heavy blocks where cross-transaction divergence matters).", DefaultValue = "64", HiddenFromDocs = true)]
     int PreWarmSequentialShadowMinTx { get; set; }
+
+    [ConfigItem(Description = "Whether to run a second, bounded-parallel 'overlay' warming pass. The first pass captures each transaction's speculative storage writes into a shared overlay; the second pass runs a bounded set of parallel workers that each pre-seed the overlay into their scope and warm an index-chunk of transactions. Because the overlay makes cross-transaction-dependent reads resolve to the written values, the workers warm the divergent slots the parent-state pass misses — and doing so in parallel, they can warm them ahead of the read-bound serial main thread. Warming only; consensus-safe. Gated by PreWarmSequentialShadowMinTx.", DefaultValue = "False", HiddenFromDocs = true)]
+    bool PreWarmOverlayPass { get; set; }
 
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
