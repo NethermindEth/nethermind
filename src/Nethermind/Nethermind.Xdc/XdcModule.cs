@@ -106,7 +106,6 @@ public class XdcModule : Module
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
             .AddDatabase(XdcRocksDbConfigFactory.XdcRewardsDbName)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
-            .AddSingleton<IRewardsStore, RewardsStore>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
@@ -142,6 +141,7 @@ public class XdcModule : Module
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>();
 
         RegisterRewardCalculatorSource(builder);
+        builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
 

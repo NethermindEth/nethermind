@@ -74,6 +74,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
+    public Hash256?[]? BlobVersionedHashes => blobVersionedHashes;
+
+    public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
+
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
         ValidationResult result = ValidateInitialParams(spec, out error);

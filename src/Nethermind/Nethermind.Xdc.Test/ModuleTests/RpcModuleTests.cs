@@ -829,7 +829,6 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-
         _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(true);
         _rewardsStore.HasEpochRewards(TestItem.KeccakB).Returns(true);
         _rewardsStore.TryGetAccountReward(account, TestItem.KeccakA, out Arg.Any<UInt256>())

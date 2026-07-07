@@ -315,7 +315,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         // No epoch switches in the requested range means no rewards to aggregate.
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
-            ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             Hash256 epochBlockHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
             if (!rewardsStore.HasEpochRewards(epochBlockHash))
             {

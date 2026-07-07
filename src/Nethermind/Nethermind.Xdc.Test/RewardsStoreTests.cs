@@ -1,15 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -18,54 +21,26 @@ namespace Nethermind.Xdc.Test;
 [TestFixture]
 public class RewardsStoreTests
 {
-    private static Hash256 EpochHash(ulong epochBlockNumber) =>
-        Keccak.Compute(BitConverter.GetBytes(epochBlockNumber).PadLeft(32));
-
-    private static IBlockTree CreateBlockTree(params (ulong number, Hash256 hash)[] epochs)
-    {
-        Dictionary<Hash256, BlockHeader> headers = [];
-        foreach ((ulong number, Hash256 hash) in epochs)
-        {
-            headers[hash] = Build.A.BlockHeader.WithNumber(number).WithHash(hash).TestObject;
-        }
-
-        IBlockTree tree = Substitute.For<IBlockTree>();
-        tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
-            .Returns(call =>
-            {
-                Hash256 hash = call.Arg<Hash256>();
-                return headers.TryGetValue(hash, out BlockHeader? header) ? header : null;
-            });
-
-        return tree;
-    }
-
     [Test]
-    public void SaveEpochRewards_WhenSameAccountHasMultipleRewards_ShouldAggregateAndReadRewardByAccount()
+    public void SaveEpochRewards_WhenSameAccountHasMultipleBlockRewards_ShouldAggregateAndReadRewardByAccount()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
         Address account = Address.FromNumber(1);
-        Address signer1 = Address.FromNumber(10);
-        Address signer2 = Address.FromNumber(11);
+        Hash256 epochBlockHash = TestItem.KeccakA;
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
-        {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [signer1.ToString()] = new() { [account.ToString()] = "10" },
-                [signer2.ToString()] = new() { [account.ToString()] = "20" },
-            },
-        };
+        BlockReward[] rewards =
+        [
+            new(account, (UInt256)10),
+            new(account, (UInt256)20),
+        ];
 
-        store.SaveEpochRewards(epochHash, payload);
+        store.SaveEpochRewards(epochBlockHash, rewards);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.HasEpochRewards(epochHash), Is.True);
-            Assert.That(store.TryGetAccountReward(account, epochHash, out UInt256 savedReward), Is.True);
+            Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
+            Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
             Assert.That(savedReward, Is.EqualTo((UInt256)30));
         }
     }
@@ -74,33 +49,22 @@ public class RewardsStoreTests
     public void TryGetAccountReward_WhenNoRewardForAccount_ShouldReturnFalse()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
         Address savedAccount = Address.FromNumber(1);
         Address missingAccount = Address.FromNumber(2);
-        Address signer = Address.FromNumber(10);
+        Hash256 epochBlockHash = TestItem.KeccakA;
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
-        {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [signer.ToString()] = new() { [savedAccount.ToString()] = "10" },
-            },
-        };
+        store.SaveEpochRewards(epochBlockHash, [new BlockReward(savedAccount, (UInt256)10)]);
 
-        store.SaveEpochRewards(epochHash, payload);
-
-        Assert.That(store.TryGetAccountReward(missingAccount, epochHash, out _), Is.False);
+        Assert.That(store.TryGetAccountReward(missingAccount, epochBlockHash, out _), Is.False);
     }
 
     [Test]
     public void SaveEpochRewards_ShouldRoundTripNestedRewardPayload()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
+        Hash256 epochBlockHash = TestItem.KeccakA;
         Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
         {
             [XdcConstants.RpcRewardSectionMasternode] = new()
@@ -109,9 +73,9 @@ public class RewardsStoreTests
             },
         };
 
-        store.SaveEpochRewards(epochHash, payload);
+        store.SaveEpochRewards(epochBlockHash, payload);
 
-        Assert.That(store.TryGetEpochRewards(epochHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
         Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
     }
 
@@ -119,9 +83,8 @@ public class RewardsStoreTests
     public void SaveEpochRewards_WhenAccountAppearsAcrossSections_ShouldAggregateAccountReward()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
+        Hash256 epochBlockHash = TestItem.KeccakA;
         Address account = Address.FromNumber(1);
         Address signer = Address.FromNumber(10);
 
@@ -137,9 +100,9 @@ public class RewardsStoreTests
             },
         };
 
-        store.SaveEpochRewards(epochHash, payload);
+        store.SaveEpochRewards(epochBlockHash, payload);
 
-        Assert.That(store.TryGetAccountReward(account, epochHash, out UInt256 savedReward), Is.True);
+        Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
         Assert.That(savedReward, Is.EqualTo((UInt256)150));
     }
 
@@ -147,9 +110,8 @@ public class RewardsStoreTests
     public void SaveEpochRewards_WhenFoundationWalletAppearsUnderMultipleSigners_ShouldAggregateFoundationReward()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
+        Hash256 epochBlockHash = TestItem.KeccakA;
         Address foundation = Address.FromNumber(99);
         Address owner = Address.FromNumber(1);
         Address signer1 = Address.FromNumber(10);
@@ -172,9 +134,9 @@ public class RewardsStoreTests
             },
         };
 
-        store.SaveEpochRewards(epochHash, payload);
+        store.SaveEpochRewards(epochBlockHash, payload);
 
-        Assert.That(store.TryGetAccountReward(foundation, epochHash, out UInt256 foundationReward), Is.True);
+        Assert.That(store.TryGetAccountReward(foundation, epochBlockHash, out UInt256 foundationReward), Is.True);
         Assert.That(foundationReward, Is.EqualTo((UInt256)30));
     }
 
@@ -182,62 +144,109 @@ public class RewardsStoreTests
     public void SaveEpochRewards_WhenEmptyEpoch_ShouldRoundTripAndReturnFalseForAccountReward()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
+        Hash256 epochBlockHash = TestItem.KeccakA;
         Address account = Address.FromNumber(1);
 
-        store.SaveEpochRewards(epochHash, []);
+        store.SaveEpochRewards(epochBlockHash, new Dictionary<string, Dictionary<string, Dictionary<string, string>>>());
 
-        Assert.That(store.HasEpochRewards(epochHash), Is.True);
-        Assert.That(store.TryGetEpochRewards(epochHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
+        Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
         Assert.That(loaded, Is.Empty);
-        Assert.That(store.TryGetAccountReward(account, epochHash, out _), Is.False);
+        Assert.That(store.TryGetAccountReward(account, epochBlockHash, out _), Is.False);
     }
 
     [Test]
-    public void SaveEpochRewards_WhenEpochIsOutsideRetentionWindow_ShouldPruneOlderEntries()
+    public void OnBlockAddedToMain_WhenEpochBlockIsProcessed_ShouldPersistRewards()
     {
         IDb db = new MemDb();
-        const int retention = 3;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.SwitchBlock.Returns(0UL);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
+
+        const ulong epochBlockNumber = 900;
         Address account = Address.FromNumber(1);
-        Address signer = Address.FromNumber(10);
+        BlockReward[] rewards = [new BlockReward(account, (UInt256)42)];
+        Block block = new(BuildCheckpointHeader(epochBlockNumber));
+        ((XdcBlockHeader)block.Header).ProcessedRewards = rewards;
 
-        ulong oldEpoch = 1;
-        ulong latestEpoch = (ulong)retention + 1;
+        blockTree.WasProcessed(epochBlockNumber, block.Hash!).Returns(true);
+        blockTree.Head.Returns(block);
+        blockTree.FindBestSuggestedHeader().Returns(block.Header);
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
 
-        List<(ulong number, Hash256 hash)> epochs = [];
-        for (ulong epoch = oldEpoch; epoch <= latestEpoch; epoch++)
-        {
-            epochs.Add((epoch, EpochHash(epoch)));
-        }
+        using RewardsStore store = CreateStore(
+            db,
+            blockTree: blockTree,
+            epochSwitchManager: epochSwitchManager,
+            specProvider: specProvider);
+        store.Start();
 
-        IBlockTree blockTree = CreateBlockTree([.. epochs]);
-        RewardsStore store = new(db, blockTree, retention);
-
-        for (ulong epoch = oldEpoch; epoch <= latestEpoch; epoch++)
-        {
-            Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
-            {
-                [XdcConstants.RpcRewardSectionMasternode] = new()
-                {
-                    [signer.ToString()] = new() { [account.ToString()] = epoch.ToString() },
-                },
-            };
-            store.SaveEpochRewards(EpochHash(epoch), payload);
-        }
-
-        Hash256 oldEpochHash = EpochHash(oldEpoch);
-        ulong newOldestKeptEpoch = 2;
-        Hash256 newOldestKeptEpochHash = EpochHash(newOldestKeptEpoch);
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.HasEpochRewards(oldEpochHash), Is.False);
-            Assert.That(store.TryGetAccountReward(account, oldEpochHash, out _), Is.False);
-            Assert.That(store.HasEpochRewards(newOldestKeptEpochHash), Is.True);
-            Assert.That(store.TryGetAccountReward(account, newOldestKeptEpochHash, out UInt256 keptReward), Is.True);
-            Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
+            Assert.That(store.HasEpochRewards(block.Hash!), Is.True);
+            Assert.That(store.TryGetAccountReward(account, block.Hash!, out UInt256 savedReward), Is.True);
+            Assert.That(savedReward, Is.EqualTo((UInt256)42));
+        }
+    }
+
+    [Test]
+    public void OnBlockAddedToMain_WhenBlockWasNotProcessed_ShouldNotPersistRewards()
+    {
+        IDb db = new MemDb();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        Block block = new(BuildCheckpointHeader(900));
+
+        blockTree.WasProcessed(block.Number, block.Hash!).Returns(false);
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
+
+        using RewardsStore store = CreateStore(db, blockTree: blockTree, epochSwitchManager: epochSwitchManager);
+        store.Start();
+
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+
+        Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
+    }
+
+    [Test]
+    public void OnBlockAddedToMain_WhenSyncing_ShouldPersistProcessedRewards()
+    {
+        IDb db = new MemDb();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.SwitchBlock.Returns(0UL);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
+        Block block = new(BuildCheckpointHeader(900));
+        Address account = Address.FromNumber(1);
+        ((XdcBlockHeader)block.Header).ProcessedRewards = [new BlockReward(account, (UInt256)42)];
+
+        blockTree.WasProcessed(block.Number, block.Hash!).Returns(true);
+        blockTree.Head.Returns((Block?)null);
+        blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
+
+        using RewardsStore store = CreateStore(
+            db,
+            blockTree: blockTree,
+            epochSwitchManager: epochSwitchManager,
+            specProvider: specProvider);
+        store.Start();
+
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasEpochRewards(block.Hash!), Is.True);
+            Assert.That(store.TryGetAccountReward(account, block.Hash!, out UInt256 savedReward), Is.True);
+            Assert.That(savedReward, Is.EqualTo((UInt256)42));
         }
     }
 
@@ -245,9 +254,8 @@ public class RewardsStoreTests
     public void SaveEpochRewards_WhenSameHashIsSavedAgain_ShouldOverwriteRewardPayload()
     {
         IDb db = new MemDb();
-        const ulong epoch = 120;
-        Hash256 epochHash = EpochHash(epoch);
-        RewardsStore store = new(db, CreateBlockTree((epoch, epochHash)));
+        using RewardsStore store = CreateStore(db);
+        Hash256 epochBlockHash = TestItem.KeccakA;
 
         Dictionary<string, Dictionary<string, Dictionary<string, string>>> initialPayload = new()
         {
@@ -264,10 +272,29 @@ public class RewardsStoreTests
             },
         };
 
-        store.SaveEpochRewards(epochHash, initialPayload);
-        store.SaveEpochRewards(epochHash, updatedPayload);
+        store.SaveEpochRewards(epochBlockHash, initialPayload);
+        store.SaveEpochRewards(epochBlockHash, updatedPayload);
 
-        Assert.That(store.TryGetEpochRewards(epochHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
         Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
+
+    private static RewardsStore CreateStore(
+        IDb db,
+        IBlockTree? blockTree = null,
+        IEpochSwitchManager? epochSwitchManager = null,
+        ISpecProvider? specProvider = null,
+        ILogManager? logManager = null) =>
+        new(
+            db,
+            blockTree ?? Substitute.For<IBlockTree>(),
+            epochSwitchManager ?? Substitute.For<IEpochSwitchManager>(),
+            specProvider ?? Substitute.For<ISpecProvider>(),
+            logManager ?? LimboLogs.Instance);
+
+    private static XdcBlockHeader BuildCheckpointHeader(ulong number) =>
+        Build.A.XdcBlockHeader()
+            .WithNumber(number)
+            .WithExtraConsensusData(new ExtraFieldsV2(number, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
 }

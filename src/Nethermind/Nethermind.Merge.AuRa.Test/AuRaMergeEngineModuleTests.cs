@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -151,6 +152,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
             : base(mergeConfig) =>
             SealEngineType = Core.SealEngineType.AuRa;
 
+        // Install AuRaMergeModule below (after AuRaModule, so its last-wins registrations take effect)
+        // rather than via TestMergeModule, so BaseMergePluginModule loads exactly once (as in production).
+        protected override IModule? MergeModule => null;
+
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddDecorator<ISpecProvider>((_, specProvider) =>
@@ -168,11 +173,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 // as normally, test blockchain don't use INethermindApi at all.
                 .AddModule(new AuRaModule(ChainSpec))
 
-                .AddDecorator<AuRaNethermindApi>((_, api) =>
-                {
-                    api.EngineSigner = NullSigner.Instance;
-                    return api;
-                })
+                .AddSingleton<ISigner>(NullSigner.Instance)
                 .AddModule(new AuRaMergeModule())
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)

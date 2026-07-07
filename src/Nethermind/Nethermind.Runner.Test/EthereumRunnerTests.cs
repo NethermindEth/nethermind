@@ -207,7 +207,6 @@ public class EthereumRunnerTests
         api.Config<INetworkConfig>().ExternalIp = "127.0.0.1";
         _ = api.Config<IHealthChecksConfig>(); // Randomly fail type discovery if not resolved early.
 
-        api.NodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyA);
         api.BlockProducerRunner = Substitute.For<IBlockProducerRunner>();
 
         try
@@ -452,6 +451,8 @@ public class EthereumRunnerTests
                     // pass in runner test.
                     builder
                         .AddSingleton(Substitute.For<IReportingValidator>())
+                        // Pin a deterministic node key so resolving components does not load/generate a real key file.
+                        .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(TestItem.PrivateKeyA))
                         ;
                 }
 

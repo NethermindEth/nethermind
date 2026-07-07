@@ -22,6 +22,35 @@ public partial class BlockTree
         LoadBestKnown();
         LoadBeaconBestKnown();
         LoadForkChoiceInfo();
+        FixLowestInsertedBeaconHeader();
+    }
+
+    private void FixLowestInsertedBeaconHeader()
+    {
+        BlockHeader? lowest = _lowestInsertedBeaconHeader;
+        ulong stopAt = (BestSuggestedHeader?.Number ?? 0) + 1;
+        if (lowest is null || lowest.Number <= stopAt)
+        {
+            return;
+        }
+
+        BlockHeader current = lowest;
+        while (current.Number > stopAt)
+        {
+            BlockHeader? parent = FindHeader(current.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent is null)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        if (!ReferenceEquals(current, lowest))
+        {
+            if (Logger.IsInfo) Logger.Info($"Lowest inserted beacon header moved from {lowest.Number} down to {current.Number} through already known headers");
+            LowestInsertedBeaconHeader = current;
+        }
     }
 
     public static ulong? BinarySearchBlockNumber(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
@@ -76,7 +105,7 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ulong blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            ulong blockNumber = _stateBoundary.BestPersistedState ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
@@ -311,9 +340,7 @@ public partial class BlockTree
     private void LoadStartBlock()
     {
         Block? startBlock = null;
-        byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeULong();
-        ulong? persistedNumber = BestPersistedState;
+        ulong? persistedNumber = _stateBoundary.BestPersistedState;
         if (persistedNumber is not null)
         {
             startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -339,6 +366,9 @@ public partial class BlockTree
 
             SetHeadBlock(startBlock.Hash);
         }
+
+        // The removed BestPersistedState setter recomputed the sync pivot as a side effect during load; keep it.
+        TryUpdateSyncPivot();
     }
 
     private void SetHeadBlock(Hash256 headHash)

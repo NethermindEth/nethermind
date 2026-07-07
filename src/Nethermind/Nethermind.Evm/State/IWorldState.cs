@@ -150,6 +150,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public void AddAccountRead(Address address) { }
 
+    public void RecordAccountAccess(Address address) { }
+
     public void RecordBytecodeAccess(Address address) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
