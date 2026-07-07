@@ -5,8 +5,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
@@ -14,7 +16,9 @@ using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 
@@ -24,7 +28,7 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// gets a pooled <see cref="ParentReaderLease"/> — a snapshot of the parent-state world from which
 /// the BAL-backed world state reads any value the suggested BAL doesn't carry at the current index.
 /// </summary>
-public partial class ParallelBalEnvManager : IParallelBalEnvManager
+public class ParallelBalEnvManager : IParallelBalEnvManager
 {
     private const int DefaultTxCount = 10000;
     private static readonly int ProcessorPoolSize = RuntimeInformation.ProcessorCount;
@@ -296,4 +300,96 @@ public partial class ParallelBalEnvManager : IParallelBalEnvManager
     [DoesNotReturn]
     private static void ThrowNotInitialized(string fieldName)
         => throw new InvalidOperationException($"{fieldName} was not initialized.");
+
+    /// <summary>
+    /// Parallel BAL worker env: executes against a per-tx <see cref="BlockAccessListBasedWorldState"/>
+    /// backed by a borrowed parent-reader snapshot.
+    /// </summary>
+    public sealed class ParallelBalEnv(
+        BlockAccessListBasedWorldState balWorldState,
+        TracedAccessWorldState worldState,
+        ITransactionProcessor txProcessor,
+        ITransactionProcessorAdapter txProcessorAdapter,
+        IWithdrawalProcessor withdrawalProcessor,
+        ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
+    {
+        private readonly BlockAccessListBasedWorldState _balWorldState = balWorldState;
+        private ParentReaderLease? _parentReader;
+
+        public TracedAccessWorldState WorldState { get; } = worldState;
+        public ITransactionProcessor TxProcessor { get; } = txProcessor;
+        public ITransactionProcessorAdapter TxProcessorAdapter { get; } = txProcessorAdapter;
+        public IWithdrawalProcessor WithdrawalProcessor { get; } = withdrawalProcessor;
+
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+        {
+            if (_parentReader is not null) ThrowParentReaderStillAttached();
+            if (parentReader is null) ThrowParentReaderUnavailable();
+
+            _parentReader = parentReader;
+            WorldState.Clear();
+            WorldState.SetIndex(balIndex);
+            _balWorldState.SetBlockAccessIndex(balIndex);
+            TxProcessorAdapter.SetBlockExecutionContext(new BlockExecutionContext(in blockExecutionContext, parallel: true));
+            _balWorldState.SetParentReader(parentReader.WorldState);
+            _balWorldState.Setup(block);
+        }
+
+        public void ClearParentReader()
+        {
+            _balWorldState.ClearParentReader();
+            _parentReader?.Dispose();
+            _parentReader = null;
+        }
+
+        public void Dispose()
+        {
+            // Return the borrowed parent-reader lease, then dispose the owning DI scope (Autofac path).
+            ClearParentReader();
+            lifetimeScope?.Dispose();
+        }
+
+        [DoesNotReturn]
+        private static void ThrowParentReaderStillAttached()
+            => throw new InvalidOperationException("Previous parent reader was not cleared before reusing this processor.");
+
+        [DoesNotReturn]
+        private static void ThrowParentReaderUnavailable()
+            => throw new InvalidOperationException("Parallel BAL execution requires a parent-reader source; none configured.");
+    }
+
+    /// <summary>
+    /// RAII wrapper around a borrowed read-only tx-processing env: holds the pooled source plus the
+    /// scope built against the parent state root, and returns the source to its pool when disposed.
+    /// </summary>
+    /// <remarks>
+    /// Rented by the enclosing <see cref="ParallelBalEnvManager"/> and handed to <see cref="ParallelBalEnv"/>
+    /// via <see cref="IBalProcessingEnv.Setup"/>, so each parallel worker reads from its own parent-state
+    /// snapshot without contending on the mutable state provider. Public only because it appears on the
+    /// public <see cref="IBalProcessingEnv"/> contract.
+    /// </remarks>
+    public sealed class ParentReaderLease(
+        IReadOnlyTxProcessorSource source,
+        ObjectPool<IReadOnlyTxProcessorSource> envPool,
+        IReadOnlyTxProcessingScope scope) : IDisposable
+    {
+        private IReadOnlyTxProcessorSource? _source = source;
+        private IReadOnlyTxProcessingScope? _scope = scope;
+
+        public IWorldState WorldState => _scope?.WorldState ?? ThrowDisposed();
+
+        public void Dispose()
+        {
+            IReadOnlyTxProcessingScope? scope = _scope;
+            IReadOnlyTxProcessorSource? src = _source;
+            _scope = null;
+            _source = null;
+            scope?.Dispose();
+            if (src is not null) envPool.Return(src);
+        }
+
+        [DoesNotReturn]
+        private static IWorldState ThrowDisposed()
+            => throw new ObjectDisposedException(nameof(ParentReaderLease));
+    }
 }
