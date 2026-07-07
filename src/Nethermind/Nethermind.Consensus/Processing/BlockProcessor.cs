@@ -144,21 +144,27 @@ public partial class BlockProcessor(
 
         CommitState(spec);
 
-        CalculateBlooms(receipts);
-
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Overlapped readers of `receipts` only touch fields already populated by CalculateBlooms, so no data race.
+        // Blooms are consumed only by the receipts root and by EndBlockTrace's header-bloom
+        // accumulation, so both bloom-dependent steps run in one background task across the
+        // rewards/withdrawals/requests stages. Execution requests read receipt logs, which are
+        // populated during execution, not by CalculateBlooms.
         Task<Hash256>? receiptsRootTask = null;
         if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
         {
-            receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
+            receiptsRootTask = Task.Run(() =>
+            {
+                CalculateBlooms(receipts);
+                return CalculateReceiptsRoot(receipts, spec, block);
+            });
         }
         else
         {
+            CalculateBlooms(receipts);
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
@@ -170,6 +176,14 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        if (receiptsRootTask is not null)
+        {
+            // EndBlockTrace accumulates the header bloom from per-receipt blooms, so the
+            // background bloom work must be complete before it runs.
+            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+            receiptsRootTask = null;
+        }
 
         ReceiptsTracer.EndBlockTrace();
 
