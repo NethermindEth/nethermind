@@ -135,6 +135,20 @@ public class TrieWarmerTests
     }
 
     [Test]
+    public async Task DefaultWorkerCount_UsesQuarterProcessorCountWithMinimum()
+    {
+        _config.TrieWarmerWorkerCount = -1;
+        TrieWarmer warmer = new(_logManager, _config);
+
+        int expectedWorkerCount = Math.Max(Environment.ProcessorCount / 4, 1);
+        expectedWorkerCount = Math.Max(expectedWorkerCount, 2);
+
+        Assert.That(warmer.WorkerCount, Is.EqualTo(expectedWorkerCount));
+
+        await warmer.DisposeAsync();
+    }
+
+    [Test]
     public async Task PushSlotJobMpmc_WithOneBusyProcessor_WakesIdleProcessorForSinglePendingJob()
     {
         _config.TrieWarmerWorkerCount = 2;
