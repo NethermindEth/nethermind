@@ -35,21 +35,24 @@ public class InitializeMergePlugin(
     IJsonRpcConfig jsonRpcConfig,
     ILogManager logManager) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<InitializeMergePlugin>();
-
     public Task Execute(CancellationToken cancellationToken)
+    {
+        Configure(mergeConfig, blocksConfig, specProvider, jsonRpcConfig, logManager);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Applies the merge initialization; shared with the AuRa merge init step, which cannot depend on this step across assemblies.</summary>
+    public static void Configure(IMergeConfig mergeConfig, IBlocksConfig blocksConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
     {
         EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
 
         MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
 
-        EnsureNotConflictingSettings();
-        EnsureJsonRpcUrl();
-
-        return Task.CompletedTask;
+        EnsureNotConflictingSettings(mergeConfig);
+        EnsureJsonRpcUrl(mergeConfig, specProvider, jsonRpcConfig, logManager);
     }
 
-    private void EnsureNotConflictingSettings()
+    private static void EnsureNotConflictingSettings(IMergeConfig mergeConfig)
     {
         if (!mergeConfig.Enabled && mergeConfig.TerminalTotalDifficulty is not null)
         {
@@ -59,19 +62,21 @@ public class InitializeMergePlugin(
         }
     }
 
-    private void EnsureJsonRpcUrl()
+    private static void EnsureJsonRpcUrl(IMergeConfig mergeConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
     {
-        if (!HasTtd()) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
+        if (!HasTtd(mergeConfig, specProvider)) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
+
+        ILogger logger = logManager.GetClassLogger<InitializeMergePlugin>();
 
         if (!jsonRpcConfig.Enabled)
         {
-            if (_logger.IsInfo)
-                _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
+            if (logger.IsInfo)
+                logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
 
             jsonRpcConfig.Enabled = true;
 
-            EnsureEngineModuleIsConfigured();
+            EnsureEngineModuleIsConfigured(jsonRpcConfig, logManager);
 
             if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
             {
@@ -85,11 +90,11 @@ public class InitializeMergePlugin(
         }
         else
         {
-            EnsureEngineModuleIsConfigured();
+            EnsureEngineModuleIsConfigured(jsonRpcConfig, logManager);
         }
     }
 
-    private void EnsureEngineModuleIsConfigured()
+    private static void EnsureEngineModuleIsConfigured(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
     {
         JsonRpcUrlCollection urlCollection = new(logManager, jsonRpcConfig, false);
         bool hasEngineApiConfigured = urlCollection
@@ -104,5 +109,6 @@ public class InitializeMergePlugin(
         }
     }
 
-    private bool HasTtd() => specProvider.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
+    private static bool HasTtd(IMergeConfig mergeConfig, ISpecProvider specProvider) =>
+        specProvider.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
 }

@@ -8,7 +8,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -86,7 +85,6 @@ namespace Nethermind.Merge.AuRa
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
 
-                .AddStep(typeof(InitializeMergePlugin))
                 .AddStep(typeof(InitializeAuRaMergePlugin))
 
                 .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()

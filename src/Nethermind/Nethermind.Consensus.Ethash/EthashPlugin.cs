@@ -3,7 +3,6 @@
 
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
