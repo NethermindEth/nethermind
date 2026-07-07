@@ -44,7 +44,6 @@ public partial class BlockAccessListManager(
     IWorldState stateProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
-    IWithdrawalProcessorFactory withdrawalProcessorFactory,
     Lazy<IParallelBalEnvManager> parallelBalEnvManager,
     Lazy<ISequentialBalEnvManager> sequentialBalEnvManager,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,

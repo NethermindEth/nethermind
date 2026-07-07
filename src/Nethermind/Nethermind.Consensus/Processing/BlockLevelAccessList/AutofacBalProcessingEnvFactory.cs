@@ -13,8 +13,9 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// <summary>
 /// DI <see cref="IBalProcessingEnvFactory"/>: each env is resolved from its own child lifetime
 /// scope (with the traced world state overriding <see cref="IWorldState"/>), so the transaction
-/// processor and its whole graph are container-wired against that state. The child scope is
-/// injected into the resolved env and disposed with it, releasing every component resolved within.
+/// processor and its whole graph — including the (block-producer-decorated) IWithdrawalProcessor —
+/// are container-wired against that state. The child scope is injected into the resolved env and
+/// disposed with it, releasing every component resolved within.
 /// </summary>
 public sealed class AutofacBalProcessingEnvFactory(
     ILifetimeScope parentLifetime,

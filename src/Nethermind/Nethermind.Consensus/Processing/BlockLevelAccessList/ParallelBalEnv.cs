@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,11 +16,12 @@ namespace Nethermind.Consensus.Processing.BlockLevelAccessList;
 /// Parallel BAL worker env: executes against a per-tx <see cref="BlockAccessListBasedWorldState"/>
 /// backed by a borrowed parent-reader snapshot.
 /// </summary>
-internal sealed class ParallelBalEnv(
+public sealed class ParallelBalEnv(
     BlockAccessListBasedWorldState balWorldState,
     TracedAccessWorldState worldState,
     ITransactionProcessor txProcessor,
     ITransactionProcessorAdapter txProcessorAdapter,
+    IWithdrawalProcessor withdrawalProcessor,
     ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
 {
     private readonly BlockAccessListBasedWorldState _balWorldState = balWorldState;
@@ -28,6 +30,7 @@ internal sealed class ParallelBalEnv(
     public TracedAccessWorldState WorldState { get; } = worldState;
     public ITransactionProcessor TxProcessor { get; } = txProcessor;
     public ITransactionProcessorAdapter TxProcessorAdapter { get; } = txProcessorAdapter;
+    public IWithdrawalProcessor WithdrawalProcessor { get; } = withdrawalProcessor;
 
     public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
     {

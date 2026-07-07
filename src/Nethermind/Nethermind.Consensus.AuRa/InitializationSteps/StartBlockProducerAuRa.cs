@@ -20,6 +20,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -163,8 +164,14 @@ public class StartBlockProducerAuRa(
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory,
-            CodeInfoRepositoryFactories.Caching, transactionProcessorFactory: transactionProcessorFactory);
+        AuraBalProcessingEnvFactory balEnvFactory = new(blockhashProvider, specProvider, worldState, logManager,
+            transactionProcessorFactory, CodeInfoRepositoryFactories.Caching, withdrawalProcessorFactory);
+        BlockAccessListManager balManager = new(
+            worldState,
+            logManager,
+            blocksConfig,
+            new Lazy<IParallelBalEnvManager>(() => new ParallelBalEnvManager(balEnvFactory)),
+            new Lazy<ISequentialBalEnvManager>(() => new SequentialBalEnvManager(balEnvFactory)));
 
         BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(
             new BuildUpTransactionProcessorAdapter(txProcessor),

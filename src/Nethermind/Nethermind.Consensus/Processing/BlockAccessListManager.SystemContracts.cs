@@ -41,12 +41,9 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         IBalProcessingEnv postExecution = _balEnvManager.GetPostExecution();
-        IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
-        if (_isBuilding)
-        {
-            withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
-        }
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        // No block-production wrapping here: on the DI path the env's IWithdrawalProcessor is
+        // already the producer-decorated one when building; the manual path never produces BAL blocks.
+        postExecution.WithdrawalProcessor.ProcessWithdrawals(block, spec);
     }
 
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)

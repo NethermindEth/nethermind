@@ -38,12 +38,12 @@ public static class ManualBlockAccessListManagerFactory
     {
         ManualMainnetBalProcessingEnvFactory envFactory = new(
             blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory);
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory,
+            withdrawalProcessorFactory);
         return new BlockAccessListManager(
             stateProvider,
             logManager,
             blocksConfig,
-            withdrawalProcessorFactory,
             new Lazy<IParallelBalEnvManager>(() => new ParallelBalEnvManager(envFactory, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory)),
             new Lazy<ISequentialBalEnvManager>(() => new SequentialBalEnvManager(envFactory)),
             prewarmerEnvFactory,
@@ -63,7 +63,8 @@ public static class ManualBlockAccessListManagerFactory
         IWorldState stateProvider,
         ILogManager logManager,
         ITransactionProcessorFactory txProcessorFactory,
-        CodeInfoRepositoryFactory codeInfoRepositoryFactory) : IBalProcessingEnvFactory
+        CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+        IWithdrawalProcessorFactory withdrawalProcessorFactory) : IBalProcessingEnvFactory
     {
         public IBalProcessingEnv Create(bool parallel)
         {
@@ -74,7 +75,7 @@ public static class ManualBlockAccessListManagerFactory
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
                 ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor));
+                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
             }
             else
             {
@@ -82,7 +83,7 @@ public static class ManualBlockAccessListManagerFactory
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
                 ITransactionProcessor processor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-                return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor));
+                return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
             }
         }
     }
