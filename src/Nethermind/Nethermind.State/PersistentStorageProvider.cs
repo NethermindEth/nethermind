@@ -372,10 +372,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Commit(tracer);
     }
 
-    /// <summary>
-    /// O(1) destruction for the tx-end destroy list (no revert can follow): mark the address and
-    /// drop its pending writes at commit; reads stay correct via the missing-as-default marker.
-    /// </summary>
     public void MarkStorageDestroyed(Address address)
     {
         _destroyedThisRound.Add(address);

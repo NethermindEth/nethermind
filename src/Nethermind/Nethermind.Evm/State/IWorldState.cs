@@ -97,10 +97,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
-    /// <summary>
-    /// O(1) storage destruction for the tx-end destroy list, where no revert can follow;
-    /// revertible mid-transaction clearing must use <see cref="ClearStorage"/>.
-    /// </summary>
+    /// <summary>Only valid where no revert can follow; revertible clearing must use <see cref="ClearStorage"/>.</summary>
     void MarkStorageDestroyed(Address address) => ClearStorage(address);
 
     void RecalculateStateRoot();
