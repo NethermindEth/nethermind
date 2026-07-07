@@ -126,7 +126,6 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching,
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
@@ -197,7 +196,6 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching,
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
@@ -257,7 +255,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), CodeInfoRepositoryFactories.Caching);
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), CodeInfoRepositoryFactories.Caching);
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -512,7 +510,6 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
@@ -556,7 +553,6 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
 
         Address lowAddress = TestItem.AddressA;
@@ -1058,7 +1054,6 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching,
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 

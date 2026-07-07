@@ -29,14 +29,13 @@ public static class ManualBlockAccessListManagerFactory
         IBlockhashProvider blockHashProvider,
         ILogManager logManager,
         IBlocksConfig blocksConfig,
-        IWithdrawalProcessorFactory withdrawalProcessorFactory,
         CodeInfoRepositoryFactory codeInfoRepositoryFactory,
         PrewarmerEnvFactory? prewarmerEnvFactory = null,
         PreBlockCaches? preBlockCaches = null,
         IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
     {
         ManualMainnetBalProcessingEnvFactory envFactory = new(
-            blockHashProvider, specProvider, stateProvider, logManager, codeInfoRepositoryFactory, withdrawalProcessorFactory);
+            blockHashProvider, specProvider, stateProvider, logManager, codeInfoRepositoryFactory);
         return new BlockAccessListManager(
             stateProvider,
             logManager,
@@ -49,18 +48,19 @@ public static class ManualBlockAccessListManagerFactory
     }
 
     /// <summary>
-    /// Manual <see cref="IBalProcessingEnvFactory"/>: builds all worker components (virtual machine,
-    /// traced world state, tx processor and adapter) by hand and hands them to a
+    /// Hand-wired <see cref="IBalProcessingEnvFactory"/> for <b>Ethereum mainnet only</b>, used by the
+    /// stateless/witness envs and tests where the DI container is not available. It builds all worker
+    /// components (virtual machine, traced world state, mainnet <see cref="TransactionProcessor{TGasPolicy}"/>
+    /// and <see cref="WithdrawalProcessor"/>, and the adapter) by hand and hands them to a
     /// <see cref="ParallelBalEnv"/> or <see cref="SequentialBalEnv"/>. The DI path uses
-    /// <see cref="AutofacBalProcessingEnvFactory"/> instead.
+    /// <see cref="AutofacBalProcessingEnvFactory"/> instead, which resolves the chain-specific graph.
     /// </summary>
     private sealed class ManualMainnetBalProcessingEnvFactory(
         IBlockhashProvider blockHashProvider,
         ISpecProvider specProvider,
         IWorldState stateProvider,
         ILogManager logManager,
-        CodeInfoRepositoryFactory codeInfoRepositoryFactory,
-        IWithdrawalProcessorFactory withdrawalProcessorFactory) : IBalProcessingEnvFactory
+        CodeInfoRepositoryFactory codeInfoRepositoryFactory) : IBalProcessingEnvFactory
     {
         public IBalProcessingEnv Create(bool parallel)
         {
@@ -71,7 +71,7 @@ public static class ManualBlockAccessListManagerFactory
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
                 ITransactionProcessor processor = new TransactionProcessor<EthereumGasPolicy>(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
+                return new ParallelBalEnv(balWorldState, worldState, processor, new ExecuteTransactionProcessorAdapter(processor), new WithdrawalProcessor(worldState, logManager));
             }
             else
             {
@@ -79,7 +79,7 @@ public static class ManualBlockAccessListManagerFactory
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(worldState);
                 ITransactionProcessor processor = new TransactionProcessor<EthereumGasPolicy>(BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
-                return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor), withdrawalProcessorFactory.Create(worldState, processor));
+                return new SequentialBalEnv(worldState, processor, new ExecuteTransactionProcessorAdapter(processor), new WithdrawalProcessor(worldState, logManager));
             }
         }
     }

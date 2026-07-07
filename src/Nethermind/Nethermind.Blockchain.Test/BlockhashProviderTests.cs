@@ -325,7 +325,6 @@ public class BlockhashProviderTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));

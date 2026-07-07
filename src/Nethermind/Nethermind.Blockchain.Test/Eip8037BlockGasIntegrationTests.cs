@@ -46,7 +46,6 @@ public class Eip8037BlockGasIntegrationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
     }
 
@@ -192,7 +191,6 @@ public class Eip8037BlockGasIntegrationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
