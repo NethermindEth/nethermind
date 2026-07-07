@@ -1332,6 +1332,8 @@ public class BlockProcessorTests
         {
         }
 
+        public bool WaitForBalWarmup(TimeSpan timeout) => true;
+
         public void Setup(Block block)
         {
         }

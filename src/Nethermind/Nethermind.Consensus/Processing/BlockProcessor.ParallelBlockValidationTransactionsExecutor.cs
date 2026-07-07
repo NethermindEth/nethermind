@@ -32,6 +32,8 @@ public partial class BlockProcessor
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+        private const int BalWarmupHeadStartMilliseconds = 4;
+        private const int BalWarmupHeadStartStorageReads = 5_000;
         private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
@@ -130,6 +132,10 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            if (block.BlockAccessList is { TotalStorageReads: >= BalWarmupHeadStartStorageReads })
+            {
+                balManager.WaitForBalWarmup(TimeSpan.FromMilliseconds(BalWarmupHeadStartMilliseconds));
+            }
             Task applyStateChangesTask = Task.Run(() =>
             {
                 bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
