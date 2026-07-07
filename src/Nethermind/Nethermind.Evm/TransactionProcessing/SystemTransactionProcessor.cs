@@ -23,6 +23,9 @@ public class SystemTransactionProcessor<TGasPolicy>(
     : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    // Set in Execute and read within the same synchronous base.Execute -> PayValue chain (system txs don't recurse), so a plain field needs no synchronization.
+    private bool _payOriginalValue;
+
     /// <summary>
     /// Whether to suppress BAL reads of the SYSTEM_ADDRESS account for this transaction.
     /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls;
@@ -55,9 +58,9 @@ public class SystemTransactionProcessor<TGasPolicy>(
         OnBeforeSystemTransaction();
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        return base.Execute(tx, tracer, ((coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit))
-            ? opts | ExecutionOptions.SystemOriginalValidate | ExecutionOptions.SkipValidationAndCommit
-            : opts);
+        _payOriginalValue = (coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
+                            && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit);
+        return base.Execute(tx, tracer, _payOriginalValue ? opts | ExecutionOptions.SkipValidationAndCommit : opts);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
@@ -83,7 +86,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
-        if (opts.HasFlag(ExecutionOptions.SystemOriginalValidate))
+        if (_payOriginalValue)
         {
             base.PayValue(tx, spec, opts);
         }
