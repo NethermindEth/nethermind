@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -29,6 +30,7 @@ public class RewardsStoreTests
         IDb db = new MemDb();
         using RewardsStore store = CreateStore(db);
         Address account = Address.FromNumber(1);
+        Hash256 epochBlockHash = TestItem.KeccakA;
 
         BlockReward[] rewards =
         [
@@ -36,12 +38,12 @@ public class RewardsStoreTests
             new(account, (UInt256)20),
         ];
 
-        store.SaveEpochRewards(120, rewards);
+        store.SaveEpochRewards(epochBlockHash, rewards);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.HasEpochRewards(120), Is.True);
-            Assert.That(store.TryGetAccountReward(account, 120, out UInt256 savedReward), Is.True);
+            Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
+            Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
             Assert.That(savedReward, Is.EqualTo((UInt256)30));
         }
     }
@@ -53,58 +55,11 @@ public class RewardsStoreTests
         using RewardsStore store = CreateStore(db);
         Address savedAccount = Address.FromNumber(1);
         Address missingAccount = Address.FromNumber(2);
+        Hash256 epochBlockHash = TestItem.KeccakA;
 
-        store.SaveEpochRewards(120, [new BlockReward(savedAccount, (UInt256)10)]);
+        store.SaveEpochRewards(epochBlockHash, [new BlockReward(savedAccount, (UInt256)10)]);
 
-        Assert.That(store.TryGetAccountReward(missingAccount, 120, out _), Is.False);
-    }
-
-    [Test]
-    public void TryGetRetainedRange_WhenEpochRewardsWereSaved_ShouldReturnSavedBounds()
-    {
-        IDb db = new MemDb();
-        using RewardsStore store = CreateStore(db);
-        Address account = Address.FromNumber(1);
-
-        store.SaveEpochRewards(120, [new BlockReward(account, (UInt256)10)]);
-        store.SaveEpochRewards(180, [new BlockReward(account, (UInt256)20)]);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-            Assert.That(oldest, Is.EqualTo(120));
-            Assert.That(newest, Is.EqualTo(180));
-        }
-    }
-
-    [Test]
-    public void SaveEpochRewards_WhenEpochIsOutsideRetentionWindow_ShouldPruneOlderEntries()
-    {
-        IDb db = new MemDb();
-        const int retention = 3;
-        using RewardsStore store = CreateStore(db, retention);
-        Address account = Address.FromNumber(1);
-
-        ulong oldEpoch = 1;
-        ulong latestEpoch = (ulong)retention + 1;
-
-        for (ulong epoch = oldEpoch; epoch <= latestEpoch; epoch++)
-        {
-            store.SaveEpochRewards(epoch, [new BlockReward(account, (UInt256)epoch)]);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.HasEpochRewards(oldEpoch), Is.False);
-            Assert.That(store.TryGetAccountReward(account, oldEpoch, out _), Is.False);
-            ulong newOldestKeptEpoch = 2;
-            Assert.That(store.HasEpochRewards(newOldestKeptEpoch), Is.True);
-            Assert.That(store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward), Is.True);
-            Assert.That(keptReward, Is.EqualTo((UInt256)newOldestKeptEpoch));
-            Assert.That(store.TryGetRetainedRange(out ulong oldest, out ulong newest), Is.True);
-            Assert.That(oldest, Is.EqualTo(newOldestKeptEpoch));
-            Assert.That(newest, Is.EqualTo(latestEpoch));
-        }
+        Assert.That(store.TryGetAccountReward(missingAccount, epochBlockHash, out _), Is.False);
     }
 
     [Test]
@@ -154,8 +109,8 @@ public class RewardsStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.HasEpochRewards(epochBlockNumber), Is.True);
-            Assert.That(store.TryGetAccountReward(account, epochBlockNumber, out UInt256 savedReward), Is.True);
+            Assert.That(store.HasEpochRewards(block.Hash!), Is.True);
+            Assert.That(store.TryGetAccountReward(account, block.Hash!, out UInt256 savedReward), Is.True);
             Assert.That(savedReward, Is.EqualTo((UInt256)42));
         }
     }
@@ -178,7 +133,7 @@ public class RewardsStoreTests
 
         await Task.Delay(100);
 
-        Assert.That(store.HasEpochRewards(block.Number), Is.False);
+        Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
     }
 
     [Test]
@@ -201,12 +156,11 @@ public class RewardsStoreTests
 
         await Task.Delay(100);
 
-        Assert.That(store.HasEpochRewards(block.Number), Is.False);
+        Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
     }
 
     private static RewardsStore CreateStore(
         IDb db,
-        int rewardHistoryEpochRetention = XdcConstants.RewardHistoryEpochRetention,
         IBlockTree? blockTree = null,
         IEpochSwitchManager? epochSwitchManager = null,
         ISpecProvider? specProvider = null,
@@ -220,8 +174,7 @@ public class RewardsStoreTests
             specProvider ?? Substitute.For<ISpecProvider>(),
             rewardCalculatorSource ?? Substitute.For<IRewardCalculatorSource>(),
             readOnlyTxProcessingEnvFactory ?? Substitute.For<IReadOnlyTxProcessingEnvFactory>(),
-            logManager ?? LimboLogs.Instance,
-            rewardHistoryEpochRetention);
+            logManager ?? LimboLogs.Instance);
 
     private static XdcBlockHeader BuildCheckpointHeader(ulong number) =>
         Build.A.XdcBlockHeader()
