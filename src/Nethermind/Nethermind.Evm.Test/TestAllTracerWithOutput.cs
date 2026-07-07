@@ -73,6 +73,5 @@ namespace Nethermind.Evm.Test
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));
-
     }
 }

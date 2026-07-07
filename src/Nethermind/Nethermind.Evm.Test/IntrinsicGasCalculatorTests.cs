@@ -233,7 +233,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; the value-bearing recipient touch adds
+            // Amsterdam (EIP-2780 + EIP-8038): the value-bearing recipient touch adds
             // COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE; the authorization adds ACCOUNT_WRITE + base.
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular));
@@ -248,7 +248,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000, create regular = CREATE_ACCESS (+ TRANSFER_LOG
+            // Amsterdam (EIP-2780 + EIP-8038): create regular = CREATE_ACCESS (+ TRANSFER_LOG
             // for the value endowment), create state = NEW_ACCOUNT.
             ulong expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
             ulong expectedState = GasCostOf.CreateState;
@@ -264,7 +264,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): TX_BASE=12000; value-bearing recipient touch + authorization.
+            // Amsterdam (EIP-2780 + EIP-8038): value-bearing recipient touch + authorization.
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
             ulong expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
@@ -286,10 +286,10 @@ namespace Nethermind.Evm.Test
 
         // EIP-2780 fixed-cost vectors: the intrinsic is state-independent, so the recipient
         // touch and value-move costs are flat for every non-self recipient.
-        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;        // 12000
-        private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;   // 1756
-        private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;     // 3000
-        private const ulong TxValueCost = GasCostOf.TxValueCostEip2780;          // 4244
+        private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;
+        private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;
+        private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;
+        private const ulong TxValueCost = GasCostOf.TxValueCostEip2780;
 
         [TestCase(false, 1ul, TxBaseEip2780 + ColdAccess + TxValueCost + TransferLogEip2780, TestName = "Eip2780_intrinsic_value_transfer_21000")]
         [TestCase(true, 1ul, TxBaseEip2780, TestName = "Eip2780_intrinsic_self_transfer_12000")]
