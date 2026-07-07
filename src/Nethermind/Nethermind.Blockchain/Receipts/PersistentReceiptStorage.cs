@@ -278,25 +278,6 @@ namespace Nethermind.Blockchain.Receipts
             => InsertCore(block, receipts, _specProvider.GetSpec(block.Header), ensureCanonical: true, WriteFlags.None, lastBlockNumber: null);
 
         [SkipLocalsInit]
-        byte[]? IReceiptMigrationStore.GetReceiptRawData(ulong blockNumber, Hash256 blockHash)
-        {
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            if (_legacyHashKey)
-            {
-                byte[]? data = _receiptsDb.Get(blockHash.Bytes);
-                if (data is not null) return data;
-
-                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-                _pendingReceipts.EnsureFlushed(blockNumPrefixed);
-                return _receiptsDb.Get(blockNumPrefixed);
-            }
-
-            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-            _pendingReceipts.EnsureFlushed(blockNumPrefixed);
-            return _receiptsDb.Get(blockNumPrefixed) ?? _receiptsDb.Get(blockHash.Bytes);
-        }
-
-        [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
         {
             txReceipts ??= [];

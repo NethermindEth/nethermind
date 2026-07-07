@@ -80,9 +80,6 @@ namespace Nethermind.Blockchain.Receipts
 
         public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
 
-        // In-memory storage keeps decoded receipts, not the raw encoded blob used for migration encoding detection.
-        public byte[]? GetReceiptRawData(ulong blockNumber, Hash256 blockHash) => null;
-
         public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
 
