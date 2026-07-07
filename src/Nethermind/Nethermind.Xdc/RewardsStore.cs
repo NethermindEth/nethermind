@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,16 +24,12 @@ internal sealed class RewardsStore(
     IBlockTree blockTree,
     IEpochSwitchManager epochSwitchManager,
     ISpecProvider specProvider,
-    IRewardCalculatorSource rewardCalculatorSource,
-    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     ILogManager logManager) : IRewardsStore, IStartable, IDisposable
 {
     private readonly IDb _rewardsDb = rewardsDb;
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
     private readonly ISpecProvider _specProvider = specProvider;
-    private readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource;
-    private readonly IReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
     private readonly ILogger _logger = logManager.GetClassLogger<RewardsStore>();
 
     private const byte EpochRewardsPrefix = 0x10;
@@ -62,23 +57,17 @@ internal sealed class RewardsStore(
         if (xdcHeader.Number == spec.SwitchBlock + 1)
             return;
 
+        if (xdcHeader.ProcessedRewards is null || xdcHeader.ProcessedRewards.Length == 0)
+        {
+            if (_logger.IsDebug) _logger.Debug($"No rewards for epoch block #{xdcHeader.Number} hash=${xdcHeader.Hash}");
+            return;
+        }
+
         Block block = e.Block;
-        _ = Task.Run(() => PersistEpochRewards(block))
+        _ = Task.Run(() => SaveEpochRewards(xdcHeader.Hash, xdcHeader.ProcessedRewards))
             .ContinueWith(
                 t => _logger.Error($"Failed to persist epoch rewards for block {block.Number}.", t.Exception),
                 TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    private void PersistEpochRewards(Block block)
-    {
-        using IReadOnlyTxProcessorSource env = _readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = env.Build(block.Header);
-        IRewardCalculator rewardCalculator = _rewardCalculatorSource.Get(scope.TransactionProcessor);
-        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
-        if (rewards.Length == 0)
-            return;
-
-        SaveEpochRewards(block.Hash!, rewards);
     }
 
     public void SaveEpochRewards(Hash256 epochBlockHash, BlockReward[] rewards)

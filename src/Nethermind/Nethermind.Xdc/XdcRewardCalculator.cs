@@ -55,15 +55,18 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ArgumentNullException.ThrowIfNull(block);
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
+        if (xdcHeader.ProcessedRewards is not null)
+            return xdcHeader.ProcessedRewards;
+
         if (xdcHeader.Number == 0)
-            return Array.Empty<BlockReward>();
+            return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         // Rewards in XDC are calculated only if it's an epoch switch block
-        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
+        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         ulong number = xdcHeader.Number;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-        if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
+        if (number == spec.SwitchBlock + 1) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         Address foundationWalletAddr = spec.FoundationWallet;
         if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -105,7 +108,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
-        return rewards.ToArray();
+        return xdcHeader.ProcessedRewards = rewards.ToArray();
     }
 
     private (

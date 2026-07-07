@@ -3,14 +3,12 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Spec;
@@ -71,35 +69,23 @@ public class RewardsStoreTests
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.SwitchBlock.Returns(0UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
-        IRewardCalculatorSource rewardCalculatorSource = Substitute.For<IRewardCalculatorSource>();
-        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
-        IReadOnlyTxProcessorSource processorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        IReadOnlyTxProcessingScope processingScope = Substitute.For<IReadOnlyTxProcessingScope>();
-        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        IRewardCalculator rewardCalculator = Substitute.For<IRewardCalculator>();
 
         const ulong epochBlockNumber = 900;
         Address account = Address.FromNumber(1);
         BlockReward[] rewards = [new BlockReward(account, (UInt256)42)];
         Block block = new(BuildCheckpointHeader(epochBlockNumber));
+        ((XdcBlockHeader)block.Header).ProcessedRewards = rewards;
 
         blockTree.WasProcessed(epochBlockNumber, block.Hash!).Returns(true);
         blockTree.Head.Returns(block);
         blockTree.FindBestSuggestedHeader().Returns(block.Header);
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
-        envFactory.Create().Returns(processorSource);
-        processorSource.Build(block.Header).Returns(processingScope);
-        processingScope.TransactionProcessor.Returns(transactionProcessor);
-        rewardCalculatorSource.Get(transactionProcessor).Returns(rewardCalculator);
-        rewardCalculator.CalculateRewards(block).Returns(rewards);
 
         using RewardsStore store = CreateStore(
             db,
             blockTree: blockTree,
             epochSwitchManager: epochSwitchManager,
-            specProvider: specProvider,
-            rewardCalculatorSource: rewardCalculatorSource,
-            readOnlyTxProcessingEnvFactory: envFactory);
+            specProvider: specProvider);
         store.Start();
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
@@ -163,16 +149,12 @@ public class RewardsStoreTests
         IBlockTree? blockTree = null,
         IEpochSwitchManager? epochSwitchManager = null,
         ISpecProvider? specProvider = null,
-        IRewardCalculatorSource? rewardCalculatorSource = null,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
         ILogManager? logManager = null) =>
         new(
             db,
             blockTree ?? Substitute.For<IBlockTree>(),
             epochSwitchManager ?? Substitute.For<IEpochSwitchManager>(),
             specProvider ?? Substitute.For<ISpecProvider>(),
-            rewardCalculatorSource ?? Substitute.For<IRewardCalculatorSource>(),
-            readOnlyTxProcessingEnvFactory ?? Substitute.For<IReadOnlyTxProcessingEnvFactory>(),
             logManager ?? LimboLogs.Instance);
 
     private static XdcBlockHeader BuildCheckpointHeader(ulong number) =>
