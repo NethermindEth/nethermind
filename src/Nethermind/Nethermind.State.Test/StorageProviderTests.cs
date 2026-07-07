@@ -554,6 +554,41 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Destroyed_storage_propagates_to_database_across_blocks()
+    {
+        // Pre-6780 shape: contract with committed prior-block storage is destroyed via the
+        // mark path; a later block must read zero FROM THE DATABASE (the in-block marker is gone).
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.MarkStorageDestroyed(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the database, not only from the in-block marker");
+        }
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
