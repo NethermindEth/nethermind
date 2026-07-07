@@ -24,6 +24,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
             builder
 
                 // Note: There is a special logic for this in `PruningTrieStateFactory`.
+                .AddSingleton<NodeStorageCacheConfig>()
                 .AddSingleton<NodeStorageCache>()
 
                 // Parent scope so test modules can override; child scope's PreBlockCaches falls through here.

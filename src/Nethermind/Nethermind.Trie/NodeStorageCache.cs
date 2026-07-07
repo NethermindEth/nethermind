@@ -5,11 +5,17 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
-public sealed class NodeStorageCache
+public sealed class NodeStorageCache(NodeStorageCacheConfig config)
 {
-    private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
+    public const int DefaultCacheSetsBits = 17;
+
+    private readonly SeqlockCache<NodeKey, byte[]> _cache = new(config.CacheSetsBits);
 
     private volatile bool _enabled = false;
+
+    public NodeStorageCache() : this(new NodeStorageCacheConfig())
+    {
+    }
 
     public bool Enabled
     {
@@ -33,4 +39,9 @@ public sealed class NodeStorageCache
         _cache.Clear();
         return wasEnabled;
     }
+}
+
+public sealed record NodeStorageCacheConfig
+{
+    public int CacheSetsBits { get; init; } = NodeStorageCache.DefaultCacheSetsBits;
 }
