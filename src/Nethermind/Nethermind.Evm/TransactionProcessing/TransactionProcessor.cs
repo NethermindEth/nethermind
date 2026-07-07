@@ -313,8 +313,8 @@ namespace Nethermind.Evm.TransactionProcessing
             // sender forfeits all gas; merely draining the gas would let a zero-cost frame succeed.
             bool topFrameOutOfGas = false;
 
-            // A value transfer materialising a new (dead) recipient — including an empty precompile —
-            // pays NEW_ACCOUNT state gas against pre-transfer state (mirrors ExecuteSimpleTransfer).
+            // A value transfer materialising a new (dead) recipient — including an empty
+            // precompile — pays NEW_ACCOUNT state gas.
             if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
@@ -747,8 +747,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-                    // EIP-8038: an invalid authorization touches no state, so the worst-case intrinsic
-                    // charge (NEW_ACCOUNT + AUTH_BASE state and ACCOUNT_WRITE regular) is fully refunded.
+                    // An invalid authorization touches no state, so its worst-case intrinsic charges are refunded.
                     if (spec.IsEip8037Enabled)
                     {
                         refunds++;
@@ -758,7 +757,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     bool accountExists = WorldState.AccountExists(authority);
-                    // Current delegation status, i.e. as left by any earlier authorization in this tx.
                     bool nowDelegated = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
                     bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
@@ -1279,8 +1277,6 @@ namespace Nethermind.Evm.TransactionProcessing
             // NEW_ACCOUNT state gas — no new account leaf is materialised.
             bool createdTargetAlive = tx.IsContractCreation && !WorldState.IsDeadAccount(env.ExecutingAccount);
 
-            // EIP-8037: a top-frame charge exhausted the gas before any code ran; no value moves and
-            // the sender forfeits all gas (statusCode stays Failure).
             if (topFrameOutOfGas)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
@@ -1697,8 +1693,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Use postIntrinsicStateReservoir captured before EVM execution so any
                 // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
-                // through the halt-reset. codeInsertRegularRefund carries the regular-dimension
-                // ACCOUNT_WRITE refund for existing authorities, which survives the halt too.
+                // through the halt-reset.
                 return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertRegularRefund);
             }
 
