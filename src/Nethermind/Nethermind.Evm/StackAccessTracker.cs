@@ -33,32 +33,10 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
     public readonly bool WarmUp(Address address)
-    {
-        TrackingState state = _trackingState;
-        if (state.HasLastAddress && state.LastAddress == address)
-        {
-            return false;
-        }
-
-        bool added = state.AccessedAddresses.Add(address);
-        state.LastAddress = address;
-        state.HasLastAddress = true;
-        return added;
-    }
+        => _trackingState.AccessedAddresses.Add(address);
 
     public readonly bool WarmUp(in StorageCell storageCell)
-    {
-        TrackingState state = _trackingState;
-        if (state.HasLastStorageCell && state.LastStorageCell.Equals(storageCell))
-        {
-            return false;
-        }
-
-        bool added = state.AccessedStorageCells.Add(storageCell);
-        state.LastStorageCell = storageCell;
-        state.HasLastStorageCell = true;
-        return added;
-    }
+        => _trackingState.AccessedStorageCells.Add(storageCell);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -95,7 +73,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         {
             _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
             _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
-            _trackingState.ClearLastAccess();
         }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
@@ -135,18 +112,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
-        public Address? LastAddress;
-        public bool HasLastAddress;
-        public StorageCell LastStorageCell;
-        public bool HasLastStorageCell;
-
-        public void ClearLastAccess()
-        {
-            LastAddress = null;
-            HasLastAddress = false;
-            LastStorageCell = default;
-            HasLastStorageCell = false;
-        }
 
         private void Clear()
         {
@@ -155,7 +120,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            ClearLastAccess();
         }
     }
 }
