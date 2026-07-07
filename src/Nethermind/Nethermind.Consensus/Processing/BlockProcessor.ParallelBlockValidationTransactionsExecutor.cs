@@ -130,18 +130,32 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            Task applyStateChangesTask = Task.Run(() =>
+            {
+                bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+                ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+                try
+                {
+                    balManager.WaitForBalWarmup();
+                    BlockAccessListManager.ApplyStateChanges(block.BlockAccessList, stateProvider, specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
+                }
+                finally
+                {
+                    ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+                }
+            });
 
             try
             {
                 try
                 {
-                    // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
-                    // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
+                    // Iterations: 0..len-1 = tx (scheduled order =
+                    // _txExecutionOrder[i]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
                     // BlockProcessor.ProcessBlock before this method was called.
                     ParallelUnbalancedWork.For(
                         0,
-                        len + 1,
+                        len,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
@@ -154,14 +168,7 @@ public partial class BlockProcessor
                             ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
                             try
                             {
-                                if (i == 0)
-                                {
-                                    state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
-                                    return state;
-                                }
-
-                                int txIndex = state.txExecutionOrder[i - 1];
+                                int txIndex = state.txExecutionOrder[i];
                                 Transaction tx = state.txs[txIndex];
                                 // Pre-compute intrinsic gas on the worker thread; carry it through the
                                 // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
@@ -239,10 +246,20 @@ public partial class BlockProcessor
                         // the only place this fault is observable.
                         if (_logger.IsError) _logger.Error("BAL incremental validation faulted while a parallel worker was already failing.", ex);
                     }
+                    ObserveApplyStateChangesFault(applyStateChangesTask);
                     throw;
                 }
 
-                incrementalValidation.GetResult();
+                try
+                {
+                    incrementalValidation.GetResult();
+                }
+                catch
+                {
+                    ObserveApplyStateChangesFault(applyStateChangesTask);
+                    throw;
+                }
+                applyStateChangesTask.GetAwaiter().GetResult();
                 return CombineReceipts(receiptsTracers, len);
             }
             finally
@@ -252,6 +269,18 @@ public partial class BlockProcessor
                 // BlockTraceDumper's invalid-block dump on failure, and keeps tracer state
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
+            }
+        }
+
+        private void ObserveApplyStateChangesFault(Task applyStateChangesTask)
+        {
+            try
+            {
+                applyStateChangesTask.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("BAL state apply faulted while parallel transaction execution was already failing.", ex);
             }
         }
 
