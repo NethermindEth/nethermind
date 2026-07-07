@@ -29,6 +29,9 @@ public class BranchProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
+    private const int PreWarmHeadStartMilliseconds = 2;
+    private const int PreWarmHeadStartTransactionCount = 128;
+    private const ulong PreWarmHeadStartGasUsed = 15_000_000;
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
@@ -137,6 +140,8 @@ public class BranchProcessor(
                     }
                 }
 
+                WaitForPreWarmHeadStart(preWarmTask, suggestedBlock);
+
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed; background work can stop once the post-transaction storage-root phase
@@ -232,6 +237,24 @@ public class BranchProcessor(
                 spec,
                 token,
                 beaconBlockRootHandler);
+
+    private void WaitForPreWarmHeadStart(Task? preWarmTask, Block block)
+    {
+        if (preWarmTask is null || preWarmTask.IsCompleted)
+            return;
+
+        if (block.GasUsed < PreWarmHeadStartGasUsed || block.Transactions.Length < PreWarmHeadStartTransactionCount)
+            return;
+
+        try
+        {
+            preWarmTask.Wait(PreWarmHeadStartMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Prewarm head-start wait failed for block {block.Number}. {ex}");
+        }
+    }
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
