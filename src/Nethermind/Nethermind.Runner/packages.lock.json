@@ -947,6 +947,7 @@
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.Db": "[1.39.0-unstable, )",
           "Nethermind.Evm": "[1.39.0-unstable, )",
+          "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.39.0-unstable, )",
           "Nethermind.Specs": "[1.39.0-unstable, )",
           "Nethermind.State": "[1.39.0-unstable, )"
@@ -956,6 +957,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.39.0-unstable, )",
+          "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.39.0-unstable, )"
         }
       },
