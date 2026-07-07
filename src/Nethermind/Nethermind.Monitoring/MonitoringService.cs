@@ -32,6 +32,8 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
     private readonly CancellationTokenSource _timerCancellationSource;
 
     private Task _monitoringTimerTask = Task.CompletedTask;
+    private MetricPusher _metricPusher;
+    private HttpClient _pusherHttpClient;
     private int _isDisposed = 0;
 
     public MonitoringService(
@@ -93,18 +95,23 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
             bool hasPassword = !string.IsNullOrEmpty(_pushGatewayPassword);
             if (hasUsername && hasPassword)
             {
-                HttpClient httpClient = new();
-                httpClient.DefaultRequestHeaders.Authorization = CreateBasicAuthHeader(_pushGatewayUsername, _pushGatewayPassword);
-                pusherOptions.HttpClientProvider = () => httpClient;
+                if (!_pushGatewayUrl.StartsWith(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication credentials are sent over an unencrypted connection: consider using an HTTPS endpoint.");
+                }
+
+                _pusherHttpClient = new HttpClient();
+                _pusherHttpClient.DefaultRequestHeaders.Authorization = CreateBasicAuthHeader(_pushGatewayUsername, _pushGatewayPassword);
+                pusherOptions.HttpClientProvider = () => _pusherHttpClient;
             }
             else if (hasUsername || hasPassword)
             {
                 if (_logger.IsWarn) _logger.Warn("Pushgateway basic authentication is disabled: both the username and password must be set.");
             }
 
-            MetricPusher metricPusher = new(pusherOptions);
+            _metricPusher = new MetricPusher(pusherOptions);
 
-            metricPusher.Start();
+            _metricPusher.Start();
         }
 
         if (_exposePort is not null)
@@ -158,5 +165,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
+        if (_metricPusher is not null) await _metricPusher.StopAsync();
+        _pusherHttpClient?.Dispose();
     }
 }
