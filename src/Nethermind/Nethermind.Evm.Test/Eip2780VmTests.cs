@@ -14,9 +14,8 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EVM-opcode-level coverage for EIP-2780 repricing. Each test is a differential between two runs
-/// that differ only in the operation under test, so the (identical) intrinsic and recipient costs
-/// cancel and the assertion isolates the EIP-2780 delta.
+/// Opcode-level EIP-2780 coverage: each test diffs two runs so the identical intrinsic and
+/// recipient costs cancel, isolating the EIP-2780 delta.
 /// </summary>
 public class Eip2780VmTests : VirtualMachineTestsBase
 {

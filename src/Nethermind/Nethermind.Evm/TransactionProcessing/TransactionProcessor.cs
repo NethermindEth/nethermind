@@ -308,9 +308,8 @@ namespace Nethermind.Evm.TransactionProcessing
             bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
-            // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the sender
-            // forfeits all gas (EELS raises OutOfGasError in process_message); merely draining the gas
-            // would let a zero-cost frame (e.g. a delegated STOP) wrongly succeed.
+            // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the
+            // sender forfeits all gas; merely draining the gas would let a zero-cost frame succeed.
             bool topFrameOutOfGas = false;
 
             // A value transfer materialising a new (dead) recipient — including an empty precompile —
@@ -321,9 +320,8 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
             }
-            // EIP-8037: a delegated recipient's delegation target costs one flat cold account access
-            // (the target is only pre-warmed for the frame, so this is its sole charge). Read from
-            // post-authorization state, so same-tx installs/clears are respected.
+            // EIP-8037: the delegation target costs one flat cold account access (its sole charge —
+            // it is only pre-warmed for the frame). Read post-authorization, so same-tx installs count.
             else if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
             {
                 ulong delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
@@ -739,9 +737,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong refunds = 0UL;
             authBaseRefunds = 0UL;
-            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can
-            // distinguish a delegation that pre-existed the tx from one installed by an earlier
-            // authorization within the same tx.
+            // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can tell
+            // a pre-existing delegation from one installed earlier in the same tx.
             Dictionary<Address, bool>? delegatedBeforeTx = null;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
@@ -784,9 +781,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    // EIP-7702/EIP-8038 AUTH_BASE refill (EELS set_delegation): clearing always refills, twice
-                    // when the delegation was installed earlier in THIS tx; setting refills when the slot holds
-                    // a delegation either now or at tx start.
+                    // AUTH_BASE refill (EELS set_delegation): clearing always refills, twice when installed
+                    // earlier in THIS tx; setting refills when the slot holds a delegation now or at tx start.
                     if (clearsDelegation)
                     {
                         authBaseRefunds++;
@@ -1281,14 +1277,12 @@ namespace Nethermind.Evm.TransactionProcessing
             Snapshot snapshot = WorldState.TakeSnapshot();
             ulong floorGasLong = TGasPolicy.GetRemainingGas(gas.FloorGas);
 
-            // EIP-8037: capture whether the create target already existed (was alive) before deployment.
-            // On a successful create to a pre-existing account, the up-front NEW_ACCOUNT state gas charged
-            // in the intrinsic cost is refunded since no new account leaf is materialised.
+            // EIP-8037: a successful create to a pre-existing (alive) account refunds the intrinsic
+            // NEW_ACCOUNT state gas — no new account leaf is materialised.
             bool createdTargetAlive = tx.IsContractCreation && !WorldState.IsDeadAccount(env.ExecutingAccount);
 
-            // EIP-8037: a top-frame charge (NEW_ACCOUNT state gas or the delegation-target cold access)
-            // exhausted the frame's gas before any code ran. No value moves, the recipient keeps its
-            // pre-tx state, and the sender forfeits all gas (statusCode stays Failure).
+            // EIP-8037: a top-frame charge exhausted the gas before any code ran; no value moves and
+            // the sender forfeits all gas (statusCode stays Failure).
             if (topFrameOutOfGas)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
@@ -1560,20 +1554,17 @@ namespace Nethermind.Evm.TransactionProcessing
             // EELS: tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left; on a halt gas_left is
             // zeroed so the regular dimension is fully spent and only the state reservoir remains unused.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
-            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE for an existing authority) survives a halt:
-            // EELS adds it to refund_counter before execution and applies min(before_refund / 5, counter) to
-            // tx_gas_used. The state-dimension refund is already reflected in stateReservoir above.
+            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: EELS adds it to
+            // refund_counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
             ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
             long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
             long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-            // On an exceptional halt the spec refills the frame's execution state gas (LIFO) and zeros
-            // gas_left; spilled state gas thus ends up in gas_left and is burned as regular, not as
-            // state. Only the intrinsic state gas remaining after the reset stays in the state dimension.
+            // On an exceptional halt spilled state gas ends up in gas_left and is burned as regular;
+            // only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            // Block regular gas = before_refund - state (EELS tx_regular_gas); refunds and the EIP-7623/7976
-            // calldata floor adjust only the sender charge, never this dimension. System calls may halt with
-            // preRefundGas 0 while intrinsic state gas remains; their GasConsumed is discarded.
+            // Block regular gas = before_refund - state (EELS tx_regular_gas); refunds and the calldata
+            // floor adjust only the sender charge, never this dimension.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = preRefundGas - (ulong)effectiveStateGas;
@@ -1689,9 +1680,8 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            // EIP-8037: refund the top-level create's up-front NEW_ACCOUNT state gas on a reverted create
-            // (state is rolled back) or on a successful create whose target already existed (was alive).
-            // Exceptional halts (substate.IsError) refund it separately via CompleteEip8037Halt below.
+            // EIP-8037: refund the top-level create's NEW_ACCOUNT state gas on revert or when the target
+            // already existed; exceptional halts refund it via CompleteEip8037Halt instead.
             if (spec.IsEip8037Enabled && (substate.ShouldRevert || (!substate.IsError && createdTargetAlive)))
             {
                 long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);

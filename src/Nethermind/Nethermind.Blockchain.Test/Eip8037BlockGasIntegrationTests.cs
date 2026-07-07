@@ -108,11 +108,8 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// Creation tx is accepted at inclusion when its full <c>tx.gas</c> fits the remaining
-    /// regular budget. EIP-8037 (EELS fork.py) reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in
-    /// the regular dimension with NO <c>intrinsic.state</c> subtraction, so the block must leave
-    /// room for the whole <c>tx.gas</c>. With actual post-execution gas modest (the create succeeds
-    /// well under cap), <c>IncrementalValidation</c> also accepts. This test verifies acceptance.
+    /// The inclusion check reserves <c>min(TX_MAX_GAS_LIMIT, tx.gas)</c> in the regular dimension
+    /// with no <c>intrinsic.state</c> subtraction, so a creation tx whose full gas fits is accepted.
     /// </summary>
     [Test]
     public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()

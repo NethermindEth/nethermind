@@ -154,18 +154,16 @@ public class Eip8037BlockGasInclusionCheckTests
             Is.EqualTo(35_459));
     }
 
-    // When the state component exceeds the pre-refund gas (e.g. a create whose intrinsic state
-    // reservoir survives a revert), the regular dimension floors at zero; the state dimension
-    // dominates block gasUsed via max(ΣregularPreRefund, Σstate).
+    // When the state component exceeds the pre-refund gas the regular dimension floors at zero;
+    // the state dimension then dominates block gasUsed via the max.
     [Test]
     public void Calculate_block_regular_gas_never_negative()
         => Assert.That(
             Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas: 12_625, blockStateGas: 1_566_720),
             Is.EqualTo(0));
 
-    // Regression: the EIP-7623/7976 calldata floor is a minimum charge on the sender
-    // (tx_gas_used / receipts) only and must NOT inflate the block's regular-gas dimension.
-    // With no state component the block regular gas is exactly the pre-refund gas charged.
+    // Regression: the calldata floor is a sender-only minimum and must not inflate the block's
+    // regular-gas dimension.
     [Test]
     public void Calculate_block_regular_gas_ignores_calldata_floor()
         => Assert.That(

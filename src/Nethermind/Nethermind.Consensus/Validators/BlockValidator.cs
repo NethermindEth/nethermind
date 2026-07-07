@@ -319,8 +319,7 @@ public class BlockValidator(
             Transaction transaction = transactions[txIndex];
 
             // Recover the sender if a preprocessor hasn't yet: the intrinsic-gas validation below is
-            // sender-dependent (EIP-2780 self-transfer discount), and downstream intrinsic recomputes
-            // (executor precompute, BAL inclusion) reuse the same tx object.
+            // sender-dependent (EIP-2780 self-transfer discount).
             if (transaction.SenderAddress is null && transaction.Signature is not null)
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
 

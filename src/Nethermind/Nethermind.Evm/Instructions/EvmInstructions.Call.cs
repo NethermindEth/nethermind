@@ -233,9 +233,8 @@ public static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            // EIP-8037: a value transfer to a new account charges NEW_ACCOUNT state gas up-front; when the
-            // call cannot proceed (call depth exceeded or caller balance too low) no account is created, so
-            // refund it. No-op pre-EIP-8037 (CreditStateGasRefund self-gates), matching legacy semantics.
+            // EIP-8037: refund the up-front NEW_ACCOUNT state charge when the call cannot proceed
+            // (depth exceeded or balance too low) — no account is created. No-op pre-EIP-8037.
             if (chargesNewAccount)
                 vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
