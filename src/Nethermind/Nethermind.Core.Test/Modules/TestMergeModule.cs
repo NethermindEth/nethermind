@@ -4,30 +4,15 @@
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
-public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) : Module
+public class TestMergeModule(IModule? mergeModule) : Module
 {
-    public TestMergeModule(ITxPoolConfig txPoolConfig) : this(txPoolConfig, new MergePluginModule())
-    {
-    }
-
-    public TestMergeModule(IConfigProvider configProvider) : this(configProvider.GetConfig<ITxPoolConfig>(), new MergePluginModule())
-    {
-    }
-
-    public TestMergeModule(IConfigProvider configProvider, IModule? mergeModule) : this(configProvider.GetConfig<ITxPoolConfig>(), mergeModule)
+    public TestMergeModule() : this(new MergePluginModule())
     {
     }
 
@@ -42,24 +27,11 @@ public class TestMergeModule(ITxPoolConfig txPoolConfig, IModule? mergeModule) :
         builder
             .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
 
-            // Validators
-            .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
-            .AddSingleton<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
-
             // Block production related.
             .AddScoped<PostMergeBlockProducerFactory>()
 
             // Engine rpc
             .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
             ;
-
-        if (txPoolConfig.BlobsSupport.SupportsReorgs())
-        {
-            builder.AddSingleton<ProcessedTransactionsDbCleaner, IBlockTree, IDbProvider, ILogManager>(
-                static (blockTree, dbProvider, logManager) => new ProcessedTransactionsDbCleaner(
-                    blockTree,
-                    dbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs),
-                    logManager));
-        }
     }
 }

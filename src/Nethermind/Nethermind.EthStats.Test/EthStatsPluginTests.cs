@@ -23,6 +23,5 @@ public class EthStatsPluginTests
 
         Assert.DoesNotThrow(() => _plugin.InitTxTypesAndRlpDecoders(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
     }
 }

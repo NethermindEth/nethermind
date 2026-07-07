@@ -54,7 +54,7 @@ public sealed class DiscoveryPersistenceManager(
             Node node;
             try
             {
-                node = new Node(networkNode);
+                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.DiscoveryPort);
             }
             catch (Exception e)
             {

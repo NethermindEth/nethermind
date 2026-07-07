@@ -74,10 +74,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
-        _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
-
         return Task.CompletedTask;
     }
 
@@ -114,6 +110,7 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<IBlockProductionPolicy>(AlwaysStartBlockProductionPolicy.Instance)
 
             .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             // Step override

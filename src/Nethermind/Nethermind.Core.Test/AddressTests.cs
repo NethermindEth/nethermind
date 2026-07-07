@@ -61,6 +61,20 @@ public class AddressTests
     }
 
     [Test]
+    public void Equals_span_works()
+    {
+        Address address = new(Keccak.Compute("a"));
+        Address other = new(Keccak.Compute("b"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(address.Equals(address.Bytes), Is.True);
+            Assert.That(address.Equals(other.Bytes), Is.False);
+            Assert.That(address.Equals(address.Bytes[..19]), Is.False);
+            Assert.That(address.Equals(ReadOnlySpan<byte>.Empty), Is.False);
+        }
+    }
+
+    [Test]
     public void Equals_works()
     {
         Address addressA = new(Keccak.Compute("a"));
@@ -72,7 +86,7 @@ public class AddressTests
             // ReSharper disable once EqualExpressionComparison
             Assert.That(addressA.Equals(addressA), Is.True);
             Assert.That(addressA.Equals(addressB), Is.False);
-            Assert.That(addressA.Equals(null), Is.False);
+            Assert.That(addressA.Equals((Address?)null), Is.False);
         }
     }
 

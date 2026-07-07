@@ -132,7 +132,7 @@ public class BalRecorderE2ETests
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, $"bal-e2e-{Guid.NewGuid():N}"))
-            .AddModule(new TestMergeModule(configProvider))
+            .AddModule(new TestMergeModule())
             .AddModule(new BalRecorderModule())
             .AddSingleton(timestamper)
             .AddSingleton<BlockBuilder>()
