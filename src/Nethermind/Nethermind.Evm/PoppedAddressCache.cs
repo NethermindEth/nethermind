@@ -14,15 +14,20 @@ namespace Nethermind.Evm;
 /// </summary>
 public sealed class PoppedAddressCache
 {
-    private Address? _entry0;
-    private Address? _entry1;
-    private Address? _entry2;
-    private Address? _entry3;
+    private const int CacheSize = 4;
+
+    [InlineArray(CacheSize)]
+    private struct AddressEntries
+    {
+        private Address? _element0;
+    }
+
+    private AddressEntries _entries;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Address GetOrCreate(ReadOnlySpan<byte> addressBytes)
     {
-        Address? front = _entry0;
+        Address? front = _entries[0];
         if (front is not null && front.Equals(addressBytes))
         {
             return front;
@@ -35,20 +40,19 @@ public sealed class PoppedAddressCache
     private Address GetOrCreateBehindFront(ReadOnlySpan<byte> addressBytes)
     {
         // No reordering on hit: promotion would cost field writes and buys nothing at this size.
-        Address? entry = _entry1;
-        if (entry is not null && entry.Equals(addressBytes)) return entry;
-
-        entry = _entry2;
-        if (entry is not null && entry.Equals(addressBytes)) return entry;
-
-        entry = _entry3;
-        if (entry is not null && entry.Equals(addressBytes)) return entry;
+        for (int i = 1; i < CacheSize; i++)
+        {
+            Address? entry = _entries[i];
+            if (entry is not null && entry.Equals(addressBytes)) return entry;
+        }
 
         Address created = new(addressBytes);
-        _entry3 = _entry2;
-        _entry2 = _entry1;
-        _entry1 = _entry0;
-        _entry0 = created;
+        for (int i = CacheSize - 1; i > 0; i--)
+        {
+            _entries[i] = _entries[i - 1];
+        }
+
+        _entries[0] = created;
         return created;
     }
 }
