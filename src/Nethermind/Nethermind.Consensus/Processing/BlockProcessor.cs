@@ -139,8 +139,6 @@ public partial class BlockProcessor(
         _balManager.WaitForBalWarmup();
         CommitState(spec);
 
-        _balManager.WaitForBalWarmup();
-
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done so subscribers can cancel transaction-phase background work.
