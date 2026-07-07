@@ -376,7 +376,7 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
+    public void BranchProcessor_cancels_prewarmer_after_block_processing()
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
@@ -391,11 +391,45 @@ public class BlockProcessorTests
             NullBlockTracer.Instance);
 
         Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
-            "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
+            "prewarmer CancellationToken should be cancelled after block processing completes");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
+    public void BranchProcessor_keeps_prewarmer_running_after_transactions_execute()
+    {
+        TokenCapturingPreWarmer preWarmer = new();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ObservingBlockProcessor processor = new(() => preWarmer.CapturedToken.IsCancellationRequested);
+        ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BranchProcessor branchProcessor = new(
+            processor,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            preWarmer);
+
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.PrewarmWasCancelledAfterTransactionsExecuted, Is.False,
+                "prewarmer CancellationToken should remain active after transaction execution");
+            Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
+                "prewarmer CancellationToken should still be cancelled after block processing completes");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_leaves_TransactionsExecuted_available_for_external_handlers()
     {
         (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
 
@@ -417,7 +451,7 @@ public class BlockProcessorTests
         processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(externalHandlerCallCount, Is.EqualTo(1),
-            "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
+            "only the externally subscribed handler should fire");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -490,6 +524,25 @@ public class BlockProcessorTests
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public void Dispose() { }
+    }
+
+    private sealed class ObservingBlockProcessor(Func<bool> isPrewarmerCancelled) : IBlockProcessor
+    {
+        public event Action? TransactionsExecuted;
+
+        public bool? PrewarmWasCancelledAfterTransactionsExecuted { get; private set; }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            TransactionsExecuted?.Invoke();
+            PrewarmWasCancelledAfterTransactionsExecuted = isPrewarmerCancelled();
+            return (suggestedBlock, []);
+        }
     }
 
     public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()

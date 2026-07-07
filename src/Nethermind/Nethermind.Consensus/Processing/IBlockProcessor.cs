@@ -22,8 +22,8 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Raised after all transactions in a block have been executed,
         /// before blooms, receipts root, and state root are computed.
-        /// Subscribers can use this to cancel background work (e.g. prewarmer)
-        /// so the thread pool is free for the parallel post-tx computations.
+        /// Subscribers can use this to cancel transaction-phase background work
+        /// that is no longer useful after transaction execution.
         /// </summary>
         event Action? TransactionsExecuted;
 

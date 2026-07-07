@@ -138,8 +138,7 @@ public partial class BlockProcessor(
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
-        // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
-        // to free the thread pool for blooms, receipts root, state root parallel work below
+        // Signal that transactions are done so subscribers can cancel transaction-phase background work.
         TransactionsExecuted?.Invoke();
 
         CommitState(spec);

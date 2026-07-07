@@ -70,22 +70,22 @@ public class BranchProcessor(
             worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
 
-        CancellationTokenSource? backgroundCancellation = new();
+        CancellationTokenSource? preWarmCancellation = new();
+        CancellationTokenSource? prefetchCancellation = new();
         Task? preWarmTask = null;
 
-        // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
-        // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
-        // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
+        // Blockhash prefetch is only useful while transactions are executing. The cache prewarmer
+        // keeps running until the block finishes so storage-root updates can consume its warm reads.
+        void CancelPrefetch() => prefetchCancellation?.Cancel();
+        blockProcessor.TransactionsExecuted += CancelPrefetch;
 
         try
         {
             // Start prewarming as early as possible
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, preWarmCancellation.Token);
+            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, prefetchCancellation.Token);
 
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
@@ -104,11 +104,12 @@ public class BranchProcessor(
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
-                // If prewarmCancellation is not null it means we are in first iteration of loop
+                // If preWarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
-                backgroundCancellation ??= new CancellationTokenSource();
-                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                preWarmCancellation ??= new CancellationTokenSource();
+                prefetchCancellation ??= new CancellationTokenSource();
+                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, preWarmCancellation.Token);
+                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, prefetchCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -132,8 +133,10 @@ public class BranchProcessor(
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
-                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
-                CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                // Block is processed; background work can stop once the post-transaction storage-root phase
+                // had a chance to consume the warm reads and trie path hints produced by the prewarmer.
+                CancellationTokenExtensions.CancelDisposeAndClear(ref preWarmCancellation);
+                CancellationTokenExtensions.CancelDisposeAndClear(ref prefetchCancellation);
 
                 processedBlocks[i] = processedBlock;
 
@@ -182,14 +185,15 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
-            CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref preWarmCancellation);
+            CancellationTokenExtensions.CancelDisposeAndClear(ref prefetchCancellation);
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
             throw;
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+            blockProcessor.TransactionsExecuted -= CancelPrefetch;
             worldStateCloser?.Dispose();
         }
 
