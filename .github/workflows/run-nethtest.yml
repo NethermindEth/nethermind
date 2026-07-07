@@ -175,56 +175,56 @@ jobs:
                 # Mirrors the pyspec fixture classes: sequential merkle baseline over the
                 # full set, plus the flat layout and its Amsterdam BAL parallel/batch-read
                 # variants (the toggles are EIP-7928-gated, hence the amsterdam scope).
-                # Parallel-execution variants run single-worker in small chunks: process
-                # memory grows with the number of parallel-executed tests (~14 GB after
-                # ~5k tests even at 2 workers), so larger jobs trip the 16 GB runner limit.
+                # The default (patricia) layout disposes its state store per test, so these
+                # jobs never approach the 16 GB runner limit; chunk counts here are sized for
+                # wall-clock, not memory.
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 8
+                  emit "$type" sequential full '' false false 4 4
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
                   # unfiltered, so the Amsterdam parallel/batch-read variant classes also
                   # ran under the default (patricia) layout — including parallel-full,
                   # which is the production configuration. Mirror that coverage here.
-                  emit "$type" parallel amsterdam '' true false 1 8
-                  emit "$type" batchread amsterdam '' false true 4 4
-                  emit "$type" parallelfull amsterdam '' true true 1 8
+                  emit "$type" parallel amsterdam '' true false 1 2
+                  emit "$type" batchread amsterdam '' false true 4 2
+                  emit "$type" parallelfull amsterdam '' true true 1 2
                 fi
                 if run_flat; then
-                  # Engine tests under the flat in-memory backend are the heaviest
-                  # combination: some full-set chunks exceeded the 16 GB runner limit at
-                  # 4 workers / 8 chunks, so they get smaller single-purpose jobs.
+                  # The flat in-memory backend never prunes, so state accumulates across a
+                  # chunk and chunk size is bounded by the 16 GB runner limit, not wall-clock.
+                  # Counts below are the empirically OOM-safe density on the largest fixture
+                  # set (v7.3.2): this profile ran clean with ~2x margin over the observed
+                  # threshold, while denser ones (parallel at 3-5 chunks, parallel-full at 4)
+                  # tripped the limit. Engine is the heaviest combination, so it runs smaller.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" flat_sequential full 1 false false 2 16
+                    emit "$type" flat_sequential full 1 false false 2 10
                   else
-                    emit "$type" flat_sequential full 1 false false 4 8
+                    emit "$type" flat_sequential full 1 false false 4 4
                   fi
-                  # 16 chunks matches the NUnit variant shards' ~1.3k tests/process, the
-                  # empirically safe size for the parallel-execution memory growth
-                  # (a v7.2.0 chunk died at ~1.8k tests even single-worker).
-                  emit "$type" flat_parallel amsterdam 1 true false 1 16
-                  emit "$type" flat_batchread amsterdam 1 false true 4 4
-                  # parallelfull (parallel + batch-read prewarm) retains the most memory per
-                  # test; chunk 10of16 was deterministically over the limit on v7.3.1.
-                  emit "$type" flat_parallelfull amsterdam 1 true true 1 24
+                  emit "$type" flat_parallel amsterdam 1 true false 1 10
+                  emit "$type" flat_batchread amsterdam 1 false true 4 2
+                  # parallel-full (parallel + batch-read prewarm) retains the most memory per
+                  # test, so it keeps the smallest chunks of the flat group.
+                  emit "$type" flat_parallelfull amsterdam 1 true true 1 14
                 fi
                 ;;
               stateTest)
                 # State tests execute a single tx via the tx processor - the block-level
                 # parallel/batch-read toggles do not apply, only the state layout does.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 4
+                  emit "$type" sequential full '' '' '' 4 2
                 fi
                 if run_flat; then
-                  emit "$type" flat_sequential full 1 '' '' 4 4
+                  emit "$type" flat_sequential full 1 '' '' 4 3
                 fi
                 ;;
               syncTest)
                 # Sync fixtures share the engine-payload format; the sync-specific payload
                 # is not exercised yet (same coverage the NUnit sync fixtures provided).
                 if run_sequential; then
-                  emit "$type" sequential full '' false false 4 2
+                  emit "$type" sequential full '' false false 4 1
                 fi
                 if run_flat; then
-                  emit "$type" flat_sequential full 1 false false 4 2
+                  emit "$type" flat_sequential full 1 false false 4 1
                 fi
                 ;;
               txTest)
@@ -238,7 +238,7 @@ jobs:
                 # Stateless witness execution builds its own in-memory state, so the
                 # layout and BAL toggles are irrelevant - sequential group only.
                 if run_sequential; then
-                  emit "$type" sequential full '' '' '' 4 4
+                  emit "$type" sequential full '' '' '' 4 2
                 fi
                 ;;
               *)
