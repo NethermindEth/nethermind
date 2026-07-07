@@ -14,7 +14,7 @@ namespace Nethermind.Specs.Test
     /// </summary>
     public class OverridableReleaseSpec(IReleaseSpec spec) : IReleaseSpec
     {
-        public string Name => "OverridableReleaseSpec";
+        public string Name => spec.Name;
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
