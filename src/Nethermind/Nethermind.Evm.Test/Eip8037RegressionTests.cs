@@ -319,9 +319,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         ulong expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
-        // v6 (glamsterdam-devnet-6) gas: intrinsic + auth base costs plus the delegation-target
-        // access the tx pays when calling the now-delegated authority. Pinned to the spec-validated
-        // value (see the eip8037/eip7702 pyspec fixtures).
+        // Intrinsic + auth base costs plus the delegation-target access paid when calling the
+        // now-delegated authority; pinned to the fixture-validated value.
         const ulong expectedPaidGas = 67006;
 
         using (Assert.EnterMultipleScope())
@@ -428,9 +427,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        // Only the top-level CREATE tx's intrinsic create-state gas is refunded on the halt (no
-        // contract is deployed). The inner CREATEs' state gas spilled into gas_left (the tx has a
-        // zero state reservoir) and is burned by the top-level INVALID, so it is not refunded.
+        // Only the top-level create-state gas is refunded on the halt; the inner CREATEs' state
+        // gas spilled into gas_left and is burned by the top-level INVALID.
         ulong refundedStateGas = GasCostOf.CreateState;
 
         using (Assert.EnterMultipleScope())
@@ -479,7 +477,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    private static TestCaseData[] GlamsterdamFailedCreateCases =>
+    private static TestCaseData[] FailedCreateRegressionCases =>
     [
         new TestCaseData(
             "block 957 failed CREATE",
@@ -501,7 +499,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             1_000_000UL,
             0,
             0xc7510UL)
-            .SetName("Eip8037_glamsterdam_block_957_failed_create_must_not_double_refund_top_level_create_state_gas"),
+            .SetName("Eip8037_block_957_failed_create_must_not_double_refund_top_level_create_state_gas"),
         new TestCaseData(
             "block 1194 failed CREATE",
             "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
@@ -523,7 +521,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             1_000_000UL,
             0xe7f2,
             1_000_000UL - GasCostOf.CreateState)
-            .SetName("Eip8037_glamsterdam_block_1194_failed_create_must_exclude_top_level_create_state_gas"),
+            .SetName("Eip8037_block_1194_failed_create_must_exclude_top_level_create_state_gas"),
         new TestCaseData(
             "block 2367 failed CREATE",
             "7f7c76141f109a1bbb8998d25ee84ca60784fba5d5138673919b039ef3abb417c07f" +
@@ -544,11 +542,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             1_000_000UL,
             0xf8cc,
             0xc7510UL)
-            .SetName("Eip8037_glamsterdam_block_2367_failed_create_must_preserve_inner_reservoir_and_refund_top_level_create_state_gas"),
+            .SetName("Eip8037_block_2367_failed_create_must_preserve_inner_reservoir_and_refund_top_level_create_state_gas"),
     ];
 
-    [TestCaseSource(nameof(GlamsterdamFailedCreateCases))]
-    public void Eip8037_glamsterdam_failed_create_must_exclude_top_level_create_state_gas(
+    [TestCaseSource(nameof(FailedCreateRegressionCases))]
+    public void Eip8037_failed_create_must_exclude_top_level_create_state_gas(
         string scenario,
         string initCodeHex,
         ulong gasLimit,
@@ -809,10 +807,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// A top-level exceptional halt burns the spilled state gas (EELS refill_frame_state_gas
-    /// refills the spill into gas_left, which the halt then zeros), so the sender pays the full
-    /// gas limit. BlockStateGas remains zero because the state change did not commit and the
-    /// burned spill is attributed to the regular dimension.
+    /// A top-level exceptional halt burns the spilled state gas, so the sender pays the full gas
+    /// limit; BlockStateGas stays zero as the burned spill is attributed to the regular dimension.
     /// </summary>
     [Test]
     public void Eip8037_top_level_exceptional_halt_burns_spilled_state_gas()
@@ -833,7 +829,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        // Under v6 gas the PUSH0 run exhausts gas before the stack-overflow depth is reached.
+        // Under the repriced gas the PUSH0 run exhausts gas before the stack-overflow depth.
         Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
         // The SSTORE's state gas spilled from gas_left and is burned by the halt, so the whole
         // gas limit is consumed in the regular dimension.
@@ -1076,9 +1072,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             value: zeroValue,
             blockGasLimit: blockGasLimit);
 
-        // Sized to exceed the legacy 1-D remaining regular budget (block_gas_limit minus the first
-        // tx's block gas) while still fitting the 2-D check: its capped regular contribution
-        // (min(TX_MAX, tx.gas)) and its full-tx.gas state contribution both fit.
+        // Sized to exceed the legacy 1-D remaining budget while still fitting the 2-D check in
+        // both dimensions.
         ulong secondTxGasLimit = blockGasLimit - 1000;
         (_, Transaction secondTx) = PrepareTx(
             Activation,

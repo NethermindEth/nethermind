@@ -137,8 +137,8 @@ internal class TransactionProcessorEip7702Tests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-        // devnet-6 intrinsic regular = TX base + value-bearing recipient touch (cold + transfer log +
-        // value cost) + EIP-7702 per-auth regular; existing authorities refund ACCOUNT_WRITE, capped at before/5.
+        // Intrinsic regular = TX base + value-bearing recipient touch + EIP-7702 per-auth regular;
+        // existing authorities refund ACCOUNT_WRITE, capped at before/5.
         ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
             + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
         ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund;

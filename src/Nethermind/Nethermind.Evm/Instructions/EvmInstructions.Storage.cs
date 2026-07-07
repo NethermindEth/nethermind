@@ -487,9 +487,8 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // EIP-8037/EELS: the implicit SLOAD is performed before any gas is charged, so the slot is
-        // recorded as a block-access-list storage read even when the access or write charge below
-        // runs out of gas. This matches the spec ordering, where get_storage precedes charge_gas.
+        // EELS orders get_storage before charge_gas, so the slot read is BAL-recorded even when
+        // the access or write charge below runs out of gas.
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
@@ -562,9 +561,8 @@ public static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    // EIP-8038: restoring a slot to its original value refunds the STORAGE_WRITE
-                    // regular charge taken on the first change; a freshly-created slot (original 0)
-                    // additionally refunds its state gas in-frame.
+                    // EIP-8038: restoring a slot's original value refunds the first-change STORAGE_WRITE;
+                    // a freshly-created slot (original 0) additionally refunds its state gas in-frame.
                     long refundFromReversal = spec.IsEip8038Enabled
                         ? (long)Eip8038Constants.StorageWrite
                         : (long)gasCosts.RefundFromReversal(originalIsZero);

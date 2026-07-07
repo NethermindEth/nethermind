@@ -50,9 +50,8 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
 
     /// <summary>
-    /// EIP-8037/EIP-8038: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for a value
-    /// transfer materialising this (previously dead) recipient. If this frame errors or reverts the
-    /// account is not created, so the parent refunds that state gas on the frame's failure path.
+    /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
+    /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
     /// </summary>
     public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
