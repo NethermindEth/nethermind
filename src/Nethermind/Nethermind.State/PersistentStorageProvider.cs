@@ -316,6 +316,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (!exists)
         {
             slot = value;
+            // Reads skip the registry, so read-only cells must be tracked here for
+            // ClearStorage to zero them (matching the pre-index full-scan behavior).
+            TrackCellByAddress(in cell);
         }
     }
 
@@ -351,6 +354,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _originalValues.Clear();
+            // Base commit (which clears the per-address cell view) is skipped on this path.
+            _cellsByAddress.Clear();
             return;
         }
 
@@ -363,15 +368,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <param name="address">Contract address</param>
     public override void ClearStorage(Address address)
     {
-        foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
+        // Single pass over this address's tracked cells: zero everything the round has read
+        // (_originalValues, survives Restore) or written (_intraBlockCache, pruned by Restore),
+        // preserving the exact set the pre-index full scans produced.
+        if (_cellsByAddress.TryGetValue(address, out List<StorageCell>? cells))
         {
-            if (readCell.Key.Address == address)
+            for (int i = 0; i < cells.Count; i++)
             {
-                Set(readCell.Key, StorageTree.ZeroBytes);
+                StorageCell cell = cells[i];
+                if (_originalValues.ContainsKey(cell) || _intraBlockCache.ContainsKey(cell))
+                {
+                    Set(cell, StorageTree.ZeroBytes);
+                }
             }
         }
-
-        base.ClearStorage(address);
 
         _toUpdateRoots.TryAdd(address, true);
 

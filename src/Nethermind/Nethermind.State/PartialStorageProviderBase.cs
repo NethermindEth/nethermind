@@ -18,6 +18,11 @@ namespace Nethermind.State
     internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
+        // Per-address view of every cell that entered the round's tracking structures, so
+        // ClearStorage visits only the destroyed contract's cells instead of scanning the
+        // whole round (O(destroys × round cells) on mass-self-destruct blocks). Append-only
+        // within a round; entries may outlive a Restore, so consumers re-check membership.
+        protected readonly Dictionary<AddressAsKey, List<StorageCell>> _cellsByAddress = [];
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
@@ -164,6 +169,7 @@ namespace Nethermind.State
 
             _changes.Clear();
             _intraBlockCache.ResetAndClear();
+            _cellsByAddress.Clear();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -219,9 +225,19 @@ namespace Nethermind.State
             if (!exists)
             {
                 value = StackList<int>.Rent();
+                TrackCellByAddress(in cell);
             }
 
             return value;
+        }
+
+        /// <summary>
+        /// Records the cell in the per-address view used by <see cref="ClearStorage"/>.
+        /// </summary>
+        protected void TrackCellByAddress(in StorageCell cell)
+        {
+            ref List<StorageCell>? cells = ref CollectionsMarshal.GetValueRefOrAddDefault(_cellsByAddress, cell.Address, out _);
+            (cells ??= []).Add(cell);
         }
 
         /// <summary>
@@ -231,12 +247,17 @@ namespace Nethermind.State
         public virtual void ClearStorage(Address address)
         {
             // We are setting cached values to zero so we do not use previously set values
-            // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            // when the contract is revived with CREATE2 inside the same block.
+            // Membership is re-checked because a Restore may have evicted the cell since it
+            // was tracked; index-based iteration is append-safe (Set re-tracks visited cells).
+            if (_cellsByAddress.TryGetValue(address, out List<StorageCell>? cells))
             {
-                if (cellByAddress.Key.Address == address)
+                foreach (StorageCell cell in cells)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    if (_intraBlockCache.ContainsKey(cell))
+                    {
+                        Set(cell, StorageTree.ZeroBytes);
+                    }
                 }
             }
         }
