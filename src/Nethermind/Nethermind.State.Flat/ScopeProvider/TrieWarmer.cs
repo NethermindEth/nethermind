@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
     private const int BufferSize = 1024 * 16;
-    private const int SlotBufferSize = 1024 * 8;
+    private const int SlotBufferSize = 1024;
     private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;
