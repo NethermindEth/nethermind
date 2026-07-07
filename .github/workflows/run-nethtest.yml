@@ -438,8 +438,6 @@ jobs:
 
           # Write summary even if the process crashes
           write_summary() {
-            echo ""
-            echo "=== Writing summary ==="
             # Strip ANSI codes and extract only progress/failure lines
             sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -E "^(PROGRESS|FAIL|EXCEPTION) " > "$CLEAN_FILE" 2>/dev/null || true
 
@@ -551,11 +549,6 @@ jobs:
           }
 
           cleanup() {
-            if [ -n "${HEARTBEAT_PID:-}" ]; then
-              kill "$HEARTBEAT_PID" 2>/dev/null || true
-              wait "$HEARTBEAT_PID" 2>/dev/null || true
-            fi
-
             if [ -n "${WATCHDOG_PID:-}" ]; then
               kill "$WATCHDOG_PID" 2>/dev/null || true
               wait "$WATCHDOG_PID" 2>/dev/null || true
@@ -623,16 +616,6 @@ jobs:
           }
           trap on_termination TERM INT
 
-          heartbeat() {
-            while true; do
-              sleep 60 || exit 0
-              echo "nethtest still running at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-              print_diagnostics
-            done
-          }
-          heartbeat &
-          HEARTBEAT_PID=$!
-
           watchdog() {
             local idle_timeout_seconds=$((IDLE_TIMEOUT_MINUTES * 60))
             while kill -0 "$NETHTEST_PID" 2>/dev/null; do
@@ -676,8 +659,6 @@ jobs:
           set -e
 
           echo "Exit code: $rc"
-          echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
-          echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
 
           if [ -f "$LOW_MEMORY_FILE" ]; then
             if [ $rc -eq 0 ] && [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
@@ -708,8 +689,6 @@ jobs:
 
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
-            echo "--- stderr (last 50 lines) ---"
-            tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
             exit $rc
           fi
 
