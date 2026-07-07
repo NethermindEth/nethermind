@@ -29,8 +29,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
-    private Address? _lastAccountChangesAddress;
-    private ReadOnlyAccountChanges? _lastAccountChanges;
     private uint _blockAccessIndex = 0;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
@@ -44,16 +42,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public void Setup(Block suggestedBlock)
     {
-        ReadOnlyBlockAccessList? blockAccessList = suggestedBlock.BlockAccessList;
-        if (!ReferenceEquals(_suggestedBlockAccessList, blockAccessList))
-        {
-            _suggestedBlockAccessList = blockAccessList;
-            _codeChangesByHash = BuildCodeChangesByHash();
-            _lastAccountChangesAddress = null;
-            _lastAccountChanges = null;
-        }
-
+        _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
+        _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
@@ -70,7 +61,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public void ClearParentReader()
     {
         _parentReader = null;
+        _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
+        _codeChangesByHash = null;
     }
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
@@ -332,11 +325,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     private ReadOnlyAccountChanges GetAccountChangesOrThrow(Address address)
     {
-        if (_lastAccountChanges is { } cached && _lastAccountChangesAddress == address)
-        {
-            return cached;
-        }
-
         Debug.Assert(_suggestedBlockAccessList is not null);
         ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is null)
@@ -344,8 +332,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             ThrowMissingAccount(address);
         }
 
-        _lastAccountChangesAddress = address;
-        _lastAccountChanges = accountChanges;
         return accountChanges;
     }
 
@@ -359,8 +345,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         code = null;
 
-        if (_suggestedBlockHeader is not null
-            && _codeChangesByHash is { } codeChangesByHash
+        if (_codeChangesByHash is { } codeChangesByHash
             && codeChangesByHash.TryGetValue(codeHash, out (uint Index, byte[] Code) entry)
             && entry.Index < _blockAccessIndex)
         {
