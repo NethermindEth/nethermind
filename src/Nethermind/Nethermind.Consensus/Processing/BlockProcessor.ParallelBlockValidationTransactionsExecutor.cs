@@ -313,7 +313,7 @@ public partial class BlockProcessor
         /// reduces tail-latency stragglers in <see cref="ParallelUnbalancedWork.For"/>.</summary>
         internal static int GetCanonicalExecutionLead(int txCount)
         {
-            int lead = Math.Max(8, Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount * 2);
+            const int lead = 8;
             return Math.Min(txCount, lead);
         }
 
