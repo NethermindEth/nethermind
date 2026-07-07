@@ -375,6 +375,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void MarkStorageDestroyed(Address address)
     {
         _destroyedThisRound.Add(address);
+        ResetContractState(address);
+    }
+
+    private void ResetContractState(Address address)
+    {
         _toUpdateRoots.TryAdd(address, true);
         GetOrCreateStorage(address).Clear();
     }
@@ -391,10 +396,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.ClearStorage(address);
 
-        _toUpdateRoots.TryAdd(address, true);
-
-        PerContractState state = GetOrCreateStorage(address);
-        state.Clear();
+        ResetContractState(address);
     }
 
     private sealed class DefaultableDictionary()
