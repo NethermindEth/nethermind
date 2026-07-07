@@ -623,7 +623,6 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>Started transactions are skipped by warming; un-started ones are warmed (counted via speculative Warmup executions).</summary>
     [Test]
     public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
     {
