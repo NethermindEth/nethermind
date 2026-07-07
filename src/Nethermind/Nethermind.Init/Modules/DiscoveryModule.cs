@@ -37,12 +37,12 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 
         builder
             // Enr discovery uses DNS to get some bootnodes.
-            .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
+            .AddSingleton<EnrDiscovery, IEthereumEcdsa, IForkInfo, ILogManager>((ethereumEcdsa, forkInfo, logManager) =>
             {
                 // I do not use the key here -> API is broken - no sense to use the node signer here
                 NodeRecordSigner nodeRecordSigner = new(ethereumEcdsa, new PrivateKeyGenerator().Generate());
                 EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-                return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
+                return new EnrDiscovery(enrRecordParser, networkConfig, forkInfo, logManager); // initialize with a proper network
             })
 
             // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.

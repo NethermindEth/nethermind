@@ -53,6 +53,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+        forkInfo.IsForkIdCompatible(new ForkId(0, 0)).Returns(true);
 
         ContainerBuilder builder = new();
         builder

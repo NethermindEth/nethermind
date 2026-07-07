@@ -17,13 +17,15 @@ namespace Nethermind.Network.Dns;
 public class EnrDiscovery : INodeSource
 {
     private readonly IEnrRecordParser _parser;
+    private readonly IForkInfo _forkInfo;
     private readonly ILogger _logger;
     private readonly EnrTreeCrawler _crawler;
     private readonly string _domain;
 
-    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
+    public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, IForkInfo forkInfo, ILogManager logManager)
     {
         _parser = parser;
+        _forkInfo = forkInfo;
         _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
@@ -65,7 +67,14 @@ public class EnrDiscovery : INodeSource
                 try
                 {
                     NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
-                    node = CreateNode(nodeRecord);
+                    if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
+                    {
+                        node = CreateNode(nodeRecord);
+                    }
+                    else if (_logger.IsTrace)
+                    {
+                        _logger.Trace($"Skipping DNS discovered ENR {nodeRecordText} with incompatible fork ID.");
+                    }
                 }
                 catch (Exception e)
                 {

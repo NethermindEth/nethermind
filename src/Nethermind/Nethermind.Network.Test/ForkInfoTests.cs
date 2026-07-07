@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -333,6 +334,51 @@ public class ForkInfoTests
         Assert.That(forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header), Is.EqualTo(result));
     }
 
+    [TestCase("0xfc64ec04", 1_150_000ul, true, "Frontier with correct Homestead next")]
+    [TestCase("0xfc64ec04", 0ul, true, "Frontier, remote does not know the next fork yet")]
+    [TestCase("0xfc64ec04", 42ul, false, "Frontier with mismatched next")]
+    [TestCase("0x9f3d2254", 1_746_612_311ul, true, "Cancun with correct Prague next")]
+    // The two cases below assume 0x07c9462e (BPO2) is the last fork known to MainnetSpecProvider; like the
+    // other hardcoded hashes in this file, update them when the next mainnet fork is scheduled.
+    [TestCase("0x07c9462e", 0ul, true, "Last known fork without next")]
+    [TestCase("0x07c9462e", 9_999_999_999ul, true, "Last known fork, remote knows a fork we don't")]
+    [TestCase("0x12345678", 0ul, false, "Unknown fork hash")]
+    [TestCase("0x12345678", 1_150_000ul, false, "Unknown fork hash with known next")]
+    public void Test_fork_id_compatibility_mainnet(string hash, ulong next, bool expected, string description) =>
+        Assert.That(
+            CreateMainnetForkInfo().IsForkIdCompatible(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next)),
+            Is.EqualTo(expected),
+            description);
+
+    [Test]
+    public void Node_record_without_eth_entry_is_fork_compatible()
+    {
+        ForkInfo forkInfo = CreateMainnetForkInfo();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkInfo.IsNodeRecordForkCompatible(null), Is.True);
+            Assert.That(forkInfo.IsNodeRecordForkCompatible(new NodeRecord()), Is.True);
+        }
+    }
+
+    [TestCase("0xfc64ec04", 1_150_000ul, true)]
+    [TestCase("0xfc64ec04", 42ul, false)]
+    [TestCase("0x12345678", 0ul, false)]
+    public void Node_record_eth_entry_is_validated_against_fork_schedule(string hash, ulong next, bool expected)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new EthEntry(Bytes.FromHexString(hash), next));
+
+        Assert.That(CreateMainnetForkInfo().IsNodeRecordForkCompatible(record), Is.EqualTo(expected));
+    }
+
+    private static ForkInfo CreateMainnetForkInfo()
+    {
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
+        return new ForkInfo(MainnetSpecProvider.Instance, syncServer);
+    }
 
     [TestCase(2ul, 3ul, 2ul, 3ul)]
     [TestCase(2ul, null, 2ul, 2ul)]
