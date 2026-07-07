@@ -32,11 +32,8 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
     }
 
     /// <summary>
-    /// Test-only Amsterdam variant with the EIP-8037 two-dimensional gas model disabled.
+    /// Test-only Amsterdam variant with the EIP-8037 two-dimensional gas model disabled,
+    /// isolating EIP-8037 behavior in tests despite the resulting inconsistency with EIP-8038.
     /// </summary>
-    /// <remarks>
-    /// Intentionally inconsistent (EIP-8038 access costs on the one-dimensional gas model);
-    /// exists only to isolate EIP-8037 behavior in tests.
-    /// </remarks>
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
 }

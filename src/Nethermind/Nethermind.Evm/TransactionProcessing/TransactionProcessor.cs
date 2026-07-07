@@ -141,21 +141,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return ExecuteCore(transaction, txTracer, options);
         }
-        private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+        private SystemTransactionProcessor<TGasPolicy> GetOrCreateSystemTransactionProcessor()
         {
-            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            if (_systemTransactionProcessor is null)
             {
-                if (_systemTransactionProcessor is null)
-                {
-                    Interlocked.CompareExchange(ref _systemTransactionProcessor, CreateSystemTransactionProcessor(), null);
-                }
-                return _systemTransactionProcessor.Execute(tx, tracer, opts);
+                Interlocked.CompareExchange(ref _systemTransactionProcessor, CreateSystemTransactionProcessor(), null);
             }
-
-            TransactionResult result = Execute(tx, tracer, opts);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
-            return result;
+            return _systemTransactionProcessor;
         }
 
         /// <summary>
@@ -165,16 +157,25 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            {
+                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
+            }
+
+            TransactionResult result = Execute(tx, tracer, opts);
+            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+            return result;
+        }
+
         protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
-                if (_systemTransactionProcessor is null)
-                {
-                    Interlocked.CompareExchange(ref _systemTransactionProcessor, CreateSystemTransactionProcessor(), null);
-                }
-                return _systemTransactionProcessor.Execute(tx, tracer, opts);
+                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
             }
 
             TransactionResult result = Execute(tx, tracer, opts, in intrinsicGas);
@@ -416,14 +417,12 @@ namespace Nethermind.Evm.TransactionProcessing
             bool isTracingActions = tracer.IsTracingActions;
 
             // EIP-8037: a value transfer materialising a new (dead) recipient — including an empty
-            // precompile — pays NEW_ACCOUNT state gas against pre-transfer state; if it cannot be
-            // covered no value moves and the sender forfeits all gas.
+            // precompile — pays NEW_ACCOUNT state gas; if uncovered, no value moves and all gas is forfeit.
             bool newAccountOutOfGas = false;
             if (spec.IsEip8037Enabled && hasValueTransfer && !senderIsRecipient
                 && WorldState.IsDeadAccount(recipient))
             {
                 newAccountOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
-                // Out of gas: consume the whole budget; the failed frame moves no value.
                 if (newAccountOutOfGas)
                     TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
             }
@@ -539,7 +538,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
                     _blockCumulativeStateGas += spentGas.BlockStateGas;
-                    header.GasUsed = Math.Max(_blockCumulativeRegularGas, _blockCumulativeStateGas);
+                    header.GasUsed = TGasPolicy.CombineBlockGas(_blockCumulativeRegularGas, _blockCumulativeStateGas);
                 }
                 else
                 {
@@ -763,7 +762,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     bool nowDelegated = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
                     bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
-                    // The first time an authority is seen, its current status is its tx-start status.
                     delegatedBeforeTx ??= [];
                     if (!delegatedBeforeTx.TryGetValue(authority, out bool delegatedBefore))
                     {
