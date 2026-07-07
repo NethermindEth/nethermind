@@ -344,7 +344,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
-                    worldState.ClearStorage(toBeDestroyed);
+                    worldState.MarkStorageDestroyed(toBeDestroyed);
                     worldState.DeleteAccount(toBeDestroyed);
                 }
             }
@@ -1285,7 +1285,7 @@ namespace Nethermind.Evm.TransactionProcessing
                                 }
                             }
 
-                            WorldState.ClearStorage(toBeDestroyed);
+                            WorldState.MarkStorageDestroyed(toBeDestroyed);
                             WorldState.DeleteAccount(toBeDestroyed);
 
                             if (tracingRefunds)

@@ -39,6 +39,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
@@ -49,6 +50,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Reset();
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -149,6 +151,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (change.ChangeType == ChangeType.Update)
             {
+                // A SaveChange would resurrect the dead value over the Clear() marker.
+                if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
+                {
+                    continue;
+                }
+
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
@@ -214,6 +222,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.CommitCore(tracer);
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
 
         if (isTracing)
         {
@@ -351,6 +360,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _originalValues.Clear();
+            _destroyedThisRound.Clear();
             return;
         }
 
@@ -358,9 +368,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Clear all storage at specified address
+    /// O(1) destruction for the tx-end destroy list (no revert can follow): mark the address and
+    /// drop its pending writes at commit; reads stay correct via the missing-as-default marker.
     /// </summary>
-    /// <param name="address">Contract address</param>
+    public void MarkStorageDestroyed(Address address)
+    {
+        _destroyedThisRound.Add(address);
+        _toUpdateRoots.TryAdd(address, true);
+        GetOrCreateStorage(address).Clear();
+    }
+
     public override void ClearStorage(Address address)
     {
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
