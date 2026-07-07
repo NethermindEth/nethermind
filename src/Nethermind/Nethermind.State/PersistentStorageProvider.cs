@@ -54,7 +54,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _originalValues.Clear();
         _committedThisRound.Clear();
         _destroyedThisRound.Clear();
-        InvalidateLastRead();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -67,7 +66,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
-        InvalidateLastRead();
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
         // A speculative write predicts a commit-time storage-trie update for this slot, so let the
@@ -83,23 +81,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
-    {
-        if (_intraBlockCache.Count != 0 && TryGetCachedValue(storageCell, out byte[]? bytes))
-        {
-            return bytes!;
-        }
-
-        if (_lastReadValue is not null && _lastReadCell.Equals(in storageCell))
-        {
-            return _lastReadValue;
-        }
-
-        byte[] value = LoadFromTree(in storageCell);
-        _lastReadCell = storageCell;
-        _lastReadValue = value;
-        return value;
-    }
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -145,7 +128,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (currentPosition < 0)
         {
             _destroyedThisRound.Clear();
-            InvalidateLastRead();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -251,7 +233,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _originalValues.Clear();
         _committedThisRound.Clear();
         _destroyedThisRound.Clear();
-        InvalidateLastRead();
 
         if (isTracing)
         {
@@ -310,20 +291,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private Address? _lastStorageAddress;
     private PerContractState? _lastStorage;
-    private StorageCell _lastReadCell;
-    private byte[]? _lastReadValue;
 
     private void InvalidateStorageMemo()
     {
         _lastStorageAddress = null;
         _lastStorage = null;
-        InvalidateLastRead();
-    }
-
-    private void InvalidateLastRead()
-    {
-        _lastReadCell = default;
-        _lastReadValue = null;
     }
 
     private PerContractState GetOrCreateStorage(Address address)
@@ -348,8 +320,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private byte[] LoadFromTree(in StorageCell storageCell) =>
-        GetOrCreateStorage(storageCell.Address).LoadFromTree(in storageCell);
+    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+        GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
@@ -403,7 +375,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _destroyedThisRound.Clear();
-            InvalidateLastRead();
             return;
         }
 
@@ -416,7 +387,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     public void MarkStorageDestroyed(Address address)
     {
-        InvalidateLastRead();
         _destroyedThisRound.Add(address);
         _toUpdateRoots.TryAdd(address, true);
         GetOrCreateStorage(address).Clear();
@@ -424,7 +394,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void ClearStorage(Address address)
     {
-        InvalidateLastRead();
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
         {
             if (readCell.Key.Address == address)
@@ -596,7 +565,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        public byte[] LoadFromTree(in StorageCell storageCell)
+        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
