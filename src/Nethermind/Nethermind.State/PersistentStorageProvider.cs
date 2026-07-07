@@ -152,9 +152,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (change.ChangeType == ChangeType.Update)
             {
-                // A SaveChange would resurrect the dead value over the Clear() marker.
+                // A SaveChange would resurrect the dead value over the Clear() marker;
+                // tracers still see the cell zeroed, as the journaled path reported it.
                 if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
                 {
+                    if (isTracing)
+                    {
+                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                    }
+
                     continue;
                 }
 

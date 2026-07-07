@@ -601,6 +601,27 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Buildup_round_destroy_keeps_later_redeploy_writes()
+    {
+        // Block production spans the whole block in one round (no per-tx Commit), so the
+        // journaled clear must be used there: a redeploy after the destroy writes on top of
+        // the zeroing and must survive, while un-rewritten slots stay zero.
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell rewritten = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+
+        provider.Set(rewritten, _values[1]);
+        provider.Set(untouched, _values[2]);
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(rewritten, _values[3]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "redeploy write after in-round destroy must survive the commit");
+        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of the destroyed contract must stay zero");
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
