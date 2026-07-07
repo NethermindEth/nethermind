@@ -153,7 +153,9 @@ jobs:
         run: |
           BUILD_ARGS=""
           # checked variant: build with TRACE;DEBUG defines to enable overflow/assert checks.
-          [ "$VARIANT" = "checked" ] && BUILD_ARGS='-p:DefineConstants=TRACE;DEBUG'
+          # The semicolon must be MSBuild-escaped (%3B), else it is parsed as a -p property
+          # separator (MSB1006: Switch: DEBUG) - same escaping the NUnit checked matrix uses.
+          [ "$VARIANT" = "checked" ] && BUILD_ARGS='-p:DefineConstants=TRACE%3BDEBUG'
           dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false $BUILD_ARGS
 
       - name: Upload runner artifact
