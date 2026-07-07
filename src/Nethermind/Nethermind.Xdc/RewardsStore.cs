@@ -42,7 +42,7 @@ internal sealed class RewardsStore(
         if (e.Block.Header is not XdcBlockHeader xdcHeader)
             return;
 
-        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash) || _blockTree.IsSyncing().isSyncing)
+        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
             return;
 
         if (xdcHeader.Number == 0)

@@ -117,24 +117,39 @@ public class RewardsStoreTests
     }
 
     [Test]
-    public void OnBlockAddedToMain_WhenSyncing_ShouldNotPersistRewards()
+    public void OnBlockAddedToMain_WhenSyncing_ShouldPersistProcessedRewards()
     {
         IDb db = new MemDb();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.SwitchBlock.Returns(0UL);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
         Block block = new(BuildCheckpointHeader(900));
+        Address account = Address.FromNumber(1);
+        ((XdcBlockHeader)block.Header).ProcessedRewards = [new BlockReward(account, (UInt256)42)];
 
         blockTree.WasProcessed(block.Number, block.Hash!).Returns(true);
         blockTree.Head.Returns((Block?)null);
         blockTree.FindBestSuggestedHeader().Returns((BlockHeader?)null);
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(true);
 
-        using RewardsStore store = CreateStore(db, blockTree: blockTree, epochSwitchManager: epochSwitchManager);
+        using RewardsStore store = CreateStore(
+            db,
+            blockTree: blockTree,
+            epochSwitchManager: epochSwitchManager,
+            specProvider: specProvider);
         store.Start();
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
 
-        Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasEpochRewards(block.Hash!), Is.True);
+            Assert.That(store.TryGetAccountReward(account, block.Hash!, out UInt256 savedReward), Is.True);
+            Assert.That(savedReward, Is.EqualTo((UInt256)42));
+        }
     }
 
     private static RewardsStore CreateStore(
