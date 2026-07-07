@@ -200,8 +200,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment metrics for self-destruct operations.
-        Metrics.IncrementSelfDestructs();
+        vm.MetricsCounters.IncrementSelfDestructs();
 
         VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
@@ -219,7 +218,7 @@ public static partial class EvmInstructions
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
-        Address inheritor = stack.PopAddress();
+        Address inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)
             goto StackUnderflow;
 

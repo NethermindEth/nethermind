@@ -97,6 +97,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+    public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
@@ -116,6 +117,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+    internal ExecutionMetricsCounters MetricsCounters;
+
+    public void FlushMetricsCounters() => MetricsCounters.Flush();
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -153,6 +157,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
+        MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
@@ -1130,10 +1135,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If no machine code is present, treat the call as empty.
         if (codeSpan.Length == 0)
         {
-            // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
-                Metrics.IncrementEmptyCalls();
+                MetricsCounters.IncrementEmptyCalls();
             }
             goto Empty;
         }

@@ -185,6 +185,25 @@ namespace Nethermind.Core
 #endif
         }
 
+        // Same comparison as Equals(Address) but against raw bytes, skipping the
+        // length-dispatching SequenceEqual helper on hot paths.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Equals(scoped ReadOnlySpan<byte> other)
+        {
+            if (other.Length != Size) return false;
+
+            ref byte a = ref Unsafe.AsRef(in FirstByte);
+            ref byte b = ref MemoryMarshal.GetReference(other);
+#if ZK_EVM
+            return Unsafe.ReadUnaligned<ulong>(ref a) == Unsafe.ReadUnaligned<ulong>(ref b)
+                && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref a, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref b, 8))
+                && Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref a, 16)) == Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
+#else
+            return Unsafe.As<byte, Vector128<byte>>(ref a) == Unsafe.As<byte, Vector128<byte>>(ref b)
+                && Unsafe.As<byte, uint>(ref Unsafe.Add(ref a, Vector128<byte>.Count)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref b, Vector128<byte>.Count));
+#endif
+        }
+
         public static Address FromNumber(in UInt256 number)
         {
             byte[] addressBytes = new byte[20];

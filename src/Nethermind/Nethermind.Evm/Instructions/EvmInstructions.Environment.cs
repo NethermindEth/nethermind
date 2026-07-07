@@ -547,7 +547,7 @@ public static partial class EvmInstructions
         // Deduct gas cost for balance operation as per specification.
         TGasPolicy.Consume<BalanceGasCost>(ref gas, spec);
 
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
@@ -607,7 +607,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         TGasPolicy.Consume<ExtCodeHashGasCost>(ref gas, spec);
 
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;

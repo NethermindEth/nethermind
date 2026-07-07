@@ -260,7 +260,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            if (tx.SenderAddress is not Address sender)
+            {
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                continue;
+            }
 
             if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
             {
@@ -282,6 +286,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 

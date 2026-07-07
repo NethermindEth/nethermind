@@ -91,8 +91,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        vm.MetricsCounters.IncrementCalls();
 
         // Clear previous return data.
         vm.ReturnData = null;
@@ -100,7 +99,7 @@ public static partial class EvmInstructions
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
         // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress();
+        Address codeSource = stack.PopAddress(vm.AddressCache);
         if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;
@@ -248,7 +247,7 @@ public static partial class EvmInstructions
                 }
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
-            Metrics.IncrementEmptyCalls();
+            vm.MetricsCounters.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }
