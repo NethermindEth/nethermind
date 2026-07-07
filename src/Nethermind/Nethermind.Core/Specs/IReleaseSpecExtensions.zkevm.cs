@@ -7,8 +7,6 @@ namespace Nethermind.Core.Specs;
 
 public static partial class IReleaseSpecExtensions
 {
-    // The zkVM guest validates one block, so the memoization that the std build uses to bound the
-    // opcode-table cache is unnecessary; allocate the wrapper directly.
     private static IReleaseSpec GetNoEip158Spec(IReleaseSpec spec) => new NoEip158Spec(spec);
     private static IReleaseSpec GetNoEip3607Spec(IReleaseSpec spec) => new NoEip3607Spec(spec);
 
