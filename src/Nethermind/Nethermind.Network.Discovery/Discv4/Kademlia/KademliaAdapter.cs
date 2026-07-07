@@ -192,7 +192,7 @@ public sealed class KademliaAdapter(
     {
         NodeSession session = GetSession(receiver);
 
-        PingMsg msg = new(receiver.Address, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.Address)
+        PingMsg msg = new(receiver.DiscoveryAddress, CalculateExpirationTime(), kademliaConfig.CurrentNodeId.DiscoveryAddress)
         {
             EnrSequence = (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence // optional and does not seem to be used anywhere.
         };
@@ -200,7 +200,7 @@ public sealed class KademliaAdapter(
         DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
         if (!response.HasResponse) return false;
 
-        session.OnPongReceived(response.Value.FarAddress ?? receiver.Address);
+        session.OnPongReceived(response.Value.FarAddress ?? receiver.DiscoveryAddress);
         await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
         return true;
     }
@@ -210,7 +210,7 @@ public sealed class KademliaAdapter(
         NodeSession session = GetSession(receiver);
         DiscoveryResponse<Node[]> response = await RunAuthenticatedRequest(receiver, session, token =>
         {
-            FindNodeMsg msg = new(receiver.Address, CalculateExpirationTime(), target.Bytes);
+            FindNodeMsg msg = new(receiver.DiscoveryAddress, CalculateExpirationTime(), target.Bytes);
 
             return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, _findNeighbourTimeout, token);
         }, token);
@@ -240,7 +240,7 @@ public sealed class KademliaAdapter(
         NodeSession session = GetSession(receiver);
         DiscoveryResponse<EnrResponseMsg> response = await RunAuthenticatedRequest(receiver, session, token =>
         {
-            EnrRequestMsg msg = new(receiver.Address, CalculateExpirationTime());
+            EnrRequestMsg msg = new(receiver.DiscoveryAddress, CalculateExpirationTime());
 
             return CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), receiver, session, msg, _requestEnrTimeout, token);
         }, token);
@@ -250,7 +250,7 @@ public sealed class KademliaAdapter(
 
     private async Task<bool> HandleEnrRequest(Node node, NodeSession session, EnrRequestMsg msg, CancellationToken token)
     {
-        if (!session.HasEndpointProof(node.Address))
+        if (!session.HasEndpointProof(node.DiscoveryAddress))
         {
             if (Logger.IsDebug) Logger.Debug($"Rejecting enr request from unbonded peer {node}");
             return false;
@@ -262,13 +262,13 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        await SendMessage(session, new EnrResponseMsg(node.Address, await nodeRecordProvider.GetCurrentAsync(token), new Hash256(requestHash)), token);
+        await SendMessage(session, new EnrResponseMsg(node.DiscoveryAddress, await nodeRecordProvider.GetCurrentAsync(token), new Hash256(requestHash)), token);
         return true;
     }
 
     private async Task<bool> HandleFindNode(Node node, NodeSession session, FindNodeMsg msg, CancellationToken token)
     {
-        if (!session.HasEndpointProof(node.Address))
+        if (!session.HasEndpointProof(node.DiscoveryAddress))
         {
             if (Logger.IsDebug) Logger.Debug($"Rejecting findNode request from unbonded peer {node}");
             return false;
@@ -278,14 +278,14 @@ public sealed class KademliaAdapter(
         Node[] nodes = kademlia.Value.GetKNeighbour(publicKey, node, false);
         if (nodes.Length == 0)
         {
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), nodes), token);
+            await SendMessage(session, new NeighborsMsg(node.DiscoveryAddress, CalculateExpirationTime(), nodes), token);
             return true;
         }
 
         for (int i = 0; i < nodes.Length; i += MaxNodesPerNeighborsMsg)
         {
             int batchEnd = Math.Min(i + MaxNodesPerNeighborsMsg, nodes.Length);
-            await SendMessage(session, new NeighborsMsg(node.Address, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token);
+            await SendMessage(session, new NeighborsMsg(node.DiscoveryAddress, CalculateExpirationTime(), new ArraySegment<Node>(nodes, i, batchEnd - i)), token);
         }
 
         return true;
@@ -319,7 +319,7 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
-            Node node = new(msg.FarPublicKey, msg.FarAddress);
+            Node node = Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
 
             if (IsResponse(msgType))
             {

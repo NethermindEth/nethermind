@@ -300,9 +300,9 @@ public class DiscoveryMessageSerializerTests
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new[]
                 {
-                    new Node(TestItem.PublicKeyA, "192.168.1.2", 1),
-                    new Node(TestItem.PublicKeyB, "192.168.1.3", 2),
-                    new Node(TestItem.PublicKeyC, "192.168.1.4", 3)
+                    new Node(TestItem.PublicKeyA, "192.168.1.2", 1, 11),
+                    new Node(TestItem.PublicKeyB, "192.168.1.3", 2, 12),
+                    new Node(TestItem.PublicKeyC, "192.168.1.4", 3, 13)
                 })
             {
                 FarAddress = _farAddress
@@ -321,6 +321,7 @@ public class DiscoveryMessageSerializerTests
             {
                 Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
                 Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
+                Assert.That(deserializedMessage.Nodes[i].DiscoveryPort, Is.EqualTo(message.Nodes[i].DiscoveryPort));
                 Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
                 Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
             }

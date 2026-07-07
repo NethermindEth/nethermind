@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Net;
 using DnsClient;
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
@@ -71,7 +69,7 @@ public class EnrDiscovery : INodeSource
                     NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
                     if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
                     {
-                        node = CreateNode(nodeRecord);
+                        TryCreateNode(nodeRecord, out node);
                     }
                     else if (_logger.IsTrace)
                     {
@@ -96,15 +94,8 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    internal static Node? CreateNode(NodeRecord nodeRecord)
-    {
-        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-        IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
-        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp);
-        return compressedPublicKey is not null && ipAddress is not null && port is > 0
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
-            : null;
-    }
+    internal static bool TryCreateNode(NodeRecord nodeRecord, out Node? node) =>
+        Node.TryFromEnr(nodeRecord, out node);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

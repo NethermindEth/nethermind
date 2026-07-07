@@ -181,7 +181,7 @@ public class NodeSourceTests
                 if (includeEth2) enr.SetEntry(new TestEth2Entry());
                 if (ethForkHash is { } forkHash) enr.SetEntry(new EthEntry(new ForkId(forkHash, 0).HashBytes, 0));
             });
-        return new Node(privateKey.PublicKey, host, udpPort)
+        return new Node(privateKey.PublicKey, host, tcpPort, udpPort)
         {
             Enr = enr
         };

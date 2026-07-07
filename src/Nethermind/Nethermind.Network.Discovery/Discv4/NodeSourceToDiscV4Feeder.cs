@@ -19,9 +19,19 @@ public sealed class NodeSourceToDiscV4Feeder([KeyFilter(NodeSourceToDiscV4Feeder
     public async Task Run()
     {
         CancellationToken token = _exitSource.Token;
-        await foreach (Node node in _nodeSource.DiscoverNodes(token).Take(_maxNodes).WithCancellation(token))
+        int addedNodes = 0;
+        await foreach (Node node in _nodeSource.DiscoverNodes(token).WithCancellation(token))
         {
+            if (!node.HasDiscoveryEndpoint)
+            {
+                continue;
+            }
+
             _discoveryApp.AddNodeToDiscovery(node);
+            if (++addedNodes == _maxNodes)
+            {
+                return;
+            }
         }
     }
 }

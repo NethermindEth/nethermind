@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
@@ -126,9 +127,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     {
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, address.Address);
-        //tcp port
         writer.Encode(address.Port);
-        //udp port
         writer.Encode(address.Port);
     }
 
@@ -140,25 +139,23 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode<TWriter>(ref TWriter writer, IPEndPoint address, byte[] id)
+    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int length = GetLengthSerializeNode(address, id);
+        int length = GetLengthSerializeNode(node);
         writer.StartSequence(length);
-        IPAddressRlp.Encode(ref writer, address.Address);
-        //tcp port
-        writer.Encode(address.Port);
-        //udp port
-        writer.Encode(address.Port);
-        writer.Encode(id);
+        IPAddressRlp.Encode(ref writer, node.Address.Address);
+        writer.Encode(node.Port);
+        writer.Encode(node.DiscoveryPort);
+        writer.Encode(node.Id.Bytes);
     }
 
-    protected static int GetLengthSerializeNode(IPEndPoint address, byte[] id)
+    protected static int GetLengthSerializeNode(Node node)
     {
-        int length = IPAddressRlp.GetLength(address.Address);
-        length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(id);
+        int length = IPAddressRlp.GetLength(node.Address.Address);
+        length += Rlp.LengthOf(node.Port);
+        length += Rlp.LengthOf(node.DiscoveryPort);
+        length += Rlp.LengthOf(node.Id.Bytes);
         return length;
     }
 

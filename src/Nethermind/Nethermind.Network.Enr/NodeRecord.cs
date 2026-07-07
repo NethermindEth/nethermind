@@ -93,13 +93,9 @@ public class NodeRecord
     public NodeRecord() => SetEntry(IdEntry.Instance);
 
     /// <summary>
-    /// Gets the IP address advertised for discovery traffic.
+    /// Gets the IP address advertised for node traffic.
     /// </summary>
-    /// <remarks>
-    /// IPv4 is preferred when both <c>ip</c> and <c>udp</c> are present. Otherwise IPv6 is returned when it has a
-    /// discovery port, with <c>udp</c> as the EIP-778 fallback.
-    /// </remarks>
-    public IPAddress? DiscoveryIp => GetDiscoveryEndpoint().Ip;
+    public IPAddress? Ip => GetObj<IPAddress>(EnrContentKey.Ip) ?? GetObj<IPAddress>(EnrContentKey.Ip6);
 
     /// <summary>
     /// Gets the UDP port advertised for discovery traffic.
@@ -107,16 +103,7 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>udp6</c> is preferred and <c>udp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? DiscoveryPort => GetDiscoveryEndpoint().Port;
-
-    /// <summary>
-    /// Gets the IP address advertised for RLPx TCP traffic.
-    /// </summary>
-    /// <remarks>
-    /// IPv4 is preferred when both <c>ip</c> and <c>tcp</c> are present. Otherwise IPv6 is returned when it has a
-    /// TCP port, with <c>tcp</c> as the EIP-778 fallback.
-    /// </remarks>
-    public IPAddress? TcpIp => GetTcpEndpoint().Ip;
+    public int? DiscoveryPort => GetPort(EnrContentKey.Udp, EnrContentKey.Udp6);
 
     /// <summary>
     /// Gets the TCP port advertised for RLPx traffic.
@@ -124,46 +111,20 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>tcp6</c> is preferred and <c>tcp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? TcpPort => GetTcpEndpoint().Port;
+    public int? TcpPort => GetPort(EnrContentKey.Tcp, EnrContentKey.Tcp6);
 
-    private (IPAddress? Ip, int? Port) GetDiscoveryEndpoint()
+    private int? GetPort(string ipv4PortKey, string ipv6PortKey)
     {
         IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        int? udp = GetValue<int>(EnrContentKey.Udp);
-        if (ip is not null && udp is not null)
+        int? port = GetValue<int>(ipv4PortKey);
+        if (ip is not null)
         {
-            return (ip, udp);
+            return port;
         }
 
         IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? udp6 = GetValue<int>(EnrContentKey.Udp6);
-        if (ip6 is not null)
-        {
-            int? port = udp6 ?? udp;
-            return port is null ? (null, null) : (ip6, port);
-        }
-
-        return (null, null);
-    }
-
-    private (IPAddress? Ip, int? Port) GetTcpEndpoint()
-    {
-        IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        int? tcp = GetValue<int>(EnrContentKey.Tcp);
-        if (ip is not null && tcp is not null)
-        {
-            return (ip, tcp);
-        }
-
-        IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? tcp6 = GetValue<int>(EnrContentKey.Tcp6);
-        if (ip6 is not null)
-        {
-            int? port = tcp6 ?? tcp;
-            return port is null ? (null, null) : (ip6, port);
-        }
-
-        return (null, null);
+        int? port6 = GetValue<int>(ipv6PortKey);
+        return ip6 is null ? null : port6 ?? port;
     }
 
     public static NodeRecord FromEnrString(string enrString)
