@@ -54,5 +54,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blob cells and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[] indicesBitarray);
+    Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray);
 }

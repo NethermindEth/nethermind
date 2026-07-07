@@ -299,7 +299,7 @@ public readonly struct GetBlobsDescriptorV4 : IGetBlobsV4Version
 {
     public static int VersionNumber => EngineApiVersions.GetBlobs.V4;
     public static Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> Call(IEngineRpcModule engine, byte[][] hashes, System.Collections.BitArray indicesBitarray)
-        => engine.engine_getBlobsV4(hashes, SszCodec.EncodeBitArray(indicesBitarray));
+        => engine.engine_getBlobsV4(hashes, indicesBitarray);
     public static int Encode(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer)
         => SszCodec.EncodeGetBlobsV4Response(blobs, writer);
 }

@@ -291,7 +291,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetBlobsV4_routes_to_engine_getBlobsV4()
     {
-        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<byte[]>())
+        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>())
             .Returns(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
 
         System.Collections.BitArray indicesBitarray = new(128);
@@ -307,7 +307,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Is<byte[]>(static b => b.Length == 16 && b[0] == 1));
+        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Is<System.Collections.BitArray>(static b => b.Length == 128 && b[0]));
     }
 
     private static readonly TestCaseData[] BodiesByHashRoutingCases =

@@ -51,7 +51,7 @@ public sealed class GetBlobsV4SszHandler(IEngineRpcModule engineModule) : SszEnd
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         (byte[][] hashes, System.Collections.BitArray indices) = SszCodec.DecodeGetBlobsV4Request(body);
-        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await engineModule.engine_getBlobsV4(hashes, SszCodec.EncodeBitArray(indices));
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?> result = await engineModule.engine_getBlobsV4(hashes, indices);
         await WriteSszResultAsync(ctx, result, static (d, w) => SszCodec.EncodeGetBlobsV4Response(d!, w));
     }
 }
