@@ -79,12 +79,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // is a win on every path; it always direct-dispatches, regardless of cancelability.
                 true;
 #else
-                // The direct-dispatch switch inlines the hot handlers and pays off only for the cancelable
-                // (eth_call/simulation) path, where a few hot contracts run repeatedly and stay in I-cache.
-                // Block processing runs a diverse opcode mix across many contracts, where the switch's
-                // jump-table indirection and code-size pressure measurably regress throughput versus the
-                // plain function-pointer table; that path takes the table below.
-                TCancelable.IsActive;
+                true;
 #endif
                 // directDispatch folds at compile time, so this specializes into two loop bodies with no runtime branch.
                 if (directDispatch)
