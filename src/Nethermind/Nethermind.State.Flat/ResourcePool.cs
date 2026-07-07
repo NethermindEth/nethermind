@@ -14,33 +14,40 @@ namespace Nethermind.State.Flat;
 /// A pool of objects used to manage different sized pool objects for different category.
 /// </summary>
 /// <param name="flatConfig"></param>
-public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
+public class ResourcePool : IResourcePool
 {
-    private readonly Dictionary<Usage, ResourcePoolCategory> _categories = new()
+    private readonly Dictionary<Usage, ResourcePoolCategory> _categories;
+
+    public ResourcePool(IFlatDbConfig flatConfig)
     {
-        // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2) },
+        flatConfig.ValidateCompactSize();
 
-        // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
-        { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
+        _categories = new()
+        {
+            // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2) },
 
-        // Note: prewarmer use readonly processing env
-        // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
-        { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
+            // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
+            { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
 
-        // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
-        { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
-        { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
-        { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
-        { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
-        { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
-        { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
-        { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
-        { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
-        { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
-        { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
-        { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
-    };
+            // Note: prewarmer use readonly processing env
+            // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
+            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
+
+            // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
+            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
+            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
+            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
+            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
+            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
+            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
+            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
+            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
+            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
+            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
+            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
+        };
+    }
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 
@@ -50,7 +57,7 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 
-    public static Usage CompactUsage(int compactSize) => compactSize switch
+    public static Usage CompactUsage(ulong compactSize) => compactSize switch
     {
         <= 2 => Usage.Compact2,
         4 => Usage.Compact4,

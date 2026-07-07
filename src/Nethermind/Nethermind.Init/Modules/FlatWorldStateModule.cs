@@ -5,7 +5,6 @@ using System;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -34,6 +33,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
             .AddSingleton<PruningTrieStateAdminRpcModuleStub>()
@@ -95,7 +95,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     persistence = new PreimageRecordingPersistence(persistence, preimageDb);
                 }
 
-                return new CachedReaderPersistence(persistence, exitSource, logManager);
+                IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
+                return new CarryForwardCachingPersistence(cachedReader);
             })
             ;
 
@@ -110,7 +111,5 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
-
-        public ResultWrapper<string> admin_verifyTrie(BlockParameter block) => ResultWrapper<string>.Success("disabled");
     }
 }

@@ -71,6 +71,22 @@ public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5R
     }
 }
 
+public interface INewPayloadWithWitnessVersion<TWire> where TWire : struct, ISszCodec<TWire>
+{
+    static abstract int VersionNumber { get; }
+    static abstract Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in TWire wire);
+}
+
+public readonly struct NewPayloadWithWitnessDescriptorV1 : INewPayloadWithWitnessVersion<NewPayloadV5RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.NewPayload.V5;
+    public static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in NewPayloadV5RequestWire wire)
+    {
+        ExecutionPayloadV4 ep = wire.ExecutionPayload.AsExecutionPayload();
+        return engine.engine_newPayloadWithWitness(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests());
+    }
+}
+
 public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCodec<TWire>
 {
     static abstract int VersionNumber { get; }
@@ -142,13 +158,14 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
-public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<ExecutionPayload>
+// Paris (V1 routing) needs block_value, which engine_getPayloadV1 doesn't return — call V2.
+public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<GetPayloadV2Result>
 {
     public static int VersionNumber => EngineApiVersions.GetPayload.V1;
-    public static Task<ResultWrapper<ExecutionPayload?>> Call(IEngineRpcModule engine, byte[] id)
-        => engine.engine_getPayloadV1(id);
-    public static int Encode(ExecutionPayload result, IBufferWriter<byte> writer)
-        => SszCodec.EncodeGetPayloadV1Response(result, writer);
+    public static Task<ResultWrapper<GetPayloadV2Result?>> Call(IEngineRpcModule engine, byte[] id)
+        => engine.engine_getPayloadV2(id);
+    public static int Encode(GetPayloadV2Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeBuiltPayloadParis(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV2 : IGetPayloadVersion<GetPayloadV2Result>
@@ -224,14 +241,14 @@ public readonly struct PayloadBodiesByHashDescriptorV2 : IPayloadBodiesByHashVer
 public interface IPayloadBodiesByRangeVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }
-    static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, long start, long count);
+    static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, ulong start, ulong count);
     static abstract int Encode(IReadOnlyList<TResult?> bodies, IBufferWriter<byte> writer);
 }
 
 public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV1Result>
 {
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V1;
-    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, long start, long count)
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, ulong start, ulong count)
         => engine.engine_getPayloadBodiesByRangeV1(start, count);
     public static int Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
         => SszCodec.EncodePayloadBodiesV1Response(bodies, writer);
@@ -240,7 +257,7 @@ public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeV
 public readonly struct PayloadBodiesByRangeDescriptorV2 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV2Result>
 {
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V2;
-    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, long start, long count)
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, ulong start, ulong count)
         => engine.engine_getPayloadBodiesByRangeV2(start, count);
     public static int Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
         => SszCodec.EncodePayloadBodiesV2Response(bodies, writer);

@@ -25,9 +25,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
@@ -65,6 +67,8 @@ namespace Nethermind.Consensus.AuRa
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .AddModule(new AuRaHeaderModule())
+                .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
@@ -90,6 +94,12 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IMainProcessingModule, AuraMainProcessingModule>()
                 .AddScoped<IAuRaValidator, NullAuRaValidator>() // Note: for main block processor this is not the case
                 .AddScoped<IBlockProcessor, AuRaBlockProcessor>()
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters>(
+                    (blockTree, chainLevelInfoRepository, validatorStore, logManager, param) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
+
+                .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
@@ -131,7 +141,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
-                IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
+                IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
                 (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
                 ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 

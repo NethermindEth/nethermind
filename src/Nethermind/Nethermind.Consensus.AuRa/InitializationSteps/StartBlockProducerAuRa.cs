@@ -73,6 +73,7 @@ public class StartBlockProducerAuRa(
     AuRaGasLimitOverrideFactory gasLimitOverrideFactory,
     IWorldStateManager worldStateManager,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
+    ITransactionProcessorFactory transactionProcessorFactory,
     ILifetimeScope lifetimeScope,
     ILogManager logManager)
 {
@@ -158,11 +159,12 @@ public class StartBlockProducerAuRa(
             disposeStack.Push(disposableValidator);
         }
 
-        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
+        IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        BlockAccessListManager balManager = new(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory);
+        BlockAccessListManager balManager = new(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory,
+            CodeInfoRepositoryFactories.Caching, transactionProcessorFactory: transactionProcessorFactory);
 
         BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(
             new BuildUpTransactionProcessorAdapter(txProcessor),
@@ -287,7 +289,7 @@ public class StartBlockProducerAuRa(
 
     private ITxSource CreateTxSourceForProducer()
     {
-        bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
+        bool CheckAddPosdaoTransactions(IList<ITxSource> list, ulong auRaPosdaoTransition)
         {
             if (auRaPosdaoTransition != AuRaChainSpecEngineParameters.TransitionDisabled && _validator is ITxSource validatorSource)
             {
@@ -298,10 +300,10 @@ public class StartBlockProducerAuRa(
             return false;
         }
 
-        bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address>? randomnessContractAddress, ISigner signer)
+        bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<ulong, Address>? randomnessContractAddress, ISigner signer)
         {
             IList<IRandomContract> GetRandomContracts(
-                IDictionary<long, Address> randomnessContractAddressPerBlock,
+                IDictionary<ulong, Address> randomnessContractAddressPerBlock,
                 IAbiEncoder abiEncoder,
                 IReadOnlyTxProcessorSource txProcessorSource,
                 ISigner signerLocal) =>

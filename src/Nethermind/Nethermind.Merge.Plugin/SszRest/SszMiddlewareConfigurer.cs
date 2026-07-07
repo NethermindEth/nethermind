@@ -56,7 +56,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>>();
 
-        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>>();
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>>();
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>>();
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>>();
@@ -81,6 +81,8 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);
+
+        services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV1, NewPayloadV5RequestWire>>();
     }
 }
 

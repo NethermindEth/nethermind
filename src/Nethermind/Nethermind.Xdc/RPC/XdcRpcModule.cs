@@ -26,7 +26,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
-        return epochNumber < (ulong)spec.SwitchEpoch ?
+        return epochNumber < spec.SwitchEpoch ?
             CalculateBlockInfoByV1EpochNum(epochNumber) :
             GetBlockInfoByV2EpochNum(epochNumber);
     }
@@ -56,7 +56,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<EpochNumInfo>.Success(info);
     }
 
-    public ResultWrapper<ulong[]> GetEpochNumbersBetween(long begin, long end)
+    public ResultWrapper<ulong[]> GetEpochNumbersBetween(ulong begin, ulong end)
     {
         BlockHeader beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
@@ -70,11 +70,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<ulong[]>.Fail($"illegal end block number {end}");
         }
 
-        long diff = endHeader.Number - beginHeader.Number;
-        if (diff < 0)
+        if (endHeader.Number < beginHeader.Number)
         {
             return ResultWrapper<ulong[]>.Fail("illegal begin and end block number, begin > end");
         }
+        ulong diff = endHeader.Number - beginHeader.Number;
         if (diff > 50_000)
         {
             return ResultWrapper<ulong[]>.Fail("block range over limit of 50,000 blocks");
@@ -94,7 +94,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         ulong[] epochSwitchNumbers = new ulong[epochSwitchInfos.Length];
         for (int i = 0; i < epochSwitchInfos.Length; i++)
         {
-            epochSwitchNumbers[i] = (ulong)epochSwitchInfos[i].EpochSwitchBlockInfo.BlockNumber;
+            epochSwitchNumbers[i] = epochSwitchInfos[i].EpochSwitchBlockInfo.BlockNumber;
         }
 
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
@@ -181,9 +181,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<MasternodesStatus>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<MasternodesStatus>.Fail("Block number is required.");
         }
         else
         {
@@ -208,7 +208,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader);
 
-        ulong epochNum = (ulong)spec.SwitchEpoch + round / (ulong)spec.EpochLength;
+        ulong epochNum = spec.SwitchEpoch + round / spec.EpochLength;
 
         EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
@@ -223,7 +223,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         MasternodesStatus info = new()
         {
             Epoch = epochNum,
-            Number = (ulong)header.Number,
+            Number = header.Number,
             Round = round,
             MasternodesLen = masternodes.Length,
             Masternodes = masternodes,
@@ -244,9 +244,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Block number is required.");
         }
         else
         {
@@ -274,7 +274,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
     }
 
-    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end)
+    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, ulong begin, ulong end)
     {
         BlockHeader? beginHeader = tree.FindHeader(begin);
         if (beginHeader is null)
@@ -288,11 +288,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail($"illegal end block number {end}");
         }
 
-        long diff = endHeader.Number - beginHeader.Number;
-        if (diff < 0)
+        if (endHeader.Number < beginHeader.Number)
         {
             return ResultWrapper<AccountRewardResponse>.Fail("illegal begin and end block number, begin > end");
         }
+        ulong diff = endHeader.Number - beginHeader.Number;
         if (diff > 50_000)
         {
             return ResultWrapper<AccountRewardResponse>.Fail("block range over limit of 50,000 blocks");
@@ -326,7 +326,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         // No epoch switches in the requested range means no rewards to aggregate.
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
-            ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
             if (!rewardsStore.HasEpochRewards(epochBlockNumber))
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
@@ -370,9 +370,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockNumber < 0)
+        else if (blockParam.BlockNumber is null)
         {
-            return ResultWrapper<Address[]>.Fail($"Invalid block number {blockParam.BlockNumber}");
+            return ResultWrapper<Address[]>.Fail("Block number is required.");
         }
         else
         {
@@ -443,9 +443,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockParam.BlockNumber < 0)
+        else if (blockParam.BlockNumber is null)
         {
-            return ResultWrapper<PublicApiSnapshot>.Fail($"Invalid block number {blockParam.BlockNumber}");
+            return ResultWrapper<PublicApiSnapshot>.Fail("Block number is required.");
         }
         else
         {
@@ -611,9 +611,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.Head?.Header;
         }
-        else if (blockNumber.BlockNumber < 0)
+        else if (blockNumber.BlockNumber is null)
         {
-            return ResultWrapper<V2BlockInfo>.Fail($"Invalid block number {blockNumber.BlockNumber}");
+            return ResultWrapper<V2BlockInfo>.Fail("Block number is required.");
         }
         else
         {
@@ -639,7 +639,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 Epoch = spec.EpochLength,
                 Gap = spec.Gap,
                 Period = spec.MinePeriod,
-                Reward = (int)spec.Reward,
+                Reward = spec.Reward,
                 SwitchEpoch = spec.SwitchEpoch,
                 SwitchBlock = spec.SwitchBlock,
                 V2Configs = spec.V2Configs

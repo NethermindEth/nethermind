@@ -12,73 +12,75 @@ namespace Nethermind.Evm
     {
         private const byte InvalidStartingCodeByte = 0xEF;
 
-        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
-            CalculateCost(spec, byteCodeLength, out long regularCost, out long stateCost)
+        public static ulong CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
+            CalculateCost(spec, byteCodeLength, out ulong regularCost, out ulong stateCost)
                 ? regularCost + stateCost
-                : long.MaxValue;
+                : ulong.MaxValue;
 
-        public static long CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas)
+        public static ulong CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
-            CalculateCost(spec, byteCodeLength, in gas, out long regularCost, out long stateCost)
+            CalculateCost(spec, byteCodeLength, in gas, out ulong regularCost, out ulong stateCost)
                 ? regularCost + stateCost
-                : long.MaxValue;
+                : ulong.MaxValue;
 
-        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out ulong regularCost, out ulong stateCost)
         {
             stateCost = 0;
 
             if (spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize)
             {
-                regularCost = long.MaxValue;
+                regularCost = ulong.MaxValue;
                 return false;
             }
 
+            ulong length = (ulong)byteCodeLength;
             if (!spec.IsEip8037Enabled)
             {
-                regularCost = GasCostOf.CodeDeposit * byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * length;
                 return true;
             }
 
-            long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            ulong words = EvmCalculations.Div32Ceiling(length, out bool outOfGas);
             if (outOfGas)
             {
-                regularCost = long.MaxValue;
-                stateCost = long.MaxValue;
+                regularCost = ulong.MaxValue;
+                stateCost = ulong.MaxValue;
                 return false;
             }
 
             regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = GasCostOf.CodeDepositState * byteCodeLength;
+            stateCost = GasCostOf.CodeDepositState * length;
             return true;
         }
 
-        public static bool CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas, out long regularCost, out long stateCost)
+        public static bool CalculateCost<TGasPolicy>(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas, out ulong regularCost, out ulong stateCost)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         {
             stateCost = 0;
 
             if (spec.LimitCodeSize && byteCodeLength > spec.MaxCodeSize)
             {
-                regularCost = long.MaxValue;
+                regularCost = ulong.MaxValue;
                 return false;
             }
 
+            ulong length = (ulong)byteCodeLength;
             if (!spec.IsEip8037Enabled)
             {
-                regularCost = GasCostOf.CodeDeposit * byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * length;
                 return true;
             }
 
-            long words = EvmCalculations.Div32Ceiling((ulong)byteCodeLength, out bool outOfGas);
+            ulong words = EvmCalculations.Div32Ceiling(length, out bool outOfGas);
             if (outOfGas)
             {
-                regularCost = long.MaxValue;
-                stateCost = long.MaxValue;
+                regularCost = ulong.MaxValue;
+                stateCost = ulong.MaxValue;
                 return false;
             }
 
             regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = TGasPolicy.GetCodeDepositStateCost(in gas, byteCodeLength);
+            stateCost = TGasPolicy.GetCodeDepositStateCost(byteCodeLength);
             return true;
         }
 

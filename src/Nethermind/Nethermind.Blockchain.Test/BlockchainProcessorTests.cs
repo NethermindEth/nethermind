@@ -224,7 +224,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -398,7 +398,7 @@ public class BlockchainProcessorTests
                 Assert.Fail($"Block {block} was expected to be added");
             }
 
-            _blockTree.UpdateMainChain(new[] { block }, false);
+            _blockTree.TryUpdateMainChain(block.Header, false, preloadedBlocks: new[] { block });
             _branchProcessor.Allow(block.Hash!);
             _recoveryStep.Allow(block.Hash!);
 

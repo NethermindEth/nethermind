@@ -62,7 +62,7 @@ public class LastNStateRootTrackerTests
             .WithStateRoot(Keccak.Compute(20.ToBigEndianByteArray()))
             .TestObject;
         tree.SuggestBlock(currentBlock);
-        tree.UpdateMainChain(new[] { currentBlock }, true);
+        tree.TryUpdateMainChain(currentBlock.Header, true, preloadedBlocks: new[] { currentBlock });
 
         for (int i = 0; i < 30; i++)
         {
@@ -94,7 +94,7 @@ public class LastNStateRootTrackerTests
             .WithStateRoot(Keccak.Compute(100.ToBigEndianByteArray()))
             .TestObject;
         tree.SuggestBlock(currentBlock);
-        tree.UpdateMainChain(new[] { currentBlock }, true);
+        tree.TryUpdateMainChain(currentBlock.Header, true, preloadedBlocks: new[] { currentBlock });
 
         for (int i = 0; i < 30; i++)
         {

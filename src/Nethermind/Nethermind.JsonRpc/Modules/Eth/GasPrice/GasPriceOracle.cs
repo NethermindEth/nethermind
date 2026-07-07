@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return ValueTask.FromResult(gasPriceEstimate!);
         }
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber) =>
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             static (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));
 
@@ -86,16 +86,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         private delegate UInt256 CalculateGas(Transaction transaction, bool eip1559, UInt256 baseFee);
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber, int numberOfBlocks, CalculateGas calculateGasFromTransaction)
         {
-            IEnumerable<Block> GetBlocks(long currentBlockNumber)
+            IEnumerable<Block> GetBlocks(ulong currentBlockNumber)
             {
-                while (currentBlockNumber >= 0)
+                do
                 {
                     if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
-                    currentBlockNumber--;
-                }
+                } while (currentBlockNumber-- != 0);
             }
 
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, calculateGasFromTransaction);

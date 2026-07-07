@@ -318,12 +318,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
-            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-            // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            try
+            {
+                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+                // this is just for warming up
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-            return true;
+                return true;
+            }
+            finally
+            {
+                _snapshotBundle.ReleaseReadOnlyBundleLease();
+            }
         }
         finally
         {
@@ -362,7 +370,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
-    public void Commit(long blockNumber)
+    public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
 

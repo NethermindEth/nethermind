@@ -41,7 +41,7 @@ public class TxPoolContentListsTests
         txPool.GetPendingTransactionsBySender().ReturnsForAnyArgs(transactions);
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit((long)blockGasLimit).TestObject).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithGasLimit(blockGasLimit).TestObject).TestObject;
         blockFinder.Head.Returns(block);
 
         BlockExecutionContext? currentContext = null;
@@ -131,9 +131,9 @@ public class TxPoolContentListsTests
         }
     }
 
-    [TestCase(10, 0)]
-    [TestCase(0, 1)]
-    public void MaxGasLimitRatio_FiltersHighGasLimitTransactions(int maxGasLimitRatio, int expectedTxCount)
+    [TestCase(10UL, 0)]
+    [TestCase(0UL, 1)]
+    public void MaxGasLimitRatio_FiltersHighGasLimitTransactions(ulong maxGasLimitRatio, int expectedTxCount)
     {
         Transaction tx = Build.A.Transaction
             .WithType(TxType.EIP1559)
@@ -178,11 +178,11 @@ public class TxPoolContentListsTests
         Assert.That(totalTxCount, Is.EqualTo(expectedTxCount));
     }
 
-    [TestCase(21_000, 120, 0, 2, TestName = "Batch is full by bytes")]
-    [TestCase(2_100_000, 100_000, 10, 1, TestName = "Surge filter rejects transaction")]
+    [TestCase(21_000UL, 120, 0UL, 2, TestName = "Batch is full by bytes")]
+    [TestCase(2_100_000UL, 100_000, 10UL, 1, TestName = "Surge filter rejects transaction")]
     public void GasUsed_IsNotInflated_WhenTxIsRejectedAfterExecution(
-        int tx1GasLimit, int maxBytesPerTxList,
-        int surgeMaxGasLimitRatio, int expectedBatchCount)
+        ulong tx1GasLimit, int maxBytesPerTxList,
+        ulong surgeMaxGasLimitRatio, int expectedBatchCount)
     {
         // tx1 is rejected after successful execution, tx2 is accepted
         Transaction tx1 = Build.A.Transaction
@@ -253,12 +253,13 @@ public class TxPoolContentListsTests
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
             Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-            Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+            Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
             Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
             Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+            Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
             Substitute.For<IEngineRequestsTracker>(),
             Substitute.For<ISpecProvider>(),
             null!,

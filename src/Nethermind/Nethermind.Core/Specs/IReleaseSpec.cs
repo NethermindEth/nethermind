@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Int256;
@@ -16,14 +15,14 @@ namespace Nethermind.Core.Specs
         public string Name { get; }
         long MaximumExtraDataSize { get; }
         long MaxCodeSize { get; }
-        long MinGasLimit { get; }
-        long MinHistoryRetentionEpochs { get; }
-        long MinBalRetentionEpochs { get; }
-        long GasLimitBoundDivisor { get; }
+        ulong MinGasLimit { get; }
+        ulong MinHistoryRetentionEpochs { get; }
+        ulong MinBalRetentionEpochs { get; }
+        ulong GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        long DifficultyBombDelay { get; }
-        long DifficultyBoundDivisor { get; }
-        long? FixedDifficulty { get; }
+        ulong DifficultyBombDelay { get; }
+        ulong DifficultyBoundDivisor { get; }
+        ulong? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
 
         /// <summary>
@@ -309,7 +308,7 @@ namespace Nethermind.Core.Specs
         /// EIP-2935 ring buffer size for historical block hash storage.
         /// Defaults to 8,191 blocks for Ethereum mainnet.
         /// </summary>
-        public long Eip2935RingBufferSize { get; }
+        public ulong Eip2935RingBufferSize { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction
@@ -390,7 +389,7 @@ namespace Nethermind.Core.Specs
         public ulong TargetBlobCount { get; }
         public ulong MaxBlobCount { get; }
         public ulong MaxBlobsPerTx { get; }
-        public UInt256 BlobBaseFeeUpdateFraction { get; }
+        public ulong BlobBaseFeeUpdateFraction { get; }
 
         public ulong WithdrawalTimestamp { get; }
 
@@ -398,32 +397,6 @@ namespace Nethermind.Core.Specs
 
         public bool IsEip7594Enabled { get; }
 
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM without tracing,
-        /// but it cannot be explicitly typed as such due to cross-project layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsNoTrace { get; set; }
-
-        /// <summary>
-        /// This property holds an array that, at runtime, is actually an array of function pointers
-        /// with the signature:
-        /// <c>delegate*<VirtualMachine, ref EvmStack, ref long, ref int, EvmExceptionType></c>.
-        /// The array is lazily populated with JIT-optimized instructions for an EVM,
-        /// capturing additional tracing data. It cannot be explicitly typed as such due to cross-project
-        /// layering constraints.
-        /// </summary>
-        /// <remarks>
-        /// Because of these layering issues, the property is declared as <see cref="System.Array"/>
-        /// even though it internally represents a typed array of function pointers.
-        /// </remarks>
-        public Array? EvmInstructionsTraced { get; set; }
 
         /// <summary>
         /// Gets a cached set of all precompiled contract addresses for this release specification.

@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -32,7 +33,7 @@ internal class XdcSealValidatorTests
             return false;
         }
         ulong parentRound = extraFields.QuorumCert.ProposedBlockInfo.Round;
-        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % (ulong)spec.EpochLength;
+        ulong epochStart = extraFields.BlockRound - extraFields.BlockRound % spec.EpochLength;
 
         return parentRound < epochStart;
     }
@@ -89,6 +90,13 @@ internal class XdcSealValidatorTests
         byte[] keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig)
             .SetName("WrongSignerSignature");
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
+        Signature canonicalSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header);
+        byte[] malleableSig = XdcTestHelper.CreateMalleableSignature(canonicalSig).BytesWithRecovery;
+        yield return new TestCaseData(header, malleableSig)
+            .SetName("MalleableHighS");
     }
 
     [TestCaseSource(nameof(InvalidSignatureCases))]
@@ -222,11 +230,11 @@ internal class XdcSealValidatorTests
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
-        releaseSpec.EpochLength.Returns(900);
+        releaseSpec.EpochLength.Returns(900UL);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
         IMasternodesCalculator masternodesCalculator = Substitute.For<IMasternodesCalculator>();
-        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
+        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));

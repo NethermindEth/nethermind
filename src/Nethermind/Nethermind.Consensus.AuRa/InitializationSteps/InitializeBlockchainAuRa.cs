@@ -3,9 +3,9 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -27,14 +27,6 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
 
     protected override async Task InitBlockchain()
     {
-        AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
-        api.FinalizationManager = new AuRaBlockFinalizationManager(
-            api.BlockTree!,
-            api.ChainLevelInfoRepository!,
-            api.ValidatorStore!,
-            api.LogManager,
-            chainSpecAuRa.TwoThirdsMajorityTransition);
-
         await base.InitBlockchain();
 
         WireFinalizationBranchProcessor();
@@ -49,7 +41,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
     /// Got cyclic dependency. AuRaBlockFinalizationManager -> IAuraValidator -> AuraBlockProcessor -> AuraBlockFinalizationManager.
     /// </remarks>
     protected virtual void WireFinalizationBranchProcessor() =>
-        api.FinalizationManager!.SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
+        api.Context.Resolve<IAuRaBlockFinalizationManager>().SetMainBlockBranchProcessor(api.MainProcessingContext!.BranchProcessor!);
 
     private IComparer<Transaction> CreateTxPoolTxComparer(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {

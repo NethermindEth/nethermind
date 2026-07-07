@@ -10,6 +10,7 @@ using Autofac;
 using NSubstitute;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -17,7 +18,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Hive.Test
@@ -33,7 +36,6 @@ namespace Nethermind.Hive.Test
         {
             INethermindPlugin plugin = new HivePlugin(new HiveConfig() { Enabled = true });
             plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
-            plugin.InitRpcModules();
         }
 
         [Test]
@@ -45,6 +47,35 @@ namespace Nethermind.Hive.Test
                 .Build();
 
             container.Resolve<HiveStep>();
+        }
+
+        [Test]
+        public void Disables_recent_ip_filtering_for_hive_devp2p()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new NetworkConfig()))
+                .AddModule(new HiveModule())
+                .Build();
+
+            INetworkConfig networkConfig = container.Resolve<INetworkConfig>();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(networkConfig.FilterPeersByRecentIp, Is.False);
+            }
+        }
+
+        [Test]
+        public void Enables_blob_proof_translation_for_hive_devp2p()
+        {
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(configProvider: new ConfigProvider(new TxPoolConfig())))
+                .AddModule(new HiveModule())
+                .Build();
+
+            ITxPoolConfig txPoolConfig = container.Resolve<ITxPoolConfig>();
+
+            Assert.That(txPoolConfig.ProofsTranslationEnabled, Is.True);
         }
 
         [Test]

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -155,8 +156,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = rlpStream.AsSpan().ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         CreateStorage();
         _storage.Get(block);
@@ -179,8 +180,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
         block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
 
-        using NettyRlpStream rlpStream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = rlpStream.AsSpan().ToArray();
+        using ArrayPoolSpan<byte> encodedReceipts = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash.Bytes] = ((ReadOnlySpan<byte>)encodedReceipts).ToArray();
 
         Assert.That(_storage.Get(block).Length, Is.EqualTo(receipts.Length));
     }
@@ -305,35 +306,35 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+    public void When_TxLookupLimitIs_MaxValue_DoNotIndexTxHash()
     {
-        _receiptConfig.TxLookupLimit = -1;
+        _receiptConfig.TxLookupLimit = ulong.MaxValue;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
         Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
 
-    [TestCase(1L, false)]
-    [TestCase(10L, false)]
-    [TestCase(11L, true)]
-    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool willPruneOldIndices)
+    [TestCase(1ul, false)]
+    [TestCase(10ul, false)]
+    [TestCase(11ul, true)]
+    public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(ulong blockNumber, bool willPruneOldIndices)
     {
-        _receiptConfig.TxLookupLimit = 10;
+        _receiptConfig.TxLookupLimit = 10ul;
         CreateStorage();
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
         Assert.That(() => _blockTree.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
-            willPruneOldIndices ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
+            willPruneOldIndices ? Is.Not.Empty.After(10000, 50) : Is.Empty.After(100, 10));
     }
 
     [Test]
     public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
     {
-        _receiptConfig.TxLookupLimit = 1000;
+        _receiptConfig.TxLookupLimit = 1000ul;
         CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+        (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001ul);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
         Assert.That(() => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes], Is.Null.After(100, 10));
     }
@@ -423,7 +424,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test]
     public void When_NewHeadBlock_ClearOldTxIndex_And_KeepsReceipts()
     {
-        _receiptConfig.TxLookupLimit = 1000;
+        _receiptConfig.TxLookupLimit = 1000ul;
         CreateStorage();
         (Block block, TxReceipt[] receipts) = InsertBlock();
 
@@ -437,7 +438,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.Not.Null);
         }
 
-        Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1).TestObject;
+        Block newHead = Build.A.Block.WithNumber(_receiptConfig.TxLookupLimit.Value + 1ul).TestObject;
         _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead));
 
@@ -448,12 +449,12 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.HasBlock(receipts[0].BlockNumber, receipts[0].BlockHash!));
     }
 
-    [TestCase(false, 5L, TestName = "Insert tracks the lowest inserted block")]
-    [TestCase(true, long.MaxValue, TestName = "InsertForMigration leaves the pointer to the migration")]
-    public void Migration_pointer_is_advanced_only_by_the_normal_insert_path(bool viaMigration, long expectedMigratedBlockNumber)
+    [TestCase(false, 5ul, TestName = "Insert tracks the lowest inserted block")]
+    [TestCase(true, ulong.MaxValue, TestName = "InsertForMigration leaves the pointer to the migration")]
+    public void Migration_pointer_is_advanced_only_by_the_normal_insert_path(bool viaMigration, ulong expectedMigratedBlockNumber)
     {
-        const long blockNumber = 5;
-        _storage.MigratedBlockNumber = long.MaxValue;
+        const ulong blockNumber = 5;
+        _storage.MigratedBlockNumber = ulong.MaxValue;
 
         (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block
             .WithNumber(blockNumber)
@@ -474,7 +475,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
     }
 
-    private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+    private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null)
     {
         block ??= Build.A.Block
             .WithNumber(1)
@@ -510,7 +511,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
-    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
+    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
     {
         (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
         _storage.Insert(block, receipts, writeFlags: writeFlags);

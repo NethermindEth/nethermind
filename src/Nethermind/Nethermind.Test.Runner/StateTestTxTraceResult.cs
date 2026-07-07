@@ -8,7 +8,7 @@ namespace Nethermind.Test.Runner
     public class StateTestTxTraceResult
     {
         public byte[] Output { get; set; }
-        public long GasUsed { get; set; }
+        public ulong GasUsed { get; set; }
         public double Time { get; set; }
         public string Error { get; set; }
     }

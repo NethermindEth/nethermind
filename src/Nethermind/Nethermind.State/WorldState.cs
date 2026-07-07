@@ -33,6 +33,9 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        // Per-scope counter accumulator shared with the providers and scope; folded into the global
+        // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.
+        private readonly LocalMetrics _localMetrics = new();
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;
         private readonly ILogger _logger;
@@ -51,8 +54,8 @@ namespace Nethermind.State
             ILogManager? logManager)
         {
             ScopeProvider = scopeProvider;
-            _stateProvider = new StateProvider(logManager);
-            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
+            _stateProvider = new StateProvider(logManager, _localMetrics);
+            _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
         }
@@ -129,15 +132,20 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
-        public void WarmUp(AccessList? accessList)
+        public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
             {
+                // Bail once cancelled (block done) so an over-declared list can't stall the end-of-block join.
+                const int cancellationCheckMask = 0x3F; // check the token once per 64 warmed entries
+                int warmed = 0;
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
+                    if ((++warmed & cancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested) return;
                     bool exists = _stateProvider.WarmUp(address);
                     foreach (UInt256 storage in storages)
                     {
+                        if ((++warmed & cancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested) return;
                         _persistentStorageProvider.WarmUp(new StorageCell(address, in storage), isEmpty: !exists);
                     }
                 }
@@ -161,7 +169,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
         }
-        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
@@ -174,6 +182,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
+
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
@@ -191,18 +200,18 @@ namespace Nethermind.State
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
-        public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+        public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         {
             DebugGuardInScope();
             _stateProvider.IncrementNonce(address, delta, out oldNonce);
         }
-        public void DecrementNonce(Address address, UInt256 delta)
+        public void DecrementNonce(Address address, ulong delta)
         {
             DebugGuardInScope();
             _stateProvider.DecrementNonce(address, delta);
         }
 
-        public void CommitTree(long blockNumber)
+        public void CommitTree(ulong blockNumber)
         {
             DebugGuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
@@ -210,7 +219,7 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorageMap();
         }
 
-        public UInt256 GetNonce(Address address)
+        public ulong GetNonce(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetNonce(address);
@@ -231,7 +240,7 @@ namespace Nethermind.State
 
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock);
+                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
                 _stateProvider.SetScope(_currentScope);
                 _persistentStorageProvider.SetBackendScope(_currentScope);
             }
@@ -254,6 +263,8 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
+                    // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
+                    _localMetrics.Flush();
                     Reset();
                     _stateProvider.SetScope(null);
                     _currentScope.Dispose();
@@ -317,7 +328,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || !account.Nonce.IsZero || !_persistentStorageProvider.IsStorageEmpty(address));
+            return accountExists && (account!.IsContract || account.Nonce != 0 || !_persistentStorageProvider.IsStorageEmpty(address));
         }
 
         public bool IsDeadAccount(Address address)
@@ -342,6 +353,10 @@ namespace Nethermind.State
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
             }
+
+            // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and
+            // at block-end on the block-processing thread, keeping ProcessingStats' MainThread* deltas current.
+            _localMetrics.Flush();
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -368,13 +383,13 @@ namespace Nethermind.State
             Restore(new Snapshot(new Snapshot.Storage(persistentStorage, transientStorage), state, -1));
         }
 
-        public void SetNonce(Address address, in UInt256 nonce)
+        public void SetNonce(Address address, in ulong nonce)
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
         }
 
-        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+        public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);

@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
@@ -93,6 +95,7 @@ public partial class BlockProcessor(
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
+            block.DisposeAccountChanges();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
         }
@@ -148,7 +151,16 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        SetReceiptsRoot(header, receipts, spec, block);
+        // Overlapped readers of `receipts` only touch fields already populated by CalculateBlooms, so no data race.
+        Task<Hash256>? receiptsRootTask = null;
+        if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
+        {
+            receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
+        }
+        else
+        {
+            header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
+        }
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -174,6 +186,11 @@ public partial class BlockProcessor(
         }
 
         _balManager.SetBlockAccessList(block);
+
+        if (receiptsRootTask is not null)
+        {
+            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+        }
 
         header.Hash = header.CalculateHash();
 
@@ -201,16 +218,32 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount);
+
+    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
+
+        // Avoid parallel scheduling overhead for small receipt counts: ParallelUnbalancedWork queues
+        // ProcessorCount-1 ThreadPool items regardless of work size, which adds scheduling jitter and
+        // allocation overhead that exceeds the bloom computation cost for small blocks.
+        if (receipts.Length <= Environment.ProcessorCount)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                receipts[i].CalculateBloom();
+            }
+
+            return;
+        }
+
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
@@ -290,37 +323,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        BlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.BlobGasUsed,
-            bh.ExcessBlobGas)
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            AuRaStep = bh.AuRaStep,
-            AuRaSignature = bh.AuRaSignature,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            SlotNumber = bh.SlotNumber,
-            // Carried for the verify-only fast path which doesn't recompute it.
-            BlockAccessListHash = bh.BlockAccessListHash
-        };
+        BlockHeader headerForProcessing = bh.CloneForProcessing();
 
         if (!ShouldComputeStateRoot(bh))
         {
@@ -373,7 +376,7 @@ public partial class BlockProcessor(
 
     private void ApplyDaoTransition(Block block)
     {
-        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = _specProvider.DaoBlockNumber;
         if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
         {
             ApplyTransition();

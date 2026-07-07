@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -21,16 +20,23 @@ namespace Nethermind.Evm;
 public class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private static readonly ConcurrentQueue<VmState<TGasPolicy>> _statePool = new();
+    private static readonly
+#if ZK_EVM
+        ZkEvmQueue<VmState<TGasPolicy>>
+#else
+        System.Collections.Concurrent.ConcurrentQueue<VmState<TGasPolicy>>
+#endif
+        _statePool = new();
+
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
     public TGasPolicy Gas;
-    public long InitialStateGasUsed;
-    public long StateGasRefundPending;
+    public ulong InitialStateGasUsed;
+    public ulong StateGasRefundPending;
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
-    public long StateGasRefundAdvanced;
+    public ulong StateGasRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -106,7 +112,10 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     private static VmState<TGasPolicy> Rent()
-        => _statePool.TryDequeue(out VmState<TGasPolicy>? state) ? state : new VmState<TGasPolicy>();
+    {
+        if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
+        return new VmState<TGasPolicy>();
+    }
 
     [SkipLocalsInit]
     private void Initialize(
@@ -124,6 +133,12 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
+#if ZK_EVM
+        // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
+        // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
+        // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
+        _memory = default;
+#endif
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
@@ -288,7 +303,8 @@ public class VmState<TGasPolicy> : IDisposable
     public void CommitToParent(VmState<TGasPolicy> parentState)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        parentState.Refund += Refund;
+        // `checked` traps a buggy refund propagation that would otherwise wrap silently.
+        parentState.Refund = checked(parentState.Refund + Refund);
         _canRestore = false; // we can't restore if we committed
     }
 }

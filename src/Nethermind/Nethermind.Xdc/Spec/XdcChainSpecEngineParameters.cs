@@ -14,16 +14,16 @@ namespace Nethermind.Xdc.Spec;
 
 public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string EngineName => SealEngineType;
-    public string SealEngineType => XdcConstants.XDPoS;
-    public int Epoch { get; set; }
-    public int Gap { get; set; }
-    public int Period { get; set; }
+    public virtual string EngineName => SealEngineType;
+    public virtual string SealEngineType => XdcConstants.XDPoS;
+    public ulong Epoch { get; set; }
+    public ulong Gap { get; set; }
+    public ulong Period { get; set; }
     public bool SkipV1Validation { get; set; }
     public Address FoundationWalletAddr { get; set; }
-    public int Reward { get; set; }
-    public int SwitchEpoch { get; set; }
-    public long SwitchBlock { get; set; }
+    public ulong Reward { get; set; }
+    public ulong SwitchEpoch { get; set; }
+    public ulong SwitchBlock { get; set; }
     public ulong RangeReturnSigner { get; set; }
     public Address[] GenesisMasternodes { get; set; } = Array.Empty<Address>();
 
@@ -36,8 +36,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address MasternodeVotingContract { get; set; }
 
-    public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
-    public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public ulong LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
+    public ulong LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public Address RelayerRegistrationSMC { get; set; }
     public Address TRC21IssuerSMC { get; set; }
 
@@ -53,19 +53,21 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             _v2Configs = value;
         }
     }
-    public long? TipTrc21Fee { get; set; }
-    public long TIP2019Block { get; set; }
-    public long? TipUpgradePenalty { get; set; }
-    public long? TipUpgradeReward { get; set; }
+
+    public ulong? TipTrc21Fee { get; set; }
+    public ulong TIP2019Block { get; set; }
+    public ulong? TipUpgradePenalty { get; set; }
+    public ulong? TipUpgradeReward { get; set; }
     public UInt256 MasternodeReward { get; set; }
     public UInt256 ProtectorReward { get; set; }
     public UInt256 ObserverReward { get; set; }
-    public long MergeSignRange { get; set; }
+    public ulong MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
-    public long BlackListHFNumber { get; set; }
-    public long TipXDCX { get; set; }
-    public long TIPXDCXMinerDisable { get; set; }
-    public long? DynamicGasLimitBlock { get; set; }
+    public ulong? BlackListHFNumber { get; set; }
+    public ulong? TipXDCX { get; set; }
+    public ulong? TIPXDCXMinerDisable { get; set; }
+    public ulong? TIPXDCXReceiverDisable { get; set; }
+    public ulong? DynamicGasLimitBlock { get; set; }
 
     private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>
     {
@@ -84,9 +86,9 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
@@ -104,5 +106,5 @@ public sealed class V2ConfigParams
     public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
-    public int MinePeriod { get; init; }
+    public ulong MinePeriod { get; init; }
 }

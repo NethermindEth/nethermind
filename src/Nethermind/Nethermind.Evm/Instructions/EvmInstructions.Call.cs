@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -92,8 +91,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment global call metrics.
-        Metrics.IncrementCalls();
+        vm.MetricsCounters.IncrementCalls();
 
         // Clear previous return data.
         vm.ReturnData = null;
@@ -101,7 +99,7 @@ public static partial class EvmInstructions
         // Pop the gas limit for the call.
         if (!stack.PopUInt256(out UInt256 gasLimit)) goto StackUnderflow;
         // Pop the code source address from the stack.
-        Address codeSource = stack.PopAddress();
+        Address codeSource = stack.PopAddress(vm.AddressCache);
         if (codeSource is null) goto StackUnderflow;
 
         ExecutionEnvironment env = vm.VmState.Env;
@@ -147,9 +145,9 @@ public static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
-            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
+        if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
+            !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
@@ -186,25 +184,8 @@ public static partial class EvmInstructions
                 : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long gasLimitUl;
-
-        if (spec.Use63Over64Rule)
-        {
-            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
-            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
-            long cap = gasAvailable - gasAvailable / 64;
-            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
-                ? (long)gasLimit.u0
-                : cap;
-        }
-        else
-        {
-            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
-            gasLimitUl = (long)gasLimit.u0;
-        }
-
-        if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
+        // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
+        if (!TGasPolicy.TryReserveChildGas(ref gas, in gasLimit, spec, out ulong gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
         if (hasValueTransfer)
@@ -266,16 +247,24 @@ public static partial class EvmInstructions
                 }
                 state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
             }
-            Metrics.IncrementEmptyCalls();
+            vm.MetricsCounters.IncrementEmptyCalls();
             vm.ReturnData = null;
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
 
+        // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
+        // has no icache and counts instructions, so the NoInlining call and its wide argument
+        // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
+#if ZK_EVM
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#else
         [MethodImpl(MethodImplOptions.NoInlining)]
+#endif
         static EvmExceptionType CreateFullCallFrame(
             VirtualMachine<TGasPolicy> vm,
+            ref EvmStack stack,
             ref TGasPolicy gas,
             in UInt256 dataOffset,
             UInt256 dataLength,
@@ -287,7 +276,7 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            long gasLimitUl)
+            ulong gasLimitUl)
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -315,9 +304,28 @@ public static partial class EvmInstructions
                 outputOffset = default;
             }
 
+            TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
+
+#if ZK_EVM
+            // Precompiles run no bytecode: handle them inline, skipping the child
+            // frame's round trip through the ExecuteTransaction dispatch loop.
+            if (codeInfo.IsPrecompile)
+            {
+                return vm.InlinePrecompileCall<TTracingInst>(
+                    callEnv,
+                    childGas,
+                    outputOffset.ToLong(),
+                    outputLength.ToLong(),
+                    TOpCall.ExecutionType,
+                    TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
+                    in snapshot,
+                    ref stack);
+            }
+#endif
+
             // Rent a new call frame for executing the call.
             vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-                gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
+                gas: childGas,
                 outputDestination: outputOffset.ToLong(),
                 outputLength: outputLength.ToLong(),
                 executionType: TOpCall.ExecutionType,
@@ -362,7 +370,7 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;

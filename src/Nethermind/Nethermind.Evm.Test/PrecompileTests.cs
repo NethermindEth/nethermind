@@ -20,7 +20,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     where TTests : PrecompileTests<TPrecompile, TTests>, IPrecompileTests
 {
     [method: JsonConstructor]
-    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, long? Gas, string? ExpectedError)
+    public record TestCase(ReadOnlyMemory<byte> Input, byte[]? Expected, string Name, ulong? Gas, string? ExpectedError)
     {
         public IReleaseSpec Spec { get; internal set; } = DefaultSpec;
 
@@ -82,7 +82,7 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
     private static void RunTestCore(TestCase testCase, string? reason = null)
     {
-        long gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
+        ulong gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
 
         Result<byte[]> result = Instance.Run(testCase.Input, testCase.Spec);
 

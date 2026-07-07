@@ -258,6 +258,18 @@ public partial class EngineModuleTests
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
+    [TestCase(0, TestName = "Without blob transactions")]
+    [TestCase(1, TestName = "With a blob transaction")]
+    public async Task NewPayloadV3_null_blobversionedhashes_returns_invalid_params(int blobTxCount)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, null!, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
     [Test]
     public async Task NewPayloadV3_invalidblockhash()
     {
@@ -373,6 +385,30 @@ public partial class EngineModuleTests
         return errorResponse.Error?.Code ?? ErrorCodes.None;
     }
 
+    [Test]
+    public async Task ForkChoiceUpdatedV2_with_slot_number_attributes_at_Cancun_returns_unsupported_fork()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+        };
+
+        string response = await RpcTest.TestSerializedRequest(rpcModule, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
+
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
     private const string FurtherValidationStatus = "FurtherValidation";
 
     [TestCaseSource(nameof(BlobVersionedHashesMatchTestSource))]
@@ -407,6 +443,7 @@ public partial class EngineModuleTests
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
@@ -525,7 +562,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_valid_for_previous_blocks_without_state_synced()
     {
-        static void MarkAsUnprocessed(MergeTestBlockchain chain, int blockNumber)
+        static void MarkAsUnprocessed(MergeTestBlockchain chain, uint blockNumber)
         {
             ChainLevelInfo lvl = chain.ChainLevelInfoRepository.LoadLevel(blockNumber)!;
             foreach (BlockInfo info in lvl.BlockInfos)
@@ -856,7 +893,7 @@ public partial class EngineModuleTests
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {
                 TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = MergeErrorCodes.UnsupportedFork,
+                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
             };
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
             {

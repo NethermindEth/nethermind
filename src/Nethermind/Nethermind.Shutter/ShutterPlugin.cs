@@ -46,12 +46,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        return Task.CompletedTask;
-    }
-
     public IModule? Module => new ShutterPluginModule();
 }
 
@@ -99,7 +93,7 @@ public class ShutterPluginModule : Module
             shutterConfig,
             validatorsInfo,
             TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
-            ctx.Resolve<IIPResolver>().ExternalIp
+            ctx.Resolve<IIPResolver>()
         );
     }
 }
