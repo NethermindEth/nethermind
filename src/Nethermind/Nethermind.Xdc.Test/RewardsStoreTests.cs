@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -60,7 +59,7 @@ public class RewardsStoreTests
     }
 
     [Test]
-    public async Task OnBlockAddedToMain_WhenEpochBlockIsProcessed_ShouldPersistRewards()
+    public void OnBlockAddedToMain_WhenEpochBlockIsProcessed_ShouldPersistRewards()
     {
         IDb db = new MemDb();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -90,8 +89,6 @@ public class RewardsStoreTests
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
 
-        await Task.Delay(100);
-
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.HasEpochRewards(block.Hash!), Is.True);
@@ -101,7 +98,7 @@ public class RewardsStoreTests
     }
 
     [Test]
-    public async Task OnBlockAddedToMain_WhenBlockWasNotProcessed_ShouldNotPersistRewards()
+    public void OnBlockAddedToMain_WhenBlockWasNotProcessed_ShouldNotPersistRewards()
     {
         IDb db = new MemDb();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -116,13 +113,11 @@ public class RewardsStoreTests
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
 
-        await Task.Delay(100);
-
         Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
     }
 
     [Test]
-    public async Task OnBlockAddedToMain_WhenSyncing_ShouldNotPersistRewards()
+    public void OnBlockAddedToMain_WhenSyncing_ShouldNotPersistRewards()
     {
         IDb db = new MemDb();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -138,8 +133,6 @@ public class RewardsStoreTests
         store.Start();
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-
-        await Task.Delay(100);
 
         Assert.That(store.HasEpochRewards(block.Hash!), Is.False);
     }
