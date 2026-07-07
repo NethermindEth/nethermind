@@ -76,6 +76,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
     {
+        if (Volatile.Read(ref _generation) != readerGeneration || Volatile.Read(ref _accountCount) >= _maxEntriesPerKind) return;
+
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
@@ -86,6 +88,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
     {
+        if (Volatile.Read(ref _generation) != readerGeneration || Volatile.Read(ref _slotCount) >= _maxEntriesPerKind) return;
+
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
