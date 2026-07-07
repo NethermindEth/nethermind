@@ -291,13 +291,15 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetBlobsV4_routes_to_engine_getBlobsV4()
     {
-        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>())
+        _engineModule.engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<byte[]>())
             .Returns(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
 
+        System.Collections.BitArray indicesBitarray = new(128);
+        indicesBitarray.Set(0, true);
         GetBlobsV4RequestWire request = new()
         {
             BlobVersionedHashes = [],
-            IndicesBitarray = new System.Collections.BitArray(128)
+            IndicesBitarray = indicesBitarray
         };
         byte[] body = GetBlobsV4RequestWire.Encode(request);
         DefaultHttpContext ctx = MakePostContext("/engine/v2/blobs/v4", body);
@@ -305,7 +307,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
+        await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Is<byte[]>(static b => b.Length == 16 && b[0] == 1));
     }
 
     private static readonly TestCaseData[] BodiesByHashRoutingCases =

@@ -15,6 +15,8 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
+    private const int GetBlobsV4IndicesBitarrayLength = 16;
+
     private readonly IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadHandlerV6 = getPayloadHandlerV6;
     private readonly IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
     private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
@@ -54,6 +56,15 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(ulong start, ulong count)
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 
-    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, System.Collections.BitArray indicesBitarray)
-        => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[] indicesBitarray)
+    {
+        if (indicesBitarray.Length != GetBlobsV4IndicesBitarrayLength)
+        {
+            return Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Fail(
+                $"indicesBitarray must be {GetBlobsV4IndicesBitarrayLength} bytes",
+                ErrorCodes.InvalidParams));
+        }
+
+        return _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, new BitArray(indicesBitarray)));
+    }
 }

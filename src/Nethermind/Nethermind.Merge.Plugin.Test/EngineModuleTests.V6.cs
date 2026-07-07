@@ -42,6 +42,20 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
+    [Test]
+    public async Task GetBlobsV4_accepts_0x_prefixed_indices_bitarray()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+
+        string response = await RpcTest.TestSerializedRequest(
+            chain.EngineRpcModule,
+            "engine_getBlobsV4",
+            Array.Empty<byte[]>(),
+            "0x01000000000000000000000000000000");
+
+        Assert.That(response, Does.Contain("\"result\":[]"));
+    }
+
     [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0xfe420b1626a1f16d")]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,

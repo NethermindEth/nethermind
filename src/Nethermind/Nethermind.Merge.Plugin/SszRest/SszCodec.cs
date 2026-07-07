@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Consensus.Stateless;
@@ -19,6 +20,13 @@ namespace Nethermind.Merge.Plugin.SszRest;
 public static class SszCodec
 {
     private const int ValidationErrorMaxBytes = 1024;
+
+    internal static byte[] EncodeBitArray(BitArray bitArray)
+    {
+        byte[] bytes = new byte[(bitArray.Length + 7) / 8];
+        bitArray.CopyTo(bytes, 0);
+        return bytes;
+    }
 
     /// <summary>Encode directly into the writer's buffer (no intermediate alloc); returns bytes written.</summary>
     private static int EncodeToWriter<T>(T value, IBufferWriter<byte> writer) where T : ISszCodec<T>
