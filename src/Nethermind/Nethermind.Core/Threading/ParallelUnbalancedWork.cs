@@ -34,7 +34,16 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
-        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        int iterations = toExclusive - fromInclusive;
+        if (iterations <= 0)
+        {
+            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
+
+        int threads = Math.Min(
+            iterations,
+            parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount);
 
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
@@ -280,10 +289,19 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<int, TLocal, TLocal> action,
             Action<TLocal>? @finally = null)
         {
+            int iterations = toExclusive - fromInclusive;
+            if (iterations <= 0)
+            {
+                parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
+
             // Determine the number of threads to use
-            int threads = parallelOptions.MaxDegreeOfParallelism > 0
-                ? parallelOptions.MaxDegreeOfParallelism
-                : Environment.ProcessorCount;
+            int threads = Math.Min(
+                iterations,
+                parallelOptions.MaxDegreeOfParallelism > 0
+                    ? parallelOptions.MaxDegreeOfParallelism
+                    : Environment.ProcessorCount);
 
             // Create shared data with thread-local initializers and finalizers
             Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
