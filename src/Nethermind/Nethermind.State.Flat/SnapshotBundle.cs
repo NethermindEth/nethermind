@@ -141,6 +141,41 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    public byte[]? GetSlot(Address address, in ValueHash256 addressHash, in UInt256 index, int selfDestructStateIdx)
+    {
+        GuardDispose();
+
+        HashedKey<(Address, UInt256)> key = new((address, index));
+
+        if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+        {
+            return slotValue?.ToEvmBytes();
+        }
+
+        // Self-destructed at the point of the latest change
+        if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+        {
+            return null;
+        }
+
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorage(key, out slotValue))
+            {
+                return slotValue?.ToEvmBytes();
+            }
+
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                // This is the snapshot with selfdestruct
+                return null;
+            }
+        }
+
+        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, in addressHash);
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();

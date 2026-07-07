@@ -67,7 +67,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
+        byte[]? value = _bundle.GetSlot(_address, in _addressHash, index, _selfDestructKnownStateIdx);
         if (value is null || value.Length == 0)
         {
             value = StorageTree.ZeroBytes;
