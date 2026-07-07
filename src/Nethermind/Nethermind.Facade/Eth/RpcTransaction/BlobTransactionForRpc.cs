@@ -90,25 +90,38 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
-    public override string? PrepareForGasEstimation(in TxFillContext context)
+    public override Result FillDefaults(in TxFillContext context)
     {
-        // Raw blobs are the caller's payload; only derive the sidecar when it is missing or incomplete.
-        if (Blobs is not { Length: > 0 }) return null;
-        if (Commitments is not null && Proofs is not null && BlobVersionedHashes is { Length: > 0 }) return null;
+        Result baseResult = base.FillDefaults(context);
+        if (!baseResult) return baseResult;
 
-        // Bound the blob count before the expensive KZG work, matching the raw-tx decode cap.
-        ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(Blobs.Length, context.Spec);
-        if (!blobCountValidation) return blobCountValidation.Error!;
+        if (MaxFeePerBlobGas is null)
+        {
+            // Fail rather than default to 0x0, which is below the EIP-4844 minimum blob base fee of 1.
+            if (context.BlobBaseFee is null) return Result.Fail("unable to calculate the current blob base fee");
+            MaxFeePerBlobGas = context.BlobBaseFee.Value * 2;
+        }
 
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(context.Spec.BlobProofVersion);
+        return DeriveSidecar(context.Spec);
+    }
+
+    private Result DeriveSidecar(IReleaseSpec spec)
+    {
+        if (Blobs is not { Length: > 0 }) return Result.Success;
+        if (Commitments is not null && Proofs is not null && BlobVersionedHashes is { Length: > 0 }) return Result.Success;
+
+        // Bound the blob count before the expensive KZG work.
+        ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(Blobs.Length, spec);
+        if (!blobCountValidation) return Result.Fail(blobCountValidation.Error!);
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(spec.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(Blobs);
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
         if (BlobVersionedHashes is { Length: > 0 })
         {
-            // Caller supplied hashes: verify they match the derived commitments rather than overwriting.
             if (!proofsManager.ValidateHashes(wrapper, BlobVersionedHashes))
-                return "blob versioned hashes do not match the supplied blobs";
+                return Result.Fail("blob versioned hashes do not match the supplied blobs");
         }
         else
         {
@@ -117,22 +130,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
         Commitments = wrapper.Commitments;
         Proofs = wrapper.Proofs;
-        return null;
-    }
-
-    public override string? FillFeeDefaults(in TxFillContext context)
-    {
-        base.FillFeeDefaults(context);
-
-        if (MaxFeePerBlobGas is null)
-        {
-            // Match eth_blobBaseFee: fail when the blob base fee can't be computed rather than emit
-            // "0x0", which is below the EIP-4844 minimum of 1.
-            if (context.BlobBaseFee is null) return "unable to calculate the current blob base fee";
-            MaxFeePerBlobGas = context.BlobBaseFee.Value * 2;
-        }
-
-        return null;
+        return Result.Success;
     }
 
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)

@@ -463,19 +463,15 @@ public partial class EthRpcModule(
         IReleaseSpec spec = _specProvider.GetSpec(head);
         ulong chainId = _blockchainBridge.GetChainId();
 
-        // Every concrete tx type derives from LegacyTransactionForRpc, which carries the common
-        // from/nonce/chainId fields. geth/reth require an explicit sender: nonce and gas are
-        // meaningless without it, and defaulting to the zero address would fill the wrong account.
-        if (rpcTx is not LegacyTransactionForRpc baseTx || baseTx.From is null)
+        if (rpcTx is not LegacyTransactionForRpc baseTx)
+            return ResultWrapper<FillTransactionResult>.Fail($"transaction type {rpcTx.Type} is not supported for filling", ErrorCodes.InvalidInput);
+
+        if (baseTx.From is not { } from)
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
-        Address from = baseTx.From;
-
-        // geth parity: a supplied chain id must match the node's, otherwise the fill is unusable.
         if (baseTx.ChainId is { } requestedChainId && requestedChainId != chainId)
             return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
 
-        // Fill the sender nonce from the pending-pool view so back-to-back fills chain correctly.
         baseTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
         UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
@@ -492,26 +488,18 @@ public partial class EthRpcModule(
             Spec = spec,
         };
 
-        // Derive the blob sidecar/versioned hashes before gas estimation: a blob tx without versioned
-        // hashes fails ToTransaction, which gas estimation relies on.
-        if (rpcTx.PrepareForGasEstimation(fillContext) is { } prepareError)
-            return ResultWrapper<FillTransactionResult>.Fail(prepareError, ErrorCodes.InvalidInput);
+        Result fillResult = rpcTx.FillDefaults(fillContext);
+        if (!fillResult)
+            return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
 
-        // Estimate gas before defaulting fees: while the fee fields are unset ShouldSetBaseFee is
-        // false, so estimation runs with the base fee zeroed and a zero-balance sender still resolves.
         if (rpcTx.Gas is null)
         {
             ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
-            // eth_estimateGas mutates rpcTx.Gas to the block gas limit as a binary-search bound;
-            // overwrite it with the actual estimate.
             rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
         }
-
-        if (rpcTx.FillFeeDefaults(fillContext) is { } feeError)
-            return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
         baseTx.ChainId ??= chainId;
 
@@ -521,7 +509,6 @@ public partial class EthRpcModule(
 
         tx.ChainId = chainId;
 
-        // Carry a caller-supplied blob sidecar through so the filled tx can be signed and submitted as-is.
         if (rpcTx is BlobTransactionForRpc { Blobs: not null } withSidecar
             && withSidecar.TryAttachSidecar(tx, spec.BlobProofVersion) is { } attachError)
         {

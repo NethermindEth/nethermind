@@ -134,10 +134,10 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
 
-    public override string? FillFeeDefaults(in TxFillContext context)
+    public override Result FillDefaults(in TxFillContext context)
     {
         GasPrice ??= context.GasPrice;
-        return null;
+        return Result.Success;
     }
 
     public static LegacyTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) =>

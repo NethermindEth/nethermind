@@ -121,18 +121,11 @@ public abstract class TransactionForRpc
     }
 
     /// <summary>
-    /// Derives type-specific fields that must exist before gas estimation (e.g. the blob sidecar and
-    /// versioned hashes). The base implementation does nothing.
+    /// Fills the type-specific fields the caller left unset from node-computed defaults: each
+    /// transaction type populates the fee model it uses, and blob transactions additionally derive
+    /// the KZG sidecar from the supplied blobs.
     /// </summary>
-    /// <returns>An error message if a field cannot be derived, otherwise <c>null</c>.</returns>
-    public virtual string? PrepareForGasEstimation(in TxFillContext context) => null;
-
-    /// <summary>
-    /// Fills the fee fields the caller left unset from node-computed defaults. Each transaction type
-    /// overrides this to populate the fee model it uses (gas price vs. EIP-1559 fees vs. blob fee).
-    /// </summary>
-    /// <returns>An error message if a fee cannot be determined, otherwise <c>null</c>.</returns>
-    public virtual string? FillFeeDefaults(in TxFillContext context) => null;
+    public virtual Result FillDefaults(in TxFillContext context) => Result.Success;
 
     public abstract bool ShouldSetBaseFee();
 
