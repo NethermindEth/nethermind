@@ -150,9 +150,7 @@ namespace Nethermind.Network
                 return false;
             }
 
-            // The next transition can be validated only when both sides define one: 0 means the peer does
-            // not know the following fork yet, and when the matched fork is our last known one we have no
-            // expectation to check against (the peer may know a fork we don't).
+            // EIP-2124 uses next=0 when no following fork is known.
             return peerId.Next == 0 || found.Id.Next == 0 || peerId.Next == found.Id.Next;
         }
 

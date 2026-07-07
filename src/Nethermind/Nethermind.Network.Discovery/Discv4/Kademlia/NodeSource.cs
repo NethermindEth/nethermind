@@ -139,10 +139,6 @@ public sealed class NodeSource(
 
     private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node);
 
-    /// <summary>
-    /// Checks the "eth" entry of the node's ENR, present only after the EIP-868 exchange, against the
-    /// local fork schedule.
-    /// </summary>
     private bool HasIncompatibleForkId(Node node)
     {
         try
@@ -151,9 +147,7 @@ public sealed class NodeSource(
         }
         catch (Exception e)
         {
-            // Unlike the discv5/DNS sources, these callers have no per-node exception guard: a throw here
-            // would kill the whole discovery stream or propagate into the kademlia event raiser. Keep the
-            // candidate, preserving the pre-filter behavior when the local check itself fails.
+            // Keep the candidate if local validation fails; discv4 callers have no per-node exception guard.
             if (_logger.IsTrace) _logger.Trace($"Unable to validate fork ID of discv4 discovered node {node:s}: {e}");
             return false;
         }

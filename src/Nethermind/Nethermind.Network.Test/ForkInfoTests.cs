@@ -338,10 +338,6 @@ public class ForkInfoTests
     [TestCase("0xfc64ec04", 0ul, true, "Frontier, remote does not know the next fork yet")]
     [TestCase("0xfc64ec04", 42ul, false, "Frontier with mismatched next")]
     [TestCase("0x9f3d2254", 1_746_612_311ul, true, "Cancun with correct Prague next")]
-    // The two cases below assume 0x07c9462e (BPO2) is the last fork known to MainnetSpecProvider; like the
-    // other hardcoded hashes in this file, update them when the next mainnet fork is scheduled.
-    [TestCase("0x07c9462e", 0ul, true, "Last known fork without next")]
-    [TestCase("0x07c9462e", 9_999_999_999ul, true, "Last known fork, remote knows a fork we don't")]
     [TestCase("0x12345678", 0ul, false, "Unknown fork hash")]
     [TestCase("0x12345678", 1_150_000ul, false, "Unknown fork hash with known next")]
     public void Test_fork_id_compatibility_mainnet(string hash, ulong next, bool expected, string description) =>
@@ -349,6 +345,16 @@ public class ForkInfoTests
             CreateMainnetForkInfo().IsForkIdCompatible(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next)),
             Is.EqualTo(expected),
             description);
+
+    [TestCase(0ul)]
+    [TestCase(9_999_999_999ul)]
+    public void Test_last_known_fork_id_compatibility_mainnet(ulong next)
+    {
+        ForkInfo forkInfo = CreateMainnetForkInfo();
+        Fork lastFork = forkInfo.GetForkActivationsSummary(null).Last!.Value;
+
+        Assert.That(forkInfo.IsForkIdCompatible(new ForkId(lastFork.Id.ForkHash, next)), Is.True);
+    }
 
     [Test]
     public void Node_record_without_eth_entry_is_fork_compatible()
