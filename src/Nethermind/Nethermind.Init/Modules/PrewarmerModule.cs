@@ -70,7 +70,6 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
                 })
 
-                // Report main-thread tx progress to the prewarmer so it can skip warming already-started txs.
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
     }
 }
