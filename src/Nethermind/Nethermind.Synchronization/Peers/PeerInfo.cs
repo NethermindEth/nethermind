@@ -119,11 +119,10 @@ namespace Nethermind.Synchronization.Peers
             for (int i = 0; i < WeaknessTracking.TrackedContextCount; i++)
             {
                 SleepSlot? slot = Volatile.Read(ref _sleepingSince[i]);
-                if (slot is null) continue;
-                AllocationContexts ctx = WeaknessTracking.ContextAt(i);
-                if (!IsAsleep(ctx) || dateTime - slot.Since < wakeUpIfSleepsMoreThanThis) continue;
+                if (slot is null || dateTime - slot.Since < wakeUpIfSleepsMoreThanThis) continue;
                 if (!ReferenceEquals(Interlocked.CompareExchange(ref _sleepingSince[i], null, slot), slot)) continue;
 
+                AllocationContexts ctx = WeaknessTracking.ContextAt(i);
                 Interlocked.And(ref _sleepingContexts, ~(uint)ctx);
 
                 uint clearMask = WeaknessTracking.ClearMaskFor(ctx);

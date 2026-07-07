@@ -94,6 +94,24 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        public void WakeUp_clears_the_composite_Blocks_weakness_nibble()
+        {
+            // Regression: waking must reset the Blocks composite weakness nibble, not just its member bits,
+            // so re-sleeping still takes SleepThreshold reports rather than one.
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peer = NewPeer();
+
+            RaiseWeaknessUntilSleeping(peer, AllocationContexts.Blocks);
+            peer.PutToSleep(AllocationContexts.Blocks, t0);
+
+            peer.TryToWakeUp(t0 + TimeSpan.FromHours(1), TimeSpan.Zero);
+            Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
+
+            // With the nibble reset, a single fresh weak report must not immediately re-sleep.
+            Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+        }
+
+        [Test]
         public void Context_slot_mapping_round_trips_for_every_tracked_context()
         {
             (AllocationContexts Context, int Index)[] expected =
