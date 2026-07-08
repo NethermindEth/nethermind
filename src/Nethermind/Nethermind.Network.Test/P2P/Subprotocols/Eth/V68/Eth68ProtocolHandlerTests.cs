@@ -316,7 +316,7 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
-    public void should_request_batched_retry_hashes_without_announced_tx_sizes_individually()
+    public void should_batch_retry_hashes_without_announced_tx_sizes_through_base_paging()
     {
         const int numberOfTransactions = 3;
         ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
@@ -328,7 +328,24 @@ public class Eth68ProtocolHandlerTests
 
         _handler.HandleMessages(txHashes);
 
-        _session.Received(numberOfTransactions).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == numberOfTransactions));
+    }
+
+    [Test]
+    public void should_page_batched_retry_hashes_without_announced_tx_sizes_through_base_paging()
+    {
+        const int numberOfTransactions = 300;
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            txHashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 256));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 44));
     }
 
     [Test]

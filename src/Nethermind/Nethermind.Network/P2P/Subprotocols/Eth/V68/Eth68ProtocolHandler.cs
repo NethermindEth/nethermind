@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -238,11 +237,7 @@ public class Eth68ProtocolHandler(ISession session,
 
             if (hashesWithoutShape is not null)
             {
-                ReadOnlySpan<ValueHash256> missingShapeHashes = hashesWithoutShape.AsSpan();
-                for (int i = 0; i < missingShapeHashes.Length; i++)
-                {
-                    base.HandleMessage(PooledTransactionRequestMessage.New(missingShapeHashes[i]));
-                }
+                base.HandleMessages(hashesWithoutShape.AsSpan());
             }
         }
         finally
