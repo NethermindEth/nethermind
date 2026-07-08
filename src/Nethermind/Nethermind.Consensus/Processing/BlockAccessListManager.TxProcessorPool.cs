@@ -79,6 +79,7 @@ public partial class BlockAccessListManager
 
         // processors are not shared statically between BAL managers
         private readonly ConcurrentQueue<TxProcessorWithWorldState> _processors = [];
+        private readonly ConcurrentBag<TxProcessorWithWorldState> _allProcessors = [];
         private readonly IBlockhashProvider _blockHashProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
@@ -127,6 +128,7 @@ public partial class BlockAccessListManager
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
             ReclaimAndResize(newLastBalIndex + 1, previousSize);
+            ClearParentReaders();
             _lastBalIndex = newLastBalIndex;
         }
 
@@ -150,10 +152,10 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader();
 
             try
             {
+                ParentReaderLease? parentReader = GetOrCreateParentReader(processor);
                 // Install a fresh BAL before Setup so the worker has somewhere to record changes.
                 processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
                 processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader);
@@ -162,13 +164,12 @@ public partial class BlockAccessListManager
             }
             catch
             {
-                parentReader?.Dispose();
                 if (processor.WorldState.GetGeneratingBlockAccessList() is { } generatedBal)
                 {
                     StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(null);
-                // Detach any parent reader Setup may have installed so the recycled slot isn't poisoned.
+                // Dispose any parent reader Setup may have installed so the recycled slot isn't poisoned.
                 processor.ClearParentReader();
                 ReturnProcessor(processor);
                 throw;
@@ -188,7 +189,7 @@ public partial class BlockAccessListManager
 
             _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
             processor.WorldState.SetGeneratingBlockAccessList(null);
-            processor.ClearParentReader();
+            processor.DetachParentReader();
             _inUse[idx] = null;
             ReturnProcessor(processor);
         }
@@ -224,13 +225,21 @@ public partial class BlockAccessListManager
 
         public void Rollback() { }
 
-        public void Dispose() => (_parentReaderEnvPool as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            ClearParentReaders();
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
+        }
 
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
+        {
+            TxProcessorWithWorldState processor = new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
+            _allProcessors.Add(processor);
+            return processor;
+        }
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -247,12 +256,13 @@ public partial class BlockAccessListManager
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
                 Interlocked.Decrement(ref _processorCount);
+                p.ClearParentReader();
                 return;
             }
             _processors.Enqueue(p);
         }
 
-        private ParentReaderLease? RentParentReader()
+        private ParentReaderLease? GetOrCreateParentReader(TxProcessorWithWorldState processor)
         {
             if (_parentReaderEnvPool is null)
             {
@@ -261,10 +271,17 @@ public partial class BlockAccessListManager
 
             if (_parentStateHeader is null) ThrowNotInitialized(nameof(_parentStateHeader));
 
+            if (processor.ParentReader is { } existingParentReader)
+            {
+                return existingParentReader;
+            }
+
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
             try
             {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+                ParentReaderLease newParentReader = new(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+                processor.ParentReader = newParentReader;
+                return newParentReader;
             }
             catch
             {
@@ -291,6 +308,14 @@ public partial class BlockAccessListManager
                 Array.Resize(ref _inUse, Math.Max(2 * _inUse.Length, size));
             if (_perTxBal.Length < size)
                 Array.Resize(ref _perTxBal, Math.Max(2 * _perTxBal.Length, size));
+        }
+
+        private void ClearParentReaders()
+        {
+            foreach (TxProcessorWithWorldState processor in _allProcessors)
+            {
+                processor.ClearParentReader();
+            }
         }
 
         private static ObjectPool<IReadOnlyTxProcessorSource>? CreateParentReaderEnvPool(
@@ -374,7 +399,9 @@ public partial class BlockAccessListManager
         public readonly ITransactionProcessor TxProcessor;
         public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
-        private ParentReaderLease? _parentReader;
+        private bool _parentReaderAttached;
+
+        public ParentReaderLease? ParentReader { get; set; }
 
         public TxProcessorWithWorldState(
             bool parallel,
@@ -401,9 +428,8 @@ public partial class BlockAccessListManager
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
         {
-            if (_parentReader is not null) ThrowParentReaderStillAttached();
+            if (_parentReaderAttached) ThrowParentReaderStillAttached();
 
-            _parentReader = parentReader;
             WorldState.Clear();
             WorldState.SetIndex(balIndex);
             _balWorldState?.SetBlockAccessIndex(balIndex);
@@ -413,14 +439,21 @@ public partial class BlockAccessListManager
                 if (parentReader is null) ThrowParentReaderUnavailable();
                 _balWorldState.SetParentReader(parentReader.WorldState);
                 _balWorldState.Setup(block);
+                _parentReaderAttached = true;
             }
+        }
+
+        public void DetachParentReader()
+        {
+            _balWorldState?.ClearParentReader();
+            _parentReaderAttached = false;
         }
 
         public void ClearParentReader()
         {
-            _balWorldState?.ClearParentReader();
-            _parentReader?.Dispose();
-            _parentReader = null;
+            DetachParentReader();
+            ParentReader?.Dispose();
+            ParentReader = null;
         }
 
         [DoesNotReturn]

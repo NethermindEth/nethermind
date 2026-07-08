@@ -100,7 +100,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
+    public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_with_manager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         Hash256 parentStateRoot;
@@ -120,7 +120,7 @@ public class BlockProcessorTests
 
         using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
+        BlockAccessListManager balManager = new(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
@@ -139,33 +139,42 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        PrepareSetup(balManager, block, Amsterdam.Instance);
-
-        _ = balManager.GetTxProcessor(1);
-        _ = balManager.GetTxProcessor(2);
-
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
-            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
-        }
+            PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
-        {
-            BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
+            _ = balManager.GetTxProcessor(1);
+            _ = balManager.GetTxProcessor(2);
+
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(builtHeader.Number, Is.EqualTo(6));
-                Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
-                Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
+                Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
+                Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
+                Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
+                Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
+                Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
             }
-        }
 
-        balManager.ReturnTxProcessor(1);
-        balManager.ReturnTxProcessor(2);
+            for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
+            {
+                BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(builtHeader.Number, Is.EqualTo(6));
+                    Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
+                    Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
+                }
+            }
+
+            balManager.ReturnTxProcessor(1);
+            balManager.ReturnTxProcessor(2);
+
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
+        }
+        finally
+        {
+            balManager.Dispose();
+        }
 
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
     }
