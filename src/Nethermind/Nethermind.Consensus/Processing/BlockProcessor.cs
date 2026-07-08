@@ -149,13 +149,9 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Blooms are consumed only by the receipts root and the header bloom, none of which is
-        // read before the header hash at the end of this method (execution requests read receipt
-        // logs, populated during execution), so the whole chain — per-receipt blooms, header
-        // bloom, receipts root — overlaps the rewards/withdrawals/requests stages AND the
-        // storage-root/state-root tail, joined only before the header hash. EndBlockTrace must
-        // then skip its header-bloom accumulation: it would read per-receipt blooms while the
-        // background task writes them.
+        // Nothing reads blooms or the receipts root before the header hash, so the whole chain
+        // overlaps the remaining stages, including the storage/state-root tail. EndBlockTrace
+        // must then skip its header-bloom accumulation: it would race the background writes.
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts.Length, CountLogs(receipts)))
         {
