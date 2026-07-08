@@ -387,14 +387,14 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     private static bool TryGetDeclaredSlotChanges(ReadOnlyAccountChanges accountChanges, UInt256 slot, out ReadOnlySlotChanges? slotChanges)
     {
-        if (accountChanges.TryGetSlotChanges(slot, out slotChanges))
-        {
-            return true;
-        }
-
         if (accountChanges.IsStorageRead(slot))
         {
             slotChanges = null;
+            return true;
+        }
+
+        if (accountChanges.TryGetSlotChanges(slot, out slotChanges))
+        {
             return true;
         }
 
