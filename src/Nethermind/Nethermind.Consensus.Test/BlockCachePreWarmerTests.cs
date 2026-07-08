@@ -579,6 +579,45 @@ public class BlockCachePreWarmerTests
             "the cache must hold A's committed balance, not the post-execution (value + gas deducted) balance");
     }
 
+    /// <summary>
+    /// After a handoff, the reactive pass must not re-warm senders the speculative pass already warmed — their state is
+    /// in the cache, so re-warming is pure waste. Here the reactive block carries the same transactions (same hashes),
+    /// so every sender group is skipped.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_AfterHandoff_SkipsSpeculativelyWarmedSenders()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        int warmups = 0;
+        using ManualResetEventSlim openGate = new(initialState: true);
+        WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmups));
+        using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        BlockHeader head = BuildParentHeader();
+        Block speculativeBlock = BuildTwoSenderBlock();
+        int calls = 0;
+        preWarmer.StartSpeculativePreWarm(head, Osaka.Instance,
+            _ => Interlocked.Increment(ref calls) == 1 ? speculativeBlock : null, idlePassDelayMs: 5);
+        SpinWait.SpinUntil(() => preWarmer.SpeculativeMarkerPublished, TimeSpan.FromSeconds(5));
+        preWarmer.CancelSpeculativePreWarm();
+        preWarmer.SpeculativePreWarmTask.GetAwaiter().GetResult();
+
+        int speculativeWarmups = Volatile.Read(ref warmups);
+        Volatile.Write(ref warmups, 0);
+
+        // Same transactions (same hashes), same parent → handoff → every sender is already warmed → skipped.
+        Block reactiveBlock = Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+            .WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
+        await RunPreWarmCaches(preWarmer, reactiveBlock, head, Osaka.Instance);
+
+        Assert.That(speculativeWarmups, Is.GreaterThan(0), "precondition: the speculative pass warmed the transactions");
+        Assert.That(Volatile.Read(ref warmups), Is.EqualTo(0), "the reactive pass must skip senders already fully warmed speculatively");
+    }
+
     private Block BuildChildBlock(BlockHeader head) =>
         Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
             .WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
