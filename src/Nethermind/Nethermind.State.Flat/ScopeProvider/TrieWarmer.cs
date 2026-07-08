@@ -23,7 +23,8 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private const int DisposeTimeoutMilliseconds = 1000;
     // Backlog depth past which extra workers cost less (in exec contention) than the cold
     // storage-merkle loads the un-warmed backlog would cause at commit.
-    private const int BoostQueueDepth = 512;
+    private const int BoostQueueDepth = 1536;
+    private const int BoostExtraWorkers = 4;
 
     private readonly ILogger _logger;
 
@@ -65,7 +66,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
         // Extra processors beyond the base count only run while the backlog is deeper than
         // BoostQueueDepth; boosted workers drain the burst to empty and then park again.
-        int maxWorkerCount = Math.Max(_baseWorkerCount, Environment.ProcessorCount - 2);
+        int maxWorkerCount = Math.Max(_baseWorkerCount, Math.Min(_baseWorkerCount + BoostExtraWorkers, Environment.ProcessorCount - 2));
         _processors = new Processor[maxWorkerCount];
         for (int i = 0; i < _processors.Length; i++)
         {

@@ -140,7 +140,7 @@ public class TrieWarmerTests
         if (Environment.ProcessorCount - 2 <= 2) Assert.Ignore("Needs more than 4 logical processors to observe the boost");
 
         const int ConfiguredWorkerCount = 2;
-        const int JobCount = 600; // > BoostQueueDepth
+        const int JobCount = 1700; // > BoostQueueDepth
 
         _config.TrieWarmerWorkerCount = ConfiguredWorkerCount;
         TrieWarmer warmer = new(_logManager, _config);
