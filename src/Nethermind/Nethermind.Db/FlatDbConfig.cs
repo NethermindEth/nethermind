@@ -20,7 +20,6 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
-    public int TrieWarmerBatchSize { get; set; } = 1;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;

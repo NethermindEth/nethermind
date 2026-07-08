@@ -225,9 +225,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
-        public void TryGetSlotBatchRaw(in ValueHash256 address, ReadOnlySpan<ValueHash256> slotHashes, Span<SlotValue> outValues, Span<bool> found) =>
-            _flatReader.TryGetStorageBatch(address, slotHashes, outValues, found);
-
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
             _flatReader.CreateAccountIterator(startKey, endKey);
 

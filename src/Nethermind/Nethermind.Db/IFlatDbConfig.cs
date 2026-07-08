@@ -52,9 +52,6 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
-    [ConfigItem(Description = "Maximum number of already-queued same-contract slot warmer jobs to coalesce into one batched flat-storage read. 1 disables batching.", DefaultValue = "1")]
-    int TrieWarmerBatchSize { get; set; }
-
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

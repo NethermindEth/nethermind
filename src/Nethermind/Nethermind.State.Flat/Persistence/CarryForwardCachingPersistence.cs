@@ -176,7 +176,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
-        public void TryGetStorageBatchRaw(in ValueHash256 addrHash, ReadOnlySpan<ValueHash256> slotHashes, Span<SlotValue> outValues, Span<bool> found) => inner.TryGetStorageBatchRaw(addrHash, slotHashes, outValues, found);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;

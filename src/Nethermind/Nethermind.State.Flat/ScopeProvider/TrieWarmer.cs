@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -49,7 +48,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private readonly Processor[] _processors;
     private TaskCompletionSource<bool>? _processorsStopped;
-    private readonly int _batchSize;
 
     public TrieWarmer(ILogManager logManager, IFlatDbConfig flatDbConfig)
     {
@@ -60,8 +58,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             ? Math.Max(Environment.ProcessorCount / 2, 1)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
-
-        _batchSize = Math.Max(1, Math.Min(flatDbConfig.TrieWarmerBatchSize, SlotBufferSize));
 
         _processors = new Processor[workerCount];
         for (int i = 0; i < _processors.Length; i++)
@@ -97,8 +93,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        int activeProcessors = Volatile.Read(ref _activeProcessors);
+        if (activeProcessors >= _processors.Length) return;
+
         long pending = PendingHint();
-        int desiredProcessors = (int)Math.Min(_processors.Length, Math.Max(1, pending));
+        if (pending == 0) return;
+
+        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {
@@ -115,11 +116,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             while (true)
             {
-                if (_batchSize > 1)
-                {
-                    DrainSlotJobsBatched();
-                }
-
                 while (TryDequeue(out Job job))
                 {
                     HandleJob(in job);
@@ -141,59 +137,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         finally
         {
             OnProcessorStopped();
-        }
-    }
-
-    private void DrainSlotJobsBatched()
-    {
-        SlotJob[]? drained = null;
-        int count = 0;
-
-        while (count < _batchSize && _slotJobBuffer.TryDequeue(out SlotJob slotJob))
-        {
-            drained ??= ArrayPool<SlotJob>.Shared.Rent(_batchSize);
-            drained[count++] = slotJob;
-        }
-
-        if (drained is null)
-        {
-            return;
-        }
-
-        try
-        {
-            DispatchDrainedSlotJobs(drained, count);
-        }
-        finally
-        {
-            ArrayPool<SlotJob>.Shared.Return(drained, clearArray: true);
-        }
-    }
-
-    private void DispatchDrainedSlotJobs(SlotJob[] drained, int count)
-    {
-        Span<UInt256> indices = count <= 64 ? stackalloc UInt256[64] : new UInt256[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            ITrieWarmer.IStorageWarmer? storageTree = drained[i].storageTree;
-            if (storageTree is null) continue;
-
-            int sequenceId = drained[i].sequenceId;
-            int groupCount = 0;
-            indices[groupCount++] = drained[i].index;
-            drained[i] = default;
-
-            for (int j = i + 1; j < count; j++)
-            {
-                if (ReferenceEquals(drained[j].storageTree, storageTree) && drained[j].sequenceId == sequenceId)
-                {
-                    indices[groupCount++] = drained[j].index;
-                    drained[j] = default;
-                }
-            }
-
-            HandleStorageBatchJob(storageTree, indices[..groupCount], sequenceId, groupCount);
         }
     }
 
@@ -234,25 +177,6 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (ObjectDisposedException) { }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.
         catch (NullReferenceException) when (IsDisposedJobTarget(in job)) { }
-    }
-
-    private static void HandleStorageBatchJob(ITrieWarmer.IStorageWarmer storageTree, ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
-    {
-        try
-        {
-            if (jobCount == 1)
-            {
-                storageTree.WarmUpStorageTrie(indices[0], sequenceId);
-            }
-            else
-            {
-                storageTree.WarmUpStorageTrieBatch(indices, sequenceId, jobCount);
-            }
-        }
-        catch (TrieNodeException) { }
-        catch (NodeHashMismatchException) { }
-        catch (ObjectDisposedException) { }
-        catch (NullReferenceException) when (storageTree is FlatStorageTree { IsDisposed: true }) { }
     }
 
     private static bool IsDisposedJobTarget(in Job job) =>

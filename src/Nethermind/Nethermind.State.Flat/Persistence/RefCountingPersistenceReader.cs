@@ -55,9 +55,6 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
         _innerReader.TryGetStorageRaw(addrHash, slotHash, ref value);
 
-    public void TryGetStorageBatchRaw(in ValueHash256 addrHash, ReadOnlySpan<ValueHash256> slotHashes, Span<SlotValue> outValues, Span<bool> found) =>
-        _innerReader.TryGetStorageBatchRaw(addrHash, slotHashes, outValues, found);
-
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
         _innerReader.CreateAccountIterator(startKey, endKey);
 

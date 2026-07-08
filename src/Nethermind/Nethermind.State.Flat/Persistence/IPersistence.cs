@@ -39,18 +39,6 @@ public interface IPersistence
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
 
-        /// <summary>
-        /// Batched <see cref="TryGetStorageRaw" /> for many slots of a single account. The default implementation
-        /// loops; RocksDB-backed readers override this to coalesce the underlying point reads.
-        /// </summary>
-        void TryGetStorageBatchRaw(in ValueHash256 addrHash, ReadOnlySpan<ValueHash256> slotHashes, Span<SlotValue> outValues, Span<bool> found)
-        {
-            for (int i = 0; i < slotHashes.Length; i++)
-            {
-                found[i] = TryGetStorageRaw(addrHash, slotHashes[i], ref outValues[i]);
-            }
-        }
-
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);

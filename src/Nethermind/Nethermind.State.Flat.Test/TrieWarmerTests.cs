@@ -253,14 +253,6 @@ public class TrieWarmerTests
             return true;
         }
 
-        public void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
-        {
-            for (int i = 0; i < indices.Length; i++)
-            {
-                WarmUpStorageTrie(indices[i], sequenceId);
-            }
-        }
-
         public void Dispose()
         {
             _firstCall.Dispose();
