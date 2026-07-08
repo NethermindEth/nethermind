@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 
@@ -50,9 +51,9 @@ internal sealed partial class PersistentStorageProvider
 
         ParallelUnbalancedWork.For(
             0,
-                storages.Count,
-                ParallelUnbalancedWork.DefaultOptions,
-                (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
+            storages.Count,
+            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
