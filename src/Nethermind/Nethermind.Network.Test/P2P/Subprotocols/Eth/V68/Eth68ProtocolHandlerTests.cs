@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -284,6 +284,104 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+    }
+
+    [Test]
+    public void should_divide_batched_retry_GetPooledTransactionsMessage_using_announced_tx_sizes()
+    {
+        const int numberOfTransactions = 3;
+        using ArrayPoolList<byte> types = new(numberOfTransactions);
+        using ArrayPoolList<int> sizes = new(numberOfTransactions);
+        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            Hash256 hash = new(i.ToString("X64"));
+            types.Add((byte)TxType.EIP1559);
+            sizes.Add(TransactionsMessage.MaxPacketSize);
+            hashes.Add(hash);
+            txHashes[i] = hash;
+        }
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        _session.ClearReceivedCalls();
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(numberOfTransactions).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1));
+    }
+
+    [Test]
+    public void should_keep_announced_tx_sizes_for_delayed_batched_retries()
+    {
+        const int numberOfTransactions = 3;
+        using ArrayPoolList<byte> types = new(numberOfTransactions);
+        using ArrayPoolList<int> sizes = new(numberOfTransactions);
+        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            Hash256 hash = new(i.ToString("X64"));
+            types.Add((byte)TxType.EIP1559);
+            sizes.Add(TransactionsMessage.MaxPacketSize);
+            hashes.Add(hash);
+            txHashes[i] = hash;
+        }
+
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(
+                AnnounceResult.Delayed,
+                AnnounceResult.Delayed,
+                AnnounceResult.Delayed,
+                AnnounceResult.RequestRequired,
+                AnnounceResult.RequestRequired,
+                AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        _session.ClearReceivedCalls();
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(numberOfTransactions).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1));
+    }
+
+    [Test]
+    public void should_batch_retry_hashes_without_announced_tx_sizes_through_base_paging()
+    {
+        const int numberOfTransactions = 3;
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            txHashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == numberOfTransactions));
+    }
+
+    [Test]
+    public void should_page_batched_retry_hashes_without_announced_tx_sizes_through_base_paging()
+    {
+        const int numberOfTransactions = 300;
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            txHashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 256));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 44));
     }
 
     [Test]

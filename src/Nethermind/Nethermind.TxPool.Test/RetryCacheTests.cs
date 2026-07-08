@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -46,10 +46,42 @@ public class RetryCacheTests
         public bool WasCalled => _handleMessageCallCount > 0;
         public Action<ResourceRequestMessage> OnHandleMessage { get; set; }
 
-        public void HandleMessage(ResourceRequestMessage message)
+        public virtual void HandleMessage(ResourceRequestMessage message)
         {
             Interlocked.Increment(ref _handleMessageCallCount);
             OnHandleMessage?.Invoke(message);
+        }
+    }
+
+    private sealed class BatchTestHandler : TestHandler, IBatchMessageHandler<ResourceRequestMessage, ResourceId>
+    {
+        private readonly Lock _lock = new();
+        private readonly List<int> _batchResourceValues = [];
+        private int _handleMessagesCallCount;
+
+        public int HandleMessagesCallCount => _handleMessagesCallCount;
+
+        public int[] BatchResourceValues
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _batchResourceValues];
+                }
+            }
+        }
+
+        public void HandleMessages(ReadOnlySpan<ResourceId> resourceIds)
+        {
+            Interlocked.Increment(ref _handleMessagesCallCount);
+            lock (_lock)
+            {
+                for (int i = 0; i < resourceIds.Length; i++)
+                {
+                    _batchResourceValues.Add(resourceIds[i].Value);
+                }
+            }
         }
     }
 
@@ -89,11 +121,14 @@ public class RetryCacheTests
     {
         TestHandler request1 = new();
         TestHandler request2 = new();
+        TestHandler request3 = new();
 
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
+        _cache.Announced(1, request3);
 
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+        Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
     }
 
@@ -117,6 +152,30 @@ public class RetryCacheTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void Announced_MultipleResourcesForSameBatchHandler_ExecutesOneBatchedRetryRequest()
+    {
+        TestHandler request1 = new();
+        TestHandler request3 = new();
+        BatchTestHandler batchRequest = new();
+
+        _cache.Announced(1, request1);
+        _cache.Announced(1, batchRequest);
+        _cache.Announced(2, request3);
+        _cache.Announced(2, batchRequest);
+
+        Assert.That(() => batchRequest.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchRequest.BatchResourceValues, Is.EquivalentTo(new[] { 1, 2 }));
+            Assert.That(batchRequest.HandleMessageCallCount, Is.Zero);
+            Assert.That(request1.WasCalled, Is.False);
+            Assert.That(request3.WasCalled, Is.False);
+        }
+    }
+
+    [Test]
     public void Received_RemovesResourceFromRetryQueue()
     {
         _cache.Announced(1, new TestHandler());
@@ -129,15 +188,23 @@ public class RetryCacheTests
     [Test]
     public async Task Received_BeforeTimeout_PreventsRetryExecution()
     {
-        TestHandler request = new();
+        TestHandler request1 = new();
+        TestHandler request2 = new();
+        TestHandler request3 = new();
 
-        _cache.Announced(1, request);
-        _cache.Announced(1, request);
+        _cache.Announced(1, request1);
+        _cache.Announced(1, request2);
+        _cache.Announced(1, request3);
         _cache.Received(1);
 
         await Task.Delay(CacheTimeoutMs * 3, _cancellationTokenSource.Token);
 
-        Assert.That(request.WasCalled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.WasCalled, Is.False);
+            Assert.That(request2.WasCalled, Is.False);
+            Assert.That(request3.WasCalled, Is.False);
+        }
     }
 
     [Test]
@@ -193,6 +260,61 @@ public class RetryCacheTests
 
     [Test]
     public void Received_NonExistentResource_DoesNotThrow() => Assert.That(() => _cache.Received(999), Throws.Nothing);
+
+    [Test]
+    public async Task Announced_WhenRetryHandlerLimitReached_DoesNotExecuteRejectedHandler()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, maxRetryRequests: 2, token: cancellationTokenSource.Token);
+        try
+        {
+            TestHandler request1 = new();
+            TestHandler request2 = new();
+            TestHandler request3 = new();
+            TestHandler rejectedRequest = new();
+
+            cache.Announced(1, request1);
+            AnnounceResult result1 = cache.Announced(1, request2);
+            AnnounceResult result2 = cache.Announced(1, request3);
+            AnnounceResult result3 = cache.Announced(1, rejectedRequest);
+
+            Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+            Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result1, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(result3, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(request1.WasCalled, Is.False);
+                Assert.That(rejectedRequest.WasCalled, Is.False);
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_WhenRetryQueueIsFull_ReturnsRequestRequired()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, expiringQueueLimit: 0, token: cancellationTokenSource.Token);
+        try
+        {
+            cache.Announced(1, new TestHandler());
+            AnnounceResult result = cache.Announced(2, new TestHandler());
+
+            Assert.That(result, Is.EqualTo(AnnounceResult.RequestRequired));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
 
     [Test]
     public void HandlerBag_StaleAddAfterDrainAndReuse_IsRejected()

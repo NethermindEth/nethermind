@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -261,6 +261,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+        }
+
+        public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
+        {
+            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                hashesToRetry.Add(new Hash256(txHashes[i]));
+            }
+
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
 

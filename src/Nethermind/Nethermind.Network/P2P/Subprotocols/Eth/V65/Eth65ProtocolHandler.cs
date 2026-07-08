@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
-          IMessageHandler<PooledTransactionRequestMessage>
+          IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
         public override string Name => "eth65";
 
@@ -243,6 +243,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+        }
+
+        public virtual void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
+        {
+            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                hashesToRetry.Add(new Hash256(txHashes[i]));
+            }
+
             RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
         }
     }
