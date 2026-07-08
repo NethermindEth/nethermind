@@ -73,6 +73,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         ObserverReward = configParams.ObserverReward;
         MinimumMinerBlockPerEpoch = configParams.MinimumMinerBlockPerEpoch;
         LimitPenaltyEpoch = configParams.LimitPenaltyEpoch;
+        MinimumSigningTx = configParams.MinimumSigningTx;
     }
 
     internal static V2ConfigParams GetConfigAtRound(List<V2ConfigParams> list, ulong round)
