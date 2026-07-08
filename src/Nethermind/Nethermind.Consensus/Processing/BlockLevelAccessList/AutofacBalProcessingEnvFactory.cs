@@ -3,6 +3,8 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -34,6 +36,14 @@ public sealed class AutofacBalProcessingEnvFactory(
                 .AddScoped<BlockAccessListBasedWorldState>(balWorldState)
                 // Pin the execute adapter (see the sequential branch for why).
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                // Pin the concrete generic processor instead of the DI-default EthereumTransactionProcessor
+                // so ExecuteTransactionProcessorAdapter's `is TransactionProcessor<TGasPolicy>` fast path is
+                // taken and the worker-precomputed intrinsic gas is reused rather than recomputed.
+                // WARNING: hardwiring EthereumGasPolicy overrides any plugin-supplied ITransactionProcessor
+                // (AuRa/Optimism/Taiko/...), so the BAL env is NOT plugin compatible. Temporary regression —
+                // must be replaced with policy-agnostic wiring later. See PR #12323.
+                .Bind<IVirtualMachine<EthereumGasPolicy>, IVirtualMachine>()
+                .AddScoped<ITransactionProcessor, TransactionProcessor<EthereumGasPolicy>>()
                 .AddScoped<IBalProcessingEnv, ParallelBalEnvManager.ParallelBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
         }
@@ -48,6 +58,10 @@ public sealed class AutofacBalProcessingEnvFactory(
                 // ITransactionProcessorAdapter with a build-up adapter. The manual factory always used
                 // the execute adapter regardless, so pin it here to keep that same (execute) behavior.
                 .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
+                // Pin the concrete generic processor for the intrinsic-gas fast path; breaks plugin
+                // compatibility by overriding any plugin-supplied ITransactionProcessor. See parallel branch.
+                .Bind<IVirtualMachine<EthereumGasPolicy>, IVirtualMachine>()
+                .AddScoped<ITransactionProcessor, TransactionProcessor<EthereumGasPolicy>>()
                 .AddScoped<IBalProcessingEnv, SequentialBalEnvManager.SequentialBalEnv>());
             return scope.Resolve<IBalProcessingEnv>();
         }
