@@ -23,6 +23,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
+using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -95,6 +96,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Handoff: a speculative pass already warmed these caches for this exact parent and fork. Keep the entries;
             // the reactive warm below skips senders already fully warmed and only fills the gap (e.g. builder txs).
+            PrewarmMetrics.MempoolPrewarmHandoffs++;
             _nodeStorageCache.Enabled = true;
         }
         else
@@ -206,6 +208,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 {
                     if (tx.Hash is Hash256 hash) warmedTxHashes.Add(hash);
                 }
+                PrewarmMetrics.MempoolPrewarmDeltaPasses++;
+                PrewarmMetrics.MempoolPrewarmTxsWarmed += delta.Transactions.Length;
                 // Caches now hold committed base-state reads for this head + fork; enable handoff to the next block.
                 Volatile.Write(ref _warmMarker, marker);
             }
@@ -417,7 +421,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                         // A sender whose whole group was already warmed speculatively is in the cache; re-warming it is
                         // waste, so skip it and leave the reactive pass to the transactions we did not pre-warm.
-                        if (blockState.SpeculativelyWarmed is { } warmed && AllSpeculativelyWarmed(txList, warmed)) return tupleState;
+                        if (blockState.SpeculativelyWarmed is { } warmed)
+                        {
+                            if (AllSpeculativelyWarmed(txList, warmed))
+                            {
+                                Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersSkipped);
+                                return tupleState;
+                            }
+                            Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersWarmed);
+                        }
 
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                         try
