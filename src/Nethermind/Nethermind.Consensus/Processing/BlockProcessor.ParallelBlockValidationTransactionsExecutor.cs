@@ -130,26 +130,20 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
-            Task applyStateChangesTask = Task.Factory.StartNew(
-                static state =>
+            Task applyStateChangesTask = Task.Run(() =>
+            {
+                bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+                ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+                try
                 {
-                    (IBlockAccessListManager balManager, Block block, IWorldState stateProvider, ISpecProvider specProvider, bool isBlockProcessingThread) = ((IBlockAccessListManager, Block, IWorldState, ISpecProvider, bool))state!;
-                    bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
-                    ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
-                    try
-                    {
-                        balManager.WaitForBalWarmup();
-                        BlockAccessListManager.ApplyStateChanges(block.BlockAccessList, stateProvider, specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
-                    }
-                    finally
-                    {
-                        ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
-                    }
-                },
-                (balManager, block, stateProvider, specProvider, isBlockProcessingThread),
-                CancellationToken.None,
-                TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
+                    balManager.WaitForBalWarmup();
+                    BlockAccessListManager.ApplyStateChanges(block.BlockAccessList, stateProvider, specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
+                }
+                finally
+                {
+                    ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+                }
+            });
 
             try
             {
