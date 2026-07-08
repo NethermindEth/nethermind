@@ -50,9 +50,9 @@ internal sealed partial class PersistentStorageProvider
 
         ParallelUnbalancedWork.For(
             0,
-            storages.Count,
-            ParallelUnbalancedWork.DefaultOptions,
-            (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
+                storages.Count,
+                ParallelUnbalancedWork.DefaultOptions,
+                (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
