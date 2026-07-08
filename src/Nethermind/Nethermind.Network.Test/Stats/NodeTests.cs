@@ -21,6 +21,7 @@ namespace Nethermind.Network.Test.Stats
         {
             Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             Assert.That(node.Port, Is.EqualTo(65535));
+            Assert.That(node.DiscoveryPort, Is.EqualTo(65535));
             Assert.That(node.Address.Address.MapToIPv4().ToString(), Is.EqualTo("73.224.122.50"));
             Assert.That(node.Host, Is.EqualTo("73.224.122.50"));
         }
@@ -41,9 +42,9 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.Equals(1), Is.False);
         }
 
-        [TestCase(NodeFromEnrMode.PeerCandidate, 30303)]
-        [TestCase(NodeFromEnrMode.Discovery, 30304)]
-        public void TryFromEnr_uses_expected_endpoint(NodeFromEnrMode mode, int expectedPort)
+        [TestCase(NodeFromEnrMode.PeerCandidate)]
+        [TestCase(NodeFromEnrMode.Discovery)]
+        public void TryFromEnr_keeps_tcp_and_discovery_ports(NodeFromEnrMode mode)
         {
             NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
 
@@ -54,7 +55,10 @@ namespace Nethermind.Network.Test.Stats
                 Assert.That(result, Is.True);
                 Assert.That(node, Is.Not.Null);
                 Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
-                Assert.That(node.Port, Is.EqualTo(expectedPort));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(node.DiscoveryAddress.Port, Is.EqualTo(30304));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
                 Assert.That(node.Enr, Is.SameAs(enr));
             }
         }
@@ -68,6 +72,59 @@ namespace Nethermind.Network.Test.Stats
 
             Assert.That(result, Is.False);
             Assert.That(node, Is.Null);
+        }
+
+        [Test]
+        public void TryFromDiscoveryEnr_accepts_udp_only_record_without_tcp_port()
+        {
+            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: null, udpPort: 30304);
+
+            bool result = Node.TryFromDiscoveryEnr(enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+                Assert.That(node!.Port, Is.Zero);
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
+        }
+
+        [Test]
+        public void TryFromEnr_marks_missing_discovery_endpoint()
+        {
+            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: null);
+
+            bool result = Node.TryFromEnr(enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+                Assert.That(node!.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30303));
+                Assert.That(node.HasDiscoveryEndpoint, Is.False);
+            }
+        }
+
+        [TestCase(NodeFromEnrMode.PeerCandidate)]
+        [TestCase(NodeFromEnrMode.Discovery)]
+        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing(NodeFromEnrMode mode)
+        {
+            NodeRecord enr = CreateDualStackIpv6EndpointEnr(TestItem.PrivateKeyA);
+
+            bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+                Assert.That(node!.Host, Is.EqualTo("2001:db8::1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
         }
 
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
@@ -146,6 +203,14 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
         }
 
+        [Test]
+        public void To_string_aligned_short_uses_common_port_cache()
+        {
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+
+            Assert.That(node.ToString(Node.Format.AlignedShort), Is.EqualTo("      127.0.0.1:30303"));
+        }
+
         private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int? tcpPort, int? udpPort)
         {
             NodeRecord enr = new();
@@ -160,6 +225,20 @@ namespace Nethermind.Network.Test.Stats
             {
                 enr.SetEntry(new UdpEntry(udpPort.Value));
             }
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+            return enr;
+        }
+
+        private static NodeRecord CreateDualStackIpv6EndpointEnr(PrivateKey privateKey)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new Tcp6Entry(30303));
+            enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;
