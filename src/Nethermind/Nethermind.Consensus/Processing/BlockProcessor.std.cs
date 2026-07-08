@@ -7,9 +7,10 @@ namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor
 {
-    private const int ReceiptsRootParallelThreshold = 16;
+    private const int BackgroundReceiptCountThreshold = 16;
+    private const int BackgroundLogCountThreshold = 64;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount) =>
-        receiptCount >= ReceiptsRootParallelThreshold;
+    private static partial bool ShouldCalculateReceiptsInBackground(int receiptCount, int logCount) =>
+        receiptCount >= BackgroundReceiptCountThreshold || logCount >= BackgroundLogCountThreshold;
 }

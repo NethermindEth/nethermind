@@ -8,5 +8,5 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount) => false;
+    private static partial bool ShouldCalculateReceiptsInBackground(int receiptCount, int logCount) => false;
 }

@@ -149,25 +149,21 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Blooms are consumed only by the receipts root and by EndBlockTrace's header-bloom
-        // accumulation (execution requests read receipt logs, populated during execution), so
-        // they run in the background across the rewards/withdrawals/requests stages. The
-        // receipts root continues on the same thread and stays overlapped with the storage-
-        // and state-root stages, joined at the end as before.
-        Task? bloomsTask = null;
-        Task<Hash256>? receiptsRootTask = null;
-        if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
+        // Blooms are consumed only by the receipts root and the header bloom, none of which is
+        // read before the header hash at the end of this method (execution requests read receipt
+        // logs, populated during execution), so the whole chain — per-receipt blooms, header
+        // bloom, receipts root — overlaps the rewards/withdrawals/requests stages AND the
+        // storage-root/state-root tail, joined only before the header hash. EndBlockTrace must
+        // then skip its header-bloom accumulation: it would read per-receipt blooms while the
+        // background task writes them.
+        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
+        if (ShouldCalculateReceiptsInBackground(receipts.Length, CountLogs(receipts)))
         {
-            bloomsTask = Task.Run(() => CalculateBlooms(receipts));
-            receiptsRootTask = bloomsTask.ContinueWith(
-                t =>
-                {
-                    t.GetAwaiter().GetResult();
-                    return CalculateReceiptsRoot(receipts, spec, block);
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            bloomsAndReceiptsRootTask = Task.Run(() =>
+            {
+                CalculateBlooms(receipts);
+                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
+            });
         }
         else
         {
@@ -184,10 +180,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        // EndBlockTrace accumulates the header bloom from per-receipt blooms.
-        bloomsTask?.GetAwaiter().GetResult();
-
-        ReceiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 
         CommitStateAndStorageRoots(spec);
 
@@ -203,9 +196,9 @@ public partial class BlockProcessor(
 
         _balManager.SetBlockAccessList(block);
 
-        if (receiptsRootTask is not null)
+        if (bloomsAndReceiptsRootTask is not null)
         {
-            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+            (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
         }
 
         header.Hash = header.CalculateHash();
@@ -234,7 +227,29 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount);
+    private static partial bool ShouldCalculateReceiptsInBackground(int receiptCount, int logCount);
+
+    private static int CountLogs(TxReceipt[] receipts)
+    {
+        int count = 0;
+        foreach (TxReceipt? t in receipts)
+        {
+            count += t.Logs?.Length ?? 0;
+        }
+
+        return count;
+    }
+
+    private static Bloom AccumulateBlockBloom(TxReceipt[] receipts)
+    {
+        Bloom blockBloom = new();
+        foreach (TxReceipt? t in receipts)
+        {
+            blockBloom.Accumulate(t.Bloom!);
+        }
+
+        return blockBloom;
+    }
 
     private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
@@ -252,9 +267,9 @@ public partial class BlockProcessor(
         // allocation overhead that exceeds the bloom computation cost for small blocks.
         if (receipts.Length <= Environment.ProcessorCount)
         {
-            for (int i = 0; i < receipts.Length; i++)
+            foreach (TxReceipt? t in receipts)
             {
-                receipts[i].CalculateBloom();
+                t.CalculateBloom();
             }
 
             return;
