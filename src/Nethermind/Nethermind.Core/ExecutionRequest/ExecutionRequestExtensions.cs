@@ -27,6 +27,11 @@ public static class ExecutionRequestExtensions
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
     public const int MaxRequestsCount = 5;
+    /// <summary>
+    /// Number of request types representable in the flat-encoded stateless input format
+    /// (deposit, withdrawal, consolidation).
+    /// </summary>
+    public const int StatelessRequestTypesCount = 3;
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
@@ -55,7 +60,7 @@ public static class ExecutionRequestExtensions
         ExecutionRequest[] consolidationRequests
     )
     {
-        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
+        ArrayPoolList<byte[]> result = new(StatelessRequestTypesCount);
 
         if (depositRequests.Length > 0)
         {
