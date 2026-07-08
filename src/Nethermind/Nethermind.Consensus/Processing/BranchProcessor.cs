@@ -81,7 +81,23 @@ public class BranchProcessor(
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        void CancelBackgroundWork()
+        {
+            backgroundCancellation?.Cancel();
+
+            // The early storage-root work starts mutating the scope's snapshot structures
+            // right after this signal fires; prewarmer readers must have fully drained,
+            // not merely been signalled. Workers observe the token per transaction, so
+            // this wait is ms-scale.
+            try
+            {
+                preWarmTask?.GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Speculative work; its failures must never affect block processing.
+            }
+        }
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
