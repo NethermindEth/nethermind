@@ -81,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
-        ArrayPoolListRef<byte[]> requests = new(3);
+        ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {
             ProcessDeposits(block, receipts, spec, ref requests);
