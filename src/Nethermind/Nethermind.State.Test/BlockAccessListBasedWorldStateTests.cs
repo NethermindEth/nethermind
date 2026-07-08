@@ -101,10 +101,9 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
-    // Regression: a pre-funded account drained to zero by an earlier same-block selfdestruct
-    // (balance->0, no nonce/code) is non-existent at a later index, matching real sequential
-    // execution that deletes it. Otherwise a same-block CREATE2 over the address is treated as a
-    // create on a pre-existing account and wrongly refunds its EIP-8037 create-state gas.
+    // Regression: an account drained to zero by an earlier same-block selfdestruct must read as
+    // non-existent at later indices; otherwise a same-block CREATE2 over the address wrongly
+    // refunds its EIP-8037 create-state gas.
     [Test]
     public void AccountExists_PreFundedAccountDrainedToZeroEarlierInBlock_ReturnsFalse()
     {

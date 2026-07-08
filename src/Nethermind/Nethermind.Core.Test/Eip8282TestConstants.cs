@@ -3,16 +3,9 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// Bytecode for the two EIP-8282 builder execution-request predeploys, taken verbatim from the
-/// Glamsterdam devnet-6 (<c>tests-glamsterdam-devnet@v6.0.0</c>) <c>eip8282_builder_execution_requests</c>
-/// fixture pre-state. Used to seed test-chain genesis so Amsterdam block production/validation can
-/// system-call the predeploys (mirrors <see cref="Eip7002TestConstants"/> / <see cref="Eip7251TestConstants"/>).
-/// </summary>
 public static class Eip8282TestConstants
 {
     public static class BuilderDeposit
@@ -21,7 +14,7 @@ public static class Eip8282TestConstants
 
         public static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Code);
 
-        public static readonly UInt256 Nonce = 1;
+        public static readonly ulong Nonce = 1;
     }
 
     public static class BuilderExit
@@ -30,6 +23,6 @@ public static class Eip8282TestConstants
 
         public static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Code);
 
-        public static readonly UInt256 Nonce = 1;
+        public static readonly ulong Nonce = 1;
     }
 }
