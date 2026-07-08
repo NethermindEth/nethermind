@@ -20,6 +20,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IPrewarmTrieHintSink
 {
+    private const uint PriorityBalWarmupIndex = 64;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -286,7 +288,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            {
+                if (IsPriorityBalWarmupSlot(slotChanges))
+                    jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            }
+        }
+
+        for (int i = 0; i < accountChanges.Count; i++)
+        {
+            if (accounts[i] is null) continue;
+            ReadOnlyAccountChanges ac = accountChanges[i];
+            Address address = ac.Address;
+            int selfDestructIdx = selfDestructIdxs[i];
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+            {
+                if (!IsPriorityBalWarmupSlot(slotChanges))
+                    jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
+            }
             foreach (UInt256 readKey in ac.StorageReads)
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
@@ -302,6 +320,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         }, parallelOptions.CancellationToken);
+    }
+
+    private static bool IsPriorityBalWarmupSlot(ReadOnlySlotChanges slotChanges)
+    {
+        StorageChange[] changes = slotChanges.Changes;
+        return changes.Length > 0 && changes[0].Index <= PriorityBalWarmupIndex;
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
