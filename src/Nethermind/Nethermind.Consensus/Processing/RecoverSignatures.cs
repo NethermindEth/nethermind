@@ -90,10 +90,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     Transaction tx = state.txs[i];
 
-                    // Materialize the lazily-deferred keccak here so the hash is computed on this
-                    // worker rather than later on the (serial) processing path. Typed txs already
-                    // force it via the sender-cache key; this also covers the legacy case.
-                    _ = tx.Hash;
                     tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
                     state.recover.RecoverAuthorities(tx, state.releaseSpec);
                     if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
@@ -105,7 +101,6 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    _ = tx.Hash;
                     tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx, releaseSpec);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
