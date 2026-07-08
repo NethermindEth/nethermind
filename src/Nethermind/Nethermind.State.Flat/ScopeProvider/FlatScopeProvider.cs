@@ -20,6 +20,7 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly FlatStorageValueCache? _storageValueCache = isReadOnly ? null : new();
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -33,6 +34,7 @@ public class FlatScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId currentState = new(baseBlock);
+        _storageValueCache?.ResetIfStateChanged(currentState);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
 
         return new FlatWorldStateScope(
@@ -44,6 +46,7 @@ public class FlatScopeProvider(
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,
+            storageValueCache: _storageValueCache,
             isReadOnly: isReadOnly);
     }
 

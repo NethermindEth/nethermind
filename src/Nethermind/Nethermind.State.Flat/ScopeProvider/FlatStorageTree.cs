@@ -23,6 +23,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+    private readonly FlatStorageValueCache? _storageValueCache;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -36,6 +37,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
+        FlatStorageValueCache? storageValueCache,
         ILogManager logManager)
     {
         _scope = scope;
@@ -43,6 +45,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _bundle = bundle;
         _address = address;
         _addressHash = address.ToAccountPath.ToHash256();
+        _storageValueCache = storageValueCache;
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
@@ -67,22 +70,38 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
+        if (_storageValueCache is not null && _storageValueCache.TryGet(_address, in index, out byte[] cached))
         {
-            value = StorageTree.ZeroBytes;
+            if (_config.VerifyWithTrie)
+            {
+                VerifyWithTrie(index, cached);
+            }
+
+            return cached;
         }
+
+        byte[]? loaded = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
+        byte[] value = _storageValueCache?.Set(_address, in index, loaded)
+            ?? NormalizeValue(loaded);
 
         if (_config.VerifyWithTrie)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
-            {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
-            }
+            VerifyWithTrie(index, value);
         }
 
-        return value!;
+        return value;
+    }
+
+    private static byte[] NormalizeValue(byte[]? value)
+        => value is null || value.Length == 0 ? StorageTree.ZeroBytes : value;
+
+    private void VerifyWithTrie(in UInt256 index, byte[] value)
+    {
+        byte[] treeValue = _tree.Get(index);
+        if (!Bytes.AreEqual(treeValue, value))
+        {
+            throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+        }
     }
 
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
@@ -138,10 +157,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(UInt256 slot, byte[] value)
+    {
+        _bundle.SetChangedSlot(_address, slot, value);
+        _storageValueCache?.Set(_address, in slot, value);
+    }
 
     public void SelfDestruct()
     {
+        _storageValueCache?.Clear();
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
