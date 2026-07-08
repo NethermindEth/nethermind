@@ -49,13 +49,17 @@ public class StorageStridePrefetcherTests
     }
 
     [Test]
-    public void OnRead_EngagesForLowSlotStrides()
+    public void OnRead_DoesNotEngageForLowSlotStrides()
     {
         using CancellationTokenSource cts = new();
-        SeqlockCache<StorageCell, byte[]> cache = new();
+        int treeCreations = 0;
         StorageStridePrefetcher prefetcher = new(
-            () => EmptyStorageTree.Instance,
-            cache,
+            () =>
+            {
+                Interlocked.Increment(ref treeCreations);
+                return EmptyStorageTree.Instance;
+            },
+            new SeqlockCache<StorageCell, byte[]>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4);
@@ -67,7 +71,33 @@ public class StorageStridePrefetcherTests
             prefetcher.OnRead(in index);
         }
 
-        StorageCell farCell = new(TestItem.AddressA, 64);
+        Thread.Sleep(50);
+        Assert.That(Volatile.Read(ref treeCreations), Is.Zero);
+
+        cts.Cancel();
+        Assert.DoesNotThrow(() => prefetcher.Dispose());
+    }
+
+    [Test]
+    public void OnRead_EngagesForBulkSlotStrides()
+    {
+        using CancellationTokenSource cts = new();
+        SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            cache,
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 4);
+
+        UInt256 index = (UInt256)1 << 40;
+        UInt256 stride = 1;
+        for (int i = 0; i < 12; i++, index += stride)
+        {
+            prefetcher.OnRead(in index);
+        }
+
+        StorageCell farCell = new(TestItem.AddressA, ((UInt256)1 << 40) + 64);
         Assert.That(SpinWait.SpinUntil(() => cache.TryGetValue(in farCell, out _), 1000), Is.True);
 
         cts.Cancel();
