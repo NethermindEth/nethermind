@@ -173,10 +173,10 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, Transaction[]? priorityTransactions = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             sink ??= new CacheSink(preBlockCache, storageCache);
-            return baseScope.HintBal(bal, sink, priorityTransactions);
+            return baseScope.HintBal(bal, sink);
         }
 
         private sealed class CacheSink(

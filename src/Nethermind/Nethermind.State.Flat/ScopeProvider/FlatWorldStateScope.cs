@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -21,9 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IPrewarmTrieHintSink
 {
-    private const ulong BalWarmupPriorityMinGas = 1_000_000;
-    private const int NoBalWarmupPriority = int.MaxValue;
-
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -173,14 +169,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, Transaction[]? priorityTransactions = null)
+    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
         int accountCount = bal.AccountChanges.Count;
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
-        TrySortAccountChangesForBalWarmup(accountChanges, priorityTransactions);
 
         CancelHintBal();
 
@@ -315,71 +310,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!sink.StillNeeded(in cell)) return;
         byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
         sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
-    }
-
-    private static void TrySortAccountChangesForBalWarmup(
-        ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        Transaction[]? priorityTransactions)
-    {
-        if (priorityTransactions is null || priorityTransactions.Length == 0 || accountChanges.Count < 2)
-            return;
-
-        Dictionary<AddressAsKey, int>? priorities = null;
-        for (int i = 0; i < priorityTransactions.Length; i++)
-        {
-            Transaction tx = priorityTransactions[i];
-            Address? to = tx.To;
-            if (to is null || tx.GasLimit < BalWarmupPriorityMinGas)
-                continue;
-
-            AddressAsKey key = to;
-            priorities ??= new Dictionary<AddressAsKey, int>(AddressAsKey.EqualityComparer);
-            priorities.TryAdd(key, i);
-        }
-
-        if (priorities is null)
-            return;
-
-        bool hasPrioritizedAccount = false;
-        Dictionary<AddressAsKey, int> originalOrder = new(accountChanges.Count, AddressAsKey.EqualityComparer);
-        for (int i = 0; i < accountChanges.Count; i++)
-        {
-            AddressAsKey key = accountChanges[i].Address;
-            originalOrder.TryAdd(key, i);
-            hasPrioritizedAccount |= priorities.ContainsKey(key);
-        }
-
-        if (hasPrioritizedAccount)
-            accountChanges.Sort(new BalWarmupAccountComparer(priorities, originalOrder));
-    }
-
-    private sealed class BalWarmupAccountComparer(
-        Dictionary<AddressAsKey, int> priorities,
-        Dictionary<AddressAsKey, int> originalOrder) : IComparer<ReadOnlyAccountChanges>
-    {
-        public int Compare(ReadOnlyAccountChanges? x, ReadOnlyAccountChanges? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (x is null) return 1;
-            if (y is null) return -1;
-
-            int priorityCompare = GetPriority(x.Address).CompareTo(GetPriority(y.Address));
-            if (priorityCompare != 0) return priorityCompare;
-
-            return GetOriginalOrder(x.Address).CompareTo(GetOriginalOrder(y.Address));
-        }
-
-        private int GetPriority(Address address)
-        {
-            AddressAsKey key = address;
-            return priorities.TryGetValue(key, out int priority) ? priority : NoBalWarmupPriority;
-        }
-
-        private int GetOriginalOrder(Address address)
-        {
-            AddressAsKey key = address;
-            return originalOrder.TryGetValue(key, out int order) ? order : NoBalWarmupPriority;
-        }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

@@ -27,8 +27,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual IDisposable BeginScope(BlockHeader? baseBlock)
         => State.BeginScope(baseBlock);
 
-    public virtual Task HintBal(ReadOnlyBlockAccessList bal, Transaction[]? priorityTransactions = null)
-        => State.HintBal(bal, priorityTransactions);
+    public virtual Task HintBal(ReadOnlyBlockAccessList bal)
+        => State.HintBal(bal);
 
     public virtual bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);

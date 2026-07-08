@@ -289,10 +289,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public Task HintBal(ReadOnlyBlockAccessList bal, Transaction[]? priorityTransactions = null)
+        public Task HintBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal, priorityTransactions: priorityTransactions);
+            return _currentScope!.HintBal(bal);
         }
 
         public ref readonly UInt256 GetBalance(Address address)

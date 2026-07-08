@@ -85,9 +85,8 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
-        /// <param name="priorityTransactions">Optional block transaction order used by implementations to prioritize best-effort warmup.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
-        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null, Transaction[]? priorityTransactions = null);
+        Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
     }
 
     /// <summary>

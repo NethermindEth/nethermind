@@ -178,7 +178,7 @@ public partial class BlockAccessListManager(
 
         try
         {
-            return stateProvider.HintBal(suggestedBlock.BlockAccessList, suggestedBlock.Transactions);
+            return stateProvider.HintBal(suggestedBlock.BlockAccessList);
         }
         catch (Exception ex)
         {
