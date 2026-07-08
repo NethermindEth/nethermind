@@ -38,7 +38,7 @@ public abstract class SLoadFusionTestsBase : VirtualMachineTestsBase
     private sealed class ReceiptOnlyTracer : TxTracer
     {
         public override bool IsTracingReceipt => true;
-        public long GasSpent { get; private set; }
+        public ulong GasSpent { get; private set; }
         public byte StatusCode { get; private set; }
         public byte[]? ReturnValue { get; private set; }
 
@@ -57,7 +57,7 @@ public abstract class SLoadFusionTestsBase : VirtualMachineTestsBase
         }
     }
 
-    protected (long GasSpent, byte StatusCode, byte[]? Output) Run(bool traced, long gasLimit, byte[] code)
+    protected (ulong GasSpent, byte StatusCode, byte[]? Output) Run(bool traced, ulong gasLimit, byte[] code)
     {
         if (traced)
         {
@@ -84,14 +84,14 @@ public abstract class SLoadFusionTestsBase : VirtualMachineTestsBase
 
 public class SLoadFusionTests : SLoadFusionTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
 
     [TestCase(false)]
     [TestCase(true)]
     public void Same_cell_zero_value_run_charges_warm_gas_per_op(bool traced)
     {
         // SLOAD(0) -> 0, so each following SLOAD re-reads warm slot 0.
-        (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
+        (ulong gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
 
         using (Assert.EnterMultipleScope())
         {
@@ -111,7 +111,7 @@ public class SLoadFusionTests : SLoadFusionTestsBase
         TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
         // Chain: slot0(cold)->1, slot1(cold)->2, slot2(cold)->3, slot3(cold)->0, slot0(warm)->1, slot1(warm)->2.
-        (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(6));
+        (ulong gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(6));
 
         using (Assert.EnterMultipleScope())
         {
@@ -143,7 +143,7 @@ public class SLoadFusionTests : SLoadFusionTestsBase
             .Op(Instruction.RETURN)
             .Done;
 
-        (long gasSpent, byte statusCode, byte[]? output) = Run(traced, 100000, code);
+        (ulong gasSpent, byte statusCode, byte[]? output) = Run(traced, 100000, code);
 
         byte[] expected = new byte[32];
         expected[31] = 5;
@@ -162,8 +162,8 @@ public class SLoadFusionTests : SLoadFusionTestsBase
     public void Out_of_gas_inside_run_fails_at_the_same_op(bool traced)
     {
         // After PUSH(3) + cold(2100) there is 250 gas: two warm reads fit, the third does not.
-        long gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 250;
-        (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
+        ulong gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 250;
+        (ulong gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
 
         using (Assert.EnterMultipleScope())
         {
@@ -176,7 +176,7 @@ public class SLoadFusionTests : SLoadFusionTestsBase
     [TestCase(true)]
     public void Run_reaching_code_end_halts_cleanly(bool traced)
     {
-        (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(3));
+        (ulong gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(3));
 
         using (Assert.EnterMultipleScope())
         {
@@ -189,8 +189,8 @@ public class SLoadFusionTests : SLoadFusionTestsBase
     [TestCase(true)]
     public void Exact_gas_for_full_run_succeeds_and_zero_surplus(bool traced)
     {
-        long gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 4 * GasCostOf.WarmStateRead;
-        (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(5));
+        ulong gasLimit = GasCostOf.Transaction + 3 + GasCostOf.ColdSLoad + 4 * GasCostOf.WarmStateRead;
+        (ulong gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(5));
 
         using (Assert.EnterMultipleScope())
         {
@@ -206,13 +206,13 @@ public class SLoadFusionTests : SLoadFusionTestsBase
 /// </summary>
 public class SLoadFusionPreBerlinTests : SLoadFusionTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
     [TestCase(false)]
     [TestCase(true)]
     public void Same_cell_run_charges_flat_sload_cost_per_op(bool traced)
     {
-        (long gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
+        (ulong gasSpent, byte statusCode, _) = Run(traced, 100000, SLoadRun(5));
 
         using (Assert.EnterMultipleScope())
         {
@@ -226,8 +226,8 @@ public class SLoadFusionPreBerlinTests : SLoadFusionTestsBase
     public void Out_of_gas_inside_flat_priced_run_fails_at_the_same_op(bool traced)
     {
         // Two 800-gas reads fit after PUSH(3); the third does not.
-        long gasLimit = GasCostOf.Transaction + 3 + 2 * GasCostOf.SLoadEip1884 + 400;
-        (long gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
+        ulong gasLimit = GasCostOf.Transaction + 3 + 2 * GasCostOf.SLoadEip1884 + 400;
+        (ulong gasSpent, byte statusCode, _) = Run(traced, gasLimit, SLoadRun(10));
 
         using (Assert.EnterMultipleScope())
         {

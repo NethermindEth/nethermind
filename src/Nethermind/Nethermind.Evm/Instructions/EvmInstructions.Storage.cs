@@ -671,7 +671,7 @@ public static partial class EvmInstructions
             // Per-op cost of re-reading the cell accessed by the previous iteration. Mirrors
             // Consume(SLoadCost) + ConsumeStorageAccessGas for an already-warm cell; keep in sync
             // (SLoadFusionTests assert fused/unfused gas equality with hot-cold pricing on and off).
-            long sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
+            ulong sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
 
             while ((uint)programCounter < (uint)codeLength
                    && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
@@ -689,11 +689,12 @@ public static partial class EvmInstructions
                         runLength++;
                     }
 
-                    long affordable = sameCellCost > 0 ? TGasPolicy.GetRemainingGas(in gas) / sameCellCost : runLength;
-                    int fused = (int)Math.Min(runLength, Math.Max(0, affordable));
+                    int fused = sameCellCost > 0
+                        ? (int)Math.Min((ulong)runLength, TGasPolicy.GetRemainingGas(in gas) / sameCellCost)
+                        : runLength;
                     if (fused > 0)
                     {
-                        TGasPolicy.Consume(ref gas, fused * sameCellCost);
+                        TGasPolicy.Consume(ref gas, (ulong)fused * sameCellCost);
                         programCounter += fused;
                         extraOps += fused;
                     }
@@ -707,7 +708,7 @@ public static partial class EvmInstructions
                     // Chained step onto a different cell (the loaded value is the next key):
                     // replicate one full SLOAD including cold/warm pricing and access journaling.
                     TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    if (TGasPolicy.IsOutOfGas(in gas))
                     {
                         fusedOutOfGas = true;
                         break;
