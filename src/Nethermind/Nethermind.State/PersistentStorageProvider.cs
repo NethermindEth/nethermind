@@ -231,41 +231,59 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.Clear();
     }
 
+    internal readonly record struct EarlyRootWorkItem(
+        AddressAsKey Key,
+        PerContractState ContractState,
+        IWorldStateScopeProvider.IStorageWriteBatch WriteBatch);
+
     /// <summary>
-    /// Computes storage roots for the currently dirty contracts except <paramref name="exclude"/>,
-    /// which stay in <see cref="_toUpdateRoots"/> for the final flush. Runs off the main thread
-    /// while later block stages execute; those stages must not write storage of the processed
-    /// contracts (guaranteed by excluding the execution-request system contracts).
+    /// Snapshots the dirty contracts except <paramref name="exclude"/> for background root
+    /// computation. Runs on the main thread: it is the only place the shared
+    /// <see cref="_storages"/>/<see cref="_toUpdateRoots"/> dictionaries are touched — the
+    /// background worker only hashes the captured references, so later main-thread stages
+    /// (execution requests) can keep mutating the dictionaries safely.
     /// </summary>
-    internal void FlushToTreeExcept(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, IReadOnlySet<AddressAsKey> exclude)
+    internal ArrayPoolList<EarlyRootWorkItem>? SnapshotEarlyRootWork(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, IReadOnlySet<AddressAsKey> exclude)
     {
         if (_toUpdateRoots.Count == 0)
-            return;
+            return null;
 
-        using ArrayPoolList<AddressAsKey> processed = new(_toUpdateRoots.Count);
+        ArrayPoolList<EarlyRootWorkItem> work = new(_toUpdateRoots.Count);
         foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
         {
-            if (kv.Value && !exclude.Contains(kv.Key))
+            if (kv.Value && !exclude.Contains(kv.Key) && _storages.TryGetValue(kv.Key, out PerContractState contractState))
             {
-                processed.Add(kv.Key);
+                work.Add(new EarlyRootWorkItem(kv.Key, contractState, writeBatch.CreateStorageWriteBatch(kv.Key, contractState.EstimatedChanges)));
             }
         }
 
-        if (processed.Count == 0)
-            return;
-
-        UpdateRootHashes(writeBatch, processed);
-
-        foreach (AddressAsKey key in processed.AsSpan())
+        if (work.Count == 0)
         {
-            _toUpdateRoots.Remove(key);
+            work.Dispose();
+            return null;
+        }
+
+        foreach (ref readonly EarlyRootWorkItem item in work.AsSpan())
+        {
+            _toUpdateRoots.Remove(item.Key);
+        }
+
+        return work;
+    }
+
+    internal void ProcessEarlyRootWork(ArrayPoolList<EarlyRootWorkItem> work)
+    {
+        using (work)
+        {
+            ProcessEarlyRootWorkCore(work);
         }
     }
+
+    private partial void ProcessEarlyRootWorkCore(ArrayPoolList<EarlyRootWorkItem> work);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
 
-    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys);
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
@@ -471,7 +489,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void UnmarkClear() => _missingAreDefault = false;
     }
 
-    private sealed class PerContractState : IReturnable
+    internal sealed class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 

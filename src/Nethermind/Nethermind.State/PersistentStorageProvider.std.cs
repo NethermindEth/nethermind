@@ -77,37 +77,19 @@ internal sealed partial class PersistentStorageProvider
             (state) => ReportMetrics(state.writes, state.skips)
         );
     }
-
-    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys)
+    private partial void ProcessEarlyRootWorkCore(ArrayPoolList<EarlyRootWorkItem> work)
     {
-        using ArrayPoolList<(
-            AddressAsKey Key, PerContractState ContractState,
-            IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
-            )> storages = new(keys.Count);
-
-        foreach (AddressAsKey key in keys.AsSpan())
-        {
-            if (!_storages.TryGetValue(key, out PerContractState contractState))
-            {
-                Debug.Fail($"Storage root marked changed for {key} but no contract state is present");
-                continue;
-            }
-            storages.Add((key, contractState, writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges)));
-        }
-
-        if (storages.Count == 0) return;
-
-        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+        work.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
         ParallelUnbalancedWork.For(
             0,
-            storages.Count,
+            work.Count,
             RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-            (storages, writes: 0, skips: 0),
+            (work, writes: 0, skips: 0),
             static (i, state) =>
             {
-                ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
-                (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
+                ref PersistentStorageProvider.EarlyRootWorkItem item = ref state.work.GetRef(i);
+                (int writes, int skipped) = item.ContractState.ProcessStorageChanges(item.WriteBatch);
                 state.writes += writes;
                 state.skips += skipped;
                 return state;

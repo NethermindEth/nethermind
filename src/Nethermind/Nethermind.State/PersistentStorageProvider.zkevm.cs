@@ -9,15 +9,11 @@ internal sealed partial class PersistentStorageProvider
 {
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch) =>
         UpdateRootHashesSingleThread(writeBatch);
-
-    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, Nethermind.Core.Collections.ArrayPoolList<Nethermind.Core.AddressAsKey> keys)
+    private partial void ProcessEarlyRootWorkCore(Nethermind.Core.Collections.ArrayPoolList<EarlyRootWorkItem> work)
     {
-        foreach (Nethermind.Core.AddressAsKey key in keys.AsSpan())
+        foreach (ref readonly EarlyRootWorkItem item in work.AsSpan())
         {
-            if (_storages.TryGetValue(key, out PerContractState contractState))
-            {
-                contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges));
-            }
+            item.ContractState.ProcessStorageChanges(item.WriteBatch);
         }
     }
 }
