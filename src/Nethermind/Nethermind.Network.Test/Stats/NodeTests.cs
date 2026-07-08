@@ -108,6 +108,25 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
+        [TestCase(NodeFromEnrMode.PeerCandidate)]
+        [TestCase(NodeFromEnrMode.Discovery)]
+        public void TryFromEnr_uses_ipv6_endpoint_when_ipv4_port_is_missing(NodeFromEnrMode mode)
+        {
+            NodeRecord enr = CreateDualStackIpv6EndpointEnr(TestItem.PrivateKeyA);
+
+            bool result = TryCreateNodeFromEnr(mode, enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node, Is.Not.Null);
+                Assert.That(node!.Host, Is.EqualTo("2001:db8::1"));
+                Assert.That(node.Port, Is.EqualTo(30303));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(node.HasDiscoveryEndpoint, Is.True);
+            }
+        }
+
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
         public void TryRequestEnrSequence_tracks_active_request(
             ulong initialSequence,
@@ -206,6 +225,20 @@ namespace Nethermind.Network.Test.Stats
             {
                 enr.SetEntry(new UdpEntry(udpPort.Value));
             }
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+            return enr;
+        }
+
+        private static NodeRecord CreateDualStackIpv6EndpointEnr(PrivateKey privateKey)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new Tcp6Entry(30303));
+            enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;

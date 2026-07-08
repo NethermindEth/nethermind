@@ -30,7 +30,10 @@ public sealed class NeighborsMsgSerializer(
         IPEndPoint address = discoveryAddress;
         if (count > 3)
         {
-            address = GetAddress(ip, ctx.DecodeInt());
+            int tcpPort = ctx.DecodeInt();
+            address = tcpPort == 0
+                ? new IPEndPoint(discoveryAddress.Address, 0)
+                : GetAddress(ip, tcpPort);
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);

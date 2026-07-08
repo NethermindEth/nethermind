@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -95,7 +96,10 @@ public class NodeRecord
     /// <summary>
     /// Gets the IP address advertised for node traffic.
     /// </summary>
-    public IPAddress? Ip => GetObj<IPAddress>(EnrContentKey.Ip) ?? GetObj<IPAddress>(EnrContentKey.Ip6);
+    public IPAddress? Ip =>
+        TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) ? tcpEndpoint.Address :
+        TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) ? discoveryEndpoint.Address :
+        GetObj<IPAddress>(EnrContentKey.Ip) ?? GetObj<IPAddress>(EnrContentKey.Ip6);
 
     /// <summary>
     /// Gets the UDP port advertised for discovery traffic.
@@ -103,7 +107,7 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>udp6</c> is preferred and <c>udp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? DiscoveryPort => GetPort(EnrContentKey.Udp, EnrContentKey.Udp6);
+    public int? DiscoveryPort => TryGetDiscoveryEndpoint(out IPEndPoint? endpoint) ? endpoint.Port : null;
 
     /// <summary>
     /// Gets the TCP port advertised for RLPx traffic.
@@ -111,20 +115,55 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>tcp6</c> is preferred and <c>tcp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? TcpPort => GetPort(EnrContentKey.Tcp, EnrContentKey.Tcp6);
+    public int? TcpPort => TryGetTcpEndpoint(out IPEndPoint? endpoint) ? endpoint.Port : null;
 
-    private int? GetPort(string ipv4PortKey, string ipv6PortKey)
+    /// <summary>
+    /// Tries to get the UDP discovery endpoint from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="endpoint">The discovery endpoint when the ENR contains a usable UDP endpoint.</param>
+    /// <returns><see langword="true"/> when a usable discovery endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetDiscoveryEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
+
+    /// <summary>
+    /// Tries to get the TCP RLPx endpoint from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="endpoint">The TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
+    /// <returns><see langword="true"/> when a usable TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetTcpEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, out endpoint);
+
+    private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
         IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        int? port = GetValue<int>(ipv4PortKey);
-        if (ip is not null)
+        if (ip is not null && TryGetPort(ipv4PortKey, out int port))
         {
-            return port;
+            endpoint = new IPEndPoint(ip, port);
+            return true;
         }
 
         IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? port6 = GetValue<int>(ipv6PortKey);
-        return ip6 is null ? null : port6 ?? port;
+        if (ip6 is not null && (TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port)))
+        {
+            endpoint = new IPEndPoint(ip6, port);
+            return true;
+        }
+
+        endpoint = null;
+        return false;
+    }
+
+    private bool TryGetPort(string portKey, out int port)
+    {
+        int? value = GetValue<int>(portKey);
+        if (value is null || value.Value == 0 || (uint)value.Value > ushort.MaxValue)
+        {
+            port = 0;
+            return false;
+        }
+
+        port = value.Value;
+        return true;
     }
 
     public static NodeRecord FromEnrString(string enrString)

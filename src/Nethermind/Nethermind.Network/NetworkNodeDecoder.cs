@@ -95,7 +95,6 @@ namespace Nethermind.Network
 
         private static bool IsNodeString(ReadOnlySpan<byte> value) =>
             value.Length != PublicKey.LengthInBytes &&
-            value is [(byte)'e', (byte)'n', (byte)'r', (byte)':', ..]
-                or [(byte)'e', (byte)'n', (byte)'o', (byte)'d', (byte)'e', (byte)':', ..];
+            (value.StartsWith("enr:"u8) || value.StartsWith("enode:"u8));
     }
 }

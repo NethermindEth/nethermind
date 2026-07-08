@@ -134,7 +134,6 @@ public sealed class DiscoveryPersistenceManager(
             return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
         }
 
-        int port = node.Port == 0 ? node.DiscoveryPort : node.Port;
-        return new NetworkNode(new Enode(node.Id, node.Address.Address, port, node.DiscoveryPort)) { Reputation = reputation };
+        return new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort)) { Reputation = reputation };
     }
 }

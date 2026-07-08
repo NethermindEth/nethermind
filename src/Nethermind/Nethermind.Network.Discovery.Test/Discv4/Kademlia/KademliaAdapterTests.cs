@@ -527,6 +527,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task OnIncomingMsg_ping_should_use_advertised_tcp_port(CancellationToken token)
+        {
+            ConfigureBondCallback();
+            IPEndPoint discoveryEndpoint = new(_receiver.Address.Address, 30304);
+            PingMsg pingMsg = new(discoveryEndpoint, _timestamper.UnixTime.SecondsLong + 20, discoveryEndpoint, 30303, 0);
+            pingMsg.FarAddress = discoveryEndpoint;
+            pingMsg = AddReceiverFarAddress(pingMsg);
+
+            await _adapter.OnIncomingMsg(pingMsg);
+
+            _nodeHealthTracker.Received(1).OnIncomingMessageFrom(Arg.Is<Node>(n =>
+                n.Id == _receiver.Id &&
+                n.Port == 30303 &&
+                n.DiscoveryPort == 30304));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task OnIncomingMsg_ping_with_trailing_enr_sequence_should_not_request_remote_enr(CancellationToken token)
         {
             ConfigureBondCallback();

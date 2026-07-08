@@ -186,9 +186,10 @@ namespace Nethermind.Stats.Model
             if (networkNode.IsEnr)
             {
                 Enr = networkNode.Enr;
-                if (TryGetEnrPort(networkNode.Enr.DiscoveryPort, out int discoveryPort))
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                    discoveryEndpoint.Address.Equals(Address.Address))
                 {
-                    DiscoveryPort = discoveryPort;
+                    DiscoveryPort = discoveryEndpoint.Port;
                 }
                 else
                 {
@@ -211,7 +212,7 @@ namespace Nethermind.Stats.Model
         {
             node = null;
             PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !TryGetEnrEndpoint(enr.Ip, enr.TcpPort, out IPEndPoint tcpEndpoint))
+            if (key is null || !enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
             {
                 return false;
             }
@@ -221,15 +222,7 @@ namespace Nethermind.Stats.Model
                 Enr = enr
             };
 
-            if (TryGetEnrPort(enr.DiscoveryPort, out int discoveryPort))
-            {
-                node.DiscoveryPort = discoveryPort;
-            }
-            else
-            {
-                node.ClearDiscoveryEndpoint();
-            }
-
+            SetMatchingDiscoveryEndpoint(node, enr);
             return true;
         }
 
@@ -243,12 +236,13 @@ namespace Nethermind.Stats.Model
         {
             node = null;
             PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
-            if (key is null || !TryGetEnrEndpoint(enr.Ip, enr.DiscoveryPort, out IPEndPoint discoveryEndpoint))
+            if (key is null || !enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
             {
                 return false;
             }
 
-            IPEndPoint tcpEndpoint = TryGetEnrEndpoint(enr.Ip, enr.TcpPort, out IPEndPoint foundTcpEndpoint)
+            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(out IPEndPoint foundTcpEndpoint) &&
+                foundTcpEndpoint.Address.Equals(discoveryEndpoint.Address)
                 ? foundTcpEndpoint
                 : new IPEndPoint(discoveryEndpoint.Address, 0);
 
@@ -261,30 +255,6 @@ namespace Nethermind.Stats.Model
 
         public static Node FromDiscoveryEndpoint(PublicKey id, IPEndPoint discoveryAddress)
             => new(id, new IPEndPoint(discoveryAddress.Address, 0), discoveryAddress.Port);
-
-        private static bool TryGetEnrEndpoint(IPAddress ip, int? port, [MaybeNullWhen(false)] out IPEndPoint endpoint)
-        {
-            endpoint = null;
-            if (ip is null || !TryGetEnrPort(port, out int validPort))
-            {
-                return false;
-            }
-
-            endpoint = new IPEndPoint(ip, validPort);
-            return true;
-        }
-
-        private static bool TryGetEnrPort(int? port, out int validPort)
-        {
-            validPort = 0;
-            if (port is null || port.Value == 0 || (uint)port.Value > ushort.MaxValue)
-            {
-                return false;
-            }
-
-            validPort = port.Value;
-            return true;
-        }
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)
             : this(id, GetIPEndPoint(host, port), isStatic)
@@ -352,17 +322,30 @@ namespace Nethermind.Stats.Model
                 return GetIPEndPoint(networkNode.Host, networkNode.Port);
             }
 
-            if (TryGetEnrEndpoint(networkNode.Enr.Ip, networkNode.Enr.TcpPort, out IPEndPoint tcpEndpoint))
+            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
             {
                 return tcpEndpoint;
             }
 
-            if (TryGetEnrEndpoint(networkNode.Enr.Ip, networkNode.Enr.DiscoveryPort, out IPEndPoint discoveryEndpoint))
+            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
             {
                 return new IPEndPoint(discoveryEndpoint.Address, 0);
             }
 
             throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
+        }
+
+        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
+        {
+            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                discoveryEndpoint.Address.Equals(node.Address.Address))
+            {
+                node.DiscoveryPort = discoveryEndpoint.Port;
+            }
+            else
+            {
+                node.ClearDiscoveryEndpoint();
+            }
         }
 
         private static string FormatHost(IPAddress address)

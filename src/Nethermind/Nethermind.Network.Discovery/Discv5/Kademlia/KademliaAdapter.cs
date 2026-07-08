@@ -904,7 +904,7 @@ public sealed class KademliaAdapter(
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, allowNonRoutable);
 
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
-        => record.DiscoveryPort == endpoint.Port && record.Ip?.Equals(endpoint.Address) == true;
+        => record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) && discoveryEndpoint.Equals(endpoint);
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;

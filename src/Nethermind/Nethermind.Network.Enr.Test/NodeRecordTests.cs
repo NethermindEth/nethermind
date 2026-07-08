@@ -44,6 +44,7 @@ public class NodeRecordTests
     }
 
     [TestCase("192.0.2.1", "", -1, 30304, "192.0.2.1", -1)]
+    [TestCase("192.0.2.1", "2001:db8::1", -1, 30304, "2001:db8::1", 30304)]
     [TestCase("", "2001:db8::1", 30303, -1, "2001:db8::1", 30303)]
     public void Ip_is_common_and_discovery_port_uses_matching_family(string ip, string ip6, int udp, int udp6, string expectedIp, int expectedPort)
     {

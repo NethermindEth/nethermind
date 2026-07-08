@@ -124,18 +124,24 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
     protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
+        => Encode(ref writer, address, address.Port, length);
+
+    protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int tcpPort, int length)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, address.Address);
         writer.Encode(address.Port);
-        writer.Encode(address.Port);
+        writer.Encode(tcpPort);
     }
 
-    protected static int GetIPEndPointLength(IPEndPoint address)
+    protected static int GetIPEndPointLength(IPEndPoint address) => GetIPEndPointLength(address, address.Port);
+
+    protected static int GetIPEndPointLength(IPEndPoint address, int tcpPort)
     {
         int length = IPAddressRlp.GetLength(address.Address);
         length += Rlp.LengthOf(address.Port);
-        length += Rlp.LengthOf(address.Port);
+        length += Rlp.LengthOf(tcpPort);
         return length;
     }
 
@@ -160,7 +166,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    private static int GetSerializedTcpPort(Node node) => node.Port == 0 ? node.DiscoveryPort : node.Port;
+    private static int GetSerializedTcpPort(Node node) => node.Port;
 
     protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
     {
