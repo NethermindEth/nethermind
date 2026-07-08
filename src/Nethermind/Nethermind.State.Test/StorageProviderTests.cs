@@ -801,42 +801,22 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
     }
 
-    [Test]
-    public void Set_on_populator_world_state_pushes_slot_trie_warm_hint()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
     {
         PreBlockCaches caches = new();
         CollectingTrieHintSink sink = new();
         caches.TrieHintSink = sink;
 
-        using Context ctx = new(useFlat, preBlockCaches: caches);
-        IWorldState worldState = ctx.StateProvider;
-
-        worldState.Set(new StorageCell(ctx.Address1, 42), _values[1]);
-
-        Assert.That(sink.SlotHints, Is.EquivalentTo(new[] { (ctx.Address1, (UInt256)42) }));
-        Assert.That(sink.AccountHints, Is.Empty);
-    }
-
-    [Test]
-    public void Set_on_main_world_state_pushes_no_trie_warm_hint()
-    {
-        // No PrewarmerScopeProvider wrapper: the scope provider is not a populator, so no hints flow.
-        CollectingTrieHintSink sink = new();
-
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
 
-        Assert.That(sink.SlotHints, Is.Empty);
-    }
-
-    private class CollectingTrieHintSink : IPrewarmTrieHintSink
-    {
-        public ConcurrentBag<Address> AccountHints { get; } = [];
-        public ConcurrentBag<(Address, UInt256)> SlotHints { get; } = [];
-
-        public void HintAccountWarm(Address address) => AccountHints.Add(address);
-
-        public void HintSlotWarm(Address address, in UInt256 index) => SlotHints.Add((address, index));
+        if (populator)
+            Assert.That(sink.SlotHints, Is.EquivalentTo(new[] { (ctx.Address1, (UInt256)42) }));
+        else
+            Assert.That(sink.SlotHints, Is.Empty);
+        Assert.That(sink.AccountHints, Is.Empty);
     }
 
     private class Context : IDisposable

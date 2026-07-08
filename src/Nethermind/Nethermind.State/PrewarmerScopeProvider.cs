@@ -38,19 +38,14 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// <param name="isPrewarmer">
 /// True for read-only populator envs (prewarmer, parallel-worker parent readers); false for the
 /// read-write main world state. On a cache hit a consumer seeds the scope-local cache via
-/// <c>HintGet</c> (for its later commit); a populator does not. A populator additionally pushes trie
-/// warm-up hints for first-resolved accounts to <see cref="PreBlockCaches.TrieHintSink"/>.
-/// </param>
-/// <param name="registerTrieHintSink">
-/// When true (consumer only), each scope registers its base scope as the block's
-/// <see cref="IPrewarmTrieHintSink"/> so populator envs can warm the commit-path trie ahead of time.
+/// <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers itself as
+/// the block's <see cref="PreBlockCaches.TrieHintSink"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     PreBlockCaches preBlockCaches,
     ILogManager logManager,
-    bool isPrewarmer = true,
-    bool registerTrieHintSink = false
+    bool isPrewarmer = true
 ) : IWorldStateScopeProvider, IPreBlockCaches
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
@@ -58,18 +53,15 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
-        if (!isPrewarmer && registerTrieHintSink)
+        if (!isPrewarmer)
         {
-            // Null for backends that do not support trie warm-up hints (e.g. non-flat layouts).
+            // Null for backends without trie warm-up support (e.g. non-flat layouts).
             preBlockCaches.TrieHintSink = FindTrieHintSink(scope);
         }
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, registerTrieHintSink, metrics);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
     }
 
-    /// <summary>
-    /// Unwraps scope decorators (metrics, operation logging) to reach the backend scope, since the
-    /// hint sink capability lives on the innermost (e.g. flat) scope.
-    /// </summary>
+    // The sink capability lives on the innermost (flat) scope, behind metrics/logging decorators.
     private static IPrewarmTrieHintSink? FindTrieHintSink(IWorldStateScopeProvider.IScope scope)
     {
         while (true)
@@ -90,7 +82,7 @@ public class PrewarmerScopeProvider(
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, bool registerTrieHintSink, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -110,8 +102,8 @@ public class PrewarmerScopeProvider(
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
-            // Unregister before the base scope is torn down so no new warm hints target a disposing scope.
-            if (!isPrewarmer && registerTrieHintSink) preBlockCaches.TrieHintSink = null;
+            // Unregister before teardown so no new warm hints target a disposing scope.
+            if (!isPrewarmer) preBlockCaches.TrieHintSink = null;
             baseScope.Dispose();
         }
 
@@ -184,8 +176,7 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                // First resolve of this account in the block: give the main scope a head start on
-                // warming its account-trie path for the final commit (deduplicated by the sink).
+                // First resolve in the block: warm the account-trie path ahead of the final commit.
                 if (isPrewarmer) preBlockCaches.TrieHintSink?.HintAccountWarm(address);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }

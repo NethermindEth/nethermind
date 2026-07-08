@@ -55,8 +55,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
                         ctx.Resolve<ILogManager>(),
-                        isPrewarmer: false,
-                        registerTrieHintSink: ctx.Resolve<IBlocksConfig>().PreWarmTrieHints
+                        isPrewarmer: false
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>

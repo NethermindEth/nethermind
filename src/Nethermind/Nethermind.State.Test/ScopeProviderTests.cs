@@ -338,68 +338,32 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [Test]
-    public void Test_TrieHintSink_RegisteredForMainScopeLifetime()
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void Test_TrieHintSink_RegisteredForConsumerScopeLifetime(bool isPrewarmer, bool decorateProvider)
     {
         using Context ctx = new(useFlat);
 
-        PreBlockCaches caches = new();
-        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
+        // decorateProvider replicates the production chain (metrics + operation-logging wrappers),
+        // which the sink lookup must unwrap.
+        IWorldStateScopeProvider baseProvider = decorateProvider
+            ? new WorldStateMetricsScopeProvider(new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), _ => { })
+            : ctx.ScopeProvider;
 
-        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(null))
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider provider = new(baseProvider, caches, LimboLogs.Instance, isPrewarmer);
+
+        using (provider.BeginScope(null))
         {
-            // Flat scopes support trie warm-up hints; the trie-store backend does not and must stay null.
-            if (useFlat)
+            // Only a consumer scope registers, and only the flat backend supports hints.
+            if (!isPrewarmer && useFlat)
                 Assert.That(caches.TrieHintSink, Is.Not.Null);
             else
                 Assert.That(caches.TrieHintSink, Is.Null);
         }
 
         Assert.That(caches.TrieHintSink, Is.Null, "sink must be unregistered when the scope is disposed");
-    }
-
-    [Test]
-    public void Test_TrieHintSink_RegisteredThroughScopeDecorators()
-    {
-        using Context ctx = new(useFlat);
-
-        // The production main-processing chain wraps the backend provider in metrics (and optionally
-        // operation-logging) decorators before the prewarmer decorator; the sink lookup must unwrap them.
-        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
-            new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), _ => { });
-
-        PreBlockCaches caches = new();
-        PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
-
-        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(null))
-        {
-            if (useFlat)
-                Assert.That(caches.TrieHintSink, Is.Not.Null);
-            else
-                Assert.That(caches.TrieHintSink, Is.Null);
-        }
-
-        Assert.That(caches.TrieHintSink, Is.Null);
-    }
-
-    [Test]
-    public void Test_TrieHintSink_NotRegisteredWhenDisabledOrPopulator()
-    {
-        using Context ctx = new(useFlat);
-
-        PreBlockCaches caches = new();
-
-        PrewarmerScopeProvider mainDisabled = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
-        using (mainDisabled.BeginScope(null))
-        {
-            Assert.That(caches.TrieHintSink, Is.Null);
-        }
-
-        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true, registerTrieHintSink: true);
-        using (populator.BeginScope(null))
-        {
-            Assert.That(caches.TrieHintSink, Is.Null);
-        }
     }
 
     [Test]
@@ -437,7 +401,6 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_FlatScope_TrieWarmHints_Smoke()
     {
-        // Trie warm-up hints are only supported by the flat scope.
         Assume.That(useFlat, Is.True);
 
         using Context ctx = new(useFlat);
@@ -458,7 +421,7 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false, registerTrieHintSink: true);
+        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         using (IWorldStateScopeProvider.IScope scope = main.BeginScope(baseBlock))
@@ -466,30 +429,17 @@ public class ScopeProviderTests(bool useFlat)
             IPrewarmTrieHintSink sink = caches.TrieHintSink;
             Assert.That(sink, Is.Not.Null);
 
+            // Covers dedupe, empty-root and unknown-account drops; dispose drains outstanding warm-ups.
             Assert.DoesNotThrow(() =>
             {
                 sink.HintAccountWarm(TestItem.AddressA);
                 sink.HintSlotWarm(TestItem.AddressA, 1);
-                // Account with an empty pre-state storage root: hint must be dropped without queueing.
                 sink.HintSlotWarm(TestItem.AddressB, 1);
-                // Unknown account: also dropped.
                 sink.HintSlotWarm(TestItem.AddressC, 1);
-                // Deduplicated re-hints.
                 sink.HintAccountWarm(TestItem.AddressA);
                 sink.HintSlotWarm(TestItem.AddressA, 1);
             });
-            // Scope dispose waits for outstanding warm-ups, proving the pushed jobs drain cleanly.
         }
-    }
-
-    private class CollectingTrieHintSink : IPrewarmTrieHintSink
-    {
-        public ConcurrentBag<Address> AccountHints { get; } = [];
-        public ConcurrentBag<(Address, UInt256)> SlotHints { get; } = [];
-
-        public void HintAccountWarm(Address address) => AccountHints.Add(address);
-
-        public void HintSlotWarm(Address address, in UInt256 index) => SlotHints.Add((address, index));
     }
 
 #nullable enable

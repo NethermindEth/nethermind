@@ -25,8 +25,7 @@ public interface IWorldStateScopeProvider
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     /// <summary>
-    /// Implemented by scopes that decorate another scope (metrics, logging, caching wrappers), so
-    /// consumers can unwrap to the innermost scope when probing for backend-specific capabilities.
+    /// A scope wrapping another scope, unwrappable when probing for backend-specific capabilities.
     /// </summary>
     public interface IScopeDecorator : IScope
     {

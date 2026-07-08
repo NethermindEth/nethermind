@@ -43,8 +43,7 @@ public class PreBlockCaches
 
     /// <summary>
     /// The main processing scope's trie warm-hint sink, registered for the scope's lifetime.
-    /// Null when the backend does not support trie warm-up or the feature is disabled; producers must
-    /// tolerate the sink disappearing at any time.
+    /// Null when the backend does not support trie warm-up; may disappear at any time.
     /// </summary>
     public IPrewarmTrieHintSink? TrieHintSink
     {

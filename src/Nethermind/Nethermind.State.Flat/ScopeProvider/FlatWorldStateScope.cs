@@ -32,8 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
-    // Storage trees used only as prewarm-hint warm-up targets (see IPrewarmTrieHintSink). Separate from
-    // _storages because hints arrive concurrently from prewarm workers while _storages is main-thread-only.
+    // Prewarm-hint warm-up targets; separate from the main-thread-only _storages as hints arrive concurrently.
     private readonly ConcurrentDictionary<AddressAsKey, FlatStorageTree?> _hintWarmStorages = new();
     private bool _isDisposed = false;
 
@@ -368,7 +367,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintWarmStorages.GetOrAdd(address, static (key, scope) =>
         {
             Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            // An empty pre-state storage root has no trie nodes to load, so there is nothing to warm.
+            // An empty pre-state storage root has no trie nodes to warm.
             return storageRoot == Keccak.EmptyTreeHash
                 ? null
                 : new FlatStorageTree(
