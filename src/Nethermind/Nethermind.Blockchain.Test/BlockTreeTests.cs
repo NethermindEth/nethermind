@@ -507,6 +507,39 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_header_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        BlockHeader headerWithoutLevel = Build.A.BlockHeader.WithNumber(2).WithTotalDifficulty(3_000_000).TestObject;
+        Assert.That(blockTree.Insert(headerWithoutLevel, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(headerWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindHeader(headerWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Find_block_with_require_canonical_returns_null_when_chain_level_is_missing()
+    {
+        // Regression test for issue #8029: an unclean shutdown between the block write and the chain level
+        // write leaves a block without a level. When the beacon search guard skips level creation,
+        // FindBlock with RequireCanonical used to throw NullReferenceException on the missing level.
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+
+        Block blockWithoutLevel = Build.A.Block.WithNumber(2).WithTotalDifficulty(3_000_000L).TestObject;
+        Assert.That(blockTree.Insert(blockWithoutLevel, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconHeaderMetadata), Is.EqualTo(AddBlockResult.Added));
+        builder.ChainLevelInfoRepository.Delete(blockWithoutLevel.Number);
+
+        Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
+            "test setup must take the path where the level-creation guard skips creating the missing level");
+        Assert.That(blockTree.FindBlock(blockWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_basic()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -914,12 +947,19 @@ public class BlockTreeTests
         Assert.That(blockTree.Genesis!.CalculateHash(), Is.EqualTo(block0.Hash));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ForkChoiceUpdated_update_hashes()
+    // safeBlockHash is null in the AuRa-finalization-post-snap case (#11775): SafeHash has not been
+    // set yet, so ForkChoiceUpdated must tolerate a null safe (and finalized) hash without NRE'ing in
+    // HeaderStore.GetBlockNumber. The subscriber forces evaluation of the OnForkChoiceUpdated args
+    // (the GetBlockNumber lookups), which is skipped when the event has no subscribers.
+    [TestCase(true, TestName = "ForkChoiceUpdated_update_hashes")]
+    [TestCase(false, TestName = "ForkChoiceUpdated_tolerates_null_safe_hash")]
+    public void ForkChoiceUpdated_update_hashes(bool withSafeHash)
     {
         BlockTree blockTree = BuildBlockTree();
+        blockTree.OnForkChoiceUpdated += (_, _) => { };
+
         Hash256 finalizedBlockHash = TestItem.KeccakB;
-        Hash256 safeBlockHash = TestItem.KeccakC;
+        Hash256? safeBlockHash = withSafeHash ? TestItem.KeccakC : null;
         blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
         using (Assert.EnterMultipleScope())
         {

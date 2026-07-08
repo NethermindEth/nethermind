@@ -9,6 +9,7 @@ namespace Nethermind.Synchronization.SnapSync
         MissingRootHashInProofs,
         DifferentRootHash,
         ExpiredRootHash,
+        InvalidProofNode,
         InvalidOrder,
         OutOfBounds,
         EmptyRange

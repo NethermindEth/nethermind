@@ -42,7 +42,10 @@ public class FlatSnapServer(
         return true;
     }
 
-    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
+        GetTrieNodes(pathSet, rootHash, long.MaxValue, cancellationToken);
+
+    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (!TryGetBundle(rootHash, out ReadOnlySnapshotBundle bundle, out StateId stateId))
             return EmptyByteArrayList.Instance;
@@ -51,6 +54,7 @@ public class FlatSnapServer(
         {
             if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
 
+            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
             int pathLength = pathSet.Count;
             ArrayPoolList<byte[]> response = new(pathLength);
             ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
@@ -58,7 +62,7 @@ public class FlatSnapServer(
             bool abort = false;
             long responseSize = 0;
 
-            for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
+            for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; i++)
             {
                 byte[][]? requestedPath = pathSet[i].Group;
                 switch (requestedPath.Length)
@@ -91,7 +95,7 @@ public class FlatSnapServer(
                                 Hash256? storageRoot = account.StorageRoot;
                                 StorageTree sTree = new(trieStore.GetStorageTrieStore(storagePath), storageRoot, logManager);
 
-                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                                 {
                                     byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                                     response.Add(sRlp ?? []);

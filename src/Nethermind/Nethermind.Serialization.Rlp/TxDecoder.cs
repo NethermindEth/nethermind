@@ -122,6 +122,11 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
 
         GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+        {
+            decoderContext.Check(txSequenceStart + transactionSequence.Length);
+        }
     }
 
     public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);

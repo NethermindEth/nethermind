@@ -578,7 +578,7 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
+                    bool isMain = level?.MainChainBlock?.BlockHash?.Equals(blockHash) == true;
                     header = isMain ? header : null;
                 }
             }
@@ -1485,7 +1485,7 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+                    bool isMain = level?.MainChainBlock?.BlockHash.Equals(blockHash) == true;
                     block = isMain ? block : null;
                 }
             }
@@ -1752,8 +1752,8 @@ namespace Nethermind.Blockchain
                 this,
                 new(
                     Head,
-                    _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
-                    _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
+                    safeBlockHash is null ? 0 : _headerStore.GetBlockNumber(safeBlockHash) ?? 0,
+                    FinalizedHash is null ? 0 : _headerStore.GetBlockNumber(FinalizedHash) ?? 0)
                 );
         }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -1092,6 +1092,65 @@ internal class TransactionProcessorEip7702Tests
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { Convert.ToByte(!isDelegated) }));
+    }
+
+    /// <summary>
+    /// <see cref="ITransactionProcessorExtensions.BuildUp"/> skips EIP-158 empty accounts pruning.
+    /// This test verifies that a subsequent set-code transaction doesn't trigger gas refund on an existing (but empty!) account.
+    /// </summary>
+    [Test]
+    public void BuildUp_GhostEmptyAccountFromZeroTransfer_DoesNotGrantWrongDelegationRefundOnSetCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        TransactionBuilder<Transaction> setCodeBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressD)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(auth)
+            .SignedAndResolved(_ethereumEcdsa, sender);
+
+        // Run with "ghost" account
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction createGhostTx = Build.A.Transaction
+            .WithTo(authority.Address)
+            .WithValue(0)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+        _transactionProcessor.BuildUp(createGhostTx, blkCtx, NullTxTracer.Instance);
+
+        Transaction setCodeTx = setCodeBuilder
+            .WithNonce(1)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+        _transactionProcessor.BuildUp(setCodeTx, blkCtx, NullTxTracer.Instance);
+
+        long gasWithGhost = setCodeTx.SpentGas;
+
+        // Run without "ghost" account
+        _stateProvider.Restore(snapshot);
+        setCodeTx = setCodeBuilder
+            .WithNonce(0)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+        _transactionProcessor.BuildUp(setCodeTx, blkCtx, NullTxTracer.Instance);
+
+        long gasWithoutGhost = setCodeTx.SpentGas;
+
+        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
     }
 
     private void DeployCode(Address codeSource, byte[] code)

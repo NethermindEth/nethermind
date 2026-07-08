@@ -6,6 +6,7 @@ using NSubstitute;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -100,6 +101,82 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+        }
+
+        [Test]
+        public void TrySetFreshPivot_falls_back_to_FinalizedHash_persisted_in_block_tree_when_no_FCU_received()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+
+            _ = CreateUpdaterWithRealBeaconSync();
+
+            _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "pivot should be updated from the persisted finalized hash without any FCU");
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            Assert.That(ctx.DecodeLong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        [Test]
+        public void TrySetFreshPivot_keeps_waiting_when_persisted_FinalizedHash_is_zero()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = 3;
+            _blockTree!.ForkChoiceUpdated(Keccak.Zero, Keccak.Zero);
+
+            _ = CreateUpdaterWithRealBeaconSync();
+
+            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+            _syncModeSelector!.Changed += Raise.EventWith(args);
+            _syncModeSelector!.Changed += Raise.EventWith(args);
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a zero finalized hash means no data, so no pivot should be set");
+            Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.Not.Zero,
+                "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+        }
+
+        [Test]
+        public void TrySetFreshPivot_ignores_zero_cached_FinalizedHash_and_falls_back_to_block_tree()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+            _blockCacheService!.FinalizedHash = Keccak.Zero;
+
+            _ = CreateUpdaterWithRealBeaconSync();
+
+            _syncModeSelector!.Changed += Raise.EventWith(new SyncModeChangedEventArgs(SyncMode.FastSync, SyncMode.UpdatingPivot));
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            Assert.That(ctx.DecodeLong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        // Real BeaconSync over an empty block cache: the only finalized hash source is the block tree
+        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync()
+        {
+            BeaconSync beaconSync = new(
+                Substitute.For<IBeaconPivot>(),
+                _blockTree!,
+                _syncConfig!,
+                _blockCacheService!,
+                Substitute.For<IPoSSwitcher>(),
+                LimboLogs.Instance);
+
+            return new StartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                beaconSync,
+                LimboLogs.Instance);
         }
 
         [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
