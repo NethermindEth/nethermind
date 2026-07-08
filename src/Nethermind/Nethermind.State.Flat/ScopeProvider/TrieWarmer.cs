@@ -21,6 +21,9 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private const int BufferSize = 1024 * 16;
     private const int SlotBufferSize = 1024 * 8;
     private const int DisposeTimeoutMilliseconds = 1000;
+    // Backlog depth past which extra workers cost less (in exec contention) than the cold
+    // storage-merkle loads the un-warmed backlog would cause at commit.
+    private const int BoostQueueDepth = 512;
 
     private readonly ILogger _logger;
 
@@ -47,6 +50,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         int sequenceId);
 
     private readonly Processor[] _processors;
+    private readonly int _baseWorkerCount;
     private TaskCompletionSource<bool>? _processorsStopped;
 
     public TrieWarmer(ILogManager logManager, IFlatDbConfig flatDbConfig)
@@ -57,9 +61,12 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         int workerCount = configuredWorkerCount == -1
             ? Math.Max(Environment.ProcessorCount / 2, 1)
             : configuredWorkerCount;
-        workerCount = Math.Max(workerCount, 2); // Min worker count is 2
+        _baseWorkerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
-        _processors = new Processor[workerCount];
+        // Extra processors beyond the base count only run while the backlog is deeper than
+        // BoostQueueDepth; boosted workers drain the burst to empty and then park again.
+        int maxWorkerCount = Math.Max(_baseWorkerCount, Environment.ProcessorCount - 2);
+        _processors = new Processor[maxWorkerCount];
         for (int i = 0; i < _processors.Length; i++)
         {
             _processors[i] = new Processor(this);
@@ -99,7 +106,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         long pending = PendingHint();
         if (pending == 0) return;
 
-        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
+        int workerCap = pending >= BoostQueueDepth ? _processors.Length : _baseWorkerCount;
+        if (activeProcessors >= workerCap) return;
+
+        int desiredProcessors = (int)Math.Min(workerCap - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
         for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
         {
