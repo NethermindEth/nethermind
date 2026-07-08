@@ -95,7 +95,7 @@ namespace Nethermind.State
                 if (change.PrevIdx != -1)
                 {
                     Change previous = _changes[change.PrevIdx];
-                    head = new HeadChange(change.PrevIdx, previous.Value);
+                    head = new HeadChange(previous.Value, change.PrevIdx, previous.OriginalIdx);
                 }
                 else if (change.ChangeType == ChangeType.JustCache)
                 {
@@ -114,7 +114,7 @@ namespace Nethermind.State
             {
                 currentPosition++;
                 _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell] = new HeadChange(currentPosition, kept.Value);
+                _intraBlockCache[kept.StorageCell] = new HeadChange(kept.Value, currentPosition, kept.OriginalIdx);
             }
 
             _keptInCache.Clear();
@@ -201,8 +201,16 @@ namespace Nethermind.State
             // to legally call Set while enumerating _intraBlockCache.
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             int prevIdx = exists ? head.CurrentIdx : -1;
-            head = new HeadChange(_changes.Count, value);
-            _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx));
+
+            // A head whose index is at or before the current transaction's start boundary belongs to an
+            // earlier transaction (or none), so this is the first write to the cell in the current tx and
+            // the value being overwritten is the transaction original. Otherwise carry the original forward.
+            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+            bool firstWriteThisTx = !exists || head.CurrentIdx <= currentSnapshot;
+            int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
+
+            head = new HeadChange(value, _changes.Count, originalIdx);
+            _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx, originalIdx));
         }
 
         /// <summary>
@@ -227,7 +235,7 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType, int prevIdx)
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType, int prevIdx, int originalIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
             public readonly byte[] Value = value;
@@ -236,17 +244,27 @@ namespace Nethermind.State
             /// <summary>Index into <c>_changes</c> of the previous change for the same cell, or -1 if none.</summary>
             public readonly int PrevIdx = prevIdx;
 
+            /// <summary>
+            /// Index into <c>_changes</c> of the change holding this cell's value as of the current
+            /// transaction's start (its EIP-2200 "original"), or -1 when that original is the block-level
+            /// value in <c>_originalValues</c>. Carried forward on later same-transaction writes so
+            /// <see cref="PersistentStorageProvider.GetOriginal"/> resolves in O(1) without walking the chain.
+            /// </summary>
+            public readonly int OriginalIdx = originalIdx;
+
             public bool IsNull => ChangeType == ChangeType.Null;
         }
 
         /// <summary>
-        /// Head of a cell's change chain: the index of its newest change and that change's value inlined,
-        /// so reads resolve with a single dictionary lookup.
+        /// Head of a cell's change chain: the index of its newest change with that change's value and
+        /// original-index inlined, so reads and <see cref="PersistentStorageProvider.GetOriginal"/>
+        /// resolve with a single dictionary lookup.
         /// </summary>
-        protected readonly struct HeadChange(int currentIdx, byte[] value)
+        protected readonly struct HeadChange(byte[] value, int currentIdx, int originalIdx)
         {
             public readonly byte[] Value = value;
             public readonly int CurrentIdx = currentIdx;
+            public readonly int OriginalIdx = originalIdx;
         }
 
         /// <summary>

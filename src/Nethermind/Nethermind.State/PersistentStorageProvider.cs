@@ -87,23 +87,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
-        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
+            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+            if (head.CurrentIdx <= currentSnapshot)
             {
-                // Chain indices are strictly decreasing, so the first index <= snapshot
-                // is the cell's newest change at or before the transaction start.
-                int idx = head.CurrentIdx;
-                while (idx != -1 && idx > snapshot)
-                {
-                    idx = _changes[idx].PrevIdx;
-                }
-
-                if (idx != -1)
-                {
-                    return _changes[idx].Value;
-                }
+                // The newest change is from an earlier transaction, so the cell is untouched this
+                // transaction and its current value is the transaction original.
+                return head.Value;
             }
+
+            // The cell was written this transaction; OriginalIdx points at the value it held at the
+            // transaction's start (-1 means that was the block-level original in _originalValues).
+            return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
         return value;
