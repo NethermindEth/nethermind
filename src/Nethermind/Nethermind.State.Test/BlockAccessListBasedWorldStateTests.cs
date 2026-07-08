@@ -101,6 +101,48 @@ public class BlockAccessListBasedWorldStateTests
         }
     }
 
+    // Regression: an account drained to zero by an earlier same-block selfdestruct must read as
+    // non-existent at later indices; otherwise a same-block CREATE2 over the address wrongly
+    // refunds its EIP-8037 create-state gas.
+    [Test]
+    public void AccountExists_PreFundedAccountDrainedToZeroEarlierInBlock_ReturnsFalse()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 0))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountExists_PreFundedAccountWithBalance_ReturnsTrue()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 100));
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
     [Test]
     public void GetNonce_WithPriorTxChange_ReturnsUpdatedNonce()
     {
