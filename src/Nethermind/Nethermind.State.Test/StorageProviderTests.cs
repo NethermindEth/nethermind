@@ -988,8 +988,8 @@ public class StorageProviderTests(bool useFlat)
 
             public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
 
-            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
-                => baseScope.HintBal(bal, sink);
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null, Transaction[]? priorityTransactions = null)
+                => baseScope.HintBal(bal, sink, priorityTransactions);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
