@@ -277,7 +277,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (totalSlots == 0) return;
 
-        using ArrayPoolList<(uint Priority, int Sequence, Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+        using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -285,15 +285,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-
-            uint readPriority = GetAccountStorageReadPriority(ac);
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx] = (GetSlotChangePriority(slotChanges, readPriority), idx++, address, selfDestructIdx, slotChanges.Key);
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
             foreach (UInt256 readKey in ac.StorageReads)
-                jobs[idx] = (readPriority, idx++, address, selfDestructIdx, readKey);
+                jobs[idx++] = (address, selfDestructIdx, readKey);
         }
-
-        jobs.Sort(new SinkSlotReadJobComparer());
 
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
@@ -303,34 +299,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
-            (_, _, Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         }, parallelOptions.CancellationToken);
-    }
-
-    private static uint GetAccountStorageReadPriority(ReadOnlyAccountChanges accountChanges)
-    {
-        uint priority = uint.MaxValue;
-        foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            priority = uint.Min(priority, GetSlotChangePriority(slotChanges, uint.MaxValue));
-        return priority;
-    }
-
-    private static uint GetSlotChangePriority(ReadOnlySlotChanges slotChanges, uint fallback)
-    {
-        StorageChange[] changes = slotChanges.Changes;
-        return changes.Length == 0 ? fallback : changes[0].Index;
-    }
-
-    private readonly struct SinkSlotReadJobComparer : IComparer<(uint Priority, int Sequence, Address Address, int SelfDestructIdx, UInt256 Slot)>
-    {
-        public int Compare(
-            (uint Priority, int Sequence, Address Address, int SelfDestructIdx, UInt256 Slot) x,
-            (uint Priority, int Sequence, Address Address, int SelfDestructIdx, UInt256 Slot) y)
-        {
-            int priorityCompare = x.Priority.CompareTo(y.Priority);
-            return priorityCompare != 0 ? priorityCompare : x.Sequence.CompareTo(y.Sequence);
-        }
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
