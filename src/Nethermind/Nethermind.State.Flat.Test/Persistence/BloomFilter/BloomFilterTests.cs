@@ -139,4 +139,47 @@ public class BloomFilterTests
         using Bloom bloom = NewBloom(initialCount: 42);
         Assert.That(bloom.Count, Is.EqualTo(42));
     }
+
+    [TestCase(50, 10000)]
+    [TestCase(500, 100)]
+    public void Clear_RemovesAddedItems_AndFilterIsReusable(int itemCount, long capacity)
+    {
+        using Bloom bloom = NewBloom(capacity: capacity, bitsPerKey: 14);
+
+        for (ulong i = 0; i < (ulong)itemCount; i++) bloom.Add(i);
+        bloom.Clear();
+
+        Assert.That(bloom.Count, Is.EqualTo(0));
+        for (ulong i = 0; i < (ulong)itemCount; i++)
+        {
+            Assert.That(bloom.MightContain(i), Is.False, $"hash {i} should be gone after Clear");
+        }
+
+        bloom.Add(999_999);
+        Assert.That(bloom.MightContain(999_999), Is.True);
+    }
+
+    [Test]
+    public void Clear_RepeatedCycles_DoNotLeakBits()
+    {
+        using Bloom bloom = NewBloom(capacity: 10000, bitsPerKey: 14);
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            ulong offset = (ulong)cycle * 1000;
+            for (ulong i = 0; i < 50; i++) bloom.Add(offset + i);
+            bloom.Clear();
+            for (ulong i = 0; i < 50; i++)
+            {
+                Assert.That(bloom.MightContain(offset + i), Is.False, $"cycle {cycle}: hash {offset + i} survived Clear");
+            }
+        }
+    }
+
+    [Test]
+    public void Clear_OnEmptyFilter_DoesNotThrow()
+    {
+        using Bloom bloom = NewBloom();
+        Assert.DoesNotThrow(bloom.Clear);
+        Assert.That(bloom.Count, Is.EqualTo(0));
+    }
 }
