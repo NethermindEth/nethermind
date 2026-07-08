@@ -25,11 +25,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
     private static IEnumerable<TestCaseData> ConstantsTestCases()
     {
         yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1530ul).SetName("CostPerStateByte");
-        yield return new TestCaseData(GasCostOf.SSetState).Returns(97920ul).SetName("SSetState");
-        yield return new TestCaseData(GasCostOf.CreateState).Returns(183600ul).SetName("CreateState");
-        yield return new TestCaseData(GasCostOf.NewAccountState).Returns(183600ul).SetName("NewAccountState");
-        yield return new TestCaseData(GasCostOf.PerAuthBaseState).Returns(35190ul).SetName("PerAuthBaseState");
-        yield return new TestCaseData(Eip8037Constants.SystemCallStateReservoir).Returns(1566720ul).SetName("SystemCallStateReservoir");
+        yield return new TestCaseData((ulong)GasCostOf.SSetState).Returns(97920ul).SetName("SSetState");
+        yield return new TestCaseData((ulong)GasCostOf.CreateState).Returns(183600ul).SetName("CreateState");
+        yield return new TestCaseData((ulong)GasCostOf.NewAccountState).Returns(183600ul).SetName("NewAccountState");
+        yield return new TestCaseData((ulong)GasCostOf.PerAuthBaseState).Returns(35190ul).SetName("PerAuthBaseState");
+        yield return new TestCaseData((ulong)Eip8037Constants.SystemCallStateReservoir).Returns(1566720ul).SetName("SystemCallStateReservoir");
         yield return new TestCaseData(Eip8037Constants.SystemCallGasLimit).Returns(31566720ul).SetName("SystemCallGasLimit");
     }
 

@@ -316,9 +316,9 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // Recover the sender if a preprocessor hasn't yet: the intrinsic-gas validation below is
-            // sender-dependent (EIP-2780 self-transfer discount).
-            if (transaction.SenderAddress is null && transaction.Signature is not null)
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            if (spec.IsEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);

@@ -75,14 +75,14 @@ namespace Nethermind.Core
         public const ulong StateBytesPerNewAccount = 120; // eip-8037
         public const ulong StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
         public const ulong SSetRegular = 2_900;
-        public const ulong SSetState = StateBytesPerStorageSet * CostPerStateByte;
+        public const long SSetState = (long)(StateBytesPerStorageSet * CostPerStateByte);
         public const ulong CreateRegular = 9_000;
-        public const ulong CreateState = StateBytesPerNewAccount * CostPerStateByte;
-        public const ulong NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long CreateState = (long)(StateBytesPerNewAccount * CostPerStateByte);
+        public const long NewAccountState = (long)(StateBytesPerNewAccount * CostPerStateByte);
         public const ulong CodeDepositRegularPerWord = 6;
-        public const ulong CodeDepositState = CostPerStateByte;
+        public const long CodeDepositState = (long)CostPerStateByte;
         public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
-        public const ulong PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
+        public const long PerAuthBaseState = (long)(StateBytesPerAuthBase * CostPerStateByte);
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 

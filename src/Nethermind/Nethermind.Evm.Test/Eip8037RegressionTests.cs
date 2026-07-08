@@ -1168,7 +1168,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_keeps_created_account_state_gas(
         bool create2,
         int createdBalance,
-        ulong expectedStateGas)
+        long expectedStateGas)
     {
         Address beneficiary = TestItem.AddressC;
         byte[] childInitCode = Prepare.EvmCode
@@ -1320,7 +1320,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     public void Eip8037_create_tx_selfdestruct_initcode_keeps_create_state_gas(
         ulong txValue,
         SelfDestructBeneficiaryKind beneficiaryKind,
-        ulong expectedStateGas)
+        long expectedStateGas)
     {
         Address contractAddress = ContractAddress.From(Sender, 0);
         Address beneficiary = beneficiaryKind switch
@@ -1361,7 +1361,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.GasConsumedResult.EffectiveBlockGas, expectedStateGas)));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.GasConsumedResult.EffectiveBlockGas, (ulong)expectedStateGas)));
     }
 
     [TestCase(16_777_216ul, TestName = "Eip8037_subcall_set_clear_revert_pays_no_state_gas_spill")]
