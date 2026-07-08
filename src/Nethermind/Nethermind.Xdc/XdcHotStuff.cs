@@ -396,7 +396,10 @@ namespace Nethermind.Xdc
             string headInfo = $"#{head.Number} round={head.ExtraConsensusData?.BlockRound} ({head.Hash?.ToShortString()})";
             string roundDuration = _pendingLastRoundDuration.HasValue ? $", prev={_pendingPrevRound} in {_pendingLastRoundDuration.Value.TotalSeconds:F2}s" : "";
             string myTurn = isMyTurn ? "true" : "false";
-            _logger.Info($"Round {round}{roundDuration}: head={headInfo} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
+            BlockRoundInfo? blockRoundInfo = _xdcContext.HighestCommitBlock;
+            string committedBlock = blockRoundInfo is null ? "Committed=none" : $"Committed=#{blockRoundInfo?.BlockNumber} round={blockRoundInfo?.Round} ({blockRoundInfo?.Hash?.ToShortString()})"; 
+            
+            _logger.Info($"Round {round}{roundDuration}: head={headInfo} | {committedBlock} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
         private static bool TryAdvance(ref ulong field, ulong value)
