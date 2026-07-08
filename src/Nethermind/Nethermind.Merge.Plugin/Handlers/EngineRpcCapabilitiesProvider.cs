@@ -30,7 +30,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         return Volatile.Read(ref _jsonRpc)!;
     }
 
-    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
+    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v2/payloads"</c>).</summary>
     public FrozenDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
     {
         EnsureBuilt();
@@ -82,48 +82,52 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         void Configure(string method, string path, RpcCapabilityOptions options)
         {
             jsonLocal[method] = options;
-            sszLocal[path] = options & ~WarnIfMissing;
+            RpcCapabilityOptions sszOptions = options & ~WarnIfMissing;
+            sszLocal[path] = sszLocal.TryGetValue(path, out RpcCapabilityOptions existing)
+                ? existing | sszOptions
+                : sszOptions;
         }
 
         // The Merge
         jsonLocal[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = Gate(preCancun);
-        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), SszRestPaths.PostV1Forkchoice, Enabled);
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV1), SszRestPaths.GetV1Payloads, Enabled);
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV1), SszRestPaths.PostV1Payloads, Enabled);
-        Configure(nameof(IEngineRpcModule.engine_getClientVersionV1), SszRestPaths.PostV1ClientVersion, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), SszRestPaths.PostForkchoice, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV1), SszRestPaths.GetPayloads, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV1), SszRestPaths.PostPayloads, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_getClientVersionV1), SszRestPaths.GetIdentity, Enabled);
         // SSZ-only: engine_exchangeCapabilities is the meta-method (not advertised in the JSON-RPC
         // capabilities list itself), but its SSZ-REST equivalent IS an explicit endpoint.
-        sszLocal[SszRestPaths.PostV1Capabilities] = Enabled;
+        sszLocal[SszRestPaths.GetCapabilities] = Enabled;
 
         // Shanghai
-        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), SszRestPaths.PostV2Forkchoice, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetV2Payloads, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostV2Payloads, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostV1PayloadBodiesByHash, Gate(spec.WithdrawalsEnabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.GetV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), SszRestPaths.PostForkchoice, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetPayloads, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostPayloads, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostBodiesByHash, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.GetBodiesByRange, Gate(spec.WithdrawalsEnabled));
 
         // Cancun
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
-        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), SszRestPaths.PostV3Forkchoice, GateWithWarn(spec.IsEip4844Enabled));
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV3), SszRestPaths.PostV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV1), SszRestPaths.PostV1Blobs, Gate(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV3), SszRestPaths.PostPayloads, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV1), SszRestPaths.PostBlobsV1, Gate(spec.IsEip4844Enabled));
 
         // Prague
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV4), SszRestPaths.GetV4Payloads, GateWithWarn(v4));
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV4), SszRestPaths.PostV4Payloads, GateWithWarn(v4));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV4), SszRestPaths.GetPayloads, GateWithWarn(v4));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV4), SszRestPaths.PostPayloads, GateWithWarn(v4));
 
         // Osaka
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetV5Payloads, GateWithWarn(spec.IsEip7594Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostV2Blobs, Gate(spec.IsEip7594Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostV3Blobs, Gate(spec.IsEip7594Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostV4Blobs, Gate(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostBlobsV2, Gate(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostBlobsV3, Gate(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7594Enabled));
 
         // Amsterdam
-        Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetV6Payloads, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostPayloads, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7843Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitness), SszRestPaths.PostPayloadsWitness, GateWithWarn(spec.IsEip7928Enabled));
         jsonLocal[nameof(IEngineRpcModule.engine_getBlobsV4)] = Gate(spec.IsEip7843Enabled);
 
         json = jsonLocal;

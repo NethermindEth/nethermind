@@ -135,6 +135,7 @@ namespace Nethermind.TxPool
             TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            _transactions.Inserted += OnInsertedTx;
             _transactions.Removed += OnRemovedTx;
 
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -254,6 +255,8 @@ namespace Nethermind.TxPool
 
             return true;
         }
+
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args) => AddPendingDelegations(args.Value);
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
 
@@ -703,7 +706,6 @@ namespace Nethermind.TxPool
 
             if (removed is not null)
             {
-                RemovePendingDelegations(removed);
                 EvictedPending?.Invoke(this, new TxEventArgs(removed));
                 // transaction which was on last position in sorted TxPool and was deleted to give
                 // a place for a newly added tx (with higher priority) is now removed from hashCache
@@ -711,8 +713,6 @@ namespace Nethermind.TxPool
                 _hashCache.DeleteFromLongTerm(removed.Hash!);
                 Metrics.PendingTransactionsEvicted++;
             }
-
-            AddPendingDelegations(tx);
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
@@ -769,6 +769,7 @@ namespace Nethermind.TxPool
             int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            bool isEip1559 = headSpec.IsEip1559Enabled;
             bool evictNextTxs = false;
 
             foreach (Transaction tx in transactions)
@@ -792,7 +793,7 @@ namespace Nethermind.TxPool
                     }
 
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
-                        _specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                        isEip1559,
                         _headInfo.CurrentBaseFee, balance);
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
@@ -803,7 +804,7 @@ namespace Nethermind.TxPool
                     else if (tx.Nonce == currentNonce + (ulong)i)
                     {
                         UInt256 effectiveGasPrice =
-                            tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                            tx.CalculateEffectiveGasPrice(isEip1559,
                                 _headInfo.CurrentBaseFee);
 
                         if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
@@ -918,8 +919,6 @@ namespace Nethermind.TxPool
 
             RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
-            RemovePendingDelegations(transaction);
-
             _broadcaster.StopBroadcast(hash);
 
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
@@ -1016,6 +1015,7 @@ namespace Nethermind.TxPool
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
+            _transactions.Inserted -= OnInsertedTx;
             _transactions.Removed -= OnRemovedTx;
 
             await _retryCache.DisposeAsync();

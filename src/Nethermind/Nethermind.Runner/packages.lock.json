@@ -780,8 +780,7 @@
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Specs": "[1.40.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {
@@ -839,6 +838,7 @@
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "[9.0.0, )",
           "KubernetesClient": "[19.0.2, )",
           "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.40.0-unstable, )"
         }
       },
@@ -1033,6 +1033,7 @@
           "Nethermind.Config": "[1.40.0-unstable, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Evm": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Logging": "[1.40.0-unstable, )",
           "Nethermind.Synchronization": "[1.40.0-unstable, )"
         }

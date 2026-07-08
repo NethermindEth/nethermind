@@ -309,7 +309,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             // Activate configured mainnet future EIP
             ManualTimestamper timestamper = new(PostMergeStartTime);
             builder
-                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
+                .AddModule(new TestMergeModule())
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 .AddLast<IP2PCapabilityResolver, PostMergeCapabilitiesResolver>()

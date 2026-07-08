@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Spec;
@@ -143,5 +144,63 @@ internal class MineModuleTests
         int penaltyCount = header.Penalties!.Length / Address.Size;
 
         Assert.That(validatorCount, Is.EqualTo(spec.MaxMasternodes));
+    }
+
+    [Test]
+    public async Task TestStartProposesFirstBlockWhileSyncingAtGenesis()
+    {
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        int blocksProposed = 0;
+        TaskCompletionSource blockProduced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        blockchain.ConsensusModule.BlockProduced += (_, _) =>
+        {
+            blocksProposed++;
+            blockProduced.TrySetResult();
+        };
+
+        blockchain.StartHotStuffModule();
+
+        Task finished = await Task.WhenAny(blockProduced.Task, Task.Delay(10_000));
+        if (finished != blockProduced.Task)
+            Assert.Fail("Timed out waiting for first block proposal at genesis bootstrap");
+
+        Assert.That(blocksProposed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestStartDoesNotProposeFirstBlockWhenNotLeaderWhileSyncingAtGenesis()
+    {
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        PrivateKey nonLeader = blockchain.MasterNodeCandidates.First(k => k.Address != leader);
+        blockchain.Signer.SetSigner(nonLeader);
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        int blocksProposed = 0;
+        blockchain.ConsensusModule.BlockProduced += (_, _) => blocksProposed++;
+
+        blockchain.StartHotStuffModule();
+
+        await Task.Delay(500);
+
+        Assert.That(blocksProposed, Is.EqualTo(0));
     }
 }

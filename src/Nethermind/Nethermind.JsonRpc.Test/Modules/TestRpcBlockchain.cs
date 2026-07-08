@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Consensus.Rewards;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -42,6 +43,7 @@ using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.History;
 using Nethermind.Synchronization.ParallelSync;
@@ -208,11 +210,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             new HeadBlockSignal(@this.BlockTree),
             new EthCapabilitiesProvider(
                 @this.BlockTree.AsReadOnly(),
-                @this.WorldStateManager,
+                @this.Container.Resolve<IStateBoundary>(),
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()));
+                Substitute.For<IHistoryPruner>()),
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -221,6 +224,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                if (SealEngineType == Core.SealEngineType.AuRa) builder.AddModule(new AuRaHeaderModule());
                 builder.AddSingleton<IJsonRpcConfig>(RpcConfig);
                 configurer?.Invoke(builder);
             });
@@ -240,6 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
+                Substitute.For<IPeerManager>(),
                 Substitute.For<INetworkStorage>(),
                 Array.Empty<IProtocolHandlerFactory>(),
                 [new DefaultP2PCapabilityResolver()],
@@ -285,7 +290,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
-                BlockPreprocessorStep, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _currentBlockchainProcessor.Start();
         }
     }

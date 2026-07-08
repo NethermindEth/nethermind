@@ -2178,6 +2178,52 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(lastExpectation));
         }
 
+        [Test]
+        public void Pending_delegation_guard_survives_removing_one_of_two_same_authority_delegations()
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            PrivateKey authority = TestItem.PrivateKeyA;
+            PrivateKey sponsorA = TestItem.PrivateKeyB;
+            PrivateKey sponsorB = TestItem.PrivateKeyC;
+            _stateProvider.CreateAccount(authority.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsorA.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsorB.Address, UInt256.MaxValue);
+
+            EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+
+            Transaction Delegation(PrivateKey sponsor) => Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(100_000)
+                .WithAuthorizationCode(ecdsa.Sign(authority, specProvider.ChainId, TestItem.AddressD, 0))
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+
+            Transaction firstDelegation = Delegation(sponsorA);
+            Transaction secondDelegation = Delegation(sponsorB);
+            Assert.That(_txPool.SubmitTx(firstDelegation, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(secondDelegation, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool.RemoveTransaction(firstDelegation.Hash);
+
+            Transaction AuthorityTx(ulong nonce) => Build.A.Transaction
+                .WithNonce(nonce)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, authority).TestObject;
+
+            Assert.That(_txPool.SubmitTx(AuthorityTx(0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(AuthorityTx(1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.NotCurrentNonceForDelegation));
+        }
+
         [TestCase(1ul, 2ul)]
         [TestCase(0ul, 0ul)]
         [TestCase(ulong.MaxValue, ulong.MaxValue)]
