@@ -39,6 +39,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
@@ -49,6 +50,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Reset();
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -116,6 +118,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
+            _destroyedThisRound.Clear();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -149,6 +152,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (change.ChangeType == ChangeType.Update)
             {
+                // A SaveChange would resurrect the dead value over the Clear() marker;
+                // tracers still see the cell zeroed, as the journaled path reported it.
+                if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
+                {
+                    if (isTracing)
+                    {
+                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                    }
+
+                    continue;
+                }
+
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
@@ -214,6 +229,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.CommitCore(tracer);
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
 
         if (isTracing)
         {
@@ -340,27 +356,40 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     public override void Commit(IStorageTracer tracer)
     {
-        if (_changes.Count == 0 && _originalValues.Count != 0)
+        if (_changes.Count == 0)
         {
-            if (tracer.IsTracingStorage)
+            if (_originalValues.Count != 0)
             {
-                foreach (StorageCell cell in _originalValues.Keys)
+                if (tracer.IsTracingStorage)
                 {
-                    tracer.ReportStorageRead(cell);
+                    foreach (StorageCell cell in _originalValues.Keys)
+                    {
+                        tracer.ReportStorageRead(cell);
+                    }
                 }
+
+                _originalValues.Clear();
             }
 
-            _originalValues.Clear();
+            _destroyedThisRound.Clear();
             return;
         }
 
         base.Commit(tracer);
     }
 
-    /// <summary>
-    /// Clear all storage at specified address
-    /// </summary>
-    /// <param name="address">Contract address</param>
+    public void MarkStorageDestroyed(Address address)
+    {
+        _destroyedThisRound.Add(address);
+        ResetContractState(address);
+    }
+
+    private void ResetContractState(Address address)
+    {
+        _toUpdateRoots.TryAdd(address, true);
+        GetOrCreateStorage(address).Clear();
+    }
+
     public override void ClearStorage(Address address)
     {
         foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
@@ -373,10 +402,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.ClearStorage(address);
 
-        _toUpdateRoots.TryAdd(address, true);
-
-        PerContractState state = GetOrCreateStorage(address);
-        state.Clear();
+        ResetContractState(address);
     }
 
     private sealed class DefaultableDictionary()
