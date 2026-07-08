@@ -31,7 +31,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly LocalMetrics _metrics = metrics;
 
 
-    private readonly Dictionary<AddressAsKey, HeadChange> _intraTxCache = [];
+    // Address -> index of its newest change in _changes; older changes reachable via Change.PrevIdx.
+    private readonly Dictionary<AddressAsKey, int> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
@@ -392,16 +393,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             int nextPosition = lastIndex - i;
             ref readonly Change change = ref changes[nextPosition];
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change!.Address);
+            ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change!.Address);
 
             if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(lastIndex, i, -1);
-            int actualPosition = head.CurrentIdx;
-            if (actualPosition != nextPosition) ThrowUnexpectedPosition(lastIndex, i, actualPosition);
+            if (head != nextPosition) ThrowUnexpectedPosition(lastIndex, i, head);
 
             if (change.PrevIdx != -1)
             {
-                ref readonly Change previous = ref changes[change.PrevIdx];
-                head = new HeadChange(change.PrevIdx, previous.ChangeType, previous.Account);
+                head = change.PrevIdx;
             }
             else if (change.ChangeType == ChangeType.JustCache)
             {
@@ -424,7 +423,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             snapshot++;
             _changes.Add(kept);
-            _intraTxCache[kept.Address] = new HeadChange(snapshot, kept.ChangeType, kept.Account);
+            _intraTxCache[kept.Address] = snapshot;
         }
         _keptInCache.Clear();
 
@@ -457,12 +456,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_intraTxCache.TryGetValue(address, out HeadChange head))
+        if (_intraTxCache.TryGetValue(address, out int head))
         {
             //we only want to persist empty accounts if they were deleted or created as empty
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-            if (head.ChangeType == ChangeType.Delete ||
-                (head.ChangeType is ChangeType.Touch or ChangeType.New && head.Account.IsEmpty))
+            Change lastChange = _changes[head];
+            if (lastChange.ChangeType == ChangeType.Delete ||
+                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsTrace) Trace(address);
@@ -553,7 +553,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            int forAssertion = _intraTxCache[change.Address].CurrentIdx;
+            int forAssertion = _intraTxCache[change.Address];
             if (forAssertion != stepsBack - i)
             {
                 ThrowUnexpectedPosition(stepsBack, i, forAssertion);
@@ -802,16 +802,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             return _cachedAccount;
         }
-        if (_intraTxCache.TryGetValue(address, out HeadChange head))
+        if (_intraTxCache.TryGetValue(address, out int head))
         {
             _cachedAddress = address;
             _cachedEpoch = _epoch;
-            return _cachedAccount = head.Account;
+            return _cachedAccount = _changes[head].Account;
         }
         return GetAndAddToCache(address);
 #else
-        return _intraTxCache.TryGetValue(address, out HeadChange head)
-            ? head.Account
+        return _intraTxCache.TryGetValue(address, out int head)
+            ? _changes[head].Account
             : GetAndAddToCache(address);
 #endif
     }
@@ -836,15 +836,15 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private void Push(Address address, Account? touchedAccount, ChangeType changeType)
     {
-        ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
+        ref int head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (changeType == ChangeType.Touch
-            && exists && head.ChangeType == ChangeType.Touch)
+            && exists && _changes[head].ChangeType == ChangeType.Touch)
         {
             return;
         }
 
-        int prevIdx = exists ? head.CurrentIdx : -1;
-        head = new HeadChange(_changes.Count, changeType, touchedAccount);
+        int prevIdx = exists ? head : -1;
+        head = _changes.Count;
         _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));
 #if ZK_EVM
         // Keep the front cache coherent: a push almost always follows a read of the same account.
@@ -939,17 +939,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         public readonly int PrevIdx = prevIdx;
 
         public bool IsNull => ChangeType == ChangeType.Null;
-    }
-
-    /// <summary>
-    /// Head of an address' change chain: the index of its newest change with that change's account and
-    /// type inlined, so reads and touch-dedup resolve with a single dictionary lookup.
-    /// </summary>
-    private readonly struct HeadChange(int currentIdx, ChangeType type, Account? account)
-    {
-        public readonly Account? Account = account;
-        public readonly int CurrentIdx = currentIdx;
-        public readonly ChangeType ChangeType = type;
     }
 
     internal struct ChangeTrace(Account? before, Account? after)
