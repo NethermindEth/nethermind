@@ -331,17 +331,17 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i]);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     if (!balance.IsZero)
@@ -349,7 +349,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
-                    worldState.ClearStorage(toBeDestroyed);
+                    if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
+                    else worldState.ClearStorage(toBeDestroyed);
                     worldState.DeleteAccount(toBeDestroyed);
                 }
             }
@@ -1275,6 +1276,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
+                        // Same derivation as Execute: !commit = build-up round spanning the block.
+                        bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
                         foreach (Address toBeDestroyed in destroyList)
@@ -1290,7 +1293,11 @@ namespace Nethermind.Evm.TransactionProcessing
                                 }
                             }
 
-                            WorldState.ClearStorage(toBeDestroyed);
+                            // Build-up rounds (!commit) span the whole block: later txs may
+                            // redeploy this address, so the order-preserving journaled clear
+                            // is required; the O(1) mark is only valid when a commit follows.
+                            if (commit) WorldState.MarkStorageDestroyed(toBeDestroyed);
+                            else WorldState.ClearStorage(toBeDestroyed);
                             WorldState.DeleteAccount(toBeDestroyed);
 
                             if (tracingRefunds)
