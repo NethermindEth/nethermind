@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -101,7 +99,6 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 storageCache,
-                preBlockCaches.StorageLoadsInFlight,
                 address,
                 isPrewarmer,
                 _metrics);
@@ -212,14 +209,12 @@ public class PrewarmerScopeProvider(
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
-        ConcurrentDictionary<StorageCell, Lazy<byte[]>> storageLoadsInFlight,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
-        private readonly ConcurrentDictionary<StorageCell, Lazy<byte[]>> storageLoadsInFlight = storageLoadsInFlight;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -240,22 +235,9 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                Lazy<byte[]> lazy = storageLoadsInFlight.GetOrAdd(
-                    storageCell,
-                    static (cell, wrapper) => new Lazy<byte[]>(
-                        () => wrapper.LoadFromTreeStorage(cell),
-                        LazyThreadSafetyMode.ExecutionAndPublication),
-                    this);
-                try
-                {
-                    value = lazy.Value;
-                    // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                    preBlockCache.Set(in storageCell, value);
-                }
-                finally
-                {
-                    storageLoadsInFlight.TryRemove(storageCell, out _);
-                }
+                value = LoadFromTreeStorage(in storageCell);
+                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
+                preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;
