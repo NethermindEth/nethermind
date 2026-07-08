@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -37,6 +38,7 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private const int StorageHeavyBalWarmupThreshold = 4096;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -130,13 +132,23 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            bool warmedBeforeExecution = ShouldWaitForBalWarmup(block);
+            if (warmedBeforeExecution)
+            {
+                balManager.WaitForBalWarmup();
+            }
+
             Task applyStateChangesTask = Task.Run(() =>
             {
                 bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
                 ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
                 try
                 {
-                    balManager.WaitForBalWarmup();
+                    if (!warmedBeforeExecution)
+                    {
+                        balManager.WaitForBalWarmup();
+                    }
+
                     BlockAccessListManager.ApplyStateChanges(block.BlockAccessList, stateProvider, specProvider.GetSpec(block.Header), !block.Header.IsGenesis || !specProvider.GenesisStateUnavailable);
                 }
                 finally
@@ -398,6 +410,13 @@ public partial class BlockProcessor
             }
 
             return result;
+        }
+
+        private static bool ShouldWaitForBalWarmup(Block block)
+        {
+            ReadOnlyBlockAccessList? blockAccessList = block.BlockAccessList;
+            return blockAccessList is not null
+                && blockAccessList.TotalStorageReads + blockAccessList.TotalStorageChangeEvents >= StorageHeavyBalWarmupThreshold;
         }
 
         private static void ProcessTransaction(
