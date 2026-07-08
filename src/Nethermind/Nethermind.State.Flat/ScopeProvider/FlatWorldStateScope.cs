@@ -291,8 +291,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        jobs.Sort(new SinkSlotReadJobComparer());
-
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
@@ -304,15 +302,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         }, parallelOptions.CancellationToken);
-    }
-
-    private readonly struct SinkSlotReadJobComparer : IComparer<(Address Address, int SelfDestructIdx, UInt256 Slot)>
-    {
-        public int Compare((Address Address, int SelfDestructIdx, UInt256 Slot) x, (Address Address, int SelfDestructIdx, UInt256 Slot) y)
-        {
-            int addressCompare = x.Address.CompareTo(y.Address);
-            return addressCompare != 0 ? addressCompare : x.Slot.CompareTo(y.Slot);
-        }
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
