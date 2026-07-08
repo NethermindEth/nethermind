@@ -149,9 +149,6 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Nothing reads blooms or the receipts root before the header hash, so the whole chain
-        // overlaps the remaining stages, including the storage/state-root tail. EndBlockTrace
-        // must then skip its header-bloom accumulation: it would race the background writes.
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
         if (ShouldCalculateReceiptsInBackground(receipts.Length, CountLogs(receipts)))
         {
