@@ -18,6 +18,15 @@ public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
 
+    /// <summary>
+    /// Gets whether multiple scopes from this provider can safely read the same base block concurrently.
+    /// </summary>
+    /// <remarks>
+    /// Providers opt in only when their scopes and backing resources support isolated concurrent reads.
+    /// The default is conservative because trie-backed scopes mutate shared node state while resolving paths.
+    /// </remarks>
+    bool SupportsConcurrentScopes => false;
+
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.

@@ -22,6 +22,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
+    public bool SupportsConcurrentScopes => baseScopeProvider.SupportsConcurrentScopes;
+
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         long scopeId = Interlocked.Increment(ref _currentScopeId);
