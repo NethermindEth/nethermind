@@ -31,8 +31,8 @@ public class RefCountingTests
         }
     }
 
-    // Duplicated for SmallRefCountingDisposable, which intentionally copies the RefCountingDisposable
-    // lease algorithm with an inline (non-cache-line-padded) counter.
+    // SmallRefCountingDisposable is a separate public type (inline counter, shared lease algorithm),
+    // so it is exercised through its own harness alongside the padded RefCountingDisposable above.
     private class TestSmallRefCounting : SmallRefCountingDisposable
     {
         private const int Used = 0;
