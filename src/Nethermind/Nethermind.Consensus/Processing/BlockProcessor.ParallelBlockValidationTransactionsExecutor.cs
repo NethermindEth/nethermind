@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -37,6 +38,7 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+        private int[] _txExecutionBalWork = [];
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -129,7 +131,8 @@ public partial class BlockProcessor
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
-            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            BuildBalWorkScores(block.BlockAccessList, _txExecutionBalWork, len);
+            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, _txExecutionBalWork, GetCanonicalExecutionLead(len));
             Task applyStateChangesTask = Task.Run(() =>
             {
                 bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
@@ -300,6 +303,7 @@ public partial class BlockProcessor
             Array.Resize(ref _gasResultPool, newLength);
             Array.Resize(ref _txExecutionOrder, newLength);
             Array.Resize(ref _txExecutionSortKeys, newLength);
+            Array.Resize(ref _txExecutionBalWork, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
                 _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
@@ -320,13 +324,15 @@ public partial class BlockProcessor
         internal static void BuildTxExecutionOrder(Transaction[] txs, int[] txExecutionOrder, int canonicalLead)
         {
             TxExecutionSortKey[] sortKeys = new TxExecutionSortKey[txs.Length];
-            BuildTxExecutionOrder(txs, txExecutionOrder, sortKeys, canonicalLead);
+            int[] balWorkScores = new int[txs.Length];
+            BuildTxExecutionOrder(txs, txExecutionOrder, sortKeys, balWorkScores, canonicalLead);
         }
 
         private static void BuildTxExecutionOrder(
             Transaction[] txs,
             int[] txExecutionOrder,
             TxExecutionSortKey[] sortKeys,
+            int[] balWorkScores,
             int canonicalLead)
         {
             int len = txs.Length;
@@ -344,10 +350,45 @@ public partial class BlockProcessor
 
             for (int i = lead; i < len; i++)
             {
-                sortKeys[i] = new(txs[i], i);
+                sortKeys[i] = new(txs[i], balWorkScores[i], i);
             }
 
             Array.Sort(sortKeys, txExecutionOrder, lead, sortCount);
+        }
+
+        private static void BuildBalWorkScores(ReadOnlyBlockAccessList? blockAccessList, int[] balWorkScores, int txCount)
+        {
+            Array.Clear(balWorkScores, 0, txCount);
+            if (blockAccessList is null)
+            {
+                return;
+            }
+
+            foreach (ReadOnlyAccountChanges accountChanges in blockAccessList.AccountChanges)
+            {
+                AddIndexedChanges(accountChanges.BalanceChanges, balWorkScores, txCount);
+                AddIndexedChanges(accountChanges.NonceChanges, balWorkScores, txCount);
+                AddIndexedChanges(accountChanges.CodeChanges, balWorkScores, txCount);
+
+                foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+                {
+                    AddIndexedChanges(slotChanges.Changes, balWorkScores, txCount);
+                }
+            }
+        }
+
+        private static void AddIndexedChanges<T>(T[] changes, int[] balWorkScores, int txCount) where T : struct, IIndexedChange
+        {
+            foreach (T change in changes)
+            {
+                uint index = change.Index;
+                if (index == 0) continue;
+                int txIndex = (int)index - 1;
+                if ((uint)txIndex < (uint)txCount)
+                {
+                    balWorkScores[txIndex]++;
+                }
+            }
         }
 
         internal static void CancelIncompleteGasResults(GasValidationResultSlot[] gasResults, int length)
@@ -428,8 +469,9 @@ public partial class BlockProcessor
         /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts heaviest
         /// estimated-work transactions first; ties resolved by ascending tx index so the
         /// schedule is deterministic.</summary>
-        private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
+        private readonly struct TxExecutionSortKey(Transaction tx, int balWorkScore, int index) : IComparable<TxExecutionSortKey>
         {
+            private readonly int _balWorkScore = balWorkScore;
             private readonly ulong _gasLimit = tx.GasLimit;
             private readonly int _dataLength = tx.DataLength;
             private readonly int _authorizationCount = tx.AuthorizationList?.Length ?? 0;
@@ -439,7 +481,10 @@ public partial class BlockProcessor
 
             public int CompareTo(TxExecutionSortKey other)
             {
-                int comparison = other._gasLimit.CompareTo(_gasLimit);
+                int comparison = other._balWorkScore.CompareTo(_balWorkScore);
+                if (comparison != 0) return comparison;
+
+                comparison = other._gasLimit.CompareTo(_gasLimit);
                 if (comparison != 0) return comparison;
 
                 comparison = other._dataLength.CompareTo(_dataLength);
