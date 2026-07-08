@@ -862,7 +862,7 @@ public class FlatWorldStateScopeProviderTests
     public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
     {
         BlockingPersistenceReader reader = new();
-        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false);
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
         SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
