@@ -97,6 +97,20 @@ on:
         required: false
         type: boolean
         default: false
+      readtrace:
+        description: >-
+          Collect per-read provenance trace (readtrace-*.csv.gz artifact). Requires a Nethermind
+          branch with the ReadTrace diagnostics (--Blocks.ReadTraceOutput). Pair with a small
+          amount (e.g. 100) or set readtrace_blocks to bound trace size.
+        required: false
+        type: boolean
+        default: false
+      readtrace_blocks:
+        description: >-
+          Read-trace block filter passed as --Blocks.ReadTraceBlocks. Empty = all blocks;
+          'first:N', 'A-B' range, or comma-separated block numbers.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -140,6 +154,8 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      readtrace: ${{ steps.resolve.outputs.readtrace }}
+      readtrace_blocks: ${{ steps.resolve.outputs.readtrace_blocks }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -167,6 +183,8 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_READTRACE: ${{ inputs.readtrace }}
+          DISPATCH_READTRACE_BLOCKS: ${{ inputs.readtrace_blocks }}
         run: |
           set -euo pipefail
 
@@ -204,6 +222,8 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            readtrace="${DISPATCH_READTRACE:-false}"
+            readtrace_blocks="${DISPATCH_READTRACE_BLOCKS:-}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -228,6 +248,8 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            readtrace="false"
+            readtrace_blocks=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -243,6 +265,8 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            readtrace="false"
+            readtrace_blocks=""
           fi
 
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
@@ -344,6 +368,8 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "readtrace=${readtrace}"
+            echo "readtrace_blocks=${readtrace_blocks}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -570,6 +596,8 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          READTRACE: ${{ needs.resolve.outputs.readtrace }}
+          READTRACE_BLOCKS: ${{ needs.resolve.outputs.readtrace_blocks }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -645,6 +673,15 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          if [[ "${READTRACE}" == "true" ]]; then
+            # Host-backed volume auto-created by expb under outputs/.../volumes/readtrace; survives container cleanup.
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_volumes.readtrace = {\"bind\": \"/readtrace\", \"mode\": \"rw\"}" "${RENDERED_CONFIG_FILE}"
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"--Blocks.ReadTraceOutput=/readtrace\"]" "${RENDERED_CONFIG_FILE}"
+            if [[ -n "${READTRACE_BLOCKS}" ]]; then
+              "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"--Blocks.ReadTraceBlocks=${READTRACE_BLOCKS}\"]" "${RENDERED_CONFIG_FILE}"
+            fi
+          fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
@@ -1021,6 +1058,44 @@ jobs:
         with:
           name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Collect read-trace output
+        if: always() && needs.resolve.outputs.readtrace == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/readtrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          MARKER: ${{ runner.temp }}/.expb-run-marker
+        run: |
+          set -euo pipefail
+
+          mapfile -t readtrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'readtrace' -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#readtrace_dirs[@]}" -eq 0 ]]; then
+            echo "No readtrace output directories found for this run."
+            exit 0
+          fi
+
+          echo "Collecting from ${#readtrace_dirs[@]} readtrace director(ies):"
+          printf '  %s\n' "${readtrace_dirs[@]}"
+
+          file_count=0
+          for d in "${readtrace_dirs[@]}"; do
+            file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
+          done
+          if [[ "${file_count}" -eq 0 ]]; then
+            echo "Readtrace directories are empty, skipping zip."
+            exit 0
+          fi
+
+          zip -1r "${ARCHIVE}" "${readtrace_dirs[@]}"
+
+      - name: Upload read-trace artifact
+        if: always() && needs.resolve.outputs.readtrace == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: readtrace-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/readtrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
           retention-days: 30
           if-no-files-found: ignore
 
