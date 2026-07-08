@@ -226,17 +226,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// </summary>
     private static T? GetExact<T>(T[] changes, uint index) where T : struct, IIndexedChange
     {
-        if (changes.Length <= 4)
-        {
-            for (int i = 0; i < changes.Length; i++)
-            {
-                T candidate = changes[i];
-                if (candidate.Index == index) return candidate;
-            }
-
-            return null;
-        }
-
         ReadOnlySpan<T> span = changes;
         int idx = span.BinarySearch(new IndexKey<T>(index));
         return idx >= 0 ? span[idx] : null;
@@ -244,16 +233,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     private static bool HasExactIndex<T>(T[] changes, uint index) where T : struct, IIndexedChange
     {
-        if (changes.Length <= 4)
-        {
-            for (int i = 0; i < changes.Length; i++)
-            {
-                if (changes[i].Index == index) return true;
-            }
-
-            return false;
-        }
-
         ReadOnlySpan<T> span = changes;
         return span.BinarySearch(new IndexKey<T>(index)) >= 0;
     }
@@ -263,22 +242,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// </summary>
     private static bool TryGetLastBefore<T>(T[] changes, uint blockAccessIndex, out T last) where T : struct, IIndexedChange
     {
-        if (changes.Length <= 4)
-        {
-            for (int i = changes.Length - 1; i >= 0; i--)
-            {
-                T candidate = changes[i];
-                if (candidate.Index < blockAccessIndex)
-                {
-                    last = candidate;
-                    return true;
-                }
-            }
-
-            last = default;
-            return false;
-        }
-
         ReadOnlySpan<T> span = changes;
         int idx = span.BinarySearch(new IndexKey<T>(blockAccessIndex));
         // (idx if found, ~idx otherwise) is the position of the first entry with Index >= target;

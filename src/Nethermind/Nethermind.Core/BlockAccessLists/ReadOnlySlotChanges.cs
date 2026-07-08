@@ -35,24 +35,7 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     /// to a parent-state reader.</summary>
     public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
     {
-        StorageChange[] changes = Changes;
-        if (changes.Length <= 4)
-        {
-            for (int i = changes.Length - 1; i >= 0; i--)
-            {
-                StorageChange candidate = changes[i];
-                if (candidate.Index < blockAccessIndex)
-                {
-                    storageChange = candidate;
-                    return true;
-                }
-            }
-
-            storageChange = default;
-            return false;
-        }
-
-        ReadOnlySpan<StorageChange> span = changes;
+        ReadOnlySpan<StorageChange> span = Changes;
         int idx = span.BinarySearch(new IndexKey<StorageChange>(blockAccessIndex));
         // Whether found exactly or not, idx (or ~idx) is the position of the first entry with
         // Index >= blockAccessIndex. The last strictly-before entry is one step earlier.
