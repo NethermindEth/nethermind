@@ -302,7 +302,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000)
+            .WithGasLimit(10_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -328,7 +328,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(0)
+            .WithGasLimit(0ul)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -414,7 +414,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000ul)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)

@@ -76,13 +76,9 @@ public class ExecutionProcessorTests
 
         _spec = ReleaseSpecSubstitute.Create();
 
-        // RequestsEnabled is a computed extension member (OR of the per-type flags), so it follows
-        // from enabling the individual request types below; setting it directly would instead land
-        // on the last term of the OR chain (BuilderRequestsEnabled) and wrongly enable EIP-8282.
         _spec.DepositsEnabled.Returns(true);
         _spec.WithdrawalRequestsEnabled.Returns(true);
         _spec.ConsolidationRequestsEnabled.Returns(true);
-        // EIP-8282 builder requests are out of scope here; their predeploys are not deployed.
         _spec.BuilderRequestsEnabled.Returns(false);
 
         _spec.DepositContractAddress.Returns(DepositContractAddress);

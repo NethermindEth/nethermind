@@ -8,10 +8,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core.Test;
 
 /// <summary>
-/// Bytecode for the two EIP-8282 builder execution-request predeploys, taken verbatim from the
-/// Glamsterdam devnet-6 (<c>tests-glamsterdam-devnet@v6.0.0</c>) <c>eip8282_builder_execution_requests</c>
-/// fixture pre-state. Used to seed test-chain genesis so Amsterdam block production/validation can
-/// system-call the predeploys (mirrors <see cref="Eip7002TestConstants"/> / <see cref="Eip7251TestConstants"/>).
+/// Bytecode for the two EIP-8282 builder execution-request predeploys.
 /// </summary>
 public static class Eip8282TestConstants
 {
