@@ -25,6 +25,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
     private readonly Lazy<WarmReadPool>? _warmReadPool;
+    private readonly FlatStorageValueCache? _storageValueCache;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -55,6 +56,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
+        FlatStorageValueCache? storageValueCache = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -81,6 +83,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
+        _storageValueCache = storageValueCache;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
@@ -226,6 +229,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _concurrencyQuota,
                             storageRoot,
                             address,
+                            _storageValueCache,
                             _logManager);
 
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
@@ -305,8 +309,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+
+        if (_storageValueCache is not null && _storageValueCache.TryGet(address, in slot, out byte[] cached))
+        {
+            sink.OnStorageRead(in cell, cached);
+            return;
+        }
+
+        byte[]? loaded = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        byte[] raw = _storageValueCache?.Set(address, in slot, loaded)
+            ?? (loaded is null || loaded.Length == 0 ? StorageTree.ZeroBytes : loaded);
+        sink.OnStorageRead(in cell, raw);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
@@ -359,6 +372,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
+            _storageValueCache,
             _logManager);
 
         return storage;
@@ -398,6 +412,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         _currentStateId = newStateId;
+        _storageValueCache?.AcceptState(newStateId);
         _pausePrewarmer = false;
     }
 
