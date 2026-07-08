@@ -135,6 +135,36 @@ public class TrieWarmerTests
     }
 
     [Test]
+    public async Task PushSlotJobMpmc_DeepBacklog_BoostsWorkersBeyondConfiguredCount()
+    {
+        if (Environment.ProcessorCount - 2 <= 2) Assert.Ignore("Needs more than 4 logical processors to observe the boost");
+
+        const int ConfiguredWorkerCount = 2;
+        const int JobCount = 600; // > BoostQueueDepth
+
+        _config.TrieWarmerWorkerCount = ConfiguredWorkerCount;
+        TrieWarmer warmer = new(_logManager, _config);
+        using BlockingStorageWarmer storageWarmer = new(parallelismTarget: ConfiguredWorkerCount + 1);
+
+        try
+        {
+            for (int i = 0; i < JobCount; i++)
+            {
+                UInt256 index = (uint)i;
+                Assert.That(warmer.PushSlotJobMpmc(storageWarmer, index, sequenceId: i), Is.True);
+            }
+
+            Assert.That(storageWarmer.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(storageWarmer.MaxConcurrency, Is.GreaterThan(ConfiguredWorkerCount));
+        }
+        finally
+        {
+            storageWarmer.Release();
+            await warmer.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task PushSlotJobMpmc_WithOneBusyProcessor_WakesIdleProcessorForSinglePendingJob()
     {
         _config.TrieWarmerWorkerCount = 2;
