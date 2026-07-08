@@ -263,8 +263,7 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    // WithPrecompileChanges yields 25 BAL items (2935=2, 4788=3, 7002=5, 7251=5, 8282 deposit=5, 8282 exit=5);
-    // the size cap is itemCount <= gasLimit / Eip7928Constants.ItemCost (2000), so the boundary is 25*2000 = 50000.
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
     [TestCase(50_000ul, true)]
     [TestCase(49_999ul, false)]
     public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
@@ -302,7 +301,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000)
+            .WithGasLimit(10_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -328,7 +327,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(0)
+            .WithGasLimit(0ul)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -414,7 +413,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000ul)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)

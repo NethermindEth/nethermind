@@ -26,7 +26,6 @@ public static class ExecutionRequestExtensions
 
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
-    // Deposit, withdrawal, consolidation, and the two EIP-8282 builder request types.
     public const int MaxRequestsCount = 5;
 
     public static readonly byte[][] EmptyRequests = [];
@@ -131,7 +130,7 @@ public static class ExecutionRequestExtensions
                 case ExecutionRequestType.BuilderDepositRequest:
                 case ExecutionRequestType.BuilderExitRequest:
                     throw new NotSupportedException(
-                        $"EIP-8282 builder requests (type {type}) are not representable in the stateless input format (tests-zkevm v0.5.0).");
+                        $"EIP-8282 builder requests (type {type}) are not representable in the stateless input format.");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(requests), type, "Unknown execution request type.");
             }
