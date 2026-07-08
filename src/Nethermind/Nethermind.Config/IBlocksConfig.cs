@@ -46,9 +46,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
-    [ConfigItem(Description = "Whether the prewarmer skips speculatively executing transactions the main thread has already started. Since the prewarmer starts together with the main thread, warming a transaction the main thread is already executing only re-does work and contends with it; skipping frees warming capacity for transactions ahead of the main thread. State is warming-only, so this never affects consensus.", DefaultValue = "True", HiddenFromDocs = true)]
-    bool PreWarmSkipStartedTxs { get; set; }
-
     [ConfigItem(Description = "Whether speculative (prewarm) execution pushes trie warm-up hints for touched accounts and written storage slots, so the commit-path trie nodes are loaded ahead of the final commit. Only affects the flat state layout; warming is advisory and never affects consensus.", DefaultValue = "True", HiddenFromDocs = true)]
     bool PreWarmTrieHints { get; set; }
 

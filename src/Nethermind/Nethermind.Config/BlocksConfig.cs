@@ -63,8 +63,6 @@ namespace Nethermind.Config
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
-        public bool PreWarmSkipStartedTxs { get; set; } = true;
-
         public bool PreWarmTrieHints { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;

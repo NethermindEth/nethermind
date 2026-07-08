@@ -34,8 +34,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
-    private readonly bool _skipStartedTxs;
-    private BlockState? _currentBlockState;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -50,11 +48,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager)
-    {
-        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
-        _skipStartedTxs = blocksConfig.PreWarmSkipStartedTxs;
-    }
+        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -88,7 +82,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
-                _currentBlockState = blockState;
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
@@ -114,11 +107,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
-    public void OnBeforeTxExecution() => _currentBlockState?.IncrementTransactionCounter();
-
     public CacheType ClearCaches()
     {
-        _currentBlockState = null;
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
@@ -296,8 +286,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
-            if (blockState.PreWarmer._skipStartedTxs && blockState.LastExecutedTransaction >= txIndex) return;
-
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
@@ -497,12 +485,5 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec)
-    {
-        private int _lastExecutedTransaction = -1;
-
-        public int LastExecutedTransaction => Volatile.Read(ref _lastExecutedTransaction);
-
-        public void IncrementTransactionCounter() => Interlocked.Increment(ref _lastExecutedTransaction);
-    }
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
 }
