@@ -39,8 +39,20 @@ namespace Nethermind.TxPool
         public static long PendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds;
 
         [CounterMetric]
-        [Description("Number of pending transaction retry handlers called after the original transaction request timed out.")]
+        [Description("Number of pending transaction retry handler-resource pairs called after the original transaction request timed out.")]
         public static long PendingTransactionRetryHandlersCalledOnTimeout;
+
+        [CounterMetric]
+        [Description("Number of batched pending transaction retry handler invocations called after original transaction requests timed out.")]
+        public static long PendingTransactionRetryBatchHandlersCalledOnTimeout;
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry resources included in batched handler invocations after timeout.")]
+        public static long PendingTransactionRetryBatchResourcesCalledOnTimeout;
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry handler invocations that used the single-message fallback after timeout.")]
+        public static long PendingTransactionRetryFallbackHandlersCalledOnTimeout;
 
         [CounterMetric]
         [Description("Number of pending transaction retry resources that timed out and called at least one retry handler.")]
@@ -69,9 +81,29 @@ namespace Nethermind.TxPool
         public static ConcurrentDictionary<string, long> NewPooledTransactionsRequestedByClient { get; } = new();
 
         [CounterMetric]
+        [Description("Number of pending transactions requested from peers, grouped by peer client and request reason.")]
+        [KeyIsLabel("client", "reason")]
+        public static ConcurrentDictionary<(string Client, string Reason), long> NewPooledTransactionsRequestedByClientAndReason { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of pooled transaction request messages sent to peers, grouped by peer client and request reason.")]
+        [KeyIsLabel("client", "reason")]
+        public static ConcurrentDictionary<(string Client, string Reason), long> NewPooledTransactionRequestMessagesByClientAndReason { get; } = new();
+
+        [CounterMetric]
         [Description("Number of pending transactions returned by peers, grouped by peer client.")]
         [KeyIsLabel("client")]
         public static ConcurrentDictionary<string, long> NewPooledTransactionsReturnedByClient { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of pooled transaction response messages received from peers, grouped by peer client.")]
+        [KeyIsLabel("client")]
+        public static ConcurrentDictionary<string, long> NewPooledTransactionResponseMessagesByClient { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of empty pooled transaction response messages received from peers, grouped by peer client.")]
+        [KeyIsLabel("client")]
+        public static ConcurrentDictionary<string, long> NewPooledTransactionEmptyResponseMessagesByClient { get; } = new();
 
         [CounterMetric]
         [Description("Number of pending transactions received that were ignored.")]
@@ -224,8 +256,23 @@ namespace Nethermind.TxPool
         public static void AddNewPooledTransactionsRequestedByClient(string client, long count) =>
             AddBy(NewPooledTransactionsRequestedByClient, client, count);
 
+        public static void AddNewPooledTransactionsRequestedByClient(string client, long count, PooledTransactionRequestReason reason)
+        {
+            AddNewPooledTransactionsRequestedByClient(client, count);
+            AddBy(NewPooledTransactionsRequestedByClientAndReason, (client, GetReasonLabel(reason)), count);
+        }
+
+        public static void AddNewPooledTransactionRequestMessagesByClient(string client, long count, PooledTransactionRequestReason reason) =>
+            AddBy(NewPooledTransactionRequestMessagesByClientAndReason, (client, GetReasonLabel(reason)), count);
+
         public static void AddNewPooledTransactionsReturnedByClient(string client, long count) =>
             AddBy(NewPooledTransactionsReturnedByClient, client, count);
+
+        public static void AddNewPooledTransactionResponseMessagesByClient(string client, long count) =>
+            AddBy(NewPooledTransactionResponseMessagesByClient, client, count);
+
+        public static void AddNewPooledTransactionEmptyResponseMessagesByClient(string client, long count) =>
+            AddBy(NewPooledTransactionEmptyResponseMessagesByClient, client, count);
 
         public static void AddPendingTransactionRetryHandlersSkippedOnReceived(long count) =>
             Add(ref PendingTransactionRetryHandlersSkippedOnReceived, count);
@@ -238,6 +285,15 @@ namespace Nethermind.TxPool
 
         public static void AddPendingTransactionRetryHandlersCalledOnTimeout(long count) =>
             Add(ref PendingTransactionRetryHandlersCalledOnTimeout, count);
+
+        public static void AddPendingTransactionRetryBatchHandlersCalledOnTimeout(long count) =>
+            Add(ref PendingTransactionRetryBatchHandlersCalledOnTimeout, count);
+
+        public static void AddPendingTransactionRetryBatchResourcesCalledOnTimeout(long count) =>
+            Add(ref PendingTransactionRetryBatchResourcesCalledOnTimeout, count);
+
+        public static void AddPendingTransactionRetryFallbackHandlersCalledOnTimeout(long count) =>
+            Add(ref PendingTransactionRetryFallbackHandlersCalledOnTimeout, count);
 
         public static void AddPendingTransactionRetryResourcesTimedOutWithHandlers(long count) =>
             Add(ref PendingTransactionRetryResourcesTimedOutWithHandlers, count);
@@ -261,14 +317,37 @@ namespace Nethermind.TxPool
             Interlocked.Add(ref metric, count);
         }
 
-        private static void AddBy(ConcurrentDictionary<string, long> metric, string client, long count)
+        private static string GetReasonLabel(PooledTransactionRequestReason reason) => reason switch
+        {
+            PooledTransactionRequestReason.Retry => "retry",
+            _ => "initial"
+        };
+
+        private static void AddBy<TKey>(ConcurrentDictionary<TKey, long> metric, TKey key, long count)
+            where TKey : notnull
         {
             if (count <= 0)
             {
                 return;
             }
 
-            metric.AddOrUpdate(client, static (_, added) => added, static (_, current, added) => current + added, count);
+            metric.AddOrUpdate(key, static (_, added) => added, static (_, current, added) => current + added, count);
         }
+    }
+
+    /// <summary>
+    /// Reason why a pooled transaction request was sent to a peer.
+    /// </summary>
+    public enum PooledTransactionRequestReason
+    {
+        /// <summary>
+        /// The request follows a new pooled transaction hash announcement.
+        /// </summary>
+        Initial,
+
+        /// <summary>
+        /// The request follows a RetryCache timeout for a previously requested transaction.
+        /// </summary>
+        Retry
     }
 }

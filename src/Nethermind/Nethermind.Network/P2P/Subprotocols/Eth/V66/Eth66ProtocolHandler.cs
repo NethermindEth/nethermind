@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        TxPool.Metrics.AddNewPooledTransactionsReturnedByClient(PeerClientMetricLabel, pooledTxMsg.EthMessage.Transactions?.Count ?? 0);
+                        TrackPooledTransactionsResponseByClient(pooledTxMsg.EthMessage.Transactions?.Count ?? 0);
                         Handle(pooledTxMsg.EthMessage);
                     }
                     else
@@ -262,7 +262,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry, countAnnouncement: false);
+            RequestPooledTransactions<GetPooledTransactionsMessage>(
+                hashesToRetry,
+                countAnnouncement: false,
+                PooledTransactionRequestReason.Retry);
+        }
+
+        public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
+        {
+            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                hashesToRetry.Add(new Hash256(txHashes[i]));
+            }
+
+            RequestPooledTransactions<GetPooledTransactionsMessage>(
+                hashesToRetry,
+                countAnnouncement: false,
+                PooledTransactionRequestReason.Retry);
         }
 
         private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>

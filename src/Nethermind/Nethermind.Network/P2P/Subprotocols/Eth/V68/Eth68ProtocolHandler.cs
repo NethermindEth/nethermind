@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -110,7 +111,11 @@ public class Eth68ProtocolHandler(ISession session,
         if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
-    protected void RequestPooledTransactions(IOwnedReadOnlyList<Hash256> hashes, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<byte> types)
+    protected void RequestPooledTransactions(
+        IOwnedReadOnlyList<Hash256> hashes,
+        IOwnedReadOnlyList<int> sizes,
+        IOwnedReadOnlyList<byte> types,
+        PooledTransactionRequestReason requestReason = PooledTransactionRequestReason.Initial)
     {
         ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         ReadOnlySpan<int> sizesSpan = sizes.AsSpan();
@@ -165,7 +170,14 @@ public class Eth68ProtocolHandler(ISession session,
 
         if (hashesToRequest.Count is not 0)
         {
-            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count);
+            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(
+                PeerClientMetricLabel,
+                hashesToRequest.Count,
+                requestReason);
+            TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(
+                PeerClientMetricLabel,
+                1,
+                requestReason);
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
         }
         else
@@ -175,11 +187,70 @@ public class Eth68ProtocolHandler(ISession session,
 
         void SendHashesToRequest()
         {
-            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count);
+            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(
+                PeerClientMetricLabel,
+                hashesToRequest.Count,
+                requestReason);
+            TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(
+                PeerClientMetricLabel,
+                1,
+                requestReason);
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
             hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
             toRequestCount = 0;
+        }
+    }
+
+    public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
+    {
+        ArrayPoolList<Hash256>? hashesWithShape = null;
+        ArrayPoolList<int>? sizes = null;
+        ArrayPoolList<byte>? types = null;
+        ArrayPoolList<ValueHash256>? hashesWithoutShape = null;
+
+        try
+        {
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                ValueHash256 txHash = txHashes[i];
+                if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
+                {
+                    hashesWithShape ??= new ArrayPoolList<Hash256>(txHashes.Length);
+                    sizes ??= new ArrayPoolList<int>(txHashes.Length);
+                    types ??= new ArrayPoolList<byte>(txHashes.Length);
+
+                    hashesWithShape.Add(new Hash256(txHash));
+                    sizes.Add(txShape.Size);
+                    types.Add((byte)txShape.Type);
+                }
+                else
+                {
+                    hashesWithoutShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    hashesWithoutShape.Add(txHash);
+                }
+            }
+
+            if (hashesWithShape is not null)
+            {
+                RequestPooledTransactions(hashesWithShape, sizes!, types!, PooledTransactionRequestReason.Retry);
+            }
+
+            if (hashesWithoutShape is not null)
+            {
+                ReadOnlySpan<ValueHash256> missingShapeHashes = hashesWithoutShape.AsSpan();
+                for (int i = 0; i < missingShapeHashes.Length; i++)
+                {
+                    base.HandleMessage(PooledTransactionRequestMessage.New(missingShapeHashes[i]));
+                }
+            }
+        }
+        finally
+        {
+            hashesWithShape?.Dispose();
+            sizes?.Dispose();
+            types?.Dispose();
+            hashesWithoutShape?.Dispose();
         }
     }
 

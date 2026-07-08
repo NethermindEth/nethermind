@@ -46,10 +46,42 @@ public class RetryCacheTests
         public bool WasCalled => _handleMessageCallCount > 0;
         public Action<ResourceRequestMessage> OnHandleMessage { get; set; }
 
-        public void HandleMessage(ResourceRequestMessage message)
+        public virtual void HandleMessage(ResourceRequestMessage message)
         {
             Interlocked.Increment(ref _handleMessageCallCount);
             OnHandleMessage?.Invoke(message);
+        }
+    }
+
+    private sealed class BatchTestHandler : TestHandler, IBatchMessageHandler<ResourceRequestMessage, ResourceId>
+    {
+        private readonly Lock _lock = new();
+        private readonly List<int> _batchResourceValues = [];
+        private int _handleMessagesCallCount;
+
+        public int HandleMessagesCallCount => _handleMessagesCallCount;
+
+        public int[] BatchResourceValues
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _batchResourceValues];
+                }
+            }
+        }
+
+        public void HandleMessages(ReadOnlySpan<ResourceId> resourceIds)
+        {
+            Interlocked.Increment(ref _handleMessagesCallCount);
+            lock (_lock)
+            {
+                for (int i = 0; i < resourceIds.Length; i++)
+                {
+                    _batchResourceValues.Add(resourceIds[i].Value);
+                }
+            }
         }
     }
 
@@ -91,6 +123,7 @@ public class RetryCacheTests
         TestHandler request2 = new();
         TestHandler request3 = new();
         long handlersCalledOnTimeout = Metrics.PendingTransactionRetryHandlersCalledOnTimeout;
+        long fallbackHandlersCalledOnTimeout = Metrics.PendingTransactionRetryFallbackHandlersCalledOnTimeout;
         long resourcesTimedOutWithHandlers = Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers;
         long resourcesTimedOutWithHandlersAgeMilliseconds = Metrics.PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds;
 
@@ -101,6 +134,7 @@ public class RetryCacheTests
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => Metrics.PendingTransactionRetryHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(handlersCalledOnTimeout + 2).After(AssertTimeoutMs, 100));
+        Assert.That(() => Metrics.PendingTransactionRetryFallbackHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(fallbackHandlersCalledOnTimeout + 2).After(AssertTimeoutMs, 100));
         Assert.That(() => Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers, Is.GreaterThanOrEqualTo(resourcesTimedOutWithHandlers + 1).After(AssertTimeoutMs, 100));
         Assert.That(() => Metrics.PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds, Is.GreaterThan(resourcesTimedOutWithHandlersAgeMilliseconds).After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
@@ -135,6 +169,38 @@ public class RetryCacheTests
         Assert.That(() => request4.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
         Assert.That(request3.WasCalled, Is.False);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Announced_MultipleResourcesForSameBatchHandler_ExecutesOneBatchedRetryRequest()
+    {
+        TestHandler request1 = new();
+        TestHandler request3 = new();
+        BatchTestHandler batchRequest = new();
+        long handlersCalledOnTimeout = Metrics.PendingTransactionRetryHandlersCalledOnTimeout;
+        long batchHandlersCalledOnTimeout = Metrics.PendingTransactionRetryBatchHandlersCalledOnTimeout;
+        long batchResourcesCalledOnTimeout = Metrics.PendingTransactionRetryBatchResourcesCalledOnTimeout;
+        long fallbackHandlersCalledOnTimeout = Metrics.PendingTransactionRetryFallbackHandlersCalledOnTimeout;
+
+        _cache.Announced(1, request1);
+        _cache.Announced(1, batchRequest);
+        _cache.Announced(2, request3);
+        _cache.Announced(2, batchRequest);
+
+        Assert.That(() => batchRequest.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchRequest.BatchResourceValues, Is.EquivalentTo(new[] { 1, 2 }));
+            Assert.That(batchRequest.HandleMessageCallCount, Is.Zero);
+            Assert.That(request1.WasCalled, Is.False);
+            Assert.That(request3.WasCalled, Is.False);
+            Assert.That(Metrics.PendingTransactionRetryHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(handlersCalledOnTimeout + 2));
+            Assert.That(Metrics.PendingTransactionRetryBatchHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(batchHandlersCalledOnTimeout + 1));
+            Assert.That(Metrics.PendingTransactionRetryBatchResourcesCalledOnTimeout, Is.GreaterThanOrEqualTo(batchResourcesCalledOnTimeout + 2));
+            Assert.That(Metrics.PendingTransactionRetryFallbackHandlersCalledOnTimeout, Is.EqualTo(fallbackHandlersCalledOnTimeout));
+        }
     }
 
     [Test]

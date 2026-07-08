@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
-          IMessageHandler<PooledTransactionRequestMessage>
+          IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
         public override string Name => "eth65";
 
@@ -78,7 +78,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        TxPool.Metrics.AddNewPooledTransactionsReturnedByClient(PeerClientMetricLabel, pooledTxMsg.Transactions?.Count ?? 0);
+                        TrackPooledTransactionsResponseByClient(pooledTxMsg.Transactions?.Count ?? 0);
                         Handle(pooledTxMsg);
                     }
                     else
@@ -181,7 +181,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool countAnnouncement = true)
+        protected void RequestPooledTransactions<TMessage>(
+            IOwnedReadOnlyList<Hash256> hashes,
+            bool countAnnouncement = true,
+            PooledTransactionRequestReason requestReason = PooledTransactionRequestReason.Initial)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
             AddNotifiedTransactions(hashes.AsSpan());
@@ -203,7 +206,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (newTxHashes.Count <= MaxNumberOfTxsInOneMsg)
             {
-                TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, newTxHashes.Count);
+                TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, newTxHashes.Count, requestReason);
+                TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(PeerClientMetricLabel, 1, requestReason);
                 Send(TMessage.New(newTxHashes));
             }
             else
@@ -217,7 +221,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                         ArrayPoolList<Hash256> hashesToRequest = new(end - start);
                         hashesToRequest.AddRange(newTxHashes.AsSpan()[start..end]);
 
-                        TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count);
+                        TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count, requestReason);
+                        TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(PeerClientMetricLabel, 1, requestReason);
                         Send(TMessage.New(hashesToRequest));
                     }
                 }
@@ -229,6 +234,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+
+        protected void TrackPooledTransactionsResponseByClient(int transactionsCount)
+        {
+            TxPool.Metrics.AddNewPooledTransactionsReturnedByClient(PeerClientMetricLabel, transactionsCount);
+            TxPool.Metrics.AddNewPooledTransactionResponseMessagesByClient(PeerClientMetricLabel, 1);
+
+            if (transactionsCount == 0)
+            {
+                TxPool.Metrics.AddNewPooledTransactionEmptyResponseMessagesByClient(PeerClientMetricLabel, 1);
+            }
         }
 
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
@@ -283,7 +299,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry, countAnnouncement: false);
+            RequestPooledTransactions<GetPooledTransactionsMessage>(
+                hashesToRetry,
+                countAnnouncement: false,
+                PooledTransactionRequestReason.Retry);
+        }
+
+        public virtual void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
+        {
+            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                hashesToRetry.Add(new Hash256(txHashes[i]));
+            }
+
+            RequestPooledTransactions<GetPooledTransactionsMessage>(
+                hashesToRetry,
+                countAnnouncement: false,
+                PooledTransactionRequestReason.Retry);
         }
     }
 }

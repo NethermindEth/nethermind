@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -201,22 +201,65 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             long announcedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client);
             long requestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client);
+            long initialRequestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "initial"));
+            long initialRequestMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "initial"));
             long returnedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client);
+            long responseMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionResponseMessagesByClient, client);
+            long emptyResponseMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionEmptyResponseMessagesByClient, client);
 
             using NewPooledTransactionHashesMessage hashesMsg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
             Transaction tx1 = Build.A.Transaction.WithNonce(1UL).SignedAndResolved().TestObject;
             Transaction tx2 = Build.A.Transaction.WithNonce(2UL).SignedAndResolved().TestObject;
             using PooledTransactionsMessage txsMsg = new(new[] { tx1, tx2 }.ToPooledList());
+            using PooledTransactionsMessage emptyTxsMsg = new(Array.Empty<Transaction>().ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
             HandleZeroMessage(txsMsg, Eth65MessageCode.PooledTransactions);
+            HandleZeroMessage(emptyTxsMsg, Eth65MessageCode.PooledTransactions);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client), Is.EqualTo(announcedBefore + 2));
                 Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client), Is.EqualTo(requestedBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "initial")), Is.EqualTo(initialRequestedBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "initial")), Is.EqualTo(initialRequestMessagesBefore + 1));
                 Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client), Is.EqualTo(returnedBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionResponseMessagesByClient, client), Is.EqualTo(responseMessagesBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionEmptyResponseMessagesByClient, client), Is.EqualTo(emptyResponseMessagesBefore + 1));
+            }
+        }
+
+        [Test]
+        public void should_page_batched_retry_request_hashes_inside_handler()
+        {
+            const int txCount = 300;
+            ValueHash256[] txHashes = GenerateValueHashes(txCount);
+
+            _handler.HandleMessages(txHashes);
+
+            _session.Received(2).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+                m.Hashes.Count == 256 || m.Hashes.Count == txCount - 256));
+        }
+
+        [Test]
+        public void should_track_batched_retry_request_metrics_by_peer_client()
+        {
+            const string client = "geth";
+            _session.Node.ClientId = "Geth/v1.16.0/linux-amd64/go1.24";
+            ValueHash256[] txHashes = GenerateValueHashes(3);
+
+            long requestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client);
+            long retryRequestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "retry"));
+            long retryRequestMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "retry"));
+
+            _handler.HandleMessages(txHashes);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client), Is.EqualTo(requestedBefore + 3));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "retry")), Is.EqualTo(retryRequestedBefore + 3));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "retry")), Is.EqualTo(retryRequestMessagesBefore + 1));
             }
         }
 
@@ -231,6 +274,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             metric.TryGetValue(client, out long value);
             return value;
+        }
+
+        private static long GetMetricValue<TKey>(ConcurrentDictionary<TKey, long> metric, TKey key)
+            where TKey : notnull
+        {
+            metric.TryGetValue(key, out long value);
+            return value;
+        }
+
+        private static ValueHash256[] GenerateValueHashes(int count)
+        {
+            ValueHash256[] txHashes = new ValueHash256[count];
+            for (int i = 0; i < txHashes.Length; i++)
+            {
+                txHashes[i] = new Hash256(i.ToString("X64"));
+            }
+
+            return txHashes;
         }
 
         private void HandleIncomingStatusMessage()

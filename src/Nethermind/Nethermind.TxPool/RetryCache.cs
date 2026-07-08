@@ -55,6 +55,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             while (await timer.WaitForNextTickAsync(token))
             {
+                Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
                 try
                 {
                     while (!token.IsCancellationRequested && _expiringQueue.TryPeek(out (TResourceId ResourceId, DateTimeOffset ExpiresAfter) item) && item.ExpiresAfter <= DateTimeOffset.UtcNow)
@@ -67,11 +68,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                             {
                                 try
                                 {
-                                    RetryRequestSender sender = new(this, item.ResourceId);
-                                    long activatedAtTimestamp = bag.Drain(ref sender);
-                                    Metrics.AddPendingTransactionRetryHandlersCalledOnTimeout(sender.HandlersCalled);
+                                    RetryRequestCollector collector = new(this, item.ResourceId, batchedRetryRequests);
+                                    long activatedAtTimestamp = bag.Drain(ref collector);
+                                    batchedRetryRequests = collector.BatchedRetryRequests;
 
-                                    if (sender.HandlersCalled > 0)
+                                    Metrics.AddPendingTransactionRetryHandlersCalledOnTimeout(collector.HandlersCalled);
+                                    Metrics.AddPendingTransactionRetryFallbackHandlersCalledOnTimeout(collector.FallbackHandlersCalled);
+
+                                    if (collector.HandlersCalled > 0)
                                     {
                                         Metrics.AddPendingTransactionRetryResourcesTimedOutWithHandlers(1);
                                         Metrics.AddPendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds(GetElapsedMilliseconds(activatedAtTimestamp));
@@ -84,11 +88,18 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                             }
                         }
                     }
+
+                    SendBatchedRetryRequests(batchedRetryRequests);
+                    batchedRetryRequests = null;
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
                     Clear();
+                }
+                finally
+                {
+                    DisposeBatchedRetryRequests(batchedRetryRequests);
                 }
             }
 
@@ -216,10 +227,60 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         return (long)Stopwatch.GetElapsedTime(activatedAtTimestamp).TotalMilliseconds;
     }
 
-    private struct RetryRequestSender(RetryCache<TMessage, TResourceId> cache, TResourceId resourceId) : IHandlerBagDrainProcessor<TMessage>
+    private void SendBatchedRetryRequests(Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests)
     {
+        if (batchedRetryRequests is null)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>> kvp in batchedRetryRequests)
+        {
+            IBatchMessageHandler<TMessage, TResourceId> retryHandler = kvp.Key;
+            ArrayPoolList<TResourceId> resourceIds = kvp.Value;
+
+            try
+            {
+                Metrics.AddPendingTransactionRetryBatchHandlersCalledOnTimeout(1);
+                Metrics.AddPendingTransactionRetryBatchResourcesCalledOnTimeout(resourceIds.Count);
+                retryHandler.HandleMessages(resourceIds.AsSpan());
+            }
+            catch (Exception ex)
+            {
+                _logger.TraceError($"Failed to send batched retry requests to {retryHandler} for {resourceIds.Count} {typeof(TResourceId)} resources", ex);
+            }
+            finally
+            {
+                resourceIds.Dispose();
+            }
+        }
+
+        batchedRetryRequests.Clear();
+    }
+
+    private static void DisposeBatchedRetryRequests(Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests)
+    {
+        if (batchedRetryRequests is null)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>> kvp in batchedRetryRequests)
+        {
+            kvp.Value.Dispose();
+        }
+    }
+
+    private struct RetryRequestCollector(
+        RetryCache<TMessage, TResourceId> cache,
+        TResourceId resourceId,
+        Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests) : IHandlerBagDrainProcessor<TMessage>
+    {
+        public Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? BatchedRetryRequests { get; private set; } = batchedRetryRequests;
+
         private bool _requestingResourceSet;
         public int HandlersCalled { get; private set; }
+        public int FallbackHandlersCalled { get; private set; }
 
         public void Process(IMessageHandler<TMessage> retryHandler)
         {
@@ -234,12 +295,32 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             try
             {
                 HandlersCalled++;
+                if (retryHandler is IBatchMessageHandler<TMessage, TResourceId> batchRetryHandler)
+                {
+                    AddBatchedRetryRequest(batchRetryHandler);
+                    return;
+                }
+
+                FallbackHandlersCalled++;
                 retryHandler.HandleMessage(TMessage.New(resourceId));
             }
             catch (Exception ex)
             {
                 cache._logger.TraceError($"Failed to send retry request to {retryHandler} for {resourceId}", ex);
             }
+        }
+
+        private void AddBatchedRetryRequest(IBatchMessageHandler<TMessage, TResourceId> retryHandler)
+        {
+            BatchedRetryRequests ??= [];
+
+            if (!BatchedRetryRequests.TryGetValue(retryHandler, out ArrayPoolList<TResourceId>? resourceIds))
+            {
+                resourceIds = new ArrayPoolList<TResourceId>(1);
+                BatchedRetryRequests.Add(retryHandler, resourceIds);
+            }
+
+            resourceIds.Add(resourceId);
         }
     }
 }

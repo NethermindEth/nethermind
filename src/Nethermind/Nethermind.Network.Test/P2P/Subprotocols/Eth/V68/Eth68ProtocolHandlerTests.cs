@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
@@ -288,6 +288,50 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void should_divide_batched_retry_GetPooledTransactionsMessage_using_announced_tx_sizes()
+    {
+        const int numberOfTransactions = 3;
+        using ArrayPoolList<byte> types = new(numberOfTransactions);
+        using ArrayPoolList<int> sizes = new(numberOfTransactions);
+        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            Hash256 hash = new(i.ToString("X64"));
+            types.Add((byte)TxType.EIP1559);
+            sizes.Add(TransactionsMessage.MaxPacketSize);
+            hashes.Add(hash);
+            txHashes[i] = hash;
+        }
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        _session.ClearReceivedCalls();
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(numberOfTransactions).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1));
+    }
+
+    [Test]
+    public void should_request_batched_retry_hashes_without_announced_tx_sizes_individually()
+    {
+        const int numberOfTransactions = 3;
+        ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
+
+        for (int i = 0; i < numberOfTransactions; i++)
+        {
+            txHashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        _handler.HandleMessages(txHashes);
+
+        _session.Received(numberOfTransactions).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1));
+    }
+
+    [Test]
     public void Should_request_oversized_announced_transactions_together()
     {
         using ArrayPoolList<byte> types = new(3) { 0, 0, 0 };
@@ -333,7 +377,10 @@ public class Eth68ProtocolHandlerTests
 
         long announcedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client);
         long requestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client);
+        long initialRequestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "initial"));
+        long initialRequestMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "initial"));
         long returnedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client);
+        long responseMessagesBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionResponseMessagesByClient, client);
 
         GenerateTxLists(2, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
@@ -347,13 +394,23 @@ public class Eth68ProtocolHandlerTests
         {
             Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client), Is.EqualTo(announcedBefore + 2));
             Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client), Is.EqualTo(requestedBefore + 2));
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClientAndReason, (client, "initial")), Is.EqualTo(initialRequestedBefore + 2));
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionRequestMessagesByClientAndReason, (client, "initial")), Is.EqualTo(initialRequestMessagesBefore + 1));
             Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client), Is.EqualTo(returnedBefore + 2));
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionResponseMessagesByClient, client), Is.EqualTo(responseMessagesBefore + 1));
         }
     }
 
     private static long GetMetricValue(ConcurrentDictionary<string, long> metric, string client)
     {
         metric.TryGetValue(client, out long value);
+        return value;
+    }
+
+    private static long GetMetricValue<TKey>(ConcurrentDictionary<TKey, long> metric, TKey key)
+        where TKey : notnull
+    {
+        metric.TryGetValue(key, out long value);
         return value;
     }
 
