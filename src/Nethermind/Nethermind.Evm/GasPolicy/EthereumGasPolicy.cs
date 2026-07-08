@@ -45,7 +45,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         new()
         {
             Value = 0,
-            StateReservoir = (long)Eip8037Constants.SystemCallStateReservoir,
+            StateReservoir = Eip8037Constants.SystemCallStateReservoir,
         };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -320,7 +320,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             // EIP-8037: charge the regular component first so an OOG halt does not
             // spill state gas into gas_left and then restore it to the parent frame.
-            true => TryConsumeStateAndRegularGas(ref gas, (long)GasCostOf.SSetState, regularWriteCost),
+            true => TryConsumeStateAndRegularGas(ref gas, GasCostOf.SSetState, regularWriteCost),
             false => UpdateGas(ref gas, GasCostOf.SSet),
         };
     }
@@ -442,7 +442,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        true => ConsumeStateGas(ref gas, (long)GasCostOf.NewAccountState),
+        true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
         false => UpdateGas(ref gas, GasCostOf.NewAccount)
     };
 
@@ -494,7 +494,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         ulong tokensInCallData = IntrinsicGasCalculator.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IntrinsicGasCalculator.CalculateFloorTokensInAccessList(tx, spec);
-        (ulong authRegularCost, ulong authStateCost) = IntrinsicGasCalculator.AuthorizationListCost(tx, spec);
+        (ulong authRegularCost, long authStateCost) = IntrinsicGasCalculator.AuthorizationListCost(tx, spec);
         ulong accessListCost = IntrinsicGasCalculator.AccessListCost(tx, spec, floorTokensInAccessList);
 
         ulong baseCost = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
@@ -505,15 +505,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                           + authRegularCost
                           + Eip2780ExtraGas(tx, spec);
         ulong floorCost = IntrinsicGasCalculator.CalculateFloorCost(tx, spec, tokensInCallData, floorTokensInAccessList);
-        ulong createStateCost = CreateStateCost(tx, spec);
-        ulong totalStateCost = authStateCost + createStateCost;
+        long createStateCost = CreateStateCost(tx, spec);
+        long totalStateCost = authStateCost + createStateCost;
         return spec.IsEip8037Enabled
             ? new IntrinsicGas<EthereumGasPolicy>(
                 new EthereumGasPolicy
                 {
                     Value = regularGas,
-                    StateReservoir = (long)totalStateCost,
-                    StateGasUsed = (long)totalStateCost,
+                    StateReservoir = totalStateCost,
+                    StateGasUsed = totalStateCost,
                 },
                 FromULong(floorCost))
             : new IntrinsicGas<EthereumGasPolicy>(FromULong(regularGas), FromULong(floorCost));
@@ -558,7 +558,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             : 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong CreateStateCost(Transaction tx, IReleaseSpec spec) =>
+    private static long CreateStateCost(Transaction tx, IReleaseSpec spec) =>
         tx.IsContractCreation && spec.IsEip8037Enabled ? GasCostOf.CreateState : 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
