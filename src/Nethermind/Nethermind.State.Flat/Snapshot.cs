@@ -65,19 +65,13 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
 
-    // The trie commit hammers the node dictionaries from up to ProcessorCount committer threads;
-    // a ProcessorCount lock array cuts bucket-lock contention. Default (small) initial capacity so
-    // the per-block NoResizeClear stays cheap — only the lock array, not the bucket array, scales.
-    private static readonly int NodeConcurrencyLevel = Math.Max(2, Environment.ProcessorCount);
-    private const int DefaultCapacity = 31;
-
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new(NodeConcurrencyLevel, DefaultCapacity);
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new(NodeConcurrencyLevel, DefaultCapacity);
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
 
     public void Reset()
     {

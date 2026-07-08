@@ -46,10 +46,6 @@ public sealed unsafe class BloomFilter : IDisposable
     // 64-byte aligned base address for AVX loads (and cacheline semantics)
     private byte* _data;
     private nuint _dataSize;
-    // One byte per 64B bloom line, set by Add; lets Clear zero only touched lines. Racy byte stores are
-    // fine: they only ever transition 0->1 and Clear never runs concurrently with Add (pool quiescence).
-    private byte* _dirtyLines;
-    private nuint _dirtyLinesSize;
     private int _disposed;
 
     public BloomFilter(long capacity, double bitsPerKey, long initialCount = 0)
@@ -92,10 +88,6 @@ public sealed unsafe class BloomFilter : IDisposable
 
         try
         {
-            // Padded to 8 so Clear can scan whole ulongs.
-            _dirtyLinesSize = checked((nuint)((NumBlocks + 7) & ~7L));
-            _dirtyLines = (byte*)NativeMemory.AllocZeroed(_dirtyLinesSize);
-
             // Hint the kernel to use huge pages BEFORE we touch the memory (Clear).
             // This ensures that when Clear() triggers page faults, the kernel allocates 2MB physical pages immediately.
             if (useHugePages)
@@ -125,11 +117,6 @@ public sealed unsafe class BloomFilter : IDisposable
             GC.RemoveMemoryPressure((long)_dataSize);
             _data = null;
             _dataSize = 0;
-            if (_dirtyLines != null)
-            {
-                NativeMemory.Free(_dirtyLines);
-                _dirtyLines = null;
-            }
             throw;
         }
     }
@@ -146,7 +133,6 @@ public sealed unsafe class BloomFilter : IDisposable
         GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
 
         byte* linePtr = _data + lineIndex * CacheLineBytes;
-        _dirtyLines[lineIndex] = 1;
 
         // Scalar atomic add (SIMD add isn't worth it with atomics)
         const int shift = 32 - 9; // log2(512)=9
@@ -196,44 +182,11 @@ public sealed unsafe class BloomFilter : IDisposable
     }
 
     /// <summary>Zero the bloom bits and reset count to 0.</summary>
-    /// <remarks>Only lines flagged dirty by <see cref="Add"/> are zeroed; a filter reset with few adds
-    /// costs O(touched lines) instead of O(capacity). Must not run concurrently with <see cref="Add"/>.</remarks>
     public void Clear()
     {
         if (Volatile.Read(ref _disposed) != 0)
             throw new ObjectDisposedException(nameof(BloomFilter));
 
-        long count = Volatile.Read(ref _count);
-        if (count == 0) return;
-
-        if (count >= NumBlocks)
-        {
-            ClearAll();
-            return;
-        }
-
-        ulong* dirty = (ulong*)_dirtyLines;
-        long words = (long)_dirtyLinesSize >> 3;
-        for (long w = 0; w < words; w++)
-        {
-            if (dirty[w] == 0) continue;
-            ulong flags = dirty[w];
-            dirty[w] = 0;
-            long lineBase = w << 3;
-            for (int b = 0; b < 8; b++)
-            {
-                if ((flags & (0xFFUL << (b << 3))) != 0)
-                {
-                    new Span<byte>(_data + (lineBase + b) * CacheLineBytes, CacheLineBytes).Clear();
-                }
-            }
-        }
-
-        Volatile.Write(ref _count, 0);
-    }
-
-    private void ClearAll()
-    {
         long totalBytes = DataBytes;
         long off = 0;
         const int Chunk = 8 * MemorySizes.MiB;
@@ -243,7 +196,6 @@ public sealed unsafe class BloomFilter : IDisposable
             new Span<byte>(_data + off, len).Clear();
             off += len;
         }
-        NativeMemory.Clear(_dirtyLines, _dirtyLinesSize);
         Volatile.Write(ref _count, 0);
     }
 
@@ -259,13 +211,6 @@ public sealed unsafe class BloomFilter : IDisposable
             GC.RemoveMemoryPressure((long)_dataSize);
             _data = null;
             _dataSize = 0;
-        }
-
-        if (_dirtyLines != null)
-        {
-            NativeMemory.Free(_dirtyLines);
-            _dirtyLines = null;
-            _dirtyLinesSize = 0;
         }
     }
 

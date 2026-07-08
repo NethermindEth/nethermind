@@ -321,18 +321,6 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
-    /// <summary>Seeds the account read-back cache without taking a bucket lock when the key is already present.</summary>
-    /// <remarks>Repeated reads of the same account dominate <c>HintGet</c>; a present entry is authoritative
-    /// because reads consult the changed-account map first, so re-writing the just-read value is a no-op.</remarks>
-    public void HintAccount(Address address, Account? account)
-    {
-        HashedKey<Address> key = new(address);
-        if (!_changedAccounts.ContainsKey(key))
-        {
-            _changedAccounts.TryAdd(key, account);
-        }
-    }
-
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
