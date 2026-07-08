@@ -110,7 +110,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 : GasCostOf.Free;
 
         SClearRefund = spec.IsEip8038Enabled
-            ? Eip8038Constants.StorageClearRefund
+            ? RefundOf.SClearEip8038
             : spec.IsEip3529Enabled
                 ? RefundOf.SClearAfterEip3529
                 : RefundOf.SClearBeforeEip3529;
