@@ -15,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -237,6 +238,93 @@ public class BlockCachePreWarmerTests
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
+    }
+
+    /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsAccessList_AndHonorsCancellation()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        StorageCell declaredSlot = new(TestItem.AddressB, 10); // seeded in genesis
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressB)
+            .AddStorage(declaredSlot.Index)
+            .Build();
+
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithType(TxType.AccessList).WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .WithAccessList(accessList).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in declaredSlot, out _), Is.True,
+            "declared access-list slots are warmed for the main thread");
+    }
+
+    /// <summary>A cancelled token stops the access-list warm (storage-key dimension): live warms the tail slot, cancelled does not.</summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new AccessList.Builder().AddAddress(TestItem.AddressB);
+        for (int i = 0; i < 256; i++) builder.AddStorage((UInt256)(1000 + i));
+        AccessList accessList = builder.Build();
+        StorageCell tailSlot = new(TestItem.AddressB, 1255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            preBlockCaches.StorageCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms the whole access list");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the warm before the tail");
+        }
+    }
+
+    /// <summary>A cancelled token stops the per-address access-list warm (many address-only entries): live warms the tail address, cancelled does not.</summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation_ManyAddresses()
+    {
+        static Address AddrFromIndex(int i)
+        {
+            byte[] b = new byte[20];
+            b[16] = (byte)(i >> 24); b[17] = (byte)(i >> 16); b[18] = (byte)(i >> 8); b[19] = (byte)i;
+            return new Address(b);
+        }
+
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new();
+        for (int i = 0; i < 256; i++) builder.AddAddress(AddrFromIndex(i)); // address-only entries, no storage keys
+        AccessList accessList = builder.Build();
+        Address tail = AddrFromIndex(255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            preBlockCaches.StateCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms every declared address");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the per-address warm before the tail");
+        }
     }
 
     /// <summary>
@@ -532,6 +620,97 @@ public class BlockCachePreWarmerTests
                 disposed.Add(this);
                 inner.Dispose();
             }
+        }
+    }
+
+    [Test]
+    public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        Block block = BuildTwoSenderBlock();
+
+        // Control: main thread has not started any tx, so every tx is speculatively warmed.
+        int warmedWhenNoneStarted = 0;
+        using (ManualResetEventSlim openGate = new(initialState: true))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmedWhenNoneStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        }
+        Assert.That(warmedWhenNoneStarted, Is.EqualTo(block.Transactions.Length),
+            "with the main thread not started, all transactions must be speculatively warmed");
+
+        // Skip: main thread reports it has started every tx (while warming is gated before building its scopes),
+        // so all speculative warming must be skipped.
+        int warmedWhenAllStarted = 0;
+        using (ManualResetEventSlim gate = new(initialState: false))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, gate, () => Interlocked.Increment(ref warmedWhenAllStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, maxPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(BuildParentHeader()))
+            {
+                Task task = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+                // Advance the prewarmer's view of main-thread progress past every tx while warming is gated at env.Build.
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    preWarmer.OnBeforeTxExecution();
+                }
+                gate.Set();
+                task.GetAwaiter().GetResult();
+            }
+        }
+        Assert.That(warmedWhenAllStarted, Is.EqualTo(0),
+            "transactions the main thread has already started must not be speculatively warmed");
+    }
+
+    /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>
+    private sealed class WarmupCountingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim gate,
+        Action onWarmup)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CountingEnv(IReadOnlyTxProcessorSource inner, ManualResetEventSlim gate, Action onWarmup) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                gate.Wait();
+                return new CountingScope(inner.Build(baseBlock), onWarmup);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingScope(IReadOnlyTxProcessingScope inner, Action onWarmup) : IReadOnlyTxProcessingScope
+        {
+            private readonly CountingTxProcessor _processor = new(inner.TransactionProcessor, onWarmup);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, Action onWarmup)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) onWarmup();
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
         }
     }
 }

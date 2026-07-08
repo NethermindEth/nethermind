@@ -293,9 +293,11 @@ namespace Nethermind.Synchronization.SnapSync
         {
             foreach (ValueHash256 hash in codeHashes)
             {
-                CodesToRetrieve.Enqueue(hash);
+                EnqueueCodeHash(hash);
             }
         }
+
+        public void EnqueueCodeHash(ValueHash256 hash) => CodesToRetrieve.Enqueue(hash);
 
         public void ReportCodeRequestFinished(ReadOnlySpan<ValueHash256> codeHashes)
         {

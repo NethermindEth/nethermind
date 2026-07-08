@@ -839,6 +839,7 @@
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "[9.0.0, )",
           "KubernetesClient": "[19.0.2, )",
           "Nethermind.Api": "[1.39.0-unstable, )",
+          "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.39.0-unstable, )"
         }
       },
@@ -908,8 +909,7 @@
       "nethermind.kademlia": {
         "type": "Project",
         "dependencies": {
-          "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Logging": "[1.39.0-unstable, )"
+          "Collections.Pooled": "[1.0.82, )"
         }
       },
       "nethermind.keystore": {
@@ -996,6 +996,7 @@
           "Nethermind.Crypto": "[1.39.0-unstable, )",
           "Nethermind.Facade": "[1.39.0-unstable, )",
           "Nethermind.Kademlia": "[1.39.0-unstable, )",
+          "Nethermind.Logging.Microsoft": "[1.39.0-unstable, )",
           "Nethermind.Network": "[1.39.0-unstable, )",
           "Nethermind.Network.Enr": "[1.39.0-unstable, )"
         }
@@ -1033,6 +1034,7 @@
           "Nethermind.Config": "[1.39.0-unstable, )",
           "Nethermind.Core": "[1.39.0-unstable, )",
           "Nethermind.Evm": "[1.39.0-unstable, )",
+          "Nethermind.Init": "[1.39.0-unstable, )",
           "Nethermind.Logging": "[1.39.0-unstable, )",
           "Nethermind.Synchronization": "[1.39.0-unstable, )"
         }

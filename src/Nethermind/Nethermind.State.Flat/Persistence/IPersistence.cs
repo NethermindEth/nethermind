@@ -62,8 +62,18 @@ public interface IPersistence
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
-        void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+
+        /// <summary>
+        /// Deletes every state trie node whose node and subtree are entirely contained within the value range
+        /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c> — i.e. every node at path P for which
+        /// <c><paramref name="from"/> &lt;= P.ToLowerBoundPath()</c> and <c>P.ToUpperBoundPath() &lt;= <paramref name="to"/></c>.
+        /// A node whose subtree only partially overlaps the range (an ancestor of the range) is left intact.
+        /// </summary>
+        void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
+
+        /// <inheritdoc cref="DeleteStateTrieNodeRange"/>
+        /// <remarks>Restricted to the storage trie of the account identified by <paramref name="addressHash"/>.</remarks>
+        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     /// <summary>

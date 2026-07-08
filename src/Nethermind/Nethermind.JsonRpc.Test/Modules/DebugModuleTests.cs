@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Facade.Eth;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -53,7 +54,8 @@ public class DebugModuleTests
         _specProvider,
         _blockchainBridge,
         new BlocksConfig(),
-        _blockFinder);
+        _blockFinder,
+        new BlockForRpcFactory());
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -94,8 +96,7 @@ public class DebugModuleTests
         RpcTest.AssertSuccess<byte[]>(response);
     }
 
-    [TestCase(1)]
-    [TestCase(0x1)]
+    [TestCase("0x1")]
     public async Task DebugGetChainLevel_WhenLevelExists_ReturnsChainLevel(object parameter)
     {
         _debugBridge.GetLevelInfo(1).Returns(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1000), new BlockInfo(TestItem.KeccakB, 1001)));
@@ -231,17 +232,19 @@ public class DebugModuleTests
     {
         GethTxTraceEntry entry = new()
         {
-            Storage = new Dictionary<string, string>
+            Storage = new Dictionary<UInt256, UInt256>
             {
-                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
-                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+                {UInt256.Parse("1".PadLeft(64, '0')), UInt256.Parse("2".PadLeft(64, '0'))},
+                {UInt256.Parse("3".PadLeft(64, '0')), UInt256.Parse("4".PadLeft(64, '0'))},
             },
-            Memory =
-            [
-                "5".PadLeft(64, '0'),
-                "6".PadLeft(64, '0')
-            ],
-            Stack = [],
+            Memory = (ReadOnlyMemory<byte>?)new byte[64]
+            {
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+            },
+            Stack = null,
             Opcode = "STOP",
             Gas = 22000,
             GasCost = 1,
@@ -278,23 +281,25 @@ public class DebugModuleTests
                         Gas = 22000,
                         GasCost = 1,
                         Depth = 1,
-                        Memory =
-                        [
-                            "0000000000000000000000000000000000000000000000000000000000000005",
-                            "0000000000000000000000000000000000000000000000000000000000000006"
-                        ],
+                        Memory = (ReadOnlyMemory<byte>?)new byte[64]
+                        {
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+                        },
                         Opcode = "STOP",
                         ProgramCounter = 0,
-                        Stack = [],
-                        Storage = new Dictionary<string, string>
+                        Stack = null,
+                        Storage = new Dictionary<UInt256, UInt256>
                         {
                             {
-                                "0000000000000000000000000000000000000000000000000000000000000001",
-                                "0000000000000000000000000000000000000000000000000000000000000002"
+                                UInt256.Parse("0000000000000000000000000000000000000000000000000000000000000001"),
+                                UInt256.Parse("0000000000000000000000000000000000000000000000000000000000000002")
                             },
                             {
-                                "0000000000000000000000000000000000000000000000000000000000000003",
-                                "0000000000000000000000000000000000000000000000000000000000000004"
+                                UInt256.Parse("0000000000000000000000000000000000000000000000000000000000000003"),
+                                UInt256.Parse("0000000000000000000000000000000000000000000000000000000000000004")
                             },
                         }
                     }

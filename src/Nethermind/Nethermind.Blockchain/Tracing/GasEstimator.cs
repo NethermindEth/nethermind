@@ -32,7 +32,7 @@ public class GasEstimator(
     public const string InsufficientBalance = TxErrorMessages.InsufficientFundsForTransfer;
 
     /// <summary>Message emitted when the sender cannot cover gas * price + value.</summary>
-    public const string InsufficientFundsForGas = "insufficient funds for gas * price + value";
+    public const string InsufficientFundsForGas = TxErrorMessages.InsufficientFundsForGas;
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
@@ -127,9 +127,17 @@ public class GasEstimator(
         if (feeCap == UInt256.Zero)
             return bounds;
 
-        ulong allowance = (ulong)UInt256.Min(available / feeCap, (UInt256)ulong.MaxValue);
+        ulong allowance = AllowanceFromFunds(in available, in feeCap);
         return bounds with { RightBound = Math.Min(bounds.RightBound, allowance) };
     }
+
+    /// <summary>
+    /// Gas units the sender can afford from <paramref name="available"/> funds at <paramref name="feeCap"/>
+    /// per gas (Geth's allowance cap), saturated to <see cref="ulong.MaxValue"/>. Returns
+    /// <see cref="ulong.MaxValue"/> when <paramref name="feeCap"/> is zero (no per-gas cost).
+    /// </summary>
+    public static ulong AllowanceFromFunds(in UInt256 available, in UInt256 feeCap) =>
+        feeCap.IsZero ? ulong.MaxValue : (ulong)UInt256.Min(available / feeCap, (UInt256)ulong.MaxValue);
 
     private EstimationResult BinarySearchEstimate(
         Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer,

@@ -858,4 +858,83 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
     }
 
+    [Test]
+    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
+    {
+        BlockingPersistenceReader reader = new();
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false);
+        FlatDbConfig config = new();
+        ResourcePool resourcePool = new(config);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        await using TrieWarmer warmer = new(LimboLogs.Instance, config);
+
+        FlatWorldStateScope scope = new(
+            new StateId(0, TestItem.KeccakA),
+            bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            Substitute.For<IFlatCommitTarget>(),
+            config,
+            warmer,
+            LimboLogs.Instance);
+
+        // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
+        // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
+        scope.HintGet(TestItem.AddressA, null);
+        Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+
+        reader.ResumeReads.Set();
+
+        Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
+    }
+
+    private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader
+    {
+        private int _activeReads;
+        private volatile bool _isDisposed;
+        private volatile bool _disposedDuringActiveRead;
+
+        public ManualResetEventSlim ReadEntered { get; } = new(false);
+        public ManualResetEventSlim ResumeReads { get; } = new(false);
+        public bool IsDisposed => _isDisposed;
+        public bool DisposedDuringActiveRead => _disposedDuringActiveRead;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _activeReads);
+            try
+            {
+                ReadEntered.Set();
+                ResumeReads.Wait(TimeSpan.FromSeconds(60));
+                return null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeReads);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Volatile.Read(ref _activeReads) != 0) _disposedDuringActiveRead = true;
+            _isDisposed = true;
+            ReadEntered.Dispose();
+            ResumeReads.Dispose();
+        }
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+    }
 }
