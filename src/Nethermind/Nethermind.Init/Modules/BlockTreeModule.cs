@@ -36,7 +36,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
-            .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
+            .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
@@ -82,6 +82,6 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
         new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
 
-    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
-        new BlockAccessListStore(balDb);
+    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockAccessListStore(balDb, deferredWriter: deferredWriter, deferBal: receiptConfig.DeferredPersistence && receiptConfig.DeferBlockBodyPersistence, persistenceBarrier: persistenceBarrier);
 }
