@@ -38,9 +38,6 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     [JsonIgnore]
     public int TotalStorageChangeEvents { get; }
 
-    [JsonIgnore]
-    public bool HasCodeChanges { get; }
-
     /// <summary>
     /// Keccak of the BAL's wire (RLP) encoding, cached by the decoder so the consensus-side hash
     /// check avoids re-hashing per block. <c>null</c> for BALs synthesised in-process.
@@ -77,18 +74,15 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         _accountChanges = new Dictionary<AddressAsKey, ReadOnlyAccountChanges>(orderedAccounts.Length);
         int totalReads = 0;
         int totalChangeEvents = 0;
-        bool hasCodeChanges = false;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
         {
             _accountChanges.Add(a.Address, a);
             totalReads += a.StorageReads.Length;
             foreach (ReadOnlySlotChanges slot in a.StorageChanges) totalChangeEvents += slot.Changes.Length;
-            hasCodeChanges |= a.CodeChanges.Length > 0;
         }
         ItemCount = itemCount;
         TotalStorageReads = totalReads;
         TotalStorageChangeEvents = totalChangeEvents;
-        HasCodeChanges = hasCodeChanges;
         WireHash = wireHash;
     }
 

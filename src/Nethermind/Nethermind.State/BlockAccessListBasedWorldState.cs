@@ -44,9 +44,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     {
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = _suggestedBlockAccessList is { HasCodeChanges: true }
-            ? BuildCodeChangesByHash()
-            : null;
+        _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
