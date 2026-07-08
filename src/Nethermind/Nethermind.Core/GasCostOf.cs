@@ -70,19 +70,19 @@ namespace Nethermind.Core
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        public const ulong CostPerStateByte = 1530; // eip-8037
-        public const ulong StateBytesPerStorageSet = 64; // eip-8037
-        public const ulong StateBytesPerNewAccount = 120; // eip-8037
-        public const ulong StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
+        public const long CostPerStateByte = 1530; // eip-8037
+        public const long StateBytesPerStorageSet = 64; // eip-8037
+        public const long StateBytesPerNewAccount = 120; // eip-8037
+        public const long StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
         public const ulong SSetRegular = 2_900;
-        public const long SSetState = (long)(StateBytesPerStorageSet * CostPerStateByte);
+        public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const ulong CreateRegular = 9_000;
-        public const long CreateState = (long)(StateBytesPerNewAccount * CostPerStateByte);
-        public const long NewAccountState = (long)(StateBytesPerNewAccount * CostPerStateByte);
+        public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong CodeDepositRegularPerWord = 6;
-        public const long CodeDepositState = (long)CostPerStateByte;
+        public const long CodeDepositState = CostPerStateByte;
         public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
-        public const long PerAuthBaseState = (long)(StateBytesPerAuthBase * CostPerStateByte);
+        public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 

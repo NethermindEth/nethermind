@@ -10,10 +10,10 @@ public static class Eip8037Constants
     public const ulong PerAuthBaseRegularCost = 7_500;
 
     /// <summary> State bytes charged per authorization tuple for the state-gas dimension. </summary>
-    public const ulong StateBytesPerAuthBase = 23;
+    public const long StateBytesPerAuthBase = 23;
 
     public const ulong SystemCallBaseGasLimit = 30_000_000;
-    public const ulong SystemMaxSstoresPerCall = 16;
-    public const long SystemCallStateReservoir = (long)(GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall);
+    public const long SystemMaxSstoresPerCall = 16;
+    public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
     public const ulong SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
 }
