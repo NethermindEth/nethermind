@@ -104,12 +104,6 @@ public static class IntrinsicGasCalculator
     private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
         (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
-    /// <summary>
-    /// We should use the post-EIP-2028 non-zero calldata multiplier for the EIP-7623 floor cost,
-    /// even when EIP-2028 itself is disabled and the regular intrinsic calldata cost still uses
-    /// the pre-EIP-2028 pricing.
-    /// Matches Geth behavior.
-    /// </summary>
     private static ulong CalculateEip7623FloorTokensInCallData(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData)
     {
         if (spec.IsEip2028Enabled) return tokensInCallData;
