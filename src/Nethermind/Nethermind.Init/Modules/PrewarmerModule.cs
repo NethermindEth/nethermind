@@ -37,9 +37,11 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
@@ -71,5 +73,15 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+
+            if (blocksConfig.PreWarmStateFromMempool)
+            {
+                // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved
+                // when the prewarmer is activated so it subscribes to head updates as soon as processing is wired up.
+                builder
+                    .AddScoped<MempoolStatePrewarmer>()
+                    .ResolveOnServiceActivation<MempoolStatePrewarmer, IBlockCachePreWarmer>();
+            }
+        }
     }
 }

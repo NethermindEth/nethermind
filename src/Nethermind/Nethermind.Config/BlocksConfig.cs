@@ -63,6 +63,10 @@ namespace Nethermind.Config
 
         public int PreWarmStateConcurrency { get; set; } = 0;
 
+        public bool PreWarmStateFromMempool { get; set; } = false;
+
+        public int MempoolPreWarmMaxTxPerSender { get; set; } = 16;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 

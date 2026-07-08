@@ -461,6 +461,137 @@ public class BlockCachePreWarmerTests
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
     }
 
+    /// <summary>
+    /// Baseline: with no speculative pass, the reactive path always clears the caches at block start, so a sentinel
+    /// entry does not survive.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithoutSpeculativePass_ClearsCaches()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        BlockHeader head = BuildParentHeader();
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        Block next = BuildChildBlock(head);
+        await RunPreWarmCaches(preWarmer, next, head, Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+            "without a speculative pass the reactive path must clear the caches");
+    }
+
+    /// <summary>
+    /// A speculative pass warmed for a given parent and fork hands the caches off to the next block that builds on that
+    /// exact parent under the same fork, so a sentinel entry survives (no clear happens).
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WhenSpeculativelyWarmedForSameParent_HandsOffWithoutClearing()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        BlockHeader head = BuildParentHeader();
+        Assert.That(head.Hash, Is.Not.Null, "precondition: head must have a hash to publish a handoff marker");
+
+        await RunSpeculativePreWarm(preWarmer, head, Osaka.Instance);
+
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        Block next = BuildChildBlock(head);
+        await RunPreWarmCaches(preWarmer, next, head, Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.True,
+            "matching parent and fork must hand off the warmed caches instead of clearing them");
+    }
+
+    /// <summary>
+    /// A speculative pass for one parent does not hand off to a block that declares a different parent — the caches are
+    /// cleared as usual.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WhenSpeculativelyWarmedForDifferentParent_ClearsCaches()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        BlockHeader head = BuildParentHeader();
+        await RunSpeculativePreWarm(preWarmer, head, Osaka.Instance);
+
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        // Same base state for warming, but the block declares an unrelated parent hash, so the marker must not match.
+        Block next = Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+            .WithGasLimit(30_000_000).WithParentHash(TestItem.KeccakA).TestObject;
+        await RunPreWarmCaches(preWarmer, next, head, Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+            "a mismatched parent hash must not hand off the warmed caches");
+    }
+
+    /// <summary>
+    /// The handoff is one-shot: once a block consumes the marker, the next block for the same parent clears the caches
+    /// again (there is no speculative pass backing it).
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_HandoffMarker_IsConsumedOnce()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        BlockHeader head = BuildParentHeader();
+        await RunSpeculativePreWarm(preWarmer, head, Osaka.Instance);
+
+        // First block consumes the handoff.
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head), head, Osaka.Instance);
+
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        // Second block for the same parent has no marker to consume, so it must clear.
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head), head, Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+            "the handoff marker must only be honored once");
+    }
+
+    /// <summary>
+    /// Handoff safety invariant: a speculative pass executes mempool transactions that will not be in the real block,
+    /// so the shared caches must hold each key's <em>committed</em> base-state value (what block execution reads first),
+    /// never the speculatively-written value. Here A sends value in the warmed txs, yet its cached account must still
+    /// show the committed balance.
+    /// </summary>
+    [Test]
+    public async Task StartSpeculativePreWarm_CachesCommittedBaseState_NotSpeculativeWrites()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        await RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance);
+
+        AddressAsKey senderA = TestItem.AddressA;
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in senderA, out Account? cachedA), Is.True,
+            "sender A must be warmed by speculative execution");
+        Assert.That(cachedA!.Balance, Is.EqualTo(1_000_000.Ether),
+            "the cache must hold A's committed balance, not the post-execution (value + gas deducted) balance");
+    }
+
+    private Block BuildChildBlock(BlockHeader head) =>
+        Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+            .WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
+
+    // Sync on purpose — the speculative pass builds its own per-worker state scopes; blocking here keeps the test thread
+    // free of TrieStore's thread-affine scope disposal (see RunPreWarmCaches).
+    private Task RunSpeculativePreWarm(BlockCachePreWarmer preWarmer, BlockHeader head, IReleaseSpec spec)
+    {
+        preWarmer.StartSpeculativePreWarm(BuildTwoSenderBlock(), head, spec);
+        preWarmer.SpeculativePreWarmTask.GetAwaiter().GetResult();
+        return Task.CompletedTask;
+    }
+
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();

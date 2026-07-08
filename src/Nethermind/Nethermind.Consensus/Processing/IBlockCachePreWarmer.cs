@@ -16,4 +16,18 @@ public interface IBlockCachePreWarmer : IDisposable
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
+
+    /// <summary>
+    /// Speculatively warms the caches against <paramref name="head"/>'s post-state using the transactions of
+    /// <paramref name="speculativeBlock"/> (built from the mempool). If the next block to be processed builds on
+    /// <paramref name="head"/> under the same fork, <see cref="PreWarmCaches"/> reuses the warmed entries instead of
+    /// clearing them. Cancels and replaces any previously started speculative pass.
+    /// </summary>
+    void StartSpeculativePreWarm(Block speculativeBlock, BlockHeader head, IReleaseSpec spec);
+
+    /// <summary>
+    /// Requests cancellation of an in-flight speculative pass without waiting for it to finish. Cheap; safe to call
+    /// when no pass is running.
+    /// </summary>
+    void CancelSpeculativePreWarm();
 }
