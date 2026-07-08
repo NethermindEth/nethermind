@@ -205,7 +205,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
-                    int storageChangeCount = ac.StorageChanges.Length;
+                    ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                    int storageChangeCount = storageChanges.Length;
 
                     Account? account = sink is null && storageChangeCount == 0
                         ? null
@@ -218,9 +219,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    // Storage-change trie-path warmup is driven by HintSet while ApplyStateChanges
-                    // replays the BAL. Doing it here competes with the flat slot-value read warming
-                    // that transactions need immediately.
+                    if (storageChangeCount > 0)
+                    {
+                        FlatStorageTree storageWarmer = new(
+                            this,
+                            _warmer,
+                            _snapshotBundle,
+                            _configuration,
+                            _concurrencyQuota,
+                            storageRoot,
+                            address,
+                            _logManager);
+
+                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                        {
+                            UInt256 key = slotChanges.Key;
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                Interlocked.Increment(ref _outstandingWarmups);
+                        }
+                    }
 
                     if (accounts is not null)
                     {
