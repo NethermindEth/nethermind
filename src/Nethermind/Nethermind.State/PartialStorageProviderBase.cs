@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -16,11 +15,11 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase(ILogManager? logManager) : IDisposable
+    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
-        protected readonly ArrayPoolList<Change> _changes = new(Resettable.StartCapacity);
+        protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
 
         // stack of snapshot indexes on changes for start of each transaction
@@ -109,7 +108,7 @@ namespace Nethermind.State
                 }
             }
 
-            _changes.Truncate(snapshot + 1);
+            CollectionsMarshal.SetCount(_changes, snapshot + 1);
             currentPosition = _changes.Count - 1;
             foreach (Change kept in _keptInCache)
             {
@@ -154,8 +153,6 @@ namespace Nethermind.State
         /// Reset the storage state
         /// </summary>
         public virtual void Reset(bool resetBlockChanges = true) => Reset();
-
-        public void Dispose() => _changes.Dispose();
 
         private void Reset()
         {

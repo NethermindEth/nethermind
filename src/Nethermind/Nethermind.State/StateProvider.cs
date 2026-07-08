@@ -24,7 +24,7 @@ using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>, IDisposable
+internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
@@ -47,7 +47,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private Dictionary<Hash256AsKey, byte[]>? _codeBatch;
     private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
-    private readonly ArrayPoolList<Change> _changes = new(Resettable.StartCapacity);
+    private readonly List<Change> _changes = new(Resettable.StartCapacity);
     internal IWorldStateScopeProvider.IScope? _tree;
 
     private bool _needsStateRootUpdate;
@@ -386,7 +386,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (_keptInCache.Capacity < stepsBack)
             _keptInCache.Capacity = stepsBack;
 
-        ReadOnlySpan<Change> changes = _changes.AsSpan();
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         // Roll back each change from newest down to target
         for (int i = 0; i < stepsBack; i++)
         {
@@ -417,7 +417,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         ReadOnlySpan<Change> keepInCache = CollectionsMarshal.AsSpan(_keptInCache);
         // Truncate the change log to the restore point
-        _changes.Truncate(snapshot + 1);
+        CollectionsMarshal.SetCount(_changes, snapshot + 1);
 
         // Re-append any cache-only entries, updating their positions
         foreach (ref readonly Change kept in keepInCache)
@@ -523,7 +523,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
 
-        ReadOnlySpan<Change> changes = _changes.AsSpan();
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         for (int i = 0; i <= stepsBack; i++)
         {
             ref readonly Change change = ref changes[stepsBack - i];
@@ -870,8 +870,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return addresses;
         }
     }
-
-    public void Dispose() => _changes.Dispose();
 
     public void Reset(bool resetBlockChanges = true)
     {
