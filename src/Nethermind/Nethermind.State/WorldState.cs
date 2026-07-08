@@ -344,10 +344,13 @@ namespace Nethermind.State
         private IWorldStateScopeProvider.IWorldStateWriteBatch? _earlyWriteBatch;
         private Task? _earlyStorageRootsTask;
 
+        // Test-only kill switch enabling A/B state-root comparison of the two paths.
+        internal static bool DisableEarlyStorageRoots;
+
         public void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude)
         {
             DebugGuardInScope();
-            if (_earlyWriteBatch is not null) return;
+            if (DisableEarlyStorageRoots || _earlyWriteBatch is not null) return;
 
             IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
             // The snapshot touches the provider's shared dictionaries and therefore runs here,
