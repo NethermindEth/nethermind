@@ -464,9 +464,9 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
-    private static byte[] RentBuffer(int minLength, out bool clean)
+    private static byte[] RentBuffer(int minLength, out int dirtyLength)
     {
-        clean = true;
+        dirtyLength = 0;
         byte[]?[]? cache = _cleanArrays;
         int cleanArrayCount = _cleanArrayCount - 1;
         for (int i = cleanArrayCount; i >= 0; i--)
@@ -538,30 +538,31 @@ public struct EvmPooledMemory
     private static int ClassIndex(int length) =>
         BitOperations.Log2(BitOperations.RoundUpToPowerOf2((uint)length)) - MinClassExponent;
 
-    private static byte[] RentBuffer(int minLength, out bool clean)
+    private static byte[] RentBuffer(int minLength, out int dirtyLength)
     {
         if (minLength > MaxCachedArrayLength)
         {
-            clean = false;
-            return RentLarge(minLength);
+            byte[] large = RentLarge(minLength);
+            dirtyLength = large.Length;
+            return large;
         }
 
         int classIndex = ClassIndex(Math.Max(minLength, MinRentSize));
         if (_cleanBuffers[classIndex].TryDequeue(out byte[]? buffer))
         {
             Interlocked.Decrement(ref _cleanCounts[classIndex]);
-            clean = true;
+            dirtyLength = 0;
             return buffer;
         }
 
         if (_dirtyBuffers[classIndex].TryDequeue(out (byte[] Data, int DirtyLength) dirty))
         {
             Interlocked.Decrement(ref _dirtyCount);
-            clean = false;
+            dirtyLength = dirty.DirtyLength;
             return dirty.Data;
         }
 
-        clean = true;
+        dirtyLength = 0;
         return new byte[1 << (classIndex + MinClassExponent)];
     }
 
@@ -609,25 +610,33 @@ public struct EvmPooledMemory
     {
         while (true)
         {
-            bool didWork = false;
-            for (int classIndex = 0; classIndex < ClassCount; classIndex++)
-            {
-                while (Volatile.Read(ref _cleanCounts[classIndex]) < MaxCleanPerClass
-                       && _dirtyBuffers[classIndex].TryDequeue(out (byte[] Data, int DirtyLength) dirty))
-                {
-                    Interlocked.Decrement(ref _dirtyCount);
-                    Array.Clear(dirty.Data, 0, dirty.DirtyLength);
-                    Interlocked.Increment(ref _cleanCounts[classIndex]);
-                    _cleanBuffers[classIndex].Enqueue(dirty.Data);
-                    didWork = true;
-                }
-            }
-
-            if (!didWork)
+            if (!DrainDirtyBuffers())
             {
                 _zeroerSignal.WaitOne(ZeroerIdleTimeoutMs);
             }
         }
+    }
+
+    // One sweep of the dirty queues into the clean pool; returns whether anything was cleared.
+    // Runs on the zeroer thread; also called directly by tests to drive the clear-and-republish
+    // path deterministically.
+    internal static bool DrainDirtyBuffers()
+    {
+        bool didWork = false;
+        for (int classIndex = 0; classIndex < ClassCount; classIndex++)
+        {
+            while (Volatile.Read(ref _cleanCounts[classIndex]) < MaxCleanPerClass
+                   && _dirtyBuffers[classIndex].TryDequeue(out (byte[] Data, int DirtyLength) dirty))
+            {
+                Interlocked.Decrement(ref _dirtyCount);
+                Array.Clear(dirty.Data, 0, dirty.DirtyLength);
+                Interlocked.Increment(ref _cleanCounts[classIndex]);
+                _cleanBuffers[classIndex].Enqueue(dirty.Data);
+                didWork = true;
+            }
+        }
+
+        return didWork;
     }
 #endif
 
@@ -661,14 +670,14 @@ public struct EvmPooledMemory
     {
         if (_memory is null)
         {
-            _memory = RentBuffer((int)Math.Max((uint)Size, MinRentSize), out bool clean);
-            if (!clean) Array.Clear(_memory);
+            _memory = RentBuffer((int)Math.Max((uint)Size, MinRentSize), out int dirtyLength);
+            if (dirtyLength != 0) Array.Clear(_memory, 0, dirtyLength);
         }
         else if (Size > (ulong)_memory.LongLength)
         {
             byte[] beforeResize = _memory;
-            _memory = RentBuffer(TruncateToInt32(Size), out bool clean);
-            if (!clean) Array.Clear(_memory);
+            _memory = RentBuffer(TruncateToInt32(Size), out int dirtyLength);
+            if (dirtyLength != 0) Array.Clear(_memory, 0, dirtyLength);
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
             ReturnDirty(beforeResize, beforeResize.Length);
         }
