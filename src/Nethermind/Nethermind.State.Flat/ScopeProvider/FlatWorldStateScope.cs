@@ -285,10 +285,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
-            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
-                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
             foreach (UInt256 readKey in ac.StorageReads)
                 jobs[idx++] = (address, selfDestructIdx, readKey);
+            foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
+                jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
         }
 
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
