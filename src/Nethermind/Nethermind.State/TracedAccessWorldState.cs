@@ -38,9 +38,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     // the returned span is consumed by the EVM stack push before another GetInternal runs.
     private readonly byte[] _scratchStorage = new byte[32];
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
-    // read-recording and the underlying BAL/parent lookup. Reset when storage can change.
+    // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
-    private int _lastReadStorageLength;
+    private AccountChangesAtIndex? _lastReadStorageChanges;
     private bool _hasLastReadCell;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
@@ -73,23 +73,20 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
+        AccountChangesAtIndex accountChanges;
         if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
         {
             // Already recorded this exact cell; reuse its entry and skip the read-recording.
-            return MemoryMarshal.CreateReadOnlySpan(
-                ref MemoryMarshal.GetArrayDataReference(_scratchStorage),
-                _lastReadStorageLength);
+            accountChanges = _lastReadStorageChanges!;
         }
-
-        AccountChangesAtIndex accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
-        _lastReadStorageCell = storageCell;
-        _hasLastReadCell = true;
-
-        ReadOnlySpan<byte> value = GetInternal(accountChanges, in storageCell);
-        CacheLastReadStorageValue(value);
-        return MemoryMarshal.CreateReadOnlySpan(
-            ref MemoryMarshal.GetArrayDataReference(_scratchStorage),
-            _lastReadStorageLength);
+        else
+        {
+            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
+            _lastReadStorageCell = storageCell;
+            _lastReadStorageChanges = accountChanges;
+            _hasLastReadCell = true;
+        }
+        return GetInternal(accountChanges, in storageCell);
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
@@ -117,7 +114,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
         _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
-        ClearLastReadStorageCache();
         base.Set(storageCell, newValue);
     }
 
@@ -175,7 +171,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void DeleteAccount(Address address)
     {
         _generatingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
-        ClearLastReadStorageCache();
         base.DeleteAccount(address);
     }
 
@@ -227,7 +222,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         _generatingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
-        ClearLastReadStorageCache();
+        _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
     }
 
     BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
@@ -235,7 +231,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Restore(Snapshot snapshot)
     {
         // A revert can un-record the last cell's slot, so drop the single-slot cache.
-        ClearLastReadStorageCache();
+        _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
         _generatingBlockAccessList.Restore(snapshot.BlockAccessListSnapshot);
         base.Restore(snapshot);
     }
@@ -278,7 +275,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void ClearStorage(Address address)
     {
         AddAccountRead(address);
-        ClearLastReadStorageCache();
         base.ClearStorage(address);
     }
 
@@ -348,33 +344,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
 
         return base.Get(storageCell);
-    }
-
-    private void CacheLastReadStorageValue(ReadOnlySpan<byte> value)
-    {
-        if (value.Length == 0)
-        {
-            _lastReadStorageLength = 0;
-            return;
-        }
-
-        if (value.Length == _scratchStorage.Length
-            && Unsafe.AreSame(
-                ref MemoryMarshal.GetReference(value),
-                ref MemoryMarshal.GetArrayDataReference(_scratchStorage)))
-        {
-            _lastReadStorageLength = value.Length;
-            return;
-        }
-
-        value.CopyTo(_scratchStorage);
-        _lastReadStorageLength = value.Length;
-    }
-
-    private void ClearLastReadStorageCache()
-    {
-        _hasLastReadCell = false;
-        _lastReadStorageLength = 0;
     }
 
     private bool AccountExistsInternal(Address address)

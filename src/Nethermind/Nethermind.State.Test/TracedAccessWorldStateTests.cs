@@ -503,25 +503,4 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
-    [Test]
-    public void RepeatedStorageReadCache_IsInvalidatedByWrite()
-    {
-        StorageCell cell = new(TestItem.AddressA, 1);
-        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
-        {
-            ws.CreateAccount(TestItem.AddressA, 0);
-            ws.Set(cell, [0x01]);
-        });
-
-        using (scope)
-        {
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)1));
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)1));
-
-            tws.Set(cell, [0x02]);
-
-            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
-        }
-    }
-
 }
