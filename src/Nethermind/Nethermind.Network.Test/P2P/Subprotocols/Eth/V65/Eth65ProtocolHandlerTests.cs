@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -191,11 +192,45 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _session.Received(canGossipTransactions ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
         }
 
+        [Test]
+        public void should_track_new_pooled_transaction_metrics_by_peer_client()
+        {
+            const string client = "erigon";
+            _session.Node.ClientId = "erigon/v2.60.0/linux-amd64/go1.22";
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+
+            long announcedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client);
+            long requestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client);
+            long returnedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client);
+
+            using NewPooledTransactionHashesMessage hashesMsg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
+            Transaction tx1 = Build.A.Transaction.WithNonce(1UL).SignedAndResolved().TestObject;
+            Transaction tx2 = Build.A.Transaction.WithNonce(2UL).SignedAndResolved().TestObject;
+            using PooledTransactionsMessage txsMsg = new(new[] { tx1, tx2 }.ToPooledList());
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
+            HandleZeroMessage(txsMsg, Eth65MessageCode.PooledTransactions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client), Is.EqualTo(announcedBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client), Is.EqualTo(requestedBefore + 2));
+                Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client), Is.EqualTo(returnedBefore + 2));
+            }
+        }
+
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private static long GetMetricValue(ConcurrentDictionary<string, long> metric, string client)
+        {
+            metric.TryGetValue(client, out long value);
+            return value;
         }
 
         private void HandleIncomingStatusMessage()

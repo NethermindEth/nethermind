@@ -89,11 +89,16 @@ public class RetryCacheTests
     {
         TestHandler request1 = new();
         TestHandler request2 = new();
+        TestHandler request3 = new();
+        long handlersCalledOnTimeout = Metrics.PendingTransactionRetryHandlersCalledOnTimeout;
 
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
+        _cache.Announced(1, request3);
 
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+        Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+        Assert.That(() => Metrics.PendingTransactionRetryHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(handlersCalledOnTimeout + 2).After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
     }
 
@@ -129,15 +134,26 @@ public class RetryCacheTests
     [Test]
     public async Task Received_BeforeTimeout_PreventsRetryExecution()
     {
-        TestHandler request = new();
+        TestHandler request1 = new();
+        TestHandler request2 = new();
+        TestHandler request3 = new();
+        long handlersSkippedOnReceived = Metrics.PendingTransactionRetryHandlersSkippedOnReceived;
 
-        _cache.Announced(1, request);
-        _cache.Announced(1, request);
+        _cache.Announced(1, request1);
+        _cache.Announced(1, request2);
+        _cache.Announced(1, request3);
         _cache.Received(1);
+
+        Assert.That(Metrics.PendingTransactionRetryHandlersSkippedOnReceived, Is.GreaterThanOrEqualTo(handlersSkippedOnReceived + 2));
 
         await Task.Delay(CacheTimeoutMs * 3, _cancellationTokenSource.Token);
 
-        Assert.That(request.WasCalled, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.WasCalled, Is.False);
+            Assert.That(request2.WasCalled, Is.False);
+            Assert.That(request3.WasCalled, Is.False);
+        }
     }
 
     [Test]

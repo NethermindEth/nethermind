@@ -99,6 +99,7 @@ public class Eth68ProtocolHandler(ISession session,
         }
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
+        TxPool.Metrics.AddNewPooledTransactionsAnnouncedByClient(PeerClientMetricLabel, message.Hashes.Count);
 
         AddNotifiedTransactions(message.Hashes.AsSpan());
 
@@ -164,6 +165,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         if (hashesToRequest.Count is not 0)
         {
+            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count);
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
         }
         else
@@ -173,6 +175,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         void SendHashesToRequest()
         {
+            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(PeerClientMetricLabel, hashesToRequest.Count);
             Send(V66.Messages.GetPooledTransactionsMessage.New(hashesToRequest));
             hashesToRequest = new ArrayPoolList<Hash256>(discoveredCount);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;

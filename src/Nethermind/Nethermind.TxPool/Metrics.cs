@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.TxPool
@@ -23,6 +25,29 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of hashes of pending transactions received from peers.")]
         public static long PendingTransactionsHashesReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry handlers skipped because the transaction was received before the retry timeout.")]
+        public static long PendingTransactionRetryHandlersSkippedOnReceived;
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry handlers called after the original transaction request timed out.")]
+        public static long PendingTransactionRetryHandlersCalledOnTimeout;
+
+        [CounterMetric]
+        [Description("Number of pending transaction hashes announced by peers, grouped by peer client.")]
+        [KeyIsLabel("client")]
+        public static ConcurrentDictionary<string, long> NewPooledTransactionsAnnouncedByClient { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of pending transactions requested from peers, grouped by peer client.")]
+        [KeyIsLabel("client")]
+        public static ConcurrentDictionary<string, long> NewPooledTransactionsRequestedByClient { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of pending transactions returned by peers, grouped by peer client.")]
+        [KeyIsLabel("client")]
+        public static ConcurrentDictionary<string, long> NewPooledTransactionsReturnedByClient { get; } = new();
 
         [CounterMetric]
         [Description("Number of pending transactions received that were ignored.")]
@@ -168,5 +193,40 @@ namespace Nethermind.TxPool
 
         [Description("Number of transactions reorganized during chain reorg.")]
         public static long TransactionsReorged { get; internal set; }
+
+        public static void AddNewPooledTransactionsAnnouncedByClient(string client, long count) =>
+            AddBy(NewPooledTransactionsAnnouncedByClient, client, count);
+
+        public static void AddNewPooledTransactionsRequestedByClient(string client, long count) =>
+            AddBy(NewPooledTransactionsRequestedByClient, client, count);
+
+        public static void AddNewPooledTransactionsReturnedByClient(string client, long count) =>
+            AddBy(NewPooledTransactionsReturnedByClient, client, count);
+
+        public static void AddPendingTransactionRetryHandlersSkippedOnReceived(long count) =>
+            Add(ref PendingTransactionRetryHandlersSkippedOnReceived, count);
+
+        public static void AddPendingTransactionRetryHandlersCalledOnTimeout(long count) =>
+            Add(ref PendingTransactionRetryHandlersCalledOnTimeout, count);
+
+        private static void Add(ref long metric, long count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            Interlocked.Add(ref metric, count);
+        }
+
+        private static void AddBy(ConcurrentDictionary<string, long> metric, string client, long count)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            metric.AddOrUpdate(client, static (_, added) => added, static (_, current, added) => current + added, count);
+        }
     }
 }

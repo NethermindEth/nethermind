@@ -63,6 +63,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                                 {
                                     RetryRequestSender sender = new(this, item.ResourceId);
                                     bag.Drain(ref sender);
+                                    Metrics.AddPendingTransactionRetryHandlersCalledOnTimeout(sender.HandlersCalled);
                                 }
                                 finally
                                 {
@@ -147,7 +148,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_retryRequests.TryRemove(resourceId, out HandlerBag<TMessage>? bag))
         {
-            bag.Deactivate();
+            int skippedHandlers = bag.Deactivate();
+            Metrics.AddPendingTransactionRetryHandlersSkippedOnReceived(skippedHandlers);
             _handlerBagsPool.Return(bag);
         }
 
@@ -184,6 +186,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private struct RetryRequestSender(RetryCache<TMessage, TResourceId> cache, TResourceId resourceId) : IHandlerBagDrainProcessor<TMessage>
     {
         private bool _requestingResourceSet;
+        public int HandlersCalled { get; private set; }
 
         public void Process(IMessageHandler<TMessage> retryHandler)
         {
@@ -197,6 +200,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             try
             {
+                HandlersCalled++;
                 retryHandler.HandleMessage(TMessage.New(resourceId));
             }
             catch (Exception ex)
@@ -249,11 +253,13 @@ internal sealed class HandlerBag<TMessage>
     /// <summary>
     /// Deactivate without draining. Used by Received() before returning to pool.
     /// </summary>
-    public void Deactivate()
+    /// <returns>Number of handlers left in the bag without draining.</returns>
+    public int Deactivate()
     {
         lock (_lock)
         {
             _active = false;
+            return _handlers.Count;
         }
     }
 

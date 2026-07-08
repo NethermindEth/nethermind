@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
@@ -321,6 +322,39 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _transactionPool.Received(2).NotifyAboutTx(TestItem.KeccakA, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+    }
+
+    [Test]
+    public void Should_track_typed_new_pooled_transaction_metrics_by_peer_client()
+    {
+        const string client = "reth";
+        _session.Node.ClientId = "reth/v1.5.0/linux";
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+
+        long announcedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client);
+        long requestedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client);
+        long returnedBefore = GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client);
+
+        GenerateTxLists(2, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsAnnouncedByClient, client), Is.EqualTo(announcedBefore + 2));
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsRequestedByClient, client), Is.EqualTo(requestedBefore + 2));
+            Assert.That(GetMetricValue(Nethermind.TxPool.Metrics.NewPooledTransactionsReturnedByClient, client), Is.EqualTo(returnedBefore + 2));
+        }
+    }
+
+    private static long GetMetricValue(ConcurrentDictionary<string, long> metric, string client)
+    {
+        metric.TryGetValue(client, out long value);
+        return value;
     }
 
     private void HandleIncomingStatusMessage()
