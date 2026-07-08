@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -26,17 +27,30 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
+    /// <summary>EIP-8037 pre-refund spent gas: <c>txGasLimit - gas_left - state reservoir</c>.</summary>
+    /// <remarks>
+    /// Centralizes the regular↔state boundary conversion: the reservoir may be negative (net child
+    /// spill) and the ulong wrap still yields the correct signed total, asserted non-negative here.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
+    {
+        Debug.Assert((long)txGasLimit - (long)TSelf.GetRemainingGas(in gas) - TSelf.GetStateReservoir(in gas) >= 0,
+            $"Gas invariant violated: remaining ({TSelf.GetRemainingGas(in gas)}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
+        return txGasLimit - TSelf.GetRemainingGas(in gas) - (ulong)TSelf.GetStateReservoir(in gas);
+    }
+
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetStorageSetStateCost() => (long)GasCostOf.SSetState;
+    static virtual long GetStorageSetStateCost() => GasCostOf.SSetState;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetCreateStateCost() => (long)GasCostOf.CreateState;
+    static virtual long GetCreateStateCost() => GasCostOf.CreateState;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetNewAccountStateCost() => (long)GasCostOf.NewAccountState;
+    static virtual long GetNewAccountStateCost() => GasCostOf.NewAccountState;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetPerAuthBaseStateCost() => (long)GasCostOf.PerAuthBaseState;
+    static virtual long GetPerAuthBaseStateCost() => GasCostOf.PerAuthBaseState;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetCodeDepositStateCost(int byteCodeLength) => (long)GasCostOf.CodeDepositState * byteCodeLength;
+    static virtual long GetCodeDepositStateCost(int byteCodeLength) => GasCostOf.CodeDepositState * byteCodeLength;
 
     // EIP-8037 state-accounting accessors. Pre-EIP-8037 policies return 0.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
