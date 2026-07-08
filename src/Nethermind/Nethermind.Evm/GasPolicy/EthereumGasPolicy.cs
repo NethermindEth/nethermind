@@ -53,11 +53,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (spec.IsEip8037Enabled)
         {
-            ulong reservoir = Math.Min(gasLimit, (ulong)intrinsicGas.StateReservoir);
+            long reservoir = Math.Min((long)gasLimit, intrinsicGas.StateReservoir);
             return new EthereumGasPolicy
             {
-                Value = gasLimit - reservoir,
-                StateReservoir = (long)reservoir,
+                Value = gasLimit - (ulong)reservoir,
+                StateReservoir = reservoir,
                 StateGasUsed = intrinsicGas.StateGasUsed,
                 StateGasSpill = 0,
             };
