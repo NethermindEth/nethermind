@@ -38,6 +38,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private string? _fullPath;
 
+    /// <summary>On-disk directory of this DB. Used to stage SST files for ingestion on the same filesystem.</summary>
+    internal string FullPath => _fullPath ?? throw new InvalidOperationException("DB path not initialized");
+
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 
     private static readonly FlushOptions _defaultFlushOptions = new();

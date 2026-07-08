@@ -12,6 +12,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
     private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
+    private readonly bool _useSstIngestion = config?.PersistViaSstIngestion ?? false;
 
     public void Flush() => db.Flush();
 
@@ -55,6 +56,71 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         }
     }
 
+    // Persist by building one sorted SST per column off-heap and ingesting it (metadata-only add) instead of a
+    // single large WriteBatch. This bypasses the memtable, so persisting a compacted snapshot no longer triggers
+    // the flush -> L0 pile-up -> compaction burst that saturates I/O and stalls concurrent reads for seconds.
+    private IPersistence.IWriteBatch CreateIngestWriteBatch(IColumnDbSnapshot<FlatDbColumns> dbSnap, StateId to)
+    {
+        IWriteBatch Ingest(FlatDbColumns column) => ((ISstIngestible)db.GetColumnDb(column)).StartSstIngestBatch();
+
+        IWriteBatch accountBatch = Ingest(FlatDbColumns.Account);
+        IWriteBatch storageBatch = Ingest(FlatDbColumns.Storage);
+        IWriteBatch stateTopNodesBatch = Ingest(FlatDbColumns.StateTopNodes);
+        IWriteBatch stateNodesBatch = Ingest(FlatDbColumns.StateNodes);
+        IWriteBatch storageNodesBatch = Ingest(FlatDbColumns.StorageNodes);
+        IWriteBatch fallbackNodesBatch = Ingest(FlatDbColumns.FallbackNodes);
+
+        BaseTriePersistence.WriteBatch trieWriteBatch = new(
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
+            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
+            stateTopNodesBatch,
+            stateNodesBatch,
+            storageNodesBatch,
+            fallbackNodesBatch,
+            WriteFlags.None);
+
+        StateId toCopy = to;
+
+        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+            new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
+                new BaseFlatPersistence.WriteBatch(
+                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Account),
+                    (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
+                    accountBatch,
+                    storageBatch,
+                    WriteFlags.None,
+                    rlpWrapSlots: _rlpWrapSlots
+                )
+            ),
+            trieWriteBatch,
+            new Reactive.AnonymousDisposable(() =>
+            {
+                // Each Dispose builds one sorted SST and ingests it (metadata-only add, bypassing the memtable),
+                // then the pointer advances. NOTE: per-CF ingest is not yet crash-atomic with the pointer write; a
+                // crash in between leaves the pointer behind the ingested data and recovery re-executes/overwrites
+                // it. Full atomicity needs the multi-CF rocksdb_ingest_external_files (follow-up).
+                accountBatch.Dispose();
+                storageBatch.Dispose();
+                stateTopNodesBatch.Dispose();
+                stateNodesBatch.Dispose();
+                storageNodesBatch.Dispose();
+                fallbackNodesBatch.Dispose();
+
+                using (IColumnsWriteBatch<FlatDbColumns> metaBatch = db.StartWriteBatch())
+                {
+                    BasePersistence.SetCurrentState(metaBatch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                    if (_rlpWrapSlots)
+                        BasePersistence.RecordLayoutOnFirstBatch(metaBatch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                }
+
+                db.Flush(onlyWal: true);
+                dbSnap.Dispose();
+            })
+        );
+    }
+
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
         IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
@@ -63,6 +129,12 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         {
             dbSnap.Dispose();
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
+        }
+
+        if (_useSstIngestion && from != StateId.Sync && to != StateId.Sync
+            && db.GetColumnDb(FlatDbColumns.Account) is ISstIngestible)
+        {
+            return CreateIngestWriteBatch(dbSnap, to);
         }
 
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
