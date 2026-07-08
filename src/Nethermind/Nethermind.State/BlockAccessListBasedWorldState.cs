@@ -230,8 +230,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override bool AccountExists(Address address)
-        // EIP-161 emptiness over the effective state (parent + prior in-block BAL changes), so an account
-        // drained by an earlier same-block selfdestruct reads as deleted, as in sequential execution.
+        // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
+        // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
         => !GetBalance(address).IsZero
            || GetNonce(address) != 0
            || IsContract(address);
