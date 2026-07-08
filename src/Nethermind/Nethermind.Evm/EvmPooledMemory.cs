@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
@@ -409,7 +411,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+            ReturnDirty(memory, (int)Math.Min(Size, (ulong)memory.Length));
         }
     }
 
@@ -455,13 +457,16 @@ public struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
     private const int MaxCachedArrayLength = 1 << 16;
+
+#if ZK_EVM
     private const int CleanCacheSlots = 16;
 
     [ThreadStatic] private static byte[]?[]? _cleanArrays;
     [ThreadStatic] private static int _cleanArrayCount;
 
-    private static byte[] RentClean(int minLength)
+    private static byte[] RentBuffer(int minLength, out bool clean)
     {
+        clean = true;
         byte[]?[]? cache = _cleanArrays;
         int cleanArrayCount = _cleanArrayCount - 1;
         for (int i = cleanArrayCount; i >= 0; i--)
@@ -486,7 +491,7 @@ public struct EvmPooledMemory
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
-    private static void ReturnClean(byte[] array, int dirtyLength)
+    private static void ReturnDirty(byte[] array, int dirtyLength)
     {
         if (array.Length > MaxCachedArrayLength)
         {
@@ -501,6 +506,130 @@ public struct EvmPooledMemory
             cache[_cleanArrayCount++] = array;
         }
     }
+#else
+    // A rented buffer must be fully zero: unwritten EVM memory reads as zero. Writes are bounded
+    // by Size (gas-paid), so a returned buffer's only dirty span is [0, Size) — the DirtyLength
+    // the zeroer clears before republishing the buffer as clean.
+    private const int MinClassExponent = 10; // 2^10 == MinRentSize
+    private const int ClassCount = 7;         // 2^10 .. 2^16 (MaxCachedArrayLength)
+    private const int MaxCleanPerClass = 64;
+    private const int MaxDirtyBacklog = 256;
+    private const int ZeroerIdleTimeoutMs = 50;
+
+    private static readonly ConcurrentQueue<byte[]>[] _cleanBuffers = CreateQueues<byte[]>();
+    private static readonly ConcurrentQueue<(byte[] Data, int DirtyLength)>[] _dirtyBuffers = CreateQueues<(byte[], int)>();
+    private static readonly int[] _cleanCounts = new int[ClassCount];
+    private static int _dirtyCount;
+    private static readonly AutoResetEvent _zeroerSignal = new(false);
+    private static int _zeroerStarted;
+
+    private static ConcurrentQueue<T>[] CreateQueues<T>()
+    {
+        ConcurrentQueue<T>[] queues = new ConcurrentQueue<T>[ClassCount];
+        for (int i = 0; i < ClassCount; i++)
+        {
+            queues[i] = new ConcurrentQueue<T>();
+        }
+
+        return queues;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ClassIndex(int length) =>
+        BitOperations.Log2(BitOperations.RoundUpToPowerOf2((uint)length)) - MinClassExponent;
+
+    private static byte[] RentBuffer(int minLength, out bool clean)
+    {
+        if (minLength > MaxCachedArrayLength)
+        {
+            clean = false;
+            return RentLarge(minLength);
+        }
+
+        int classIndex = ClassIndex(Math.Max(minLength, MinRentSize));
+        if (_cleanBuffers[classIndex].TryDequeue(out byte[]? buffer))
+        {
+            Interlocked.Decrement(ref _cleanCounts[classIndex]);
+            clean = true;
+            return buffer;
+        }
+
+        if (_dirtyBuffers[classIndex].TryDequeue(out (byte[] Data, int DirtyLength) dirty))
+        {
+            Interlocked.Decrement(ref _dirtyCount);
+            clean = false;
+            return dirty.Data;
+        }
+
+        clean = true;
+        return new byte[1 << (classIndex + MinClassExponent)];
+    }
+
+    private static void ReturnDirty(byte[] array, int dirtyLength)
+    {
+        if (array.Length > MaxCachedArrayLength)
+        {
+            ReturnLarge(array);
+            return;
+        }
+
+        // Bounded backlog: overflow buffers are dropped (GC'd) and renters fall back to the
+        // inline clear, so a burst degrades to the pre-change cost rather than growing unbounded.
+        if (Interlocked.Increment(ref _dirtyCount) > MaxDirtyBacklog)
+        {
+            Interlocked.Decrement(ref _dirtyCount);
+            return;
+        }
+
+        _dirtyBuffers[ClassIndex(array.Length)].Enqueue((array, dirtyLength));
+        EnsureZeroerStarted();
+
+        // Signal only on the idle->busy edge; the ZeroerIdleTimeoutMs poll backstops a missed
+        // edge, so at worst a buffer waits one poll interval — never lost.
+        if (Volatile.Read(ref _dirtyCount) == 1)
+        {
+            _zeroerSignal.Set();
+        }
+    }
+
+    private static void EnsureZeroerStarted()
+    {
+        if (Volatile.Read(ref _zeroerStarted) == 0 && Interlocked.Exchange(ref _zeroerStarted, 1) == 0)
+        {
+            new Thread(ZeroerLoop)
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.BelowNormal,
+                Name = "EVM Memory Zeroer",
+            }.Start();
+        }
+    }
+
+    private static void ZeroerLoop()
+    {
+        while (true)
+        {
+            bool didWork = false;
+            for (int classIndex = 0; classIndex < ClassCount; classIndex++)
+            {
+                while (Volatile.Read(ref _cleanCounts[classIndex]) < MaxCleanPerClass
+                       && _dirtyBuffers[classIndex].TryDequeue(out (byte[] Data, int DirtyLength) dirty))
+                {
+                    Interlocked.Decrement(ref _dirtyCount);
+                    Array.Clear(dirty.Data, 0, dirty.DirtyLength);
+                    Interlocked.Increment(ref _cleanCounts[classIndex]);
+                    _cleanBuffers[classIndex].Enqueue(dirty.Data);
+                    didWork = true;
+                }
+            }
+
+            if (!didWork)
+            {
+                _zeroerSignal.WaitOne(ZeroerIdleTimeoutMs);
+            }
+        }
+    }
+#endif
 
 #if ZK_EVM
     private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
@@ -532,14 +661,16 @@ public struct EvmPooledMemory
     {
         if (_memory is null)
         {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+            _memory = RentBuffer((int)Math.Max((uint)Size, MinRentSize), out bool clean);
+            if (!clean) Array.Clear(_memory);
         }
         else if (Size > (ulong)_memory.LongLength)
         {
             byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
+            _memory = RentBuffer(TruncateToInt32(Size), out bool clean);
+            if (!clean) Array.Clear(_memory);
             Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
+            ReturnDirty(beforeResize, beforeResize.Length);
         }
 
         _lastZeroedSize = (ulong)_memory.Length;
