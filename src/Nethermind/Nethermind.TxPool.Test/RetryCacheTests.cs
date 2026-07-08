@@ -85,6 +85,35 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Announced_WhenExpiringQueueFull_DropsWithoutRequestingOrGrowingQueue()
+    {
+        // Small cap and a long timeout so entries never drain during the test.
+        using CancellationTokenSource cts = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache =
+            new(TestLogManager.Instance, timeoutMs: 100_000, expiringQueueLimit: 2, token: cts.Token);
+        try
+        {
+            // Distinct resources are first announcers: RequestRequired + enqueue, until the cap is exceeded.
+            Assert.That(cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(2, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(cache.Announced(3, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
+
+            // Queue is now full: further announcements are dropped, not turned into requests.
+            Assert.That(cache.Announced(4, new TestHandler()), Is.EqualTo(AnnounceResult.Drop));
+            Assert.That(cache.Announced(5, new TestHandler()), Is.EqualTo(AnnounceResult.Drop));
+
+            // Dropped announcements must not grow the retry queue.
+            Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(3));
+        }
+        finally
+        {
+            // Cancel before disposing so the worker loop stops; DisposeAsync awaits it.
+            await cts.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
     public void Announced_AfterTimeout_ExecutesRetryRequests()
     {
         TestHandler request1 = new();

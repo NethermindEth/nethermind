@@ -25,6 +25,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsHashesReceived { get; set; }
 
         [CounterMetric]
+        [Description("Number of announced pending transaction hashes dropped because the retry request queue was full (overload protection).")]
+        public static long PendingTransactionsHashesDropped { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions received that were ignored.")]
         public static long PendingTransactionsDiscarded { get; set; }
 

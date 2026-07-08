@@ -10,6 +10,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
@@ -29,6 +30,8 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -282,6 +285,62 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+    }
+
+    [Test]
+    public async Task Flood_of_NewPooledTransactionHashes_is_not_amplified_into_unbounded_requests()
+    {
+        const int expiringQueueLimit = 100;
+        const int messages = 40;
+        const int hashesPerMessage = 256;
+        const int totalAnnounced = messages * hashesPerMessage;
+
+        using CancellationTokenSource cts = new();
+        RetryCache<PooledTransactionRequestMessage, ValueHash256> retryCache =
+            new(LimboLogs.Instance, timeoutMs: 100_000, expiringQueueLimit: expiringQueueLimit, token: cts.Token);
+        try
+        {
+            _transactionPool
+                .NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+                .Returns(ci => retryCache.Announced(
+                    ci.ArgAt<Hash256>(0).ValueHash256,
+                    ci.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1)));
+
+            int requestedHashes = 0;
+            _session.When(s => s.DeliverMessage(Arg.Any<GetPooledTransactionsMessage>()))
+                .Do(ci => requestedHashes += ci.Arg<GetPooledTransactionsMessage>().EthMessage.Hashes.Count);
+
+            HandleIncomingStatusMessage();
+
+            int nextHash = 0;
+            for (int m = 0; m < messages; m++)
+            {
+                ArrayPoolList<byte> types = new(hashesPerMessage);
+                ArrayPoolList<int> sizes = new(hashesPerMessage);
+                ArrayPoolList<Hash256> hashes = new(hashesPerMessage);
+                for (int i = 0; i < hashesPerMessage; i++)
+                {
+                    types.Add(0);
+                    sizes.Add(100);
+                    hashes.Add(new Hash256((nextHash++).ToString("X64")));
+                }
+
+                using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
+                HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+            }
+
+            // Without the cap fix every announced hash is requested (~totalAnnounced). With it, requests
+            // stop once the retry queue is full, so the total stays close to the cap.
+            Assert.That(requestedHashes, Is.GreaterThan(0));
+            Assert.That(requestedHashes, Is.LessThanOrEqualTo(expiringQueueLimit + 1));
+            Assert.That(requestedHashes, Is.LessThan(totalAnnounced));
+        }
+        finally
+        {
+            // Cancel before disposing so the worker loop stops; DisposeAsync awaits it.
+            await cts.CancelAsync();
+            await retryCache.DisposeAsync();
+        }
     }
 
     private void HandleIncomingStatusMessage()

@@ -94,7 +94,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             _logger.TraceWarn($"{typeof(TResourceId)} retry queue is full");
 
-            return AnnounceResult.RequestRequired;
+            return AnnounceResult.Drop;
         }
 
         if (!_requestingResources.Contains(resourceId))
@@ -210,7 +210,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 public enum AnnounceResult
 {
     RequestRequired,
-    Delayed
+    Delayed,
+    Drop
 }
 
 /// <summary>
