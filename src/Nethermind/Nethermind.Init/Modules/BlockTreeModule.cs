@@ -30,7 +30,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         builder
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
-            .AddSingleton<IBlockStore, BlockStore>()
+            .AddSingleton<IBlockStore, IDb, IDeferredBlockDataWriter>(CreateBlockStore)
             .AddSingleton<IDeferredBlockDataWriter, IReceiptConfig, ILogManager>((receiptConfig, logManager) =>
                 new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredBlocks, logManager))
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
@@ -75,6 +75,9 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
         }
     }
+
+    private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter) =>
+        new BlockStore(blocksDb, deferredWriter: deferredWriter, deferBodies: receiptConfig.DeferredPersistence && receiptConfig.DeferBlockBodyPersistence);
 
     private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
         new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);

@@ -16,13 +16,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null, IDeferredBlockDataWriter? deferredWriter = null) : IBlockStore, IClearableCache
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null, IDeferredBlockDataWriter? deferredWriter = null, bool deferBodies = false) : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
 
     private readonly IDb _blockDb = blockDb;
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
-    private readonly IDeferredBlockDataWriter? _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
+    // A block body is a re-execution input, not an output, so a lost body cannot be regenerated on
+    // restart; deferral is opt-in even when the shared writer is running for receipts.
+    private readonly IDeferredBlockDataWriter? _deferredWriter = deferBodies && deferredWriter is { Enabled: true } ? deferredWriter : null;
 
     // Source of truth for blocks whose durable write is still queued on the deferred writer. Holds
     // the immutable RLP encoded synchronously in InsertDeferred - not the live Block, which the

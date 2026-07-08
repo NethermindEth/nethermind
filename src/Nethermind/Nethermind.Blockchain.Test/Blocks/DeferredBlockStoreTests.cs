@@ -20,7 +20,7 @@ public class DeferredBlockStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer);
+        BlockStore store = new(db, null, writer, deferBodies: true);
 
         Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
         store.InsertDeferred(block);
@@ -45,7 +45,7 @@ public class DeferredBlockStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer);
+        BlockStore store = new(db, null, writer, deferBodies: true);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.InsertDeferred(block);
@@ -61,7 +61,7 @@ public class DeferredBlockStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer);
+        BlockStore store = new(db, null, writer, deferBodies: true);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.InsertDeferred(block);
@@ -80,7 +80,7 @@ public class DeferredBlockStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer);
+        BlockStore store = new(db, null, writer, deferBodies: true);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.InsertDeferred(block);
@@ -99,7 +99,7 @@ public class DeferredBlockStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter disabled = new(enabled: false, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, disabled);
+        BlockStore store = new(db, null, disabled, deferBodies: true);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.InsertDeferred(block);
