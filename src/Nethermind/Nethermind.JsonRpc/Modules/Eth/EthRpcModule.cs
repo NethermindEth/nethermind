@@ -454,7 +454,7 @@ public partial class EthRpcModule(
         return ResultWrapper<SignTransactionResult>.Fail(message, ErrorCodes.InvalidInput);
     }
 
-    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc rpcTx)
+    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(LegacyTransactionForRpc rpcTx)
     {
         BlockHeader? head = _blockFinder.Head?.Header;
         if (head is null)
@@ -463,16 +463,13 @@ public partial class EthRpcModule(
         IReleaseSpec spec = _specProvider.GetSpec(head);
         ulong chainId = _blockchainBridge.GetChainId();
 
-        if (rpcTx is not LegacyTransactionForRpc baseTx)
-            return ResultWrapper<FillTransactionResult>.Fail($"transaction type {rpcTx.Type} is not supported for filling", ErrorCodes.InvalidInput);
-
-        if (baseTx.From is not { } from)
+        if (rpcTx.From is not { } from)
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
-        if (baseTx.ChainId is { } requestedChainId && requestedChainId != chainId)
+        if (rpcTx.ChainId is { } requestedChainId && requestedChainId != chainId)
             return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
 
-        baseTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
+        rpcTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
         UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
             && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
@@ -501,7 +498,7 @@ public partial class EthRpcModule(
             rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
         }
 
-        baseTx.ChainId ??= chainId;
+        rpcTx.ChainId ??= chainId;
 
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
         if (!txResult.Success(out Transaction tx, out string error))
