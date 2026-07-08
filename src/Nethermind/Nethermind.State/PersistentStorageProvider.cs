@@ -26,14 +26,13 @@ namespace Nethermind.State;
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics, PreBlockCaches? populatorCaches = null)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope? _mainScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
-    // Non-null only on populator (prewarm) world states.
-    private readonly PreBlockCaches? _populatorCaches = populatorCaches;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
@@ -59,16 +58,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope, IWorldStateScopeProvider.IScope? mainScope = null)
+    {
+        _currentScope = scope;
+        _mainScope = mainScope;
+    }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
-        // A speculative write predicts a commit-time storage-trie update: warm the slot's trie path now.
-        if (_populatorCaches is not null && !storageCell.IsHash)
+        if (_mainScope is not null && !storageCell.IsHash)
         {
-            _populatorCaches.TrieHintSink?.HintSlotWarm(storageCell.Address, storageCell.Index);
+            _mainScope.HintWarmSlot(storageCell.Address, storageCell.Index);
         }
     }
 

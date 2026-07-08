@@ -22,7 +22,7 @@ public class PreBlockCaches
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
-    private volatile IPrewarmTrieHintSink? _trieHintSink;
+    private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
 
@@ -42,13 +42,13 @@ public class PreBlockCaches
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     /// <summary>
-    /// The main processing scope's trie warm-hint sink, registered for the scope's lifetime.
-    /// Null when the backend does not support trie warm-up; may disappear at any time.
+    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
+    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
     /// </summary>
-    public IPrewarmTrieHintSink? TrieHintSink
+    public IWorldStateScopeProvider.IScope? MainScope
     {
-        get => _trieHintSink;
-        set => _trieHintSink = value;
+        get => _mainScope;
+        set => _mainScope = value;
     }
 
     public CacheType ClearCaches()

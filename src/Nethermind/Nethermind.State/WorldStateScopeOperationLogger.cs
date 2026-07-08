@@ -28,9 +28,13 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
-    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScopeDecorator
+    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
-        public IWorldStateScopeProvider.IScope InnerScope => innerScope;
+        public bool SupportsTrieWarmHints => innerScope.SupportsTrieWarmHints;
+
+        public void HintWarmAccount(Address address) => innerScope.HintWarmAccount(address);
+
+        public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
         public void Dispose()
         {

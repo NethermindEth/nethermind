@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -20,9 +21,13 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
 
-    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScopeDecorator
+    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
-        public IWorldStateScopeProvider.IScope InnerScope => baseScope;
+        public bool SupportsTrieWarmHints => baseScope.SupportsTrieWarmHints;
+
+        public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
+
+        public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
         public void Dispose()
         {

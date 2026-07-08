@@ -39,7 +39,7 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// True for read-only populator envs (prewarmer, parallel-worker parent readers); false for the
 /// read-write main world state. On a cache hit a consumer seeds the scope-local cache via
 /// <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers itself as
-/// the block's <see cref="PreBlockCaches.TrieHintSink"/>; a populator pushes trie warm-up hints into it.
+/// the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
@@ -53,30 +53,8 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
-        if (!isPrewarmer)
-        {
-            // Null for backends without trie warm-up support (e.g. non-flat layouts).
-            preBlockCaches.TrieHintSink = FindTrieHintSink(scope);
-        }
+        if (!isPrewarmer && scope.SupportsTrieWarmHints) preBlockCaches.MainScope = scope;
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
-    }
-
-    // The sink capability lives on the innermost (flat) scope, behind metrics/logging decorators.
-    private static IPrewarmTrieHintSink? FindTrieHintSink(IWorldStateScopeProvider.IScope scope)
-    {
-        while (true)
-        {
-            switch (scope)
-            {
-                case IPrewarmTrieHintSink sink:
-                    return sink;
-                case IWorldStateScopeProvider.IScopeDecorator decorator:
-                    scope = decorator.InnerScope;
-                    break;
-                default:
-                    return null;
-            }
-        }
     }
 
     public PreBlockCaches? Caches => preBlockCaches;
@@ -89,6 +67,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
+        private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -103,7 +82,7 @@ public class PrewarmerScopeProvider(
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
             }
             // Unregister before teardown so no new warm hints target a disposing scope.
-            if (!isPrewarmer) preBlockCaches.TrieHintSink = null;
+            if (!isPrewarmer) preBlockCaches.MainScope = null;
             baseScope.Dispose();
         }
 
@@ -147,6 +126,8 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseScope.RootHash;
 
+        public bool SupportsTrieWarmHints => baseScope.SupportsTrieWarmHints;
+
         public void UpdateRootHash()
         {
             if (!_measureMetric)
@@ -176,14 +157,17 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                // First resolve in the block: warm the account-trie path ahead of the final commit.
-                if (isPrewarmer) preBlockCaches.TrieHintSink?.HintAccountWarm(address);
+                mainScope?.HintWarmAccount(address);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
             return account;
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+
+        public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
+
+        public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

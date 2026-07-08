@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -338,32 +339,48 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    public void Test_TrieHintSink_RegisteredForConsumerScopeLifetime(bool isPrewarmer, bool decorateProvider)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test_MainScope_RegisteredForConsumerScopeLifetime(bool isPrewarmer)
     {
         using Context ctx = new(useFlat);
 
-        // decorateProvider replicates the production chain (metrics + operation-logging wrappers),
-        // which the sink lookup must unwrap.
-        IWorldStateScopeProvider baseProvider = decorateProvider
-            ? new WorldStateMetricsScopeProvider(new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), _ => { })
-            : ctx.ScopeProvider;
-
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider provider = new(baseProvider, caches, LimboLogs.Instance, isPrewarmer);
+        PrewarmerScopeProvider provider = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer);
 
-        using (provider.BeginScope(null))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
         {
-            // Only a consumer scope registers, and only the flat backend supports hints.
-            if (!isPrewarmer && useFlat)
-                Assert.That(caches.TrieHintSink, Is.Not.Null);
+            if (!isPrewarmer && scope.SupportsTrieWarmHints)
+                Assert.That(caches.MainScope, Is.Not.Null);
             else
-                Assert.That(caches.TrieHintSink, Is.Null);
+                Assert.That(caches.MainScope, Is.Null);
         }
 
-        Assert.That(caches.TrieHintSink, Is.Null, "sink must be unregistered when the scope is disposed");
+        Assert.That(caches.MainScope, Is.Null, "scope must be unregistered when disposed");
+    }
+
+    [Test]
+    public void Test_ScopeDecorators_ForwardWarmHints()
+    {
+        IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
+        inner.SupportsTrieWarmHints.Returns(true);
+        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
+
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        using (main.BeginScope(null))
+        {
+            caches.MainScope.HintWarmAccount(TestItem.AddressA);
+            caches.MainScope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+        }
+
+        inner.Received(1).HintWarmAccount(TestItem.AddressA);
+        inner.Received(1).HintWarmSlot(TestItem.AddressA, (UInt256)1);
     }
 
     [Test]
@@ -384,18 +401,19 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         PreBlockCaches caches = new();
-        CollectingTrieHintSink sink = new();
-        caches.TrieHintSink = sink;
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
         {
-            scope.Get(TestItem.AddressA); // miss: resolves from the base tree and hints
-            scope.Get(TestItem.AddressA); // hit: no further hint
+            caches.MainScope = null;
+            scope.Get(TestItem.AddressA);
+            scope.Get(TestItem.AddressA);
         }
 
-        Assert.That(sink.AccountHints, Is.EquivalentTo(new[] { TestItem.AddressA }));
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
     }
 
     [Test]
@@ -426,18 +444,14 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         using (IWorldStateScopeProvider.IScope scope = main.BeginScope(baseBlock))
         {
-            IPrewarmTrieHintSink sink = caches.TrieHintSink;
-            Assert.That(sink, Is.Not.Null);
-
-            // Covers dedupe, empty-root and unknown-account drops; dispose drains outstanding warm-ups.
             Assert.DoesNotThrow(() =>
             {
-                sink.HintAccountWarm(TestItem.AddressA);
-                sink.HintSlotWarm(TestItem.AddressA, 1);
-                sink.HintSlotWarm(TestItem.AddressB, 1);
-                sink.HintSlotWarm(TestItem.AddressC, 1);
-                sink.HintAccountWarm(TestItem.AddressA);
-                sink.HintSlotWarm(TestItem.AddressA, 1);
+                scope.HintWarmAccount(TestItem.AddressA);
+                scope.HintWarmSlot(TestItem.AddressA, 1);
+                scope.HintWarmSlot(TestItem.AddressB, 1);
+                scope.HintWarmSlot(TestItem.AddressC, 1);
+                scope.HintWarmAccount(TestItem.AddressA);
+                scope.HintWarmSlot(TestItem.AddressA, 1);
             });
         }
     }

@@ -24,19 +24,25 @@ public interface IWorldStateScopeProvider
     /// </param>
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
-    /// <summary>
-    /// A scope wrapping another scope, unwrappable when probing for backend-specific capabilities.
-    /// </summary>
-    public interface IScopeDecorator : IScope
-    {
-        IScope InnerScope { get; }
-    }
-
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
 
         void UpdateRootHash();
+
+        /// <summary>
+        /// Indicates whether this scope can use speculative trie warm-up hints.
+        /// </summary>
+        bool SupportsTrieWarmHints => false;
+
+        /// <summary>
+        /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
+        /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
+        /// </summary>
+        void HintWarmAccount(Address address) { }
+
+        /// <inheritdoc cref="HintWarmAccount"/>
+        void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.

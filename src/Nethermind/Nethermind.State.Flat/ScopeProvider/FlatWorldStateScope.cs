@@ -18,7 +18,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer, IPrewarmTrieHintSink
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
@@ -32,8 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
-    // Prewarm-hint warm-up targets; separate from the main-thread-only _storages as hints arrive concurrently.
-    private readonly ConcurrentDictionary<AddressAsKey, FlatStorageTree?> _hintWarmStorages = new();
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -139,6 +138,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
+    public bool SupportsTrieWarmHints => _warmer is not NoopTrieWarmer;
 
     public Account? Get(Address address)
     {
@@ -345,7 +345,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
-    void IPrewarmTrieHintSink.HintAccountWarm(Address address)
+    public void HintWarmAccount(Address address)
     {
         if (IsDisposed || _pausePrewarmer) return;
         if (_snapshotBundle.ShouldQueuePrewarm(address)
@@ -353,7 +353,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Interlocked.Increment(ref _outstandingWarmups);
     }
 
-    void IPrewarmTrieHintSink.HintSlotWarm(Address address, in UInt256 index)
+    public void HintWarmSlot(Address address, in UInt256 index)
     {
         if (IsDisposed || _pausePrewarmer) return;
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
@@ -364,10 +364,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
-        _hintWarmStorages.GetOrAdd(address, static (key, scope) =>
+        GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>
         {
             Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
-            // An empty pre-state storage root has no trie nodes to warm.
             return storageRoot == Keccak.EmptyTreeHash
                 ? null
                 : new FlatStorageTree(
@@ -380,6 +379,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     key.Value,
                     scope._logManager);
         }, this);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> GetHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? storages = Volatile.Read(ref _hintWarmStorages);
+        return storages ?? InitializeHintWarmStorages();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> InitializeHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?> newStorages = new();
+        return Interlocked.CompareExchange(ref _hintWarmStorages, newStorages, null) ?? newStorages;
+    }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
@@ -417,7 +430,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _stateTree.Commit();
 
         _storages.Clear();
-        _hintWarmStorages.Clear();
+        _hintWarmStorages?.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;

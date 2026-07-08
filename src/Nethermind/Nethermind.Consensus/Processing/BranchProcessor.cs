@@ -137,9 +137,12 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                QueueClearCaches(preWarmTask);
+                // Hint producers touch the active snapshot bundle, which CommitTree rotates.
+                WaitAndClear(ref preWarmTask);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
                 {
@@ -156,15 +159,11 @@ public class BranchProcessor(
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
-                    // Quiesce prewarm workers first: they may still push trie warm hints into the scope being disposed.
-                    WaitAndClear(ref preWarmTask);
                     worldStateCloser?.Dispose();
                     worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
