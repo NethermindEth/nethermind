@@ -308,13 +308,11 @@ public partial class BlockProcessor
         }
 
         /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
-        /// natural block order. Chosen so single- and small-tx blocks don't pay the sort cost;
-        /// larger blocks reorder the tail to surface the heaviest gas-limit txs first, which
-        /// reduces tail-latency stragglers in <see cref="ParallelUnbalancedWork.For"/>.</summary>
+        /// natural block order. Chosen so single- and small-tx blocks keep the expected cheap path;
+        /// larger BAL blocks let the read warmer get ahead before storage-heavy transactions run.</summary>
         internal static int GetCanonicalExecutionLead(int txCount)
         {
-            int lead = Math.Max(8, Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount * 2);
-            return Math.Min(txCount, lead);
+            return Math.Min(txCount, 8);
         }
 
         internal static void BuildTxExecutionOrder(Transaction[] txs, int[] txExecutionOrder, int canonicalLead)
@@ -425,7 +423,7 @@ public partial class BlockProcessor
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
 
-        /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts heaviest
+        /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts lighter
         /// estimated-work transactions first; ties resolved by ascending tx index so the
         /// schedule is deterministic.</summary>
         private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
@@ -439,19 +437,19 @@ public partial class BlockProcessor
 
             public int CompareTo(TxExecutionSortKey other)
             {
-                int comparison = other._gasLimit.CompareTo(_gasLimit);
+                int comparison = _gasLimit.CompareTo(other._gasLimit);
                 if (comparison != 0) return comparison;
 
-                comparison = other._dataLength.CompareTo(_dataLength);
+                comparison = _dataLength.CompareTo(other._dataLength);
                 if (comparison != 0) return comparison;
 
-                comparison = other._authorizationCount.CompareTo(_authorizationCount);
+                comparison = _authorizationCount.CompareTo(other._authorizationCount);
                 if (comparison != 0) return comparison;
 
-                comparison = other._accessListItems.CompareTo(_accessListItems);
+                comparison = _accessListItems.CompareTo(other._accessListItems);
                 if (comparison != 0) return comparison;
 
-                comparison = other._contractCreation.CompareTo(_contractCreation);
+                comparison = _contractCreation.CompareTo(other._contractCreation);
                 if (comparison != 0) return comparison;
 
                 return _index.CompareTo(other._index);
