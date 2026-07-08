@@ -7,75 +7,76 @@ using System.Threading;
 namespace Nethermind.Core;
 
 /// <summary>
-/// Sequences deferred block-data durability against state persistence. Block-data stores (receipts,
-/// bodies) register a flush callback; the state-persistence path calls <see cref="FlushBefore"/> with
-/// the block number whose state is about to be persisted, forcing every registered store to make its
-/// data for that block (and all earlier) durable first.
+/// Sequences deferred block-data durability against state persistence. The deferred writer registers a
+/// drain and each block-data database registers a write-ahead-log flush; the state-persistence path calls
+/// <see cref="FlushBefore"/> before persisting a block's state, which first drains every queued deferred
+/// write and then fsyncs those databases.
 /// </summary>
 /// <remarks>
-/// Guarantees <c>state(N) durable =&gt; block-data(&lt;= N) durable</c>. A node re-executes on restart every
-/// block whose state is not persisted, so nothing durable is ever left without its block data.
-/// <para>
-/// An ordering gate, not the primary drain: a bounded background writer keeps the overlay shallow, so
-/// <see cref="FlushBefore"/> normally just fsyncs the WAL of writes the writer already made. Callbacks
-/// run synchronously on the caller's state-persistence background thread, off the engine API path.
-/// </para>
-/// <para>
-/// A callback that throws aborts the persist before state is written, preserving the invariant. Hard
-/// write/flush failures are handled by the database layer as for state's own WAL flush, so the
-/// abort-on-throw guarantee covers propagated errors, not every possible flush failure.
-/// </para>
+/// Guarantees <c>state(N) durable =&gt; block-data(&lt;= N) durable</c> on the live path: a block's deferred
+/// writes are enqueued while it is processed/made canonical, which precedes its state persistence, so
+/// draining the writer here writes them all (in the writer's FIFO order) and the flush makes them durable.
+/// A node re-executes on restart every block whose state is not persisted, so nothing durable is left
+/// without its block data. Drains and flushes run synchronously on the caller's state-persistence
+/// background thread, off the engine API path.
 /// </remarks>
 public interface IStatePersistenceBarrier
 {
-    /// <summary>Whether the barrier is active. When false, <see cref="Register"/> and <see cref="FlushBefore"/> are no-ops.</summary>
+    /// <summary>Whether the barrier is active. When false, all members are no-ops.</summary>
     bool IsEnabled { get; }
 
-    /// <summary>
-    /// Registers a callback that must, for every entry the store holds with block number less than or
-    /// equal to its argument, write it to the store's database and flush that database's write-ahead
-    /// log before returning.
-    /// </summary>
-    /// <param name="flushUpToInclusive">The callback, invoked with the highest block number to flush.</param>
-    void Register(Action<long> flushUpToInclusive);
+    /// <summary>Registers a callback (the deferred writer) that blocks until every queued write is written.</summary>
+    void RegisterDrain(Action drain);
+
+    /// <summary>Registers a callback (one per block-data database) that fsyncs that database's write-ahead log.</summary>
+    void RegisterFlush(Action flush);
 
     /// <summary>
-    /// Invoked by the state-persistence path immediately before the state for <paramref name="blockNumber"/>
-    /// is written, driving every registered store to make its data for that block (and earlier) durable.
+    /// Invoked before the state for <paramref name="blockNumber"/> is persisted: runs every registered drain,
+    /// then every registered flush, so all deferred block data is durable first.
     /// </summary>
-    /// <param name="blockNumber">The block number whose state is about to be persisted.</param>
+    /// <param name="blockNumber">The block number whose state is about to be persisted (informational).</param>
     void FlushBefore(long blockNumber);
 }
 
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
 public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
 {
-    // Copy-on-write: registration happens a handful of times at startup, FlushBefore runs on every
-    // state persist, so readers take a lock-free snapshot and writers rebuild the array under a lock.
+    // Copy-on-write: registration happens a handful of times at startup, FlushBefore runs on every state
+    // persist, so readers take a lock-free snapshot and writers rebuild the arrays under a lock.
     private readonly Lock _registrationLock = new();
-    private volatile Action<long>[] _hooks = [];
+    private volatile Action[] _drains = [];
+    private volatile Action[] _flushes = [];
 
     public bool IsEnabled => true;
 
-    public void Register(Action<long> flushUpToInclusive)
+    public void RegisterDrain(Action drain)
     {
-        ArgumentNullException.ThrowIfNull(flushUpToInclusive);
-        lock (_registrationLock)
-        {
-            Action<long>[] updated = new Action<long>[_hooks.Length + 1];
-            Array.Copy(_hooks, updated, _hooks.Length);
-            updated[^1] = flushUpToInclusive;
-            _hooks = updated;
-        }
+        ArgumentNullException.ThrowIfNull(drain);
+        lock (_registrationLock) _drains = Append(_drains, drain);
+    }
+
+    public void RegisterFlush(Action flush)
+    {
+        ArgumentNullException.ThrowIfNull(flush);
+        lock (_registrationLock) _flushes = Append(_flushes, flush);
     }
 
     public void FlushBefore(long blockNumber)
     {
-        Action<long>[] hooks = _hooks;
-        for (int i = 0; i < hooks.Length; i++)
-        {
-            hooks[i](blockNumber);
-        }
+        Action[] drains = _drains;
+        for (int i = 0; i < drains.Length; i++) drains[i]();
+
+        Action[] flushes = _flushes;
+        for (int i = 0; i < flushes.Length; i++) flushes[i]();
+    }
+
+    private static Action[] Append(Action[] existing, Action callback)
+    {
+        Action[] updated = new Action[existing.Length + 1];
+        Array.Copy(existing, updated, existing.Length);
+        updated[^1] = callback;
+        return updated;
     }
 }
 
@@ -88,7 +89,9 @@ public sealed class NullStatePersistenceBarrier : IStatePersistenceBarrier
 
     public bool IsEnabled => false;
 
-    public void Register(Action<long> flushUpToInclusive) { }
+    public void RegisterDrain(Action drain) { }
+
+    public void RegisterFlush(Action flush) { }
 
     public void FlushBefore(long blockNumber) { }
 }

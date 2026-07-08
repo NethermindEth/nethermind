@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
@@ -31,6 +32,12 @@ public interface IDeferredBlockDataWriter : IAsyncDisposable
     /// this backpressure intentionally degrades to synchronous behaviour rather than growing memory.
     /// </summary>
     void Enqueue(Action work);
+
+    /// <summary>
+    /// Blocks until every work item queued before this call has executed. The state persistence barrier
+    /// calls this before fsyncing, so a block's deferred writes are on disk before its state is persisted.
+    /// </summary>
+    void Drain();
 }
 
 /// <inheritdoc cref="IDeferredBlockDataWriter"/>
@@ -40,6 +47,9 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     private readonly Task? _consumer;
     private readonly bool _manualPump;
     private readonly ILogger _logger;
+    // Set (before _faulted, whose volatile write publishes it) on a hard write failure or an unexpected
+    // consumer exit. Drain rethrows it so state persistence aborts rather than proceeding without the data.
+    private Exception? _faultException;
     private volatile bool _faulted;
 
     /// <param name="enabled">When false the writer is a no-op passthrough that runs work inline.</param>
@@ -47,9 +57,11 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     /// counts individual writes, not blocks: a block can enqueue a body, a receipts and a canonical
     /// item, so the block headroom is roughly a third of this value.</param>
     /// <param name="logManager">Log manager.</param>
+    /// <param name="persistenceBarrier">Barrier to register this writer's <see cref="Drain"/> with, so a
+    /// state persist drains queued writes before fsyncing. No drain is registered when null/disabled.</param>
     /// <param name="startConsumer">When false no background consumer runs and <see cref="Pump"/>
     /// must be driven manually. For tests only.</param>
-    public DeferredBlockDataWriter(bool enabled, int capacity, ILogManager logManager, bool startConsumer = true)
+    public DeferredBlockDataWriter(bool enabled, int capacity, ILogManager logManager, IStatePersistenceBarrier? persistenceBarrier = null, bool startConsumer = true)
     {
         _logger = logManager.GetClassLogger<DeferredBlockDataWriter>();
         Enabled = enabled;
@@ -65,6 +77,11 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             if (startConsumer)
             {
                 _consumer = Task.Run(RunAsync);
+            }
+
+            if (persistenceBarrier is { IsEnabled: true })
+            {
+                persistenceBarrier.RegisterDrain(Drain);
             }
         }
     }
@@ -112,11 +129,51 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         }
     }
 
+    public void Drain()
+    {
+        if (_channel is null) return;          // disabled: work ran inline, nothing is queued
+        if (_manualPump) { Pump(); ThrowIfFaulted(); return; }   // no background consumer (tests)
+
+        // Fence: enqueue a completion marker and block until the single FIFO consumer reaches it, which
+        // proves every earlier queued write has executed. Wait on the marker OR consumer termination, so a
+        // consumer that ever stops without draining the marker aborts here instead of freezing this thread.
+        TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(drained.SetResult);
+        Task.WhenAny(drained.Task, _consumer!).GetAwaiter().GetResult();
+
+        // A hard write failure - or a consumer that stopped before running the marker - means a block's
+        // data may not be durable; abort the state persist rather than fsyncing and letting state pass it.
+        if (!drained.Task.IsCompleted)
+        {
+            ThrowIfFaulted();
+            throw new InvalidOperationException("Deferred writer consumer stopped before the drain completed.");
+        }
+
+        ThrowIfFaulted();
+    }
+
+    private void ThrowIfFaulted()
+    {
+        if (_faulted)
+        {
+            throw new InvalidOperationException("Deferred block-data write failed; aborting state persistence.", _faultException);
+        }
+    }
+
     private async Task RunAsync()
     {
-        await foreach (Action work in _channel!.Reader.ReadAllAsync().ConfigureAwait(false))
+        try
         {
-            Run(work);
+            await foreach (Action work in _channel!.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                Run(work);
+            }
+        }
+        catch (Exception e)
+        {
+            // The consumer must never exit silently: fault so Enqueue/Drain fall back inline and surface it,
+            // rather than leaving a queued Drain sentinel that would never be signalled (a hang).
+            Fault(e);
         }
     }
 
@@ -136,11 +193,18 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             catch (Exception secondException)
             {
                 // Hard persistence failure: keep the overlay published (reads stay correct) and run all
-                // future work inline so the failure surfaces on the producer as the synchronous path would.
-                _faulted = true;
-                if (_logger.IsError) _logger.Error("Deferred block-data write failed after retry; falling back to synchronous persistence.", secondException);
+                // future work inline so the failure surfaces on the producer as the synchronous path would;
+                // Drain rethrows it so a state persist cannot proceed past the lost write.
+                Fault(secondException);
             }
         }
+    }
+
+    private void Fault(Exception exception)
+    {
+        _faultException = exception;
+        _faulted = true; // volatile write publishes _faultException
+        if (_logger.IsError) _logger.Error("Deferred block-data write failed; falling back to synchronous persistence.", exception);
     }
 
     public async ValueTask DisposeAsync()

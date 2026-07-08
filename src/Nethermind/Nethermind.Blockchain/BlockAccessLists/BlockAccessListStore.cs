@@ -3,10 +3,7 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,14 +23,8 @@ public class BlockAccessListStore : IBlockAccessListStore
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
     // Like a block body, a lost BAL cannot be regenerated once its state is persisted, so deferral is
-    // opt-in and coupled to body deferral.
-    private readonly IDeferredBlockDataWriter? _deferredWriter;
-    private readonly IStatePersistenceBarrier _persistenceBarrier;
-
-    // BALs whose durable write is still queued: the immutable encoded bytes (the live block's BAL is
-    // nulled synchronously). Removed only after the DB write, value-conditionally. Never evicts.
-    private readonly ConcurrentDictionary<ValueHash256, PendingBalEntry> _pendingBal = new();
-    private readonly Lock _writeLock = new();
+    // opt-in and coupled to body deferral. Null when off.
+    private readonly DeferredWriteOverlay<byte[]>? _pending;
 
     public BlockAccessListStore(
         [KeyFilter(DbNames.BlockAccessLists)] IDb balDb,
@@ -44,22 +35,12 @@ public class BlockAccessListStore : IBlockAccessListStore
     {
         _balDb = balDb;
         _balDecoder = decoder ?? new();
-        _deferredWriter = deferBal && deferredWriter is { Enabled: true } ? deferredWriter : null;
-        _persistenceBarrier = persistenceBarrier ?? NullStatePersistenceBarrier.Instance;
 
-        if (_deferredWriter is not null && _persistenceBarrier.IsEnabled)
+        if (deferBal && deferredWriter is { Enabled: true })
         {
-            _persistenceBarrier.Register(FlushBalUpTo);
+            _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, (number, hash, rlp) => Insert(number, hash, rlp));
+            (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _balDb.Flush(onlyWal: true));
         }
-    }
-
-    // A plain class (not a record) so value-conditional removal keys on reference identity; the block
-    // number lets the barrier flush entries up to a block.
-    private sealed class PendingBalEntry(ulong blockNumber, Hash256 blockHash, byte[] rlp)
-    {
-        public ulong BlockNumber { get; } = blockNumber;
-        public Hash256 BlockHash { get; } = blockHash;
-        public byte[] Rlp { get; } = rlp;
     }
 
     [SkipLocalsInit]
@@ -89,7 +70,7 @@ public class BlockAccessListStore : IBlockAccessListStore
 
     public void InsertFromBlockDeferred(Block block)
     {
-        if (_deferredWriter is null)
+        if (_pending is null)
         {
             ((IBlockAccessListStore)this).InsertFromBlock(block);
             return;
@@ -99,8 +80,8 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         // Snapshot the encoded bytes now, then free the live BAL immediately - exactly the reclamation
         // InsertFromBlock does; only the database write defers. The pre-encoded array is cloned so a later
-        // mutation cannot diverge the deferred write from the header BAL hash (the synchronous path
-        // captured the bytes into RocksDB at call time). The BlockAccessList branch already encodes fresh.
+        // mutation cannot diverge the deferred write from the header BAL hash. The BlockAccessList branch
+        // already encodes fresh.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? (byte[])encoded.Clone()
             : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
@@ -110,48 +91,7 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         if (rlp is null) return;
 
-        PendingBalEntry entry = new(block.Number, blockHash, rlp);
-        _pendingBal[blockHash.ValueHash256] = entry;
-        _deferredWriter.Enqueue(() => PersistDeferred(entry));
-    }
-
-    private bool PersistDeferred(PendingBalEntry entry)
-    {
-        lock (_writeLock)
-        {
-            // Skip if a Delete (or the gate racing the writer) already dropped this exact entry.
-            ValueHash256 key = entry.BlockHash.ValueHash256;
-            if (!_pendingBal.TryGetValue(key, out PendingBalEntry? current) || !ReferenceEquals(current, entry))
-            {
-                return false;
-            }
-
-            Insert(entry.BlockNumber, entry.BlockHash, entry.Rlp);
-            _pendingBal.TryRemove(new KeyValuePair<ValueHash256, PendingBalEntry>(key, entry));
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// Barrier hook: persist any queued BAL write for a block up to <paramref name="blockNumber"/>,
-    /// then fsync the BAL DB WAL so it is durable before the block's state is persisted.
-    /// </summary>
-    /// <remarks>
-    /// The fsync is unconditional: the eager writer's writes are WAL-buffered (WriteFlags.None) and
-    /// nothing else syncs them, so gating on the gate winning the write would leave the common path unsynced.
-    /// </remarks>
-    private void FlushBalUpTo(long blockNumber)
-    {
-        ulong upTo = (ulong)blockNumber;
-        foreach (KeyValuePair<ValueHash256, PendingBalEntry> kv in _pendingBal)
-        {
-            if (kv.Value.BlockNumber <= upTo)
-            {
-                PersistDeferred(kv.Value);
-            }
-        }
-
-        _balDb.Flush(onlyWal: true);
+        _pending.Publish(block.Number, blockHash, rlp);
     }
 
     [SkipLocalsInit]
@@ -159,9 +99,9 @@ public class BlockAccessListStore : IBlockAccessListStore
     {
         // Non-owning wrapper: the array stays alive via the returned manager, and disposing it must not
         // free the still-pending overlay buffer.
-        if (_pendingBal.TryGetValue(blockHash.ValueHash256, out PendingBalEntry? pending))
+        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
         {
-            return ArrayMemoryManager.From(pending.Rlp);
+            return ArrayMemoryManager.From(pendingRlp);
         }
 
         Span<byte> key = stackalloc byte[KeyLength];
@@ -172,7 +112,7 @@ public class BlockAccessListStore : IBlockAccessListStore
     [SkipLocalsInit]
     public bool Exists(ulong blockNumber, Hash256 blockHash)
     {
-        if (_pendingBal.ContainsKey(blockHash.ValueHash256)) return true;
+        if (_pending?.Contains(blockHash) == true) return true;
 
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
@@ -188,13 +128,21 @@ public class BlockAccessListStore : IBlockAccessListStore
     [SkipLocalsInit]
     public void Delete(ulong blockNumber, Hash256 blockHash)
     {
-        lock (_writeLock)
+        if (_pending is not null)
         {
-            _pendingBal.TryRemove(blockHash.ValueHash256, out _);
-
-            Span<byte> key = stackalloc byte[KeyLength];
-            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-            _balDb.Remove(key);
+            _pending.Remove(blockHash, () => Remove(blockNumber, blockHash));
         }
+        else
+        {
+            Remove(blockNumber, blockHash);
+        }
+    }
+
+    [SkipLocalsInit]
+    private void Remove(ulong blockNumber, Hash256 blockHash)
+    {
+        Span<byte> key = stackalloc byte[KeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+        _balDb.Remove(key);
     }
 }

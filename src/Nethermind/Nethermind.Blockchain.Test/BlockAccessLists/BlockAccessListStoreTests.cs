@@ -141,25 +141,26 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
-    public async Task Barrier_flush_makes_bal_durable_up_to_the_watermark()
+    public async Task Barrier_flush_drains_queued_bal_and_fsyncs_before_state_persists()
     {
         TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
         StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, barrier, startConsumer: false);
         BlockAccessListStore store = new(db, null, writer, deferBal: true, persistenceBarrier: barrier);
 
-        byte[] balLow = [0xc1, 0x01];
-        byte[] balHigh = [0xc1, 0x02];
-        Block low = BlockWithBal(5, balLow);
-        Block high = BlockWithBal(6, balHigh);
-        store.InsertFromBlockDeferred(low);
-        store.InsertFromBlockDeferred(high);
+        byte[] balA = [0xc1, 0x01];
+        byte[] balB = [0xc1, 0x02];
+        Block a = BlockWithBal(5, balA);
+        Block b = BlockWithBal(6, balB);
+        store.InsertFromBlockDeferred(a);
+        store.InsertFromBlockDeferred(b);
 
-        barrier.FlushBefore(5);
+        Assert.That(new BlockAccessListStore(db).Exists(a.Number, a.Hash!), Is.False, "not durable until the barrier flushes");
 
-        Assert.That(ReadDurable(db, low), Is.EqualTo(balLow), "at-or-below watermark is durable");
-        Assert.That(new BlockAccessListStore(db).Exists(high.Number, high.Hash!), Is.False, "above watermark stays pending");
-        Assert.That(store.Exists(high.Number, high.Hash!), Is.True, "still served from the overlay");
+        barrier.FlushBefore(6);
+
+        Assert.That(ReadDurable(db, a), Is.EqualTo(balA));
+        Assert.That(ReadDurable(db, b), Is.EqualTo(balB));
         Assert.That(db.FlushCount, Is.GreaterThan(0), "BAL WAL was fsynced before state persist");
     }
 

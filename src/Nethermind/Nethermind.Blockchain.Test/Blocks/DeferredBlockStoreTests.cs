@@ -18,12 +18,17 @@ public class DeferredBlockStoreTests
 {
     private readonly TestMemDb _db = new();
     private readonly StatePersistenceBarrier _barrier = new();
-    // startConsumer:false makes pre-flush states deterministic; Pump() / the barrier flush on demand.
-    private readonly DeferredBlockDataWriter _writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
+    private DeferredBlockDataWriter _writer = null!;
     private BlockStore _store = null!;
 
     [SetUp]
-    public void SetUp() => _store = new BlockStore(_db, null, _writer, deferBodies: true, persistenceBarrier: _barrier);
+    public void SetUp()
+    {
+        // startConsumer:false makes pre-flush states deterministic; Pump() / the barrier drain on demand.
+        // The writer registers its drain with the barrier so a FlushBefore drains queued writes then fsyncs.
+        _writer = new DeferredBlockDataWriter(enabled: true, capacity: 8, LimboLogs.Instance, _barrier, startConsumer: false);
+        _store = new BlockStore(_db, null, _writer, deferBodies: true, persistenceBarrier: _barrier);
+    }
 
     [TearDown]
     public Task TearDown() => _writer.DisposeAsync().AsTask();
@@ -93,21 +98,20 @@ public class DeferredBlockStoreTests
     }
 
     [Test]
-    public void Barrier_flush_makes_bodies_durable_up_to_the_watermark_and_leaves_the_rest_pending()
+    public void Barrier_flush_drains_queued_bodies_and_fsyncs_before_state_persists()
     {
-        Block low = BlockNumbered(5);
-        Block high = BlockNumbered(6);
-        _store.InsertDeferred(low);
-        _store.InsertDeferred(high);
+        Block a = BlockNumbered(5);
+        Block b = BlockNumbered(6);
+        _store.InsertDeferred(a);
+        _store.InsertDeferred(b);
 
-        // The writer never drains, so only the barrier gate can persist.
-        Assert.That(Reopen().Get(low.Number, low.Hash!), Is.Null, "not durable until the barrier flushes");
+        // The consumer is not running, so only the barrier (via the writer's drain) makes these durable.
+        Assert.That(Reopen().Get(a.Number, a.Hash!), Is.Null, "not durable until the barrier flushes");
 
-        _barrier.FlushBefore(5);
+        _barrier.FlushBefore(6);
 
-        Assert.That(Reopen().Get(low.Number, low.Hash!), Is.EqualTo(low).UsingBlockComparer(), "at-or-below watermark is durable");
-        Assert.That(Reopen().Get(high.Number, high.Hash!), Is.Null, "above watermark stays pending");
-        Assert.That(_store.HasBlock(high.Number, high.Hash!), Is.True, "still served from the overlay");
+        Assert.That(Reopen().Get(a.Number, a.Hash!), Is.EqualTo(a).UsingBlockComparer());
+        Assert.That(Reopen().Get(b.Number, b.Hash!), Is.EqualTo(b).UsingBlockComparer());
         Assert.That(_db.FlushCount, Is.GreaterThan(0), "blocks WAL was fsynced before state persist");
     }
 
