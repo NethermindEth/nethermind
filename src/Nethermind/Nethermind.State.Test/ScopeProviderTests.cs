@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -335,6 +336,123 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test_MainScope_RegisteredForConsumerScopeLifetime(bool isPrewarmer)
+    {
+        using Context ctx = new(useFlat);
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider provider = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer);
+
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
+        {
+            if (!isPrewarmer && scope.SupportsTrieWarmHints)
+                Assert.That(caches.MainScope, Is.Not.Null);
+            else
+                Assert.That(caches.MainScope, Is.Null);
+        }
+
+        Assert.That(caches.MainScope, Is.Null, "scope must be unregistered when disposed");
+    }
+
+    [Test]
+    public void Test_ScopeDecorators_ForwardWarmHints()
+    {
+        IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
+        inner.SupportsTrieWarmHints.Returns(true);
+        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
+
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        using (main.BeginScope(null))
+        {
+            caches.MainScope.HintWarmAccount(TestItem.AddressA);
+            caches.MainScope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+        }
+
+        inner.Received(1).HintWarmAccount(TestItem.AddressA);
+        inner.Received(1).HintWarmSlot(TestItem.AddressA, (UInt256)1);
+    }
+
+    [Test]
+    public void Test_PopulatorGetMiss_PushesAccountTrieWarmHint()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
+        {
+            caches.MainScope = null;
+            scope.Get(TestItem.AddressA);
+            scope.Get(TestItem.AddressA);
+        }
+
+        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
+    }
+
+    [Test]
+    public void Test_FlatScope_TrieWarmHints_Smoke()
+    {
+        Assume.That(useFlat, Is.True);
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        using (IWorldStateScopeProvider.IScope scope = main.BeginScope(baseBlock))
+        {
+            Assert.DoesNotThrow(() =>
+            {
+                scope.HintWarmAccount(TestItem.AddressA);
+                scope.HintWarmSlot(TestItem.AddressA, 1);
+                scope.HintWarmSlot(TestItem.AddressB, 1);
+                scope.HintWarmSlot(TestItem.AddressC, 1);
+                scope.HintWarmAccount(TestItem.AddressA);
+                scope.HintWarmSlot(TestItem.AddressA, 1);
+            });
         }
     }
 

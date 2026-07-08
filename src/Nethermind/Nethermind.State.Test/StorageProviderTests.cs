@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Evm.Tracing.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -933,6 +934,24 @@ public class StorageProviderTests(bool useFlat)
         Hash256 clearedHash = worldState.StateRoot;
 
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    {
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+
+        using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
+        caches.MainScope = null;
+        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
+
+        if (populator)
+            mainScope.Received(1).HintWarmSlot(ctx.Address1, (UInt256)42);
+        else
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(null!, default);
     }
 
     private class Context : IDisposable

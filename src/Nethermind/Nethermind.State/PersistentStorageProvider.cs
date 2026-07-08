@@ -30,6 +30,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
+    private IWorldStateScopeProvider.IScope? _mainScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
     private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
@@ -59,12 +60,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope scope, IWorldStateScopeProvider.IScope? mainScope = null)
+    {
+        _currentScope = scope;
+        _mainScope = mainScope;
+    }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        if (_mainScope is not null && !storageCell.IsHash)
+        {
+            _mainScope.HintWarmSlot(storageCell.Address, storageCell.Index);
+        }
     }
 
     /// <summary>
