@@ -176,10 +176,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
-        if (sink is not null && accountCount > 1)
-        {
-            accountChanges.Sort(new BalWarmupAccountComparer());
-        }
 
         CancelHintBal();
 
@@ -314,21 +310,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!sink.StillNeeded(in cell)) return;
         byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
         sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
-    }
-
-    private readonly struct BalWarmupAccountComparer : IComparer<ReadOnlyAccountChanges>
-    {
-        public int Compare(ReadOnlyAccountChanges? x, ReadOnlyAccountChanges? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (x is null) return 1;
-            if (y is null) return -1;
-
-            int xSlots = x.StorageChanges.Length + x.StorageReads.Length;
-            int ySlots = y.StorageChanges.Length + y.StorageReads.Length;
-            int comparison = ySlots.CompareTo(xSlots);
-            return comparison != 0 ? comparison : x.Address.CompareTo(y.Address);
-        }
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
