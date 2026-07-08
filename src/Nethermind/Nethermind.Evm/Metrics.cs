@@ -199,7 +199,10 @@ public class Metrics
     [Description("Number of SELFDESTRUCT calls on main processing thread.")]
     public static long MainThreadSelfDestructs => SumOpcodeCounters(static c => c.MainSelfDestructs);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSelfDestructs() => AddSelfDestructs(1);
+    public static void IncrementSelfDestructs()
+    {
+        AddSelfDestructs(1);
+    }
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
@@ -207,7 +210,10 @@ public class Metrics
     [Description("Number of calls to other contracts on main processing thread.")]
     public static long MainThreadCalls => SumOpcodeCounters(static c => c.MainCalls);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementCalls() => AddCalls(1);
+    public static void IncrementCalls()
+    {
+        AddCalls(1);
+    }
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
@@ -215,7 +221,10 @@ public class Metrics
     [Description("Number of SLOAD opcodes executed on main processing thread.")]
     public static long MainThreadSLoadOpcode => SumOpcodeCounters(static c => c.MainSLoadOpcode);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSLoadOpcode() => AddSLoadOpcodes(1);
+    public static void IncrementSLoadOpcode()
+    {
+        AddSLoadOpcodes(1);
+    }
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
@@ -223,7 +232,10 @@ public class Metrics
     [Description("Number of SSTORE opcodes executed on main processing thread.")]
     public static long MainThreadSStoreOpcode => SumOpcodeCounters(static c => c.MainSStoreOpcode);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementSStoreOpcode() => AddSStoreOpcode(1);
+    public static void IncrementSStoreOpcode()
+    {
+        AddSStoreOpcode(1);
+    }
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -243,7 +255,10 @@ public class Metrics
     [Description("Number of calls made to addresses without code on main processing thread.")]
     public static long MainThreadEmptyCalls => SumOpcodeCounters(static c => c.MainEmptyCalls);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementEmptyCalls() => AddEmptyCalls(1);
+    public static void IncrementEmptyCalls()
+    {
+        AddEmptyCalls(1);
+    }
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
@@ -251,7 +266,10 @@ public class Metrics
     [Description("Number of contract create calls on main processing thread.")]
     public static long MainThreadCreates => SumOpcodeCounters(static c => c.MainCreates);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IncrementCreates() => AddCreates(1);
+    public static void IncrementCreates()
+    {
+        AddCreates(1);
+    }
 
     [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => SumOpcodeCounters(static c => c.MainContractsAnalysed + c.OtherContractsAnalysed);
