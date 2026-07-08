@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
@@ -17,7 +17,7 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
+        protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = [];
@@ -79,36 +79,32 @@ namespace Nethermind.State
 
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
-                Change change = _changes[currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
-                if (stack.Count == 1)
+                int position = currentPosition - i;
+                Change change = _changes[position];
+                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
+                if (Unsafe.IsNullRef(ref head))
                 {
-                    if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
-                    {
-                        int actualPosition = stack.Pop();
-                        if (actualPosition != currentPosition - i)
-                        {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {currentPosition} - {i}");
-                        }
-
-                        _keptInCache.Add(change);
-                        _changes[actualPosition] = default;
-                        continue;
-                    }
+                    throw new InvalidOperationException($"Missing head entry for {change.StorageCell} at position {position}");
                 }
 
-                int forAssertion = stack.Pop();
-                if (forAssertion != currentPosition - i)
+                if (head.CurrentIdx != position)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
+                    throw new InvalidOperationException($"Expected checked value {head.CurrentIdx} to be equal to {currentPosition} - {i}");
                 }
 
-                _changes[currentPosition - i] = default;
-
-                if (stack.Count == 0)
+                if (change.PrevIdx != -1)
+                {
+                    Change previous = _changes[change.PrevIdx];
+                    head = new HeadChange(change.PrevIdx, previous.Value);
+                }
+                else if (change.ChangeType == ChangeType.JustCache)
+                {
+                    // Keep the read-only entry; its head is stale until re-appended below.
+                    _keptInCache.Add(change);
+                }
+                else
                 {
                     _intraBlockCache.Remove(change.StorageCell);
-                    stack.Return();
                 }
             }
 
@@ -118,7 +114,7 @@ namespace Nethermind.State
             {
                 currentPosition++;
                 _changes.Add(kept);
-                _intraBlockCache[kept.StorageCell].Push(currentPosition);
+                _intraBlockCache[kept.StorageCell] = new HeadChange(currentPosition, kept.Value);
             }
 
             _keptInCache.Clear();
@@ -163,7 +159,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.ResetAndClear();
+            _intraBlockCache.Clear();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -177,13 +173,10 @@ namespace Nethermind.State
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
-            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out HeadChange head))
             {
-                int lastChangeIndex = stack.Peek();
-                {
-                    bytes = _changes[lastChangeIndex].Value;
-                    return true;
-                }
+                bytes = head.Value;
+                return true;
             }
 
             bytes = null;
@@ -204,24 +197,12 @@ namespace Nethermind.State
         /// <param name="value">Value to set</param>
         private void PushUpdate(in StorageCell cell, byte[] value)
         {
-            StackList<int> stack = SetupRegistry(cell);
-            stack.Push(_changes.Count);
-            _changes.Add(new Change(in cell, value, ChangeType.Update));
-        }
-
-        /// <summary>
-        /// Initialize the StackList at the storage cell position if needed
-        /// </summary>
-        /// <param name="cell"></param>
-        protected StackList<int> SetupRegistry(in StorageCell cell)
-        {
-            ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
-            if (!exists)
-            {
-                value = StackList<int>.Rent();
-            }
-
-            return value;
+            // Overwrites the head in place and never removes+re-adds — ClearStorage relies on this
+            // to legally call Set while enumerating _intraBlockCache.
+            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            int prevIdx = exists ? head.CurrentIdx : -1;
+            head = new HeadChange(_changes.Count, value);
+            _changes.Add(new Change(in cell, value, ChangeType.Update, prevIdx));
         }
 
         /// <summary>
@@ -231,8 +212,10 @@ namespace Nethermind.State
         public virtual void ClearStorage(Address address)
         {
             // We are setting cached values to zero so we do not use previously set values
-            // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            // when the contract is revived with CREATE2 inside the same block.
+            // Set only overwrites values of existing keys (never removes or adds), which is what
+            // makes mutating the dictionary while enumerating it legal here.
+            foreach (KeyValuePair<StorageCell, HeadChange> cellByAddress in _intraBlockCache)
             {
                 if (cellByAddress.Key.Address == address)
                 {
@@ -244,13 +227,26 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType, int prevIdx)
         {
             public readonly StorageCell StorageCell = storageCell;
             public readonly byte[] Value = value;
             public readonly ChangeType ChangeType = changeType;
 
+            /// <summary>Index into <c>_changes</c> of the previous change for the same cell, or -1 if none.</summary>
+            public readonly int PrevIdx = prevIdx;
+
             public bool IsNull => ChangeType == ChangeType.Null;
+        }
+
+        /// <summary>
+        /// Head of a cell's change chain: the index of its newest change and that change's value inlined,
+        /// so reads resolve with a single dictionary lookup.
+        /// </summary>
+        protected readonly struct HeadChange(int currentIdx, byte[] value)
+        {
+            public readonly byte[] Value = value;
+            public readonly int CurrentIdx = currentIdx;
         }
 
         /// <summary>

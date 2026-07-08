@@ -31,7 +31,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly LocalMetrics _metrics = metrics;
 
 
-    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
+    private readonly Dictionary<AddressAsKey, HeadChange> _intraTxCache = [];
     private readonly HashSet<AddressAsKey> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
@@ -58,13 +58,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     partial void InvalidateFrontCache();
 #if ZK_EVM
     // Single-entry cache in front of _intraTxCache: the EVM accesses the same
-    // account many times in a row. A cheap return when the address' change
-    // stack is unchanged (stack.Count); a push for any *other* address leaves
-    // it valid. Invalidated when a restore/commit/reset recycles the stacks (epoch).
+    // account many times in a row. Pushes write the new value through when the
+    // cached address matches, so a hit needs no staleness probe. Invalidated
+    // when a restore/commit/reset recycles the change log (epoch).
     private Address? _cachedAddress;
-    private StackList<int>? _cachedStack;
     private Account? _cachedAccount;
-    private int _cachedStackCount;
     private int _cachedEpoch = -1;
     private int _epoch;
 
@@ -394,26 +392,26 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             int nextPosition = lastIndex - i;
             ref readonly Change change = ref changes[nextPosition];
-            StackList<int> stack = _intraTxCache[change!.Address];
+            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change!.Address);
 
-            int actualPosition = stack.Pop();
+            if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(lastIndex, i, -1);
+            int actualPosition = head.CurrentIdx;
             if (actualPosition != nextPosition) ThrowUnexpectedPosition(lastIndex, i, actualPosition);
 
-            if (stack.Count == 0)
+            if (change.PrevIdx != -1)
             {
-                if (change.ChangeType == ChangeType.JustCache)
-                {
-                    // Keep if was caching entry
-                    _keptInCache.Add(change);
-                }
-                else
-                {
-                    // Remove address entry entirely if no more changes
-                    if (_intraTxCache.Remove(change.Address, out StackList<int>? removed))
-                    {
-                        removed.Return();
-                    }
-                }
+                ref readonly Change previous = ref changes[change.PrevIdx];
+                head = new HeadChange(change.PrevIdx, previous.ChangeType, previous.Account);
+            }
+            else if (change.ChangeType == ChangeType.JustCache)
+            {
+                // Keep the read-only entry; its head is stale until re-appended below.
+                _keptInCache.Add(change);
+            }
+            else
+            {
+                // Remove address entry entirely if no more changes
+                _intraTxCache.Remove(change.Address);
             }
         }
 
@@ -426,7 +424,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             snapshot++;
             _changes.Add(kept);
-            _intraTxCache[kept.Address].Push(snapshot);
+            _intraTxCache[kept.Address] = new HeadChange(snapshot, kept.ChangeType, kept.Account);
         }
         _keptInCache.Clear();
 
@@ -459,19 +457,17 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
-        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        if (_intraTxCache.TryGetValue(address, out HeadChange head))
         {
             //we only want to persist empty accounts if they were deleted or created as empty
             //we don't want to do it for account empty due to a change (e.g. changed balance to zero)
-            Change lastChange = _changes[value.Peek()];
-            if (lastChange.ChangeType == ChangeType.Delete ||
-                (lastChange.ChangeType is ChangeType.Touch or ChangeType.New && lastChange.Account.IsEmpty))
+            if (head.ChangeType == ChangeType.Delete ||
+                (head.ChangeType is ChangeType.Touch or ChangeType.New && head.Account.IsEmpty))
             {
                 _needsStateRootUpdate = true;
                 if (_logger.IsTrace) Trace(address);
 
-                Account account = Account.TotallyEmpty;
-                PushRecreateEmpty(address, account, value);
+                Push(address, Account.TotallyEmpty, ChangeType.RecreateEmpty);
             }
         }
 
@@ -533,6 +529,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             ref readonly Change change = ref changes[stepsBack - i];
             if (trace is null && change!.ChangeType == ChangeType.JustCache)
             {
+                // Safe to skip without touching the head: JustCache is only ever pushed for an
+                // address with no prior change, so it is always the bottom of its chain.
+                Debug.Assert(change.PrevIdx == -1);
                 continue;
             }
 
@@ -549,12 +548,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             // because it was not committed yet it means that the just cache is the only state (so it was read only)
             if (trace is not null && change.ChangeType == ChangeType.JustCache)
             {
+                Debug.Assert(change.PrevIdx == -1);
                 _nullAccountReads.Add(change.Address);
                 continue;
             }
 
-            StackList<int> stack = _intraTxCache[change.Address];
-            int forAssertion = stack.Pop();
+            int forAssertion = _intraTxCache[change.Address].CurrentIdx;
             if (forAssertion != stepsBack - i)
             {
                 ThrowUnexpectedPosition(stepsBack, i, forAssertion);
@@ -607,12 +606,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                     {
                         if (isTracing) TraceRemove(change);
                         bool wasItCreatedNow = false;
-                        while (stack.Count > 0)
+                        for (int previousOne = change.PrevIdx; previousOne != -1; previousOne = changes[previousOne].PrevIdx)
                         {
-                            int previousOne = stack.Pop();
-                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
-                            if (wasItCreatedNow)
+                            if (changes[previousOne].ChangeType == ChangeType.New)
                             {
+                                wasItCreatedNow = true;
                                 break;
                             }
                         }
@@ -637,7 +635,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _changes.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
-        _intraTxCache.ResetAndClear();
+        _intraTxCache.Clear();
 
         codeFlushTask.GetAwaiter().GetResult();
 
@@ -802,27 +800,18 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 #if ZK_EVM
         if (IsFrontCacheHit(address))
         {
-            StackList<int> s = _cachedStack;
-            int count = s.Count;
-
-            if (count == _cachedStackCount)
-                return _cachedAccount;
-
-            _cachedStackCount = count;
-            return _cachedAccount = _changes[s.Peek()].Account;
+            return _cachedAccount;
         }
-        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        if (_intraTxCache.TryGetValue(address, out HeadChange head))
         {
             _cachedAddress = address;
-            _cachedStack = value;
-            _cachedStackCount = value.Count;
             _cachedEpoch = _epoch;
-            return _cachedAccount = _changes[value.Peek()].Account;
+            return _cachedAccount = head.Account;
         }
         return GetAndAddToCache(address);
 #else
-        return _intraTxCache.TryGetValue(address, out StackList<int> value)
-            ? _changes[value.Peek()].Account
+        return _intraTxCache.TryGetValue(address, out HeadChange head)
+            ? head.Account
             : GetAndAddToCache(address);
 #endif
     }
@@ -842,47 +831,26 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private void PushDelete(Address address)
         => Push(address, null, ChangeType.Delete);
 
+    private void PushNew(Address address, Account account)
+        => Push(address, account, ChangeType.New);
+
     private void Push(Address address, Account? touchedAccount, ChangeType changeType)
     {
-        StackList<int> stack = SetupCache(address);
+        ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (changeType == ChangeType.Touch
-            && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
+            && exists && head.ChangeType == ChangeType.Touch)
         {
             return;
         }
 
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(address, touchedAccount, changeType));
-    }
-
-    private void PushNew(Address address, Account account)
-    {
-        StackList<int> stack = SetupCache(address);
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(address, account, ChangeType.New));
-    }
-
-    private void PushRecreateEmpty(Address address, Account account, StackList<int> stack)
-    {
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(address, account, ChangeType.RecreateEmpty));
-    }
-
-    private StackList<int> SetupCache(Address address)
-    {
+        int prevIdx = exists ? head.CurrentIdx : -1;
+        head = new HeadChange(_changes.Count, changeType, touchedAccount);
+        _changes.Add(new Change(address, touchedAccount, changeType, prevIdx));
 #if ZK_EVM
-        // A push almost always follows a read of the same account; the front
-        // cache already holds that account's (live) change stack.
+        // Keep the front cache coherent: a push almost always follows a read of the same account.
         if (IsFrontCacheHit(address))
-            return _cachedStack;
+            _cachedAccount = touchedAccount;
 #endif
-        ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
-        if (!exists)
-        {
-            value = StackList<int>.Rent();
-        }
-
-        return value;
     }
 
     public ArrayPoolList<AddressAsKey>? ChangedAddresses()
@@ -912,7 +880,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockChanges.Clear();
             _codeBatch?.Clear();
         }
-        _intraTxCache.ResetAndClear();
+        _intraTxCache.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
         InvalidateFrontCache();
@@ -961,13 +929,27 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         RecreateEmpty,
     }
 
-    private readonly struct Change(Address address, Account? account, ChangeType type)
+    private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
     {
         public readonly Address Address = address;
         public readonly Account? Account = account;
         public readonly ChangeType ChangeType = type;
 
+        /// <summary>Index into <c>_changes</c> of the previous change for the same address, or -1 if none.</summary>
+        public readonly int PrevIdx = prevIdx;
+
         public bool IsNull => ChangeType == ChangeType.Null;
+    }
+
+    /// <summary>
+    /// Head of an address' change chain: the index of its newest change with that change's account and
+    /// type inlined, so reads and touch-dedup resolve with a single dictionary lookup.
+    /// </summary>
+    private readonly struct HeadChange(int currentIdx, ChangeType type, Account? account)
+    {
+        public readonly Account? Account = account;
+        public readonly int CurrentIdx = currentIdx;
+        public readonly ChangeType ChangeType = type;
     }
 
     internal struct ChangeTrace(Account? before, Account? after)

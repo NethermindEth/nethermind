@@ -89,11 +89,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (_transactionChangesSnapshots.TryPeek(out int snapshot))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
             {
-                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
+                // Chain indices are strictly decreasing, so the first index <= snapshot
+                // is the cell's newest change at or before the transaction start.
+                int idx = head.CurrentIdx;
+                while (idx != -1 && idx > snapshot)
                 {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
+                    idx = _changes[idx].PrevIdx;
+                }
+
+                if (idx != -1)
+                {
+                    return _changes[idx].Value;
                 }
             }
         }
@@ -144,7 +152,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
             if (forAssertion != currentPosition - i)
             {
                 throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
