@@ -41,12 +41,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // tasks within the trie warmer's ring buffer.
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
-    private const int AddressWarmupActivationThreshold = 8;
-    private const int StorageWarmupActivationThreshold = 16;
-    private int _addressWarmupHints = 0;
-    private int _storageWarmupHints = 0;
-    private bool _queueAddressWarmups = false;
-    private bool _queueStorageWarmups = false;
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
 
@@ -168,27 +162,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (_snapshotBundle.ShouldQueuePrewarm(address) && ShouldQueueAddressWarmup())
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
         }
-    }
-
-    private bool ShouldQueueAddressWarmup()
-    {
-        if (Volatile.Read(ref _queueAddressWarmups)) return true;
-        if (Interlocked.Increment(ref _addressWarmupHints) <= AddressWarmupActivationThreshold) return false;
-        Volatile.Write(ref _queueAddressWarmups, true);
-        return true;
-    }
-
-    internal bool ShouldQueueStorageWarmup()
-    {
-        if (Volatile.Read(ref _queueStorageWarmups)) return true;
-        if (Interlocked.Increment(ref _storageWarmupHints) <= StorageWarmupActivationThreshold) return false;
-        Volatile.Write(ref _queueStorageWarmups, true);
-        return true;
     }
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

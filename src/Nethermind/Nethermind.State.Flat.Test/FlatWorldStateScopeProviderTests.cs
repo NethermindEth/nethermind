@@ -873,14 +873,9 @@ public class FlatWorldStateScopeProviderTests
             warmer,
             LimboLogs.Instance);
 
-        // Cross the demand gate, then queue a state-trie warmup job whose traversal blocks inside the persistence reader,
+        // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        for (int i = 0; i <= 8; i++)
-        {
-            byte[] addressBytes = new byte[Address.Size];
-            addressBytes[^1] = (byte)(i + 1);
-            scope.HintGet(new Address(addressBytes), null);
-        }
+        scope.HintGet(TestItem.AddressA, null);
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
