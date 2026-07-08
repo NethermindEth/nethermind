@@ -636,6 +636,35 @@ public class SszCodecTests
     }
 
     [Test]
+    public void PayloadAttributesV4_slot_number_and_target_gas_limit_sit_at_the_spec_byte_offsets()
+    {
+        // execution-apis PayloadAttributesV4 / Rest-SSZ PayloadAttributesAmsterdam field order:
+        // ..., parent_beacon_block_root, slot_number, target_gas_limit — pinned by absolute offset
+        // because a round-trip test cannot detect a reordered container.
+        PayloadAttributesWire attrsWire = new()
+        {
+            Timestamp = 0x0102030405060708UL,
+            PrevRandao = TestItem.KeccakD,
+            SuggestedFeeRecipient = TestItem.AddressB,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = 0xAABBCCDD11223344UL,
+            TargetGasLimit = 0x0123456789ABCDEFUL,
+        };
+
+        byte[] attrsEncoded = PayloadAttributesWire.Encode(attrsWire);
+
+        Assert.That(attrsEncoded, Has.Length.EqualTo(112),
+            "fixed section: timestamp(8) + prev_randao(32) + fee_recipient(20) + withdrawals offset(4) + parent_beacon_block_root(32) + slot_number(8) + target_gas_limit(8)");
+        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(96, 8)), Is.EqualTo(attrsWire.SlotNumber),
+            "slot_number must occupy bytes 96..104, directly after parent_beacon_block_root");
+        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(104, 8)), Is.EqualTo(attrsWire.TargetGasLimit),
+            "target_gas_limit must occupy bytes 104..112, directly after slot_number");
+        Assert.That(BitConverter.ToUInt32(attrsEncoded, 60), Is.EqualTo(112),
+            "the empty withdrawals list offset must point past the whole fixed section");
+    }
+
+    [Test]
     public void DecodeFcuV3Request_parent_beacon_block_root_is_at_fixed_byte_offset_64_inside_payload_attributes()
     {
         Hash256 expectedRoot = TestItem.KeccakE;
