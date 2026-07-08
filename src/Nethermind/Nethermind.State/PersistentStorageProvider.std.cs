@@ -14,11 +14,9 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
-    private const int MinRootsForParallelHash = 16;
-
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        if (_toUpdateRoots.Count >= MinRootsForParallelHash)
+        if (_toUpdateRoots.Count >= 3)
             UpdateRootHashesMultiThread(writeBatch);
         else
             UpdateRootHashesSingleThread(writeBatch);
