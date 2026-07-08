@@ -37,13 +37,6 @@ internal sealed class StorageStridePrefetcher(
     private const int EngageRunLength = 8;
 
     /// <summary>
-    /// Minimum slot index for engagement. Low storage slots are commonly loop cursors,
-    /// configuration, or compact hand-written layouts where read-ahead competes with execution
-    /// more often than it helps.
-    /// </summary>
-    private static readonly UInt256 MinEngageIndex = uint.MaxValue;
-
-    /// <summary>
     /// Consecutive off-pattern reads before the pattern is declared broken. This tolerates
     /// interleaved unrelated reads such as counters or configuration slots within a striding scan.
     /// </summary>
@@ -52,7 +45,7 @@ internal sealed class StorageStridePrefetcher(
     /// <summary>
     /// Maximum slots issued beyond the consumer position; bounds wasted reads when the pattern ends.
     /// </summary>
-    private const int MaxLookahead = 256;
+    private const int MaxLookahead = 4096;
 
     /// <summary>
     /// Lookahead-gate polls, 1 ms apart, tolerated before readers conclude the consumer left the pattern.
@@ -98,7 +91,7 @@ internal sealed class StorageStridePrefetcher(
                 return;
             }
 
-            if (++_runLength >= EngageRunLength && index > MinEngageIndex)
+            if (++_runLength >= EngageRunLength)
             {
                 Engage(index);
             }

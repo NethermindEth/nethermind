@@ -102,9 +102,10 @@ public class PrewarmerScopeProvider(
         // reader threads.
         private const int MaxStridePrefetchers = 4;
 
-        // Keep read-ahead pressure conservative: the p99 target is tail latency, and aggressive
-        // prefetching can compete with the executing thread for RocksDB I/O on dense blocks.
-        private const int PrefetcherReaderConcurrency = 1;
+        // Reader threads issue blocking, latency-bound storage reads, so the budget is shared across
+        // concurrently engaged contracts rather than granted per contract.
+        private static readonly int PrefetcherReaderConcurrency =
+            Math.Max(1, Math.Min(2 * Environment.ProcessorCount, 32) / MaxStridePrefetchers);
 
         private readonly bool _stridePrefetchEnabled = !isPrewarmer && baseProvider.SupportsConcurrentScopes;
         private readonly ConcurrentDictionary<AddressAsKey, StorageStridePrefetcher> _stridePrefetchers = new();
