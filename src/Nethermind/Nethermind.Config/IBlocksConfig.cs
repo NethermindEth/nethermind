@@ -49,9 +49,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to speculatively pre-warm the state cache between blocks using top-of-mempool transactions, so the next block's execution starts against a warm cache. Requires PreWarmStateOnBlockProcessing. Experimental.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmStateFromMempool { get; set; }
 
-    [ConfigItem(Description = "The maximum number of pending transactions per sender to execute when pre-warming state from the mempool. Bounds the work a single sender can force during speculative warming.", DefaultValue = "16", HiddenFromDocs = true)]
-    int MempoolPreWarmMaxTxPerSender { get; set; }
-
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

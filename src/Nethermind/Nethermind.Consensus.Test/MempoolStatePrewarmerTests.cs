@@ -15,84 +15,54 @@ namespace Nethermind.Consensus.Test;
 public class MempoolStatePrewarmerTests
 {
     [Test]
-    public void SelectDirtySenders_CapsPerSenderDepth()
+    public void SelectDelta_WhenEmpty_ReturnsEmpty()
     {
-        Dictionary<AddressAsKey, Transaction[]> bySender = new()
-        {
-            [TestItem.AddressA] = BuildSenderTxs(TestItem.PrivateKeyA, count: 20, gasLimit: 21_000),
-        };
+        Transaction[] delta = MempoolStatePrewarmer.SelectDelta([], []);
 
-        Transaction[] selected = MempoolStatePrewarmer.SelectDirtySenders(bySender, [], maxTxPerSender: 16, gasBudget: 30_000_000);
-
-        Assert.That(selected.Length, Is.EqualTo(16), "no more than maxTxPerSender transactions per sender may be selected");
+        Assert.That(delta, Is.Empty, "an empty selection yields no transactions to warm");
     }
 
     [Test]
-    public void SelectDirtySenders_StopsAtGasBudget()
+    public void SelectDelta_FirstPass_SelectsEverySender()
     {
-        Dictionary<AddressAsKey, Transaction[]> bySender = new()
-        {
-            [TestItem.AddressA] = BuildSenderTxs(TestItem.PrivateKeyA, count: 10, gasLimit: 21_000),
-        };
-
-        // Budget fits two full transactions (42_000) but not a third (63_000).
-        Transaction[] selected = MempoolStatePrewarmer.SelectDirtySenders(bySender, [], maxTxPerSender: 16, gasBudget: 50_000);
-
-        Assert.That(selected.Length, Is.EqualTo(2), "selection must stop once the next transaction would exceed the gas budget");
-    }
-
-    [Test]
-    public void SelectDirtySenders_WhenEmpty_ReturnsEmpty()
-    {
-        Dictionary<AddressAsKey, Transaction[]> empty = [];
-        Transaction[] selected = MempoolStatePrewarmer.SelectDirtySenders(empty, [], maxTxPerSender: 16, gasBudget: 30_000_000);
-
-        Assert.That(selected, Is.Empty, "an empty mempool yields no transactions to warm");
-    }
-
-    [Test]
-    public void SelectDirtySenders_SecondPassSkipsAlreadyWarmedSender()
-    {
-        Dictionary<AddressAsKey, Transaction[]> bySender = new()
-        {
-            [TestItem.AddressA] = BuildSenderTxs(TestItem.PrivateKeyA, count: 3, gasLimit: 21_000),
-        };
+        Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3), .. BuildSenderTxs(TestItem.PrivateKeyB, 2)];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        Transaction[] firstPass = MempoolStatePrewarmer.SelectDirtySenders(bySender, warmedPerSender, maxTxPerSender: 16, gasBudget: 30_000_000);
-        Transaction[] secondPass = MempoolStatePrewarmer.SelectDirtySenders(bySender, warmedPerSender, maxTxPerSender: 16, gasBudget: 30_000_000);
+        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
-        Assert.That(firstPass.Length, Is.EqualTo(3), "the first pass warms the sender's whole in-cap queue");
-        Assert.That(secondPass, Is.Empty, "a sender whose in-cap queue is already fully warmed is skipped on the next pass");
+        Assert.That(delta.Length, Is.EqualTo(5), "the first pass warms every selected transaction");
+        Assert.That(warmedPerSender[TestItem.AddressA], Is.EqualTo(3), "sender A's warmed count is recorded");
+        Assert.That(warmedPerSender[TestItem.AddressB], Is.EqualTo(2), "sender B's warmed count is recorded");
     }
 
     [Test]
-    public void SelectDirtySenders_SecondPassReplaysFullQueueWhenSenderGrows()
+    public void SelectDelta_SecondPass_SkipsAlreadyWarmedSenders()
+    {
+        Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3)];
+        Dictionary<AddressAsKey, int> warmedPerSender = [];
+
+        MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+
+        Assert.That(secondPass, Is.Empty, "a sender whose whole selected set is already warmed is skipped on the next pass");
+    }
+
+    [Test]
+    public void SelectDelta_SecondPass_ReplaysFullGroupWhenSenderGrows()
     {
         Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-        Dictionary<AddressAsKey, Transaction[]> firstView = new()
-        {
-            [TestItem.AddressA] = BuildSenderTxs(TestItem.PrivateKeyA, count: 2, gasLimit: 21_000),
-        };
-        Transaction[] firstPass = MempoolStatePrewarmer.SelectDirtySenders(firstView, warmedPerSender, maxTxPerSender: 16, gasBudget: 30_000_000);
-
+        MempoolStatePrewarmer.SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 2), warmedPerSender);
         // A later-nonce transaction arrives for the same sender.
-        Dictionary<AddressAsKey, Transaction[]> grownView = new()
-        {
-            [TestItem.AddressA] = BuildSenderTxs(TestItem.PrivateKeyA, count: 4, gasLimit: 21_000),
-        };
-        Transaction[] secondPass = MempoolStatePrewarmer.SelectDirtySenders(grownView, warmedPerSender, maxTxPerSender: 16, gasBudget: 30_000_000);
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(BuildSenderTxs(TestItem.PrivateKeyA, 4), warmedPerSender);
 
-        Assert.That(firstPass.Length, Is.EqualTo(2), "the first pass warms the two known transactions");
-        Assert.That(secondPass.Length, Is.EqualTo(4), "when new transactions arrive the sender's full in-cap queue is replayed so predecessors are present");
+        Assert.That(secondPass.Length, Is.EqualTo(4), "when new transactions arrive the sender's full group is replayed so predecessors are present");
     }
 
-    private static Transaction[] BuildSenderTxs(PrivateKey sender, int count, ulong gasLimit) =>
+    private static Transaction[] BuildSenderTxs(PrivateKey sender, int count) =>
         Enumerable.Range(0, count)
             .Select(nonce => Build.A.Transaction
                 .WithNonce((ulong)nonce)
-                .WithGasLimit(gasLimit)
                 .WithTo(TestItem.AddressC)
                 .SignedAndResolved(sender)
                 .TestObject)
