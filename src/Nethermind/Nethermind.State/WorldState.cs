@@ -28,7 +28,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public class WorldState : IWorldState, IDisposable
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -58,6 +58,13 @@ namespace Nethermind.State
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
+        }
+
+        public void Dispose()
+        {
+            _stateProvider.Dispose();
+            _persistentStorageProvider.Dispose();
+            _transientStorageProvider.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
