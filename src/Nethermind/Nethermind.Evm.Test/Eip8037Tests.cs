@@ -24,7 +24,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> ConstantsTestCases()
     {
-        yield return new TestCaseData((long)GasCostOf.CostPerStateByte).Returns(1530L).SetName("CostPerStateByte");
+        yield return new TestCaseData(GasCostOf.CostPerStateByte).Returns(1530L).SetName("CostPerStateByte");
         yield return new TestCaseData(GasCostOf.SSetState).Returns(97920L).SetName("SSetState");
         yield return new TestCaseData(GasCostOf.CreateState).Returns(183600L).SetName("CreateState");
         yield return new TestCaseData(GasCostOf.NewAccountState).Returns(183600L).SetName("NewAccountState");
