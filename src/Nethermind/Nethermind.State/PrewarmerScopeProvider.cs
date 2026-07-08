@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -139,12 +140,14 @@ public class PrewarmerScopeProvider(
                 // Consumers seed the scope-local cache on a hit for their later commit; populators don't.
                 if (!isPrewarmer) baseScope.HintGet(address, account);
                 _metrics.IncrementStateTreeCacheHits();
+                ReadTrace.Mark(ReadTraceSource.PreBlockCache);
             }
             else
             {
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
+                ReadTrace.OnPreBlockAccountSet(address, isPrewarmer ? ReadTraceProvenance.Prewarmer : ReadTraceProvenance.MainBackfill);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
             return account;
@@ -167,10 +170,14 @@ public class PrewarmerScopeProvider(
             {
                 AddressAsKey key = address;
                 stateCache.Set(in key, account);
+                ReadTrace.OnPreBlockAccountSet(address, ReadTraceProvenance.Bal);
             }
 
             public void OnStorageRead(in StorageCell storageCell, byte[] value)
-                => storageCache.Set(in storageCell, value);
+            {
+                storageCache.Set(in storageCell, value);
+                ReadTrace.OnPreBlockSlotSet(in storageCell, ReadTraceProvenance.Bal);
+            }
 
             public bool StillNeeded(Address address, out Account? account)
             {
@@ -211,12 +218,14 @@ public class PrewarmerScopeProvider(
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
+                ReadTrace.Mark(ReadTraceSource.PreBlockCache);
             }
             else
             {
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
+                ReadTrace.OnPreBlockSlotSet(in storageCell, isPrewarmer ? ReadTraceProvenance.Prewarmer : ReadTraceProvenance.MainBackfill);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;

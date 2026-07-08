@@ -17,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
@@ -75,20 +76,28 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
-
-        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
-
-        ApplyDaoTransition(suggestedBlock);
-        Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-        if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+        if (ProcessingThread.IsBlockProcessingThread) ReadTrace.BeginBlock((long)suggestedBlock.Number, suggestedBlock.Transactions.Length);
+        try
         {
-            StoreTxReceipts(block, receipts, spec);
-        }
+            _balManager.PrepareForProcessing(suggestedBlock, spec, options);
 
-        return (block, receipts);
+            _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
+
+            ApplyDaoTransition(suggestedBlock);
+            Block block = PrepareBlockForProcessing(suggestedBlock);
+            TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
+            {
+                StoreTxReceipts(block, receipts, spec);
+            }
+
+            return (block, receipts);
+        }
+        finally
+        {
+            ReadTrace.EndBlock();
+        }
     }
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)

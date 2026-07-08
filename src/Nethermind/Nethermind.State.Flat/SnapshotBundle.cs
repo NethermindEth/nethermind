@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -79,12 +80,17 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc))
+        {
+            ReadTrace.Mark(ReadTraceSource.BundleWriteBuf);
+            return acc;
+        }
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetAccount(key, out acc))
             {
+                ReadTrace.Mark(ReadTraceSource.BundleSnapshot);
                 return acc;
             }
         }
@@ -114,12 +120,14 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
+            ReadTrace.Mark(ReadTraceSource.BundleWriteBuf);
             return slotValue?.ToEvmBytes();
         }
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
+            ReadTrace.Mark(ReadTraceSource.BundleWriteBuf);
             return null;
         }
 
@@ -128,12 +136,14 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
+                ReadTrace.Mark(ReadTraceSource.BundleSnapshot);
                 return slotValue?.ToEvmBytes();
             }
 
             if (i <= currentBundleSelfDestructIdx)
             {
                 // This is the snapshot with selfdestruct
+                ReadTrace.Mark(ReadTraceSource.BundleSnapshot);
                 return null;
             }
         }

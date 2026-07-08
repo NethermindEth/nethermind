@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Diagnostics;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -39,6 +40,8 @@ namespace Nethermind.Init.Steps
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
 
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
+
+            if (blocksConfig.ReadTraceOutput is not null) ReadTrace.Configure(blocksConfig.ReadTraceOutput, blocksConfig.ReadTraceBlocks);
 
             ThisNodeInfo.AddInfo("Gaslimit     :", $"{blocksConfig.TargetBlockGasLimit:N0}");
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?

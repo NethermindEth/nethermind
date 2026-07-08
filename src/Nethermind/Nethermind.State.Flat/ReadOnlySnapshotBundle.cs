@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -50,6 +51,7 @@ public sealed class ReadOnlySnapshotBundle(
             if (snapshots[i].TryGetAccount(key, out Account? acc))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
+                ReadTrace.Mark(ReadTraceSource.SnapshotWindow);
                 return acc;
             }
         }
@@ -96,11 +98,13 @@ public sealed class ReadOnlySnapshotBundle(
             {
                 byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
+                ReadTrace.Mark(ReadTraceSource.SnapshotWindow);
                 return res;
             }
 
             if (i <= selfDestructStateIdx)
             {
+                ReadTrace.Mark(ReadTraceSource.SnapshotWindow);
                 return null;
             }
         }

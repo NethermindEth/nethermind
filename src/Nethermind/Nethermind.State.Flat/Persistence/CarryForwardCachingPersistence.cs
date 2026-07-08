@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -153,7 +154,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached)) return cached;
+            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            {
+                ReadTrace.Mark(ReadTraceSource.CarryForward);
+                return cached;
+            }
 
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
@@ -166,6 +171,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {
+                ReadTrace.Mark(ReadTraceSource.CarryForward);
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;
             }

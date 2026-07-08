@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -46,6 +47,7 @@ public partial class BlockProcessor
             {
                 Transaction currentTx = block.Transactions[i];
 
+                ReadTrace.SetTx(i);
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
@@ -53,6 +55,8 @@ public partial class BlockProcessor
                     ThrowInvalidBlockForGasLimit(block);
                 }
             }
+
+            ReadTrace.SetTx(-2);
 
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
             Metrics.PublishBlockGasPriceGauges();

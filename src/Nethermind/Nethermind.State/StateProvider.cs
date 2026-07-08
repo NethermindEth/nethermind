@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
@@ -755,13 +756,23 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (!exists)
         {
             _metrics.IncrementStateTreeReads();
-            Account? account = _tree.Get(address);
+            ReadTrace.BeginAccountRead(address);
+            Account? account;
+            try
+            {
+                account = _tree.Get(address);
+            }
+            finally
+            {
+                ReadTrace.EndRead();
+            }
 
             accountChanges = new(account, account);
         }
         else
         {
             _metrics.IncrementStateTreeCacheHits();
+            ReadTrace.AccountRead(address, ReadTraceSource.BlockDict);
         }
         return accountChanges.After;
     }
@@ -781,7 +792,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private Account? GetAndAddToCache(Address address)
     {
-        if (_nullAccountReads.Contains(address)) return null;
+        if (_nullAccountReads.Contains(address))
+        {
+            ReadTrace.AccountRead(address, ReadTraceSource.IntraTx);
+            return null;
+        }
 
         Account? account = GetState(address);
         if (account is not null)
@@ -821,9 +836,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
         return GetAndAddToCache(address);
 #else
-        return _intraTxCache.TryGetValue(address, out StackList<int> value)
-            ? _changes[value.Peek()].Account
-            : GetAndAddToCache(address);
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        {
+            ReadTrace.AccountRead(address, ReadTraceSource.IntraTx);
+            return _changes[value.Peek()].Account;
+        }
+        return GetAndAddToCache(address);
 #endif
     }
 

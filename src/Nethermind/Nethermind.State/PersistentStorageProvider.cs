@@ -13,6 +13,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.State;
@@ -72,8 +73,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell)
+    {
+        if (TryGetCachedValue(storageCell, out byte[]? bytes))
+        {
+            ReadTrace.SlotRead(storageCell.Address, storageCell.Index, ReadTraceSource.IntraTx);
+            return bytes!;
+        }
+        return LoadFromTree(storageCell);
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell
@@ -572,6 +580,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             else
             {
                 _provider._metrics.IncrementStorageTreeCache();
+                ReadTrace.SlotRead(_address, storageCell.Index, ReadTraceSource.BlockDict);
             }
 
             if (!storageCell.IsHash) _provider.CaptureOriginalValue(storageCell, valueChange.After);
@@ -583,9 +592,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+            ReadTrace.BeginSlotRead(_address, storageCell.Index);
+            try
+            {
+                return !storageCell.IsHash
+                    ? _backend.Get(storageCell.Index)
+                    : _backend.Get(storageCell.Hash);
+            }
+            finally
+            {
+                ReadTrace.EndRead();
+            }
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)

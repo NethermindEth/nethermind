@@ -22,6 +22,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
@@ -941,38 +942,46 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         UpdateReadMetrics();
 
-        nint db = _db.Handle;
-        nint readOptionsHandle = readOptions.Handle;
-        UIntPtr skLength = (UIntPtr)key.Length;
-        IntPtr errPtr;
-        IntPtr slice;
-        fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+        long traceTs = ReadTrace.InRead ? Stopwatch.GetTimestamp() : 0;
+        try
         {
-            slice = cf is null
-                ? Native.Instance.rocksdb_get_pinned(db, readOptionsHandle, ptr, skLength, out errPtr)
-                : Native.Instance.rocksdb_get_pinned_cf(db, readOptionsHandle, cf.Handle, ptr, skLength, out errPtr);
-        }
+            nint db = _db.Handle;
+            nint readOptionsHandle = readOptions.Handle;
+            UIntPtr skLength = (UIntPtr)key.Length;
+            IntPtr errPtr;
+            IntPtr slice;
+            fixed (byte* ptr = &MemoryMarshal.GetReference(key))
+            {
+                slice = cf is null
+                    ? Native.Instance.rocksdb_get_pinned(db, readOptionsHandle, ptr, skLength, out errPtr)
+                    : Native.Instance.rocksdb_get_pinned_cf(db, readOptionsHandle, cf.Handle, ptr, skLength, out errPtr);
+            }
 
-        if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
-        if (slice == IntPtr.Zero) return 0;
+            if (errPtr != IntPtr.Zero) ThrowRocksDbException(errPtr);
+            if (slice == IntPtr.Zero) return 0;
 
-        IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
-        if (valuePtr == IntPtr.Zero)
-        {
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
+            if (valuePtr == IntPtr.Zero)
+            {
+                Native.Instance.rocksdb_pinnableslice_destroy(slice);
+                return 0;
+            }
+
+            int length = (int)valueLength;
+            if (output.Length < length)
+            {
+                Native.Instance.rocksdb_pinnableslice_destroy(slice);
+                ThrowNotEnoughMemory(length, output.Length);
+            }
+
+            new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(output);
             Native.Instance.rocksdb_pinnableslice_destroy(slice);
-            return 0;
+            return length;
         }
-
-        int length = (int)valueLength;
-        if (output.Length < length)
+        finally
         {
-            Native.Instance.rocksdb_pinnableslice_destroy(slice);
-            ThrowNotEnoughMemory(length, output.Length);
+            if (traceTs != 0) ReadTrace.MarkRocksDb(Stopwatch.GetTimestamp() - traceTs);
         }
-
-        new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(output);
-        Native.Instance.rocksdb_pinnableslice_destroy(slice);
-        return length;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);

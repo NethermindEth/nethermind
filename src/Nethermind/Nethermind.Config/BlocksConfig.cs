@@ -109,5 +109,9 @@ namespace Nethermind.Config
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
 
         public ulong MaxGasLimit { get; set; } = 1_000_000_000;
+
+        public string? ReadTraceOutput { get; set; }
+
+        public string? ReadTraceBlocks { get; set; }
     }
 }

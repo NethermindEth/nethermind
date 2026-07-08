@@ -7,8 +7,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -89,6 +91,8 @@ public class BranchProcessor(
             // Start prewarming as early as possible
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
+            // Open the provenance window before the prewarmer starts so its earliest cache sets are attributed.
+            if (ProcessingThread.IsBlockProcessingThread) ReadTrace.BeginProvenance((long)suggestedBlock.Number);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -113,6 +117,7 @@ public class BranchProcessor(
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
+                if (preWarmTask is null && ProcessingThread.IsBlockProcessingThread) ReadTrace.BeginProvenance((long)suggestedBlock.Number);
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 

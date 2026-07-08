@@ -96,4 +96,16 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "Diagnostic: directory to write per-read provenance trace (readtrace-*.csv.gz). Enables tracing when set.",
+        DefaultValue = "null",
+        HiddenFromDocs = true)]
+    string? ReadTraceOutput { get; set; }
+
+    [ConfigItem(
+        Description = "Diagnostic: block filter for the read trace: empty = all blocks; 'first:N', 'A-B' range, or comma-separated block numbers.",
+        DefaultValue = "null",
+        HiddenFromDocs = true)]
+    string? ReadTraceBlocks { get; set; }
 }
