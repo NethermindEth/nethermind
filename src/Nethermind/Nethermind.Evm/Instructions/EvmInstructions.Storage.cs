@@ -667,10 +667,8 @@ public static partial class EvmInstructions
         {
             int extraOps = 0;
             int codeLength = stack.CodeLength;
-            bool fusedOutOfGas = false;
             // Per-op cost of re-reading the cell accessed by the previous iteration. Mirrors
-            // Consume(SLoadCost) + ConsumeStorageAccessGas for an already-warm cell; keep in sync
-            // (SLoadFusionTests assert fused/unfused gas equality with hot-cold pricing on and off).
+            // Consume(SLoadCost) + ConsumeStorageAccessGas for an already-warm cell; keep in sync.
             long sameCellCost = spec.GasCosts.SLoadCost + (spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : 0);
 
             while ((uint)programCounter < (uint)codeLength
@@ -707,18 +705,11 @@ public static partial class EvmInstructions
                     // Chained step onto a different cell (the loaded value is the next key):
                     // replicate one full SLOAD including cold/warm pricing and access journaling.
                     TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
-                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                    {
-                        fusedOutOfGas = true;
-                        break;
-                    }
+                    if (TGasPolicy.GetRemainingGas(in gas) < 0) goto OutOfGas;
 
                     storageCell = new(executingAccount, in nextKey);
                     if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, isTracingAccess: false, in storageCell, StorageAccessType.SLOAD, spec))
-                    {
-                        fusedOutOfGas = true;
-                        break;
-                    }
+                        goto OutOfGas;
 
                     value = vm.WorldState.Get(in storageCell);
                     result = nextKey;
@@ -732,8 +723,6 @@ public static partial class EvmInstructions
                 vm.OpCodeCount += extraOps;
                 Metrics.AddSLoadOpcodes(extraOps);
             }
-
-            if (fusedOutOfGas) goto OutOfGas;
         }
 
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
