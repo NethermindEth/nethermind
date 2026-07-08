@@ -15,7 +15,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public StackAccessTracker() : this(false) { }
 
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
-    public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
+    public readonly VersionedJournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
@@ -108,7 +108,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         }
 
         public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
-        public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
+        public VersionedJournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
@@ -116,7 +116,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         private void Clear()
         {
             AccessedAddresses.Clear();
-            AccessedStorageCells.Clear();
+            // O(1)-ish per-tx reset: epoch bump instead of clearing the (potentially large) hash storage.
+            AccessedStorageCells.Reset();
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
