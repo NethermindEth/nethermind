@@ -446,7 +446,9 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                _blockStore.Insert(block);
+                // Body persistence defers off the engine API path (visibility is synchronous via the
+                // store's pending overlay); the BAL write stays synchronous - it mutates the block.
+                _blockStore.InsertDeferred(block);
                 _balStore.InsertFromBlock(block);
             }
 
