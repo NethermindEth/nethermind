@@ -161,6 +161,12 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorage(address);
             _transientStorageProvider.ClearStorage(address);
         }
+        public void MarkStorageDestroyed(Address address)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.MarkStorageDestroyed(address);
+            _transientStorageProvider.ClearStorage(address);
+        }
         public void RecalculateStateRoot()
         {
             DebugGuardInScope();

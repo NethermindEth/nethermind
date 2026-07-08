@@ -98,6 +98,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
+
     void RecalculateStateRoot();
 
     /// <summary>
