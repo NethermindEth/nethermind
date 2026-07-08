@@ -391,10 +391,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         long pressure = _metadataBytes + reported * _pageBytes;
         if (pressure > 0)
             GC.RemoveMemoryPressure(pressure);
-        GC.SuppressFinalize(this);
     }
-
-    ~PageResidencyTracker() => Dispose();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long PackKey(int arenaId, uint pageIdx)

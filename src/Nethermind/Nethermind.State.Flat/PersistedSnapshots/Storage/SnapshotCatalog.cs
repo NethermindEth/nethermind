@@ -45,7 +45,7 @@ public sealed class SnapshotCatalog([KeyFilter(DbNames.PersistedSnapshotCatalog)
         Span<byte> key = stackalloc byte[KeySize];
         WriteKey(key, entry.To, Depth(entry));
         EntryBytes value = new(entry);
-        _db.Set(key, MemoryMarshal.AsBytes(new Span<EntryBytes>(ref value)).ToArray());
+        _db.PutSpan(key, MemoryMarshal.AsBytes(new Span<EntryBytes>(ref value)));
     }
 
     public bool Remove(in StateId to, long depth)

@@ -211,7 +211,12 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             return false;
         }
         int bLenInt = checked((int)b.Length);
-        Span<byte> buf = bLenInt <= 256 ? stackalloc byte[256] : new byte[bLenInt];
+        // Slim account RLP tops out around ~110 bytes, so the stackalloc covers every real value;
+        // anything larger signals a corrupt entry rather than a legitimately big account.
+        const int MaxAccountRlp = 256;
+        if (bLenInt > MaxAccountRlp)
+            SortedTable.ThrowCorrupt($"account RLP length {bLenInt} exceeds the {MaxAccountRlp}-byte maximum");
+        Span<byte> buf = stackalloc byte[MaxAccountRlp];
         Span<byte> rlp = buf[..bLenInt];
         reader.TryRead(b.Offset, rlp);
         if (rlp.Length == 1 && rlp[0] == PersistedSnapshotTags.AccountDeletedMarkerByte)
