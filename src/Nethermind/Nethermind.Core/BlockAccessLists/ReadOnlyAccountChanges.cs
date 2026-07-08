@@ -4,14 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -69,7 +65,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         StorageChanges = storageChanges;
         if (storageChanges.Length > 0)
         {
-            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length, UInt256EqualityComparer.Instance);
+            _storageChanges = new Dictionary<UInt256, ReadOnlySlotChanges>(storageChanges.Length);
             UInt256[] changedSlots = new UInt256[storageChanges.Length];
             for (int i = 0; i < storageChanges.Length; i++)
             {
@@ -90,7 +86,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         CodeChanges = codeChanges;
         // Hash-set lookup beats array.Contains() for accounts with many declared reads; allocated
         // lazily to avoid the overhead on accounts that never get queried via IsStorageRead.
-        _storageReadSet = storageReads.Length > 4 ? new HashSet<UInt256>(storageReads, UInt256EqualityComparer.Instance) : null;
+        _storageReadSet = storageReads.Length > 4 ? [.. storageReads] : null;
     }
 
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
@@ -258,18 +254,5 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         }
         last = span[lastBefore];
         return true;
-    }
-
-    private sealed class UInt256EqualityComparer : IEqualityComparer<UInt256>
-    {
-        public static UInt256EqualityComparer Instance { get; } = new();
-
-        private UInt256EqualityComparer() { }
-
-        public bool Equals(UInt256 x, UInt256 y)
-            => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
-
-        public int GetHashCode([DisallowNull] UInt256 obj)
-            => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
     }
 }
