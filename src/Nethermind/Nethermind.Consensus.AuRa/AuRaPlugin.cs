@@ -20,6 +20,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -99,6 +100,9 @@ namespace Nethermind.Consensus.AuRa
                         new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
 
                 .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                // Keep the AuRa processor in the BAL env: the mainnet factory hardwires
+                // TransactionProcessor<EthereumGasPolicy> (dropping AuRa system-tx handling), so override it.
+                .AddScoped<IBalProcessingEnvFactory, AuraBalProcessingEnvFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()

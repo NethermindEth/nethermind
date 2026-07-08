@@ -40,8 +40,9 @@ public sealed class AutofacBalProcessingEnvFactory(
                 // so ExecuteTransactionProcessorAdapter's `is TransactionProcessor<TGasPolicy>` fast path is
                 // taken and the worker-precomputed intrinsic gas is reused rather than recomputed.
                 // WARNING: hardwiring EthereumGasPolicy overrides any plugin-supplied ITransactionProcessor
-                // (AuRa/Optimism/Taiko/...), so the BAL env is NOT plugin compatible. Temporary regression —
-                // must be replaced with policy-agnostic wiring later. See PR #12323.
+                // (AuRa/Optimism/Taiko/...), so this factory is NOT plugin compatible. Plugins that need a
+                // different processor must override IBalProcessingEnvFactory (AuRa does, via
+                // AuraBalProcessingEnvFactory). Replace with policy-agnostic wiring later. See PR #12323.
                 .Bind<IVirtualMachine<EthereumGasPolicy>, IVirtualMachine>()
                 .AddScoped<ITransactionProcessor, TransactionProcessor<EthereumGasPolicy>>()
                 .AddScoped<IBalProcessingEnv, ParallelBalEnvManager.ParallelBalEnv>());
