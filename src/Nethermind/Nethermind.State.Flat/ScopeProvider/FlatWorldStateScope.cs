@@ -187,13 +187,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
-            int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
+            Task? sinkSlotReads = sink is null
+                ? null
+                : Task.Run(() => RunSinkSlotReads(accountChanges, sink, parallelOptions), token);
 
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
-                // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
+                // Account/trie warm-up runs concurrently with BAL value reads so early heavy
+                // transactions can hit the pre-block storage cache sooner.
                 Parallel.For(0, accountCount, parallelOptions, (i) =>
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
@@ -239,19 +240,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
                     }
-
-                    if (accounts is not null)
-                    {
-                        accounts[i] = account;
-                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-                    }
                 });
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                sinkSlotReads?.GetAwaiter().GetResult();
             }
             catch (OperationCanceledException) { }
             finally
             {
+                if (sinkSlotReads is not null && !sinkSlotReads.IsCompleted)
+                {
+                    try { sinkSlotReads.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) { }
+                }
                 accountChanges.Dispose();
             }
         }, token);
@@ -259,8 +259,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        Account?[] accounts,
-        int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
@@ -270,7 +268,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
             totalSlots += accountChanges[i].StorageChanges.Length
                        + accountChanges[i].StorageReads.Length;
         }
@@ -281,10 +278,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
-            int selfDestructIdx = selfDestructIdxs[i];
+            int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
             foreach (ReadOnlySlotChanges slotChanges in ac.StorageChanges)
                 jobs[idx++] = (address, selfDestructIdx, slotChanges.Key);
             foreach (UInt256 readKey in ac.StorageReads)
