@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -13,8 +15,10 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, ISstIngestible
 {
+    private static long _sstIngestSeq;
+
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
@@ -117,6 +121,54 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
             underlyingWriteBatch.Merge(key, value, columnDb._columnFamily, flags);
+    }
+
+    public IWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
+
+    // Buffers point puts/deletes for one persisted snapshot, then on Dispose writes a single sorted SST and
+    // ingests it into this column — bypassing the memtable -> flush -> L0-compaction burst of a large WriteBatch.
+    private sealed class SstIngestWriteBatch(ColumnDb columnDb) : IWriteBatch
+    {
+        // Last write wins: a SelfDestruct (delete) followed by re-creation (put) can target the same key in one
+        // snapshot, and an SST forbids duplicate keys, so collapse to the final value before writing.
+        private readonly Dictionary<byte[], byte[]?> _entries = new(Bytes.EqualityComparer);
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
+            _entries[key.ToArray()] = value;
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+            throw new NotSupportedException("SST ingestion does not support merge writes");
+
+        public void Clear() => _entries.Clear();
+
+        public void Dispose()
+        {
+            if (_entries.Count == 0) return;
+
+            List<KeyValuePair<byte[], byte[]?>> items = [.. _entries];
+            items.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
+
+            string dir = Path.Combine(columnDb._mainDb.FullPath, "sst_ingest");
+            Directory.CreateDirectory(dir);
+            string file = Path.Combine(dir, $"{columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
+
+            using (SstFileWriter writer = new(new EnvOptions(), new ColumnFamilyOptions()))
+            {
+                writer.Open(file);
+                foreach ((byte[] key, byte[]? value) in items)
+                {
+                    if (value is null) writer.Delete(key);
+                    else writer.Put(key, value);
+                }
+                writer.Finish();
+            }
+
+            IngestExternalFileOptions options = new IngestExternalFileOptions()
+                .SetMoveFiles(true)
+                .SetAllowGlobalSeqno(true)
+                .SetAllowBlockingFlush(true);
+            columnDb._rocksDb.IngestExternalFiles([file], options, columnDb._columnFamily);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
