@@ -35,6 +35,16 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // branch processor, and use block processor instead.
                 .AddSingleton<IMainProcessingModule, PrewarmerMainProcessingModule>();
         }
+        else if (blocksConfig.PreWarmStateFromMempool)
+        {
+            // Mempool pre-warming lives inside the prewarmer module above; without PreWarmStateOnBlockProcessing it is
+            // never registered, so warn instead of silently doing nothing.
+            builder.OnBuild(scope =>
+            {
+                ILogger logger = scope.Resolve<ILogManager>().GetClassLogger<PrewarmerModule>();
+                if (logger.IsWarn) logger.Warn($"{nameof(IBlocksConfig.PreWarmStateFromMempool)} is enabled but {nameof(IBlocksConfig.PreWarmStateOnBlockProcessing)} is disabled; mempool state pre-warming will not run.");
+            });
+        }
     }
 
     public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule

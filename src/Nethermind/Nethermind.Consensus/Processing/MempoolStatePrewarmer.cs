@@ -31,6 +31,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly int _maxTxPerSender;
+    private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
 
     // Monotonic head counter: a queued pass runs only while it still reflects the latest head, so a stale pass can never
@@ -53,6 +54,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
         _maxTxPerSender = Math.Max(1, blocksConfig.MempoolPreWarmMaxTxPerSender);
+        // Warm only when the head is recent (a few slots of wall-clock). During sync the head advances rapidly over
+        // historical blocks whose timestamps are far in the past — there is no idle gap to fill, so we skip entirely
+        // and never contend with block import for the txpool lock or the caches.
+        _maxHeadAgeSeconds = Math.Max(1UL, blocksConfig.SecondsPerSlot) * 4;
         _enabled = blocksConfig.PreWarmStateFromMempool;
 
         if (_enabled)
@@ -65,6 +70,11 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
         Block head = e.Block;
+
+        // Skip while syncing/catching up: a stale head means there is no pre-block idle gap to fill, and warming would
+        // only steal the txpool lock and CPU from block import.
+        if (head.Header.Timestamp + _maxHeadAgeSeconds < _timestamper.UnixTime.Seconds) return;
+
         long generation = Interlocked.Increment(ref _generation);
         // Do the mempool selection off the block-tree notification thread so head updates are never delayed.
         ThreadPool.UnsafeQueueUserWorkItem(

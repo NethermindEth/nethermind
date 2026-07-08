@@ -26,8 +26,8 @@ public interface IBlockCachePreWarmer : IDisposable
     void StartSpeculativePreWarm(Block speculativeBlock, BlockHeader head, IReleaseSpec spec);
 
     /// <summary>
-    /// Requests cancellation of an in-flight speculative pass without waiting for it to finish. Cheap; safe to call
-    /// when no pass is running.
+    /// Requests cancellation of an in-flight speculative pass without waiting for it to finish. Lock-free and safe to
+    /// call when no pass is running.
     /// </summary>
     void CancelSpeculativePreWarm();
 }

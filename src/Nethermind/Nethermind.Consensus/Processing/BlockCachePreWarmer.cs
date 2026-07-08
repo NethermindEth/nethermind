@@ -115,6 +115,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
         {
             BlockState blockState = new(this, suggestedBlock, parent, spec);
+            // Reset main-thread progress. Safe for the speculative caller too: a speculative pass never overlaps main
+            // execution — the reactive path joins it (CancelAndJoinSpeculative) before ProcessOne runs, and the next
+            // speculative pass only starts on NewHeadBlock, i.e. after processing has completed.
             Volatile.Write(ref _mainThreadTxIndex, -1);
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
@@ -173,9 +176,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public void CancelSpeculativePreWarm()
     {
-        lock (_speculativeLock)
+        // Lock-free so it never blocks behind an in-flight join. Cancel() is thread-safe; a concurrent dispose (which
+        // happens under the lock, after a join) can only race us into a harmless ObjectDisposedException.
+        CancellationTokenSource? cts = Volatile.Read(ref _speculativeCts);
+        try
         {
-            _speculativeCts?.Cancel();
+            cts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 
@@ -219,6 +228,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec)
     {
         WarmMarker? marker = Volatile.Read(ref _warmMarker);
+        // Fork identity via ReferenceEquals: ISpecProvider returns cached per-fork singletons, so the speculative pass
+        // and the reactive path see the same instance for the same fork. A mismatch (fresh instance, or the speculative
+        // pass's estimated timestamp landing on the other side of a fork boundary) only disables the handoff — the
+        // caches are then cleared as usual, so this is a warming-effectiveness guard, not a correctness one.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
             Volatile.Write(ref _warmMarker, null);
