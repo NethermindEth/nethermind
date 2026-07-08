@@ -17,6 +17,7 @@ using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -30,6 +31,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, BlockStore>()
+            .AddSingleton<IDeferredBlockDataWriter, IReceiptConfig, ILogManager>((receiptConfig, logManager) =>
+                new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredBlocks, logManager))
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)

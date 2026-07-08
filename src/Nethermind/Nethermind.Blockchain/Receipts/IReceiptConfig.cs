@@ -28,6 +28,12 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "The number of recent blocks to maintain transaction index for. `0` to never remove indices, `18446744073709551615` to never index.", DefaultValue = "2350000")]
     ulong? TxLookupLimit { get; set; }
 
+    [ConfigItem(Description = "Whether receipt, canonical transaction index and block body writes are persisted by a background writer instead of on the block-processing and engine API paths. Reads are always served consistently from an in-memory overlay until flushed. Off by default: a crash can lose writes still queued at the moment of failure, and startup recovery of that window is not yet implemented, so enabling this trades durability of the most recent few blocks for lower latency.", DefaultValue = "false")]
+    bool DeferredPersistence { get; set; }
+
+    [ConfigItem(Description = "The maximum number of queued deferred write items before block processing backpressures. Counts individual writes, not blocks (a block enqueues up to three), so the block headroom is roughly a third of this value.", DefaultValue = "8", HiddenFromDocs = true)]
+    int MaxDeferredBlocks { get; set; }
+
     [ConfigItem(Description =
         """
         The maximum block range (toBlock - fromBlock + 1) allowed in a single `eth_getLogs` request.
