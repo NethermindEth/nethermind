@@ -6,14 +6,17 @@ using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Common.Utilities;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Benchmarks.Store;
 
@@ -21,6 +24,8 @@ public class WorldStateBenchmarks
 {
     private IContainer _container;
     private IWorldState _globalWorldState;
+    private IWorldStateScopeProvider _scopeProvider;
+    private readonly LocalMetrics _scopeMetrics = new();
 
     private const int _accountCount = 1024 * 4;
     private const int _contractCount = 128;
@@ -40,11 +45,16 @@ public class WorldStateBenchmarks
     public void Setup()
     {
         // Note: The whole thing is in pruning cache, so the KV db is not touched in this benchmark.
+        // Prewarm caches are disabled as nothing clears the cross-block PreBlockCaches here, which would
+        // otherwise serve stale nulls cached during setup instead of exercising the state backend.
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
+            .AddModule(new TestNethermindModule(
+                new BlocksConfig { PreWarmStateOnBlockProcessing = false },
+                new FlatDbConfig { Enabled = true }))
             .Build();
 
         IWorldState worldState = _globalWorldState = _container.Resolve<IMainProcessingContext>().WorldState;
+        _scopeProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
         Random rand = new(0);
@@ -97,6 +107,125 @@ public class WorldStateBenchmarks
 
     [GlobalCleanup]
     public void Teardown() => _container.Dispose();
+
+    [Benchmark]
+    public void ScopeAccountRead()
+    {
+        Random rand = new(1);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            scope.Get(_accounts[rand.Next(0, _accounts.Length)]);
+        }
+    }
+
+    [Benchmark]
+    public void ScopeSlotRead()
+    {
+        Random rand = new(1);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+        }
+    }
+
+    [Benchmark]
+    public void ScopeSameContractRead()
+    {
+        Random rand = new(1);
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_bigContract);
+
+        for (int i = 0; i < _loopSize; i++)
+        {
+            storageTree.Get(in _bigContractSlots[rand.Next(0, _bigContractSlots.Length)]);
+        }
+    }
+
+    // *FirstRead benchmarks read each key exactly once per scope, so the world state's intra-block
+    // cache never hits and every op pays the full backend lookup — unlike the random-sampling
+    // benchmarks where repeat reads are served from StateProvider/PersistentStorageProvider caches.
+    [Benchmark]
+    public void ScopeAccountFirstRead()
+    {
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+
+        for (int i = 0; i < _accounts.Length; i++)
+        {
+            scope.Get(_accounts[i]);
+        }
+    }
+
+    [Benchmark]
+    public void ScopeSlotFirstRead()
+    {
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+
+        for (int i = 0; i < _slots.Length; i++)
+        {
+            (Address Account, UInt256 Slot) slot = _slots[i];
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+        }
+    }
+
+    [Benchmark]
+    public void ScopeSameContractFirstRead()
+    {
+        using IWorldStateScopeProvider.IScope scope = _scopeProvider.BeginScope(_baseBlock, _scopeMetrics);
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(_bigContract);
+
+        for (int i = 0; i < _bigContractSlots.Length; i++)
+        {
+            storageTree.Get(in _bigContractSlots[i]);
+        }
+    }
+
+    [Benchmark]
+    public void AccountFirstRead()
+    {
+        IWorldState worldState = _globalWorldState;
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
+
+        for (int i = 0; i < _accounts.Length; i++)
+        {
+            worldState.GetBalance(_accounts[i]);
+        }
+
+        worldState.Reset();
+    }
+
+    [Benchmark]
+    public void SlotFirstRead()
+    {
+        IWorldState worldState = _globalWorldState;
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
+
+        for (int i = 0; i < _slots.Length; i++)
+        {
+            (Address Account, UInt256 Slot) slot = _slots[i];
+            worldState.Get(new StorageCell(slot.Account, slot.Slot));
+        }
+
+        worldState.Reset();
+    }
+
+    [Benchmark]
+    public void SameContractFirstRead()
+    {
+        IWorldState worldState = _globalWorldState;
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
+
+        for (int i = 0; i < _bigContractSlots.Length; i++)
+        {
+            worldState.Get(new StorageCell(_bigContract, _bigContractSlots[i]));
+        }
+
+        worldState.Reset();
+    }
 
     [Benchmark]
     public void AccountRead()
