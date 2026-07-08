@@ -4,9 +4,8 @@
 namespace Nethermind.Core;
 
 /// <summary>
-/// EIP-8282 builder execution requests: the two predeploys that are system-called at the end of every
-/// block (alongside the EIP-7002 withdrawal and EIP-7251 consolidation request predeploys) to dequeue
-/// builder deposit and builder exit requests.
+/// EIP-8282 builder execution request predeploys, system-called at the end of each block
+/// to dequeue builder deposit and builder exit requests.
 /// </summary>
 public static class Eip8282Constants
 {

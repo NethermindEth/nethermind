@@ -3,13 +3,9 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// Bytecode for the two EIP-8282 builder execution-request predeploys.
-/// </summary>
 public static class Eip8282TestConstants
 {
     public static class BuilderDeposit
@@ -18,7 +14,7 @@ public static class Eip8282TestConstants
 
         public static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Code);
 
-        public static readonly UInt256 Nonce = 1;
+        public static readonly ulong Nonce = 1;
     }
 
     public static class BuilderExit
@@ -27,6 +23,6 @@ public static class Eip8282TestConstants
 
         public static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Code);
 
-        public static readonly UInt256 Nonce = 1;
+        public static readonly ulong Nonce = 1;
     }
 }
