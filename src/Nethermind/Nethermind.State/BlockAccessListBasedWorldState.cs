@@ -30,6 +30,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    private Address? _lastAccountAddress;
+    private ReadOnlyAccountChanges? _lastAccountChanges;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
@@ -45,6 +47,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _codeChangesByHash = BuildCodeChangesByHash();
+        _lastAccountAddress = null;
+        _lastAccountChanges = null;
         _transientStorageProvider.Reset();
     }
 
@@ -64,6 +68,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
         _codeChangesByHash = null;
+        _lastAccountAddress = null;
+        _lastAccountChanges = null;
     }
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
@@ -338,7 +344,17 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private (IWorldState ParentReader, ReadOnlyAccountChanges AccountChanges) ResolveContext(Address address)
     {
         CheckInitialized();
-        return (GetParentReader(), GetAccountChangesOrThrow(address));
+        IWorldState parentReader = GetParentReader();
+
+        if (_lastAccountAddress == address)
+        {
+            return (parentReader, _lastAccountChanges!);
+        }
+
+        ReadOnlyAccountChanges accountChanges = GetAccountChangesOrThrow(address);
+        _lastAccountAddress = address;
+        _lastAccountChanges = accountChanges;
+        return (parentReader, accountChanges);
     }
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
