@@ -150,7 +150,7 @@ public partial class BlockProcessor(
         }
 
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
-        if (ShouldCalculateReceiptsInBackground(receipts.Length, CountLogs(receipts)))
+        if (ShouldCalculateReceiptsInBackground(receipts))
         {
             bloomsAndReceiptsRootTask = Task.Run(() =>
             {
@@ -220,7 +220,7 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static partial bool ShouldCalculateReceiptsInBackground(int receiptCount, int logCount);
+    private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts);
 
     private static int CountLogs(TxReceipt[] receipts)
     {
