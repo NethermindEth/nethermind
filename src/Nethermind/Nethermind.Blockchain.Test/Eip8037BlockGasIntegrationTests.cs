@@ -11,7 +11,6 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -34,8 +33,8 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
 {
-    private const ulong Cpsb = 1530;
-    private const ulong IntrinsicNewAccountState = 120 * Cpsb;
+    private const ulong Cpsb = 1530ul;
+    private const ulong IntrinsicNewAccountState = 120ul * Cpsb;
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
@@ -54,7 +53,7 @@ public class Eip8037BlockGasIntegrationTests
     {
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Block block = Build.A.Block
-            .WithNumber(1)
+            .WithNumber(1ul)
             .WithGasLimit(blockGasLimit)
             .WithTransactions(txs)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
@@ -74,24 +73,21 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null)
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
-    }
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
+        new(blockGasUsed, blockStateGasUsed, exception);
 
     // Boundary: post-tx cumulative state hits the limit exactly (must accept,
     // IncrementalValidation uses strict >) vs exceeds by 1 (must reject).
-    [TestCase(200_000UL, true, TestName = "Eip8037_boundary_state_exact_fit_accepts")]
-    [TestCase(200_001UL, false, TestName = "Eip8037_boundary_state_exceeded_by_one_rejects")]
+    [TestCase(200_000ul, true, TestName = "Eip8037_boundary_state_exact_fit_accepts")]
+    [TestCase(200_001ul, false, TestName = "Eip8037_boundary_state_exceeded_by_one_rejects")]
     public void Eip8037_boundary_state(ulong blockStateGasUsed, bool accepts)
     {
-        ulong blockGasLimit = 200_000;
-        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
+        ulong blockGasLimit = 200_000ul;
+        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
         GasValidationResultSlot[] results = ResultsForCount(1);
-        results[0].TrySetResult(GasResult(block, 0, 50_000, blockStateGasUsed));
+        results[0].TrySetResult(GasResult(block, 0, 50_000ul, blockStateGasUsed));
 
         if (accepts)
         {
@@ -117,17 +113,16 @@ public class Eip8037BlockGasIntegrationTests
         // cap (filler) + the create's full tx.gas (intrinsic_regular + intrinsic_state) so the
         // regular-dimension reservation of min(TX_MAX, tx.gas) exactly fits.
         ulong blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
-        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
+        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])
             .WithGasLimit(53_000 + IntrinsicNewAccountState)
-            .WithNonce(1).TestObject;
+            .WithNonce(1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
         GasValidationResultSlot[] results = ResultsForCount(2);
-        // Filler used full cap; create tx used modest regular + intrinsic state.
         results[0].TrySetResult(GasResult(block, 0, 16_777_216, 0));
-        results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
+        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
@@ -145,16 +140,16 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
-        ulong blockGasLimit = 16_777_216 + 100; // cap + tiny headroom
+        ulong blockGasLimit = 16_777_216ul + 100ul; // cap + tiny headroom
         // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
         Transaction onlyTx = Build.A.Transaction.WithHash(TestItem.KeccakA)
-            .WithGasLimit(blockGasLimit + 21_000 + 1).TestObject;
+            .WithGasLimit(blockGasLimit + 21_000ul + 1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
 
         GasValidationResultSlot[] results = ResultsForCount(1);
         // Simulate execution finishing with modest actual gas (post-execution view).
         // Spec inclusion check rejects before execution even though post-execution gas would fit.
-        results[0].TrySetResult(GasResult(block, 0, 21_000, 0));
+        results[0].TrySetResult(GasResult(block, 0, 21_000ul, 0ul));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
@@ -169,18 +164,18 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_creation_tx_state_check_exceeded_rejects()
     {
-        ulong blockGasLimit = 16_777_216 + 200_000; // cap + headroom for filler state
-        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
+        ulong blockGasLimit = 16_777_216ul + 200_000ul; // cap + headroom for filler state
+        Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)
             .WithCode([])
-            .WithGasLimit(53_000 + (blockGasLimit - 100_000) + 1) // state contribution exceeds remaining state by 1
-            .WithNonce(1).TestObject;
+            .WithGasLimit(53_000ul + (blockGasLimit - 100_000ul) + 1ul) // state contribution exceeds remaining state by 1
+            .WithNonce(1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
         GasValidationResultSlot[] results = ResultsForCount(2);
-        results[0].TrySetResult(GasResult(block, 0, 50_000, 100_000)); // filler post-exec
+        results[0].TrySetResult(GasResult(block, 0, 50_000ul, 100_000ul)); // filler post-exec
         // Simulate creation tx ran with modest actual gas - spec would have rejected at inclusion.
-        results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
+        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None),
@@ -196,12 +191,12 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_eip7825_cap_with_modest_actual_gas_accepts()
     {
-        ulong blockGasLimit = 16_777_216 + 100;
-        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
+        ulong blockGasLimit = 16_777_216ul + 100ul;
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx);
 
         GasValidationResultSlot[] results = ResultsForCount(1);
-        results[0].TrySetResult(GasResult(block, 0, 50_000, 0));
+        results[0].TrySetResult(GasResult(block, 0, 50_000ul, 0ul));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
@@ -221,12 +216,12 @@ public class Eip8037BlockGasIntegrationTests
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             CodeInfoRepositoryFactories.Caching);
 
-        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)
-            .WithGasLimit(blockGasLimit + 21_000 + 1)
+            .WithGasLimit(blockGasLimit + 21_000ul + 1ul)
             .TestObject;
         Block block = Build.A.Block
-            .WithNumber(1)
+            .WithNumber(1ul)
             .WithGasLimit(blockGasLimit)
             .WithTransactions(tx)
             .TestObject;

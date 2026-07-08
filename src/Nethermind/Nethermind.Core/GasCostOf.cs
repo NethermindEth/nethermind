@@ -70,19 +70,19 @@ namespace Nethermind.Core
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        public const ulong CostPerStateByte = 1530; // eip-8037
-        public const ulong StateBytesPerStorageSet = 64; // eip-8037
-        public const ulong StateBytesPerNewAccount = 120; // eip-8037
-        public const ulong StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
+        public const long CostPerStateByte = 1530; // eip-8037
+        public const long StateBytesPerStorageSet = 64; // eip-8037
+        public const long StateBytesPerNewAccount = 120; // eip-8037
+        public const long StateBytesPerAuthBase = Eip8037Constants.StateBytesPerAuthBase;
         public const ulong SSetRegular = 2_900;
-        public const ulong SSetState = StateBytesPerStorageSet * CostPerStateByte;
+        public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const ulong CreateRegular = 9_000;
-        public const ulong CreateState = StateBytesPerNewAccount * CostPerStateByte;
-        public const ulong NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong CodeDepositRegularPerWord = 6;
-        public const ulong CodeDepositState = CostPerStateByte;
+        public const long CodeDepositState = CostPerStateByte;
         public const ulong PerAuthBaseRegular = Eip8037Constants.PerAuthBaseRegularCost;
-        public const ulong PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
+        public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
@@ -95,6 +95,6 @@ namespace Nethermind.Core
         // eip-2780: reduce intrinsic transaction gas and reprice state-touching primitives.
         public const ulong TransactionEip2780 = 12000; // TX_BASE_COST: ECDSA recovery + sender account access + sender account write
         public const ulong TxValueCostEip2780 = 4244; // recipient balance write for a value-bearing transfer (non-create)
-        public const ulong TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event: 375 + 3*375 + 32*8
+        public const ulong TransferLogEip2780 = 1756; // eip-7708 LOG3 transfer event cost
     }
 }

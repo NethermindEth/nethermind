@@ -230,13 +230,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override bool AccountExists(Address address)
-        // Existence is decided on the EFFECTIVE state at this index (parent overlaid with the BAL's
-        // prior in-block changes), i.e. non-empty per EIP-161: balance != 0, nonce != 0, or code.
-        // A pre-funded account that a same-block selfdestruct drains to zero (balance->0, no nonce/code)
-        // is therefore reported as non-existent here, matching real sequential execution which deletes
-        // it. Reading only the parent would keep it "existing" and mislead a later same-block CREATE2
-        // over the address into a pre-existing-account create that wrongly refunds its EIP-8037
-        // create-state gas.
+        // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
+        // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
         => !GetBalance(address).IsZero
            || GetNonce(address) != 0
            || IsContract(address);

@@ -124,7 +124,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
         long gasPriceWithAccessList)
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0, Timeout = -1 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList(2, senderAccessList);
@@ -609,35 +609,34 @@ public partial class EthRpcModuleTests
     {
         // EIP-7976: 100 zero bytes → floor = 21000 + 100 * 4 * 16 = 27400
         ulong eip7976Floor100 = GasCostOf.Transaction + 100UL * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7976Spec, new byte[100], 100_000L, null,
+        yield return new TestCaseData(Eip7976Spec, new byte[100], 100_000UL, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: data heavy tx returns floor cost");
 
         // EIP-7623: 100 zero bytes → floor = 21000 + 100 * 10 = 22000
         ulong eip7623Floor100 = GasCostOf.Transaction + 100UL * Prague.Instance.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Prague.Instance, new byte[100], 100_000L, null,
+        yield return new TestCaseData(Prague.Instance, new byte[100], 100_000UL, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7623Floor100.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7623: data heavy tx returns lower floor");
 
         // EIP-7976: gas at standard but below floor → "gas below floor data cost"
         // 1 zero byte: standard = 21000 + 4 = 21004; floor = 21000 + 1*4*16 = 21064
-        const long atStandard = (long)(GasCostOf.Transaction + GasCostOf.TxDataZero);
-        ulong eip7976Floor1Byte = GasCostOf.Transaction + 1 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
+        const ulong atStandard = GasCostOf.Transaction + GasCostOf.TxDataZero;
+        ulong eip7976Floor1Byte = GasCostOf.Transaction + 1UL * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
         yield return new TestCaseData(Eip7976Spec, new byte[] { 0 }, atStandard, null,
                 $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"failed with {atStandard} gas: gas below floor data cost: have {atStandard}, want {eip7976Floor1Byte}\"}},\"id\":67}}")
             .SetName("EIP-7976: gas at standard but below floor returns floor error");
 
         // EIP-7976: mixed calldata (0x00001122 = 2 zero + 2 nonzero bytes)
-        ulong eip7976Floor4 = GasCostOf.Transaction + 4 * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7976Spec, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000L, null,
+        ulong eip7976Floor4 = GasCostOf.Transaction + 4UL * Eip7976Spec.GasCosts.TxDataNonZeroMultiplier * Eip7976Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7976Spec, new byte[] { 0x00, 0x00, 0x11, 0x22 }, 100_000UL, null,
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7976Floor4.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7976: mixed calldata returns floor");
 
-        // EIP-7981: access list with 1 address, no calldata — standard wins. The address is priced
-        // at the spec's AccessAccountListEntry plus the access-list floor tokens.
+        // EIP-7981: access list with 1 address, no calldata — standard wins.
         ulong eip7981Standard = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
-            + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000L,
+            + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7981Spec, Array.Empty<byte>(), 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with access list");
@@ -645,23 +644,23 @@ public partial class EthRpcModuleTests
         // EIP-7981: modest calldata on top of an access list — the standard cost still exceeds the
         // calldata floor, so standard wins (floor-wins is covered by the data-heavy cases above).
         ulong eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
-            + 100 * GasCostOf.TxDataZero
-            + 80 * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
-        yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000L,
+            + 100UL * GasCostOf.TxDataZero
+            + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;
+        yield return new TestCaseData(Eip7981Spec, new byte[100], 100_000UL,
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981StandardWithCalldata.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with calldata and access list");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
-    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, long gasLimit, AccessList? accessList, string expectedJson)
+    public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, ulong gasLimit, AccessList? accessList, string expectedJson)
     {
         TestSpecProvider specProvider = new(spec);
         using Context ctx = await Context.Create(specProvider);
 
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithTo(TestItem.AddressB)
-            .WithGasLimit((ulong)gasLimit)
+            .WithGasLimit(gasLimit)
             .WithData(data);
         if (accessList is not null)
             txBuilder.WithAccessList(accessList);
@@ -675,7 +674,7 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedJson));
     }
 
-    private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit, string message)
+    private static async Task TestEstimateGasOutOfGas(Context ctx, ulong? specifiedGasLimit, ulong expectedGasLimit, string message)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(

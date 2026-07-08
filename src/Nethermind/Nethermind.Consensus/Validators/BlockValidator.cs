@@ -35,9 +35,7 @@ public class BlockValidator(
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
-    // Recovers senders before per-tx validation: the EIP-2780/EIP-8038 intrinsic-gas check is
-    // sender-dependent. Null specProvider already throws in the _specProvider initializer above.
-    private readonly EthereumEcdsa _ecdsa = new(specProvider!.ChainId);
+    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
@@ -318,9 +316,9 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // Recover the sender if a preprocessor hasn't yet: the intrinsic-gas validation below is
-            // sender-dependent (EIP-2780 self-transfer discount).
-            if (transaction.SenderAddress is null && transaction.Signature is not null)
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            if (spec.IsEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);

@@ -7,7 +7,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -62,13 +61,13 @@ public class Eip2780Tests
     public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, ulong expectedGas)
     {
         using BasicTestBlockchain chain = await CreateChain();
-        UInt256 nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
 
         Address recipient = recipientIsNew ? TestItem.AddressF : TestItem.AddressB;
         Transaction tx = Build.A.Transaction
             .WithTo(recipient)
             .WithValue(value)
-            .WithNonce((ulong)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(60000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;

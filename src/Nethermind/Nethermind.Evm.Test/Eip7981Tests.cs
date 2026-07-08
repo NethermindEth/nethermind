@@ -151,8 +151,8 @@ public class Eip7981Tests
     [Test]
     public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
     {
-        // Tie at 50*(1 + addresses + keys) zero bytes: standard 12000 + 3000 (recipient) + 400 (data)
-        // + 3000 (address) + 1280 (AL floor tokens) == floor 12000 + (400 + 80) * 16 == 19680.
+        // Sized so the standard's fixed recipient + access-entry component exactly equals the
+        // floor's per-token premium over the standard's per-byte data cost.
         AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
         Transaction transaction = new() { To = Address.Zero, Data = new byte[100], AccessList = accessList };
 

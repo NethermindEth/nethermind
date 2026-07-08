@@ -557,7 +557,6 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.NoEip8037Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        // Devnet-6 gas reprice: cumulative gas used after tx1 (transfer), tx1+tx2 (create), and all three txs.
         const long gasUsedTx1 = 15000;
         const long gasUsed = 102240;
         const long gasUsedBeforeFinal = 56100;

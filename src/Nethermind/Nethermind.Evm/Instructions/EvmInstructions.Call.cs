@@ -141,8 +141,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        // Add extra gas cost if value is transferred. EIP-2780 reprices this into a three-tier
-        // charge keyed on self-call and recipient existence, subsuming the new-account surcharge.
+        // Add extra gas cost if value is transferred.
         if (hasValueTransfer)
         {
             // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
@@ -160,7 +159,6 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
-        // EIP-2780 charges a cold code-less account less; delegated accounts always carry code.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
@@ -233,8 +231,8 @@ public static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
-            // EIP-8037: refund the up-front NEW_ACCOUNT state charge when the call cannot proceed
-            // (depth exceeded or balance too low) — no account is created. No-op pre-EIP-8037.
+            // EIP-8037: no account is created when the call cannot proceed (depth exceeded or
+            // balance too low), so refund the up-front NEW_ACCOUNT state charge.
             if (chargesNewAccount)
                 vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
@@ -353,8 +351,6 @@ public static partial class EvmInstructions
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
                 snapshot: in snapshot,
-                // EIP-8037/EIP-8038: a value transfer to a dead recipient charged NEW_ACCOUNT state gas up-front;
-                // refunded on this frame's failure path (revert/halt) since the account is then not created.
                 newAccountCharged: newAccountCharged);
 
             return EvmExceptionType.None;

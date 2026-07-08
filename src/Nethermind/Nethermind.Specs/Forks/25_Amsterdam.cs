@@ -32,12 +32,5 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.EngineApiPayloadBodiesByRangeVersion = EngineApiVersions.PayloadBodiesByRange.V2;
     }
 
-    /// <summary>
-    /// Test-only Amsterdam variant with the EIP-8037 two-dimensional gas model disabled.
-    /// </summary>
-    /// <remarks>
-    /// Intentionally inconsistent (EIP-8038 access costs on the one-dimensional gas model);
-    /// exists only to isolate EIP-8037 behavior in tests.
-    /// </remarks>
     public static IReleaseSpec NoEip8037Instance { get; } = new Amsterdam { IsEip8037Enabled = false };
 }

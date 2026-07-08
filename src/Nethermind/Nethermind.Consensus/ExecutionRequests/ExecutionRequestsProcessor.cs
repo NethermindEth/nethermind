@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using System;
 using Nethermind.Core.Messages;
@@ -50,22 +49,22 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
     private readonly SystemCall _builderDepositTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip8282Constants.BuilderDepositRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     private readonly SystemCall _builderExitTransaction = new()
     {
-        Value = UInt256.Zero,
+        Value = 0,
         Data = Array.Empty<byte>(),
         To = Eip8282Constants.BuilderExitRequestPredeployAddress,
         SenderAddress = Address.SystemUser,
         GasLimit = GasLimit,
-        GasPrice = UInt256.Zero,
+        GasPrice = 0,
     };
 
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
@@ -82,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
-        ArrayPoolListRef<byte[]> requests = new(3);
+        ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {
             ProcessDeposits(block, receipts, spec, ref requests);
@@ -101,8 +100,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
 
-            // EIP-8282: builder deposit and builder exit requests, dequeued after the
-            // withdrawal/consolidation requests so the flat encoding stays in request-type order.
+            // EIP-8282: dequeued after withdrawal/consolidation so the flat encoding stays in request-type order.
             if (spec.BuilderRequestsEnabled)
             {
                 ReadRequests(block, state, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,

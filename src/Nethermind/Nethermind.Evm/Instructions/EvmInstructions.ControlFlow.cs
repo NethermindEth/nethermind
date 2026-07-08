@@ -240,7 +240,7 @@ public static partial class EvmInstructions
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
-        // Charge gas if transferring to a dead or non-existent account (unchanged by EIP-2780).
+        // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
@@ -248,16 +248,11 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        bool outOfGas = false;
-        if (chargesNewAccount)
-        {
-            // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
-            // charge regular first so a regular-gas OOG does not spill state gas.
-            if (spec.IsEip8038Enabled)
-                outOfGas = !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite);
-            if (!outOfGas)
-                outOfGas = !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
-        }
+        // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
+        // charge regular first so a regular-gas OOG does not spill state gas.
+        bool outOfGas = chargesNewAccount &&
+            !((!spec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
+              && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
 

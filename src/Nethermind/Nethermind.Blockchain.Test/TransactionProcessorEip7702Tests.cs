@@ -67,7 +67,7 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<TestCaseData> Eip8037AuthRefundCases()
     {
-        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0UL)
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0L)
             .SetName("Nonexistent authority - no auth state refund");
         yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.PerAuthBaseState)
             .SetName("Nonexistent authority clear - refunds auth-base state gas");
@@ -86,7 +86,7 @@ internal class TransactionProcessorEip7702Tests
         AuthorityPreState authorityPreState,
         bool clearDelegation,
         ulong authorityNonce,
-        ulong expectedStateGasRefund)
+        long expectedStateGasRefund)
     {
         UseSpec(Amsterdam.Instance);
 
@@ -141,15 +141,16 @@ internal class TransactionProcessorEip7702Tests
         // existing authorities refund ACCOUNT_WRITE, capped at before/5.
         ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
             + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
-        ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund;
+        ulong stateGasRefund = (ulong)expectedStateGasRefund;
+        ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - stateGasRefund;
         ulong regularRefund = authorityPreState == AuthorityPreState.Nonexistent
             ? 0
             : Math.Min(beforeRegularRefund / 5, Eip8038Constants.AccountWrite);
         ulong expectedSpentGas = beforeRegularRefund - regularRefund;
         Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
         Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - expectedStateGasRefund)));
-        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo((ulong)(authorityNonce + 1)));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - stateGasRefund)));
+        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
 
         byte[] expectedCode = clearDelegation
             ? []
@@ -179,7 +180,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -221,7 +222,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -260,7 +261,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -302,7 +303,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, chainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -330,7 +331,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, 0, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -341,10 +342,10 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
-    [TestCase(1)]
-    [TestCase(10)]
-    [TestCase(99)]
-    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(int count)
+    [TestCase(1ul)]
+    [TestCase(10ul)]
+    [TestCase(99ul)]
+    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(ulong count)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -353,8 +354,8 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * (ulong)count)
-            .WithAuthorizationCode(Enumerable.Range(0, count)
+            .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * count)
+            .WithAuthorizationCode(Enumerable.Range(0, (int)count)
                                              .Select(i => _ethereumEcdsa.Sign(
                                                  signer,
                                                  _specProvider.ChainId,
@@ -371,7 +372,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * (ulong)count));
+        Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * count));
     }
 
     public void Execute_TxHasDifferentAmount()
@@ -392,7 +393,7 @@ internal class TransactionProcessorEip7702Tests
                                                  0)).ToArray())
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(100000000).TestObject;
@@ -427,7 +428,7 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.InsertCode(codeSource, executionErrorCode, Prague.Instance);
         _stateProvider.CreateAccount(sender.Address, 1.Ether);
 
-        const ulong gasLimit = 10_000_000;
+        const long gasLimit = 10_000_000;
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(codeSource)
@@ -441,10 +442,10 @@ internal class TransactionProcessorEip7702Tests
             )
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
-            .WithGasLimit(ulong.MaxValue).TestObject;
+            .WithGasLimit(long.MaxValue).TestObject;
 
         CallOutputTracer tracer = new();
 
@@ -479,7 +480,7 @@ internal class TransactionProcessorEip7702Tests
                     0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(100000000).TestObject;
@@ -538,7 +539,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(authList)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -586,7 +587,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, Address.Zero, 1))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
@@ -663,7 +664,7 @@ internal class TransactionProcessorEip7702Tests
                     0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -736,7 +737,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(100_000)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -758,15 +759,15 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             true,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODESIZE delegated - cold access");
         yield return new TestCaseData(
             extcodesizeCode,
-            23602UL,
+            23602ul,
             true,
             //Gas limit is set so it doesn't have enough for accessing the account
-            23602UL,
+            23602ul,
             true
         ).SetName("EXTCODESIZE delegated - out of gas");
         yield return new TestCaseData(
@@ -775,7 +776,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             false,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODESIZE not delegated - cold access");
         byte[] extcodecopyCode =
@@ -793,7 +794,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.VeryLow
             + GasCostOf.Base * 3,
             true,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODECOPY delegated - cold access");
         yield return new TestCaseData(
@@ -803,7 +804,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.VeryLow
             + GasCostOf.Base * 3,
             false,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODECOPY not delegated - cold access");
         byte[] extcodehashCode =
@@ -817,7 +818,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             true,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODEHASH delegated - cold access");
         yield return new TestCaseData(
@@ -826,7 +827,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             false,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("EXTCODEHASH not delegated - cold access");
         byte[] callOpcode =
@@ -847,15 +848,15 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow * 7,
             true,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("CALL delegated - cold access");
         yield return new TestCaseData(
             callOpcode,
-            23621UL,
+            23621ul,
             true,
             //Gas limit is set so it doesn't have enough for accessing the account
-            23621UL,
+            23621ul,
             true
         ).SetName("CALL delegated - out of gas");
         yield return new TestCaseData(
@@ -864,7 +865,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow * 7,
             false,
-            100_000UL,
+            100_000ul,
             false
         ).SetName("CALL not delegated - cold access");
     }
@@ -960,7 +961,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(tuples)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -993,13 +994,13 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(tuples)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(1UL));
+        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(1ul));
     }
 
 
@@ -1024,7 +1025,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(tuples)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue - 1)
+        Block block = Build.A.Block.WithNumber(long.MaxValue - 1)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -1043,7 +1044,7 @@ internal class TransactionProcessorEip7702Tests
             .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, 1, Address.Zero, 1))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        block = Build.A.Block.WithNumber(ulong.MaxValue)
+        block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -1092,7 +1093,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(100_000)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;

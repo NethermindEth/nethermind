@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -2129,7 +2130,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", txForRpc);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for gas * price + value, Balance is zero, cannot pay gas\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":-32000,"message":"{{TxErrorMessages.InsufficientFundsForGas}}, Balance is zero, cannot pay gas"},"id":67}"""));
     }
 
     public enum AccessListProvided
@@ -2185,7 +2186,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
 
-        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        ulong gasUsed = Convert.ToUInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
         Assert.That(gasUsed, Is.LessThanOrEqualTo(gasCap));
     }
 
@@ -2208,7 +2209,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, false);
 
-        long gasUsed = Convert.ToInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
+        ulong gasUsed = Convert.ToUInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
         Assert.That(gasUsed, Is.GreaterThan(blockGasLimit),
             $"gas used ({gasUsed}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
@@ -2335,12 +2336,12 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(null)]
-    [TestCase(0L)]
-    public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(long? gasCap)
+    [TestCase(0UL)]
+    public static void ToTransaction_uses_ulong_max_when_gasCap_is_null_or_zero(ulong? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new();
 
-        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: (ulong?)gasCap);
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
 
         Assert.That(tx.GasLimit, Is.EqualTo(ulong.MaxValue), "GasLimit must default to ulong.MaxValue when gasCap is null or 0");
     }
@@ -2356,21 +2357,21 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(null, null, ulong.MaxValue)]
-    [TestCase(null, 0L, ulong.MaxValue)]
-    [TestCase(null, 1_000_000L, 1_000_000UL)]
-    [TestCase(0L, null, 0UL)]
-    [TestCase(0L, 1_000_000L, 0UL)]
-    [TestCase(50_000L, null, 50_000UL)]
-    [TestCase(50_000L, 0L, 50_000UL)]
-    [TestCase(50_000L, 100_000L, 50_000UL)]
-    [TestCase(200_000L, 100_000L, 100_000UL)]
-    public static void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, ulong expectedGasLimit)
+    [TestCase(null, 0UL, ulong.MaxValue)]
+    [TestCase(null, 1_000_000UL, 1_000_000UL)]
+    [TestCase(0UL, null, 0UL)]
+    [TestCase(0UL, 1_000_000UL, 0UL)]
+    [TestCase(50_000UL, null, 50_000UL)]
+    [TestCase(50_000UL, 0UL, 50_000UL)]
+    [TestCase(50_000UL, 100_000UL, 50_000UL)]
+    [TestCase(200_000UL, 100_000UL, 100_000UL)]
+    public static void ToTransaction_caps_and_defaults_gas(ulong? gas, ulong? gasCap, object expectedGasLimit)
     {
-        LegacyTransactionForRpc rpcTx = new() { Gas = (ulong?)gas };
+        LegacyTransactionForRpc rpcTx = new() { Gas = gas };
 
-        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: (ulong?)gasCap);
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
 
-        Assert.That(tx.GasLimit, Is.EqualTo(expectedGasLimit));
+        Assert.That(tx.GasLimit, Is.EqualTo(Convert.ToUInt64(expectedGasLimit)));
     }
 
     [Test]
@@ -2450,7 +2451,7 @@ public partial class EthRpcModuleTests
           .WithMaxFeePerGas(9.GWei)
           .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
-          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, (ulong)test.ReadOnlyState.GetNonce(TestItem.AddressB) + 1))
+          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, TestItem.AddressC, test.ReadOnlyState.GetNonce(TestItem.AddressB) + 1))
           .WithTo(TestItem.AddressA)
           .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
@@ -2797,11 +2798,11 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> CreateWithAncientBarriers(long blockNumber) => await Create(configurer: builder =>
+        public static async Task<Context> CreateWithAncientBarriers(ulong blockNumber) => await Create(configurer: builder =>
         {
             builder.AddDecorator<ISyncConfig>((_, config) =>
             {
-                ulong cutBlock = (ulong)blockNumber;
+                ulong cutBlock = blockNumber;
                 config.AncientBodiesBarrier = cutBlock;
                 config.AncientReceiptsBarrier = cutBlock;
                 config.PivotNumber = cutBlock;
@@ -2825,7 +2826,7 @@ public partial class EthRpcModuleTests
             {
                 TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0 })
+                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = 0, Timeout = -1 })
                     .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
                     .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
                     .Build(wrappedConfigurer).Result,
