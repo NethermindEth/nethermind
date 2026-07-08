@@ -135,10 +135,8 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             }
             catch (Exception secondException)
             {
-                // A hard persistence failure (disk full/corrupt). The overlay entry stays published so
-                // live reads remain correct; durability is now compromised until restart recovery. All
-                // future work runs inline so the failure surfaces on the producer exactly as the
-                // synchronous path does today, and already-queued items continue draining in FIFO order.
+                // Hard persistence failure: keep the overlay published (reads stay correct) and run all
+                // future work inline so the failure surfaces on the producer as the synchronous path would.
                 _faulted = true;
                 if (_logger.IsError) _logger.Error("Deferred block-data write failed after retry; falling back to synchronous persistence.", secondException);
             }

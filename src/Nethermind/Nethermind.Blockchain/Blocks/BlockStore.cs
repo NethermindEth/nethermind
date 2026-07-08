@@ -16,27 +16,57 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null, IDeferredBlockDataWriter? deferredWriter = null, bool deferBodies = false) : IBlockStore, IClearableCache
+public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
 
-    private readonly IDb _blockDb = blockDb;
-    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+    private readonly IDb _blockDb;
+    private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, not an output, so a lost body cannot be regenerated on
     // restart; deferral is opt-in even when the shared writer is running for receipts.
-    private readonly IDeferredBlockDataWriter? _deferredWriter = deferBodies && deferredWriter is { Enabled: true } ? deferredWriter : null;
+    private readonly IDeferredBlockDataWriter? _deferredWriter;
+    private readonly IStatePersistenceBarrier _persistenceBarrier;
 
-    // Source of truth for blocks whose durable write is still queued on the deferred writer. Holds
-    // the immutable RLP encoded synchronously in InsertDeferred - not the live Block, which the
-    // caller mutates (BAL nulling, TD hydration) after suggesting. Removed only after the database
-    // write returns (value-conditionally, so a flush removes only the entry it wrote). Never evicts.
-    private readonly ConcurrentDictionary<ValueHash256, byte[]> _pendingBlocks = new();
+    // Blocks whose durable write is still queued: the immutable RLP (not the live Block, which the caller
+    // mutates after suggesting). Removed only after the DB write, value-conditionally. Never evicts.
+    private readonly ConcurrentDictionary<ValueHash256, PendingBlockEntry> _pendingBlocks = new();
 
     // Serialises a queued background write against a synchronous Delete of the same block.
     private readonly Lock _writeLock = new();
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
+
+    public BlockStore(
+        [KeyFilter(DbNames.Blocks)] IDb blockDb,
+        IHeaderDecoder? headerDecoder = null,
+        IDeferredBlockDataWriter? deferredWriter = null,
+        bool deferBodies = false,
+        IStatePersistenceBarrier? persistenceBarrier = null)
+    {
+        _blockDb = blockDb;
+        _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
+        _deferredWriter = deferBodies && deferredWriter is { Enabled: true } ? deferredWriter : null;
+        _persistenceBarrier = persistenceBarrier ?? NullStatePersistenceBarrier.Instance;
+
+        // The eager writer keeps the overlay shallow; this gate only guarantees that any straggler it
+        // has not yet reached is durable before the block's state is. No-op when deferral is off.
+        if (_deferredWriter is not null && _persistenceBarrier.IsEnabled)
+        {
+            _persistenceBarrier.Register(FlushBodiesUpTo);
+        }
+    }
+
+    /// <summary>
+    /// A block body whose durable write is still queued. A plain class (not a record) so value-conditional
+    /// removal keys on reference identity; the block number lets the barrier flush entries up to a block.
+    /// </summary>
+    private sealed class PendingBlockEntry(ulong blockNumber, Hash256 blockHash, byte[] rlp)
+    {
+        public ulong BlockNumber { get; } = blockNumber;
+        public Hash256 BlockHash { get; } = blockHash;
+        public byte[] Rlp { get; } = rlp;
+    }
 
     public void SetMetadata(byte[] key, byte[] value) => _blockDb.Set(key, value);
 
@@ -84,26 +114,48 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
             rlp = ((ReadOnlySpan<byte>)encoded).ToArray();
         }
 
-        ulong blockNumber = block.Number;
-        ValueHash256 blockHash = block.Hash.ValueHash256;
-        _pendingBlocks[blockHash] = rlp;
-        _deferredWriter.Enqueue(() => PersistDeferred(blockNumber, block.Hash, blockHash, rlp));
+        PendingBlockEntry entry = new(block.Number, block.Hash, rlp);
+        _pendingBlocks[block.Hash.ValueHash256] = entry;
+        _deferredWriter.Enqueue(() => PersistDeferred(entry));
     }
 
-    private void PersistDeferred(ulong blockNumber, Hash256 blockHash, ValueHash256 blockHashValue, byte[] rlp)
+    private bool PersistDeferred(PendingBlockEntry entry)
     {
         lock (_writeLock)
         {
-            // Skip if a synchronous Delete already dropped this exact entry; the lock makes the
-            // check-then-write atomic against Delete so a write cannot resurrect a deleted block.
-            if (!_pendingBlocks.TryGetValue(blockHashValue, out byte[]? current) || !ReferenceEquals(current, rlp))
+            // Skip if a Delete (or the gate racing the writer) already dropped this exact entry; the lock
+            // makes check-then-write atomic against Delete so a write cannot resurrect a deleted block.
+            ValueHash256 key = entry.BlockHash.ValueHash256;
+            if (!_pendingBlocks.TryGetValue(key, out PendingBlockEntry? current) || !ReferenceEquals(current, entry))
             {
-                return;
+                return false;
             }
 
-            _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
-            _pendingBlocks.TryRemove(new KeyValuePair<ValueHash256, byte[]>(blockHashValue, rlp));
+            _blockDb.Set(entry.BlockNumber, entry.BlockHash, entry.Rlp, WriteFlags.None);
+            _pendingBlocks.TryRemove(new KeyValuePair<ValueHash256, PendingBlockEntry>(key, entry));
+            return true;
         }
+    }
+
+    /// <summary>
+    /// State persistence barrier hook: force any queued body write for a block up to
+    /// <paramref name="blockNumber"/> to disk and fsync the blocks WAL, so it is durable before the
+    /// block's state is persisted. Normally a no-op - the eager writer has already drained these.
+    /// </summary>
+    private void FlushBodiesUpTo(long blockNumber)
+    {
+        ulong upTo = (ulong)blockNumber;
+        foreach (KeyValuePair<ValueHash256, PendingBlockEntry> kv in _pendingBlocks)
+        {
+            if (kv.Value.BlockNumber <= upTo)
+            {
+                PersistDeferred(kv.Value);
+            }
+        }
+
+        // Unconditional: the eager writer's Set is WAL-buffered (WriteFlags.None) and nothing else fsyncs
+        // it, so state must not become durable ahead of this - even when the writer, not the gate, wrote.
+        _blockDb.Flush(onlyWal: true);
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -121,9 +173,9 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
     {
         // Decode a fresh instance from the pending bytes, matching the database path's semantics
         // (callers must not observe the mutable live Block held elsewhere).
-        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out byte[]? pendingRlp))
+        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out PendingBlockEntry? pending))
         {
-            return _blockDecoder.Decode(pendingRlp, rlpBehaviors);
+            return _blockDecoder.Decode(pending.Rlp, rlpBehaviors);
         }
 
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
@@ -133,9 +185,9 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
 
     public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
-        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out byte[]? pendingRlp))
+        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out PendingBlockEntry? pending))
         {
-            return pendingRlp;
+            return pending.Rlp;
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -147,10 +199,10 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder?
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
-        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out byte[]? pendingRlp))
+        if (_pendingBlocks.TryGetValue(blockHash.ValueHash256, out PendingBlockEntry? pending))
         {
-            Block? pending = _blockDecoder.Decode(pendingRlp);
-            return pending is null ? null : new ReceiptRecoveryBlock(pending);
+            Block? pendingBlock = _blockDecoder.Decode(pending.Rlp);
+            return pendingBlock is null ? null : new ReceiptRecoveryBlock(pendingBlock);
         }
 
         Span<byte> keyWithBlockNumber = stackalloc byte[40];

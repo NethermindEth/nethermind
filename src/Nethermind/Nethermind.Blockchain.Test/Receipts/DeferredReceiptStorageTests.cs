@@ -61,18 +61,12 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _receiptsDb.Dispose();
     }
 
-    private PersistentReceiptStorage CreateStorage(DeferredBlockDataWriter? writer) =>
-        new(
-            _receiptsDb,
-            _specProvider,
-            _receiptsRecovery,
-            _blockTree,
-            _blockStore,
-            _receiptConfig,
-            _decoder,
-            writer
-        )
+    private PersistentReceiptStorage CreateStorage(DeferredBlockDataWriter? writer, IStatePersistenceBarrier? barrier = null) =>
+        new(_receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder, writer, barrier)
         { MigratedBlockNumber = 0 };
+
+    // Receipts as read by a fresh store over the same database - durable state independent of any overlay.
+    private TxReceipt[] DurableReceipts(Block block) => CreateStorage(null).Get(block);
 
     private (Block block, TxReceipt[] receipts) PrepareBlock()
     {
@@ -190,6 +184,43 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
 
         await writer.DisposeAsync();
         Assert.That(ran, Is.EqualTo(5), "all queued work completes before dispose returns");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Barrier_flush_makes_receipts_durable_only_up_to_the_watermark()
+    {
+        StatePersistenceBarrier barrier = new();
+        PersistentReceiptStorage storage = CreateStorage(_writer, barrier);
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock(); // block number 1
+        storage.InsertDeferred(block, receipts, _specProvider.GetSpec(block.Header));
+
+        // The writer never drains, so only the barrier gate can persist.
+        Assert.That(DurableReceipts(block), Is.Empty, "not durable until the barrier flushes");
+
+        barrier.FlushBefore(0); // below the block
+        Assert.That(DurableReceipts(block), Is.Empty, "a block above the watermark stays pending");
+
+        barrier.FlushBefore((long)block.Number);
+        DurableReceipts(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Barrier_flush_makes_canonical_tx_index_durable()
+    {
+        StatePersistenceBarrier barrier = new();
+        PersistentReceiptStorage storage = CreateStorage(_writer, barrier);
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        storage.InsertDeferred(block, receipts, _specProvider.GetSpec(block.Header));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
+
+        Hash256 txHash = block.Transactions[0].Hash!;
+        Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.Null, "tx-index not durable until the barrier flushes");
+
+        barrier.FlushBefore((long)block.Number);
+
+        Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.EqualTo(block.Hash), "tx-index durable after the barrier flush");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

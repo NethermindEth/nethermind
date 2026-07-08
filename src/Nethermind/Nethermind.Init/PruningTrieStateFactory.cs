@@ -105,6 +105,7 @@ public class MainPruningTrieStoreFactory
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
+        IStatePersistenceBarrier persistenceBarrier,
         ILogManager logManager
     )
     {
@@ -167,7 +168,8 @@ public class MainPruningTrieStoreFactory
             persistenceStrategy,
             finalizedStateProvider,
             pruningConfig,
-            logManager);
+            logManager,
+            persistenceBarrier);
     }
 
     private void AdviseConfig(IPruningConfig pruningConfig, IDbConfig dbConfig, IHardwareInfo hardwareInfo)

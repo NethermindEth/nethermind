@@ -28,13 +28,13 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "The number of recent blocks to maintain transaction index for. `0` to never remove indices, `18446744073709551615` to never index.", DefaultValue = "2350000")]
     ulong? TxLookupLimit { get; set; }
 
-    [ConfigItem(Description = "Whether receipt and canonical transaction index writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are always served consistently from an in-memory overlay until flushed. Safe across an unclean shutdown: the background writer drains within a few blocks of the head, well inside the state-persistence lag (`Pruning.MinUnpersistedBlockCount`), so any block whose state is persisted has already had its receipts written, and any newer block is re-executed on restart (regenerating its receipts and transaction index). Keep `ReceiptsMaxDeferredWrites` well below that lag.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether receipt and canonical transaction-index writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are served from an in-memory overlay until flushed, and a state-persistence barrier makes a block's data durable before its state, so an unclean shutdown never leaves persisted state without it.", DefaultValue = "true")]
     bool DeferredPersistence { get; set; }
 
-    [ConfigItem(Description = "Whether block body writes are also deferred by the background writer. Off by default: unlike receipts, a body cannot be regenerated locally on restart (it is a processing input, not an output), so a body lost on an unclean shutdown must be re-downloaded from peers. Only has an effect when `DeferredPersistence` is enabled.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether block body writes are also deferred (only when `DeferredPersistence` is enabled). Off by default: a body is a processing input, not a regenerable output, so one lost on an unclean shutdown must be re-downloaded from peers.", DefaultValue = "false")]
     bool DeferBlockBodyPersistence { get; set; }
 
-    [ConfigItem(Description = "The maximum number of queued deferred write items before block processing backpressures. Counts individual writes, not blocks (a block enqueues up to three), so the block headroom is roughly a third of this value. Must stay well below `Pruning.MinUnpersistedBlockCount` so restart re-execution always covers anything lost on an unclean shutdown.", DefaultValue = "8", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Maximum number of queued deferred write items before block processing backpressures (counts individual writes, not blocks - a block enqueues up to three). Bounds the pending-overlay memory.", DefaultValue = "8", HiddenFromDocs = true)]
     int MaxDeferredBlocks { get; set; }
 
     [ConfigItem(Description =

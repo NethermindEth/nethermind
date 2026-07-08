@@ -13,98 +13,113 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Blocks;
 
 [Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class DeferredBlockStoreTests
 {
+    private readonly TestMemDb _db = new();
+    private readonly StatePersistenceBarrier _barrier = new();
+    // startConsumer:false makes pre-flush states deterministic; Pump() / the barrier flush on demand.
+    private readonly DeferredBlockDataWriter _writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
+    private BlockStore _store = null!;
+
+    [SetUp]
+    public void SetUp() => _store = new BlockStore(_db, null, _writer, deferBodies: true, persistenceBarrier: _barrier);
+
+    [TearDown]
+    public Task TearDown() => _writer.DisposeAsync().AsTask();
+
+    // A fresh store over the same database, proving what is durable independent of the overlay.
+    private BlockStore Reopen() => new(_db);
+
+    private static Block BlockNumbered(ulong number) => Build.A.Block.WithNumber(number).TestObject;
+
     [Test]
-    public async Task Deferred_insert_is_visible_before_flush_through_all_read_paths()
+    public void Deferred_insert_is_visible_before_flush_through_all_read_paths()
     {
-        TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer, deferBodies: true);
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
-        store.InsertDeferred(block);
+        _store.InsertDeferred(block);
 
-        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
+        Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.True);
 
-        // Served from the overlay as a fresh decode (store fidelity - senders are recovered on
-        // demand exactly as for a database read), so assert identity by hash and shape.
-        Block? served = store.Get(block.Number, block.Hash!);
+        // Served as a fresh decode (senders recovered on demand as for a DB read), so assert hash + shape.
+        Block? served = _store.Get(block.Number, block.Hash!);
         Assert.That(served, Is.Not.Null);
         Assert.That(served!.Hash, Is.EqualTo(block.Hash));
         Assert.That(served.Transactions.Length, Is.EqualTo(1));
-        Assert.That(store.GetRlp(block.Number, block.Hash!), Is.Not.Null);
+        Assert.That(_store.GetRlp(block.Number, block.Hash!), Is.Not.Null);
 
-        ReceiptRecoveryBlock? recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+        ReceiptRecoveryBlock? recovery = _store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
         Assert.That(recovery, Is.Not.Null);
         Assert.That(recovery!.Value.TransactionCount, Is.EqualTo(1));
     }
 
     [Test]
-    public async Task Deferred_get_returns_a_fresh_instance_not_the_live_block()
+    public void Deferred_get_returns_a_fresh_instance_not_the_live_block()
     {
-        TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer, deferBodies: true);
+        Block block = BlockNumbered(1);
+        _store.InsertDeferred(block);
 
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        store.InsertDeferred(block);
-
-        // The overlay holds encoded bytes, so a read decodes a distinct instance - the caller can
-        // never mutate the live block through a pending read.
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Not.SameAs(block));
-        Assert.That(store.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+        // The overlay holds encoded bytes, so a read decodes a distinct instance the caller cannot mutate.
+        Assert.That(_store.Get(block.Number, block.Hash!), Is.Not.SameAs(block));
+        Assert.That(_store.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]
-    public async Task Deferred_insert_is_durable_and_byte_identical_after_flush()
+    public void Deferred_insert_is_durable_and_byte_identical_after_flush()
     {
-        TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer, deferBodies: true);
+        Block block = BlockNumbered(1);
+        _store.InsertDeferred(block);
+        byte[]? pendingRlp = _store.GetRlp(block.Number, block.Hash!);
 
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        store.InsertDeferred(block);
-        byte[]? pendingRlp = store.GetRlp(block.Number, block.Hash!);
+        _writer.Pump();
 
-        writer.Pump();
-
-        // A fresh store over the same database proves durability; bytes must match the pending view.
-        BlockStore reopened = new(db);
-        Assert.That(reopened.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
-        Assert.That(reopened.GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
+        Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+        Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
     }
 
     [Test]
-    public async Task Deleted_block_is_not_resurrected_by_queued_write()
+    public void Deleted_block_is_not_resurrected_by_queued_write()
     {
-        TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, writer, deferBodies: true);
+        Block block = BlockNumbered(1);
+        _store.InsertDeferred(block);
+        _store.Delete(block.Number, block.Hash!);
 
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        store.InsertDeferred(block);
-        store.Delete(block.Number, block.Hash!);
+        Assert.That(_store.Get(block.Number, block.Hash!), Is.Null, "deleted block must not be readable before flush");
 
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Null, "deleted block must not be readable before flush");
+        _writer.Pump();
 
-        writer.Pump();
+        Assert.That(_store.Get(block.Number, block.Hash!), Is.Null, "a queued insert must not resurrect a deleted block");
+        Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.False);
+    }
 
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Null, "a queued insert must not resurrect a deleted block");
-        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+    [Test]
+    public void Barrier_flush_makes_bodies_durable_up_to_the_watermark_and_leaves_the_rest_pending()
+    {
+        Block low = BlockNumbered(5);
+        Block high = BlockNumbered(6);
+        _store.InsertDeferred(low);
+        _store.InsertDeferred(high);
+
+        // The writer never drains, so only the barrier gate can persist.
+        Assert.That(Reopen().Get(low.Number, low.Hash!), Is.Null, "not durable until the barrier flushes");
+
+        _barrier.FlushBefore(5);
+
+        Assert.That(Reopen().Get(low.Number, low.Hash!), Is.EqualTo(low).UsingBlockComparer(), "at-or-below watermark is durable");
+        Assert.That(Reopen().Get(high.Number, high.Hash!), Is.Null, "above watermark stays pending");
+        Assert.That(_store.HasBlock(high.Number, high.Hash!), Is.True, "still served from the overlay");
+        Assert.That(_db.FlushCount, Is.GreaterThan(0), "blocks WAL was fsynced before state persist");
     }
 
     [Test]
     public async Task Disabled_writer_inserts_synchronously()
     {
-        TestMemDb db = new();
         await using DeferredBlockDataWriter disabled = new(enabled: false, capacity: 8, LimboLogs.Instance, startConsumer: false);
-        BlockStore store = new(db, null, disabled, deferBodies: true);
+        BlockStore store = new(_db, null, disabled, deferBodies: true);
 
-        Block block = Build.A.Block.WithNumber(1).TestObject;
+        Block block = BlockNumbered(1);
         store.InsertDeferred(block);
 
-        BlockStore reopened = new(db);
-        Assert.That(reopened.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+        Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
     }
 }
