@@ -34,9 +34,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
-    private const int BalHeavyTxWarmupMinIndex = 64;
-    private const int BalHeavyTxWarmupMaxCount = 4;
-    private const ulong BalHeavyTxWarmupMinGas = 5_000_000;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -129,11 +126,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            if (addressWarmer.HasBal)
-            {
-                WarmupBalHeavyTransactions(blockState, suggestedBlock, parallelOptions);
-            }
-            else
+            if (!addressWarmer.HasBal)
             {
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
@@ -190,84 +183,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming withdrawal", ex);
         }
-    }
-
-    private void WarmupBalHeavyTransactions(BlockState blockState, Block block, ParallelOptions parallelOptions)
-    {
-        if (parallelOptions.CancellationToken.IsCancellationRequested
-            || block.Transactions.Length <= BalHeavyTxWarmupMinIndex)
-        {
-            return;
-        }
-
-        using ArrayPoolList<TxWarmupCandidate> candidates = new(BalHeavyTxWarmupMaxCount);
-        Transaction[] txs = block.Transactions;
-        for (int i = BalHeavyTxWarmupMinIndex; i < txs.Length; i++)
-        {
-            Transaction tx = txs[i];
-            if (tx.GasLimit < BalHeavyTxWarmupMinGas) continue;
-
-            TxWarmupCandidate candidate = new(i, tx.GasLimit);
-            if (candidates.Count < BalHeavyTxWarmupMaxCount)
-            {
-                candidates.Add(candidate);
-                if (candidates.Count == BalHeavyTxWarmupMaxCount)
-                    candidates.AsSpan().Sort();
-                continue;
-            }
-
-            int last = candidates.Count - 1;
-            if (candidate.CompareTo(candidates[last]) < 0)
-            {
-                candidates[last] = candidate;
-                candidates.AsSpan().Sort();
-            }
-        }
-
-        int count = candidates.Count;
-        if (count == 0) return;
-
-        ParallelOptions limitedOptions = new()
-        {
-            CancellationToken = parallelOptions.CancellationToken,
-            MaxDegreeOfParallelism = Math.Min(2, count)
-        };
-
-        ParallelUnbalancedWork.For(
-            0,
-            count,
-            limitedOptions,
-            (blockState, candidates, limitedOptions.CancellationToken),
-            static (i, state) =>
-            {
-                (BlockState blockState, ArrayPoolList<TxWarmupCandidate> candidates, CancellationToken token) = state;
-                if (token.IsCancellationRequested) return state;
-
-                IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                try
-                {
-                    using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                    BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                    scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                    int txIndex = candidates[i].Index;
-                    if (txIndex < blockState.Block.Transactions.Length)
-                    {
-                        WarmupSingleTransaction(
-                            scope,
-                            blockState.Block.Transactions[txIndex],
-                            txIndex,
-                            blockState,
-                            token);
-                    }
-                }
-                finally
-                {
-                    blockState.PreWarmer._envPool.Return(env);
-                }
-
-                return state;
-            });
     }
 
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
@@ -335,18 +250,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         catch (Exception ex)
         {
             _logger.DebugError("Error pre-warming transactions", ex);
-        }
-    }
-
-    private readonly struct TxWarmupCandidate(int index, ulong gasLimit) : IComparable<TxWarmupCandidate>
-    {
-        public int Index { get; } = index;
-        private readonly ulong _gasLimit = gasLimit;
-
-        public int CompareTo(TxWarmupCandidate other)
-        {
-            int comparison = other._gasLimit.CompareTo(_gasLimit);
-            return comparison != 0 ? comparison : Index.CompareTo(other.Index);
         }
     }
 
