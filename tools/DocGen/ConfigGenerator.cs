@@ -181,6 +181,10 @@ internal static class ConfigGenerator
         return false;
     }
 
+    /// <summary>
+    /// Escapes <c>&lt;</c> and <c>{</c>, which MDX parses as JSX in plain text, skipping backtick code spans
+    /// where a backslash would render verbatim.
+    /// </summary>
     private static string EscapeForMdx(string text)
     {
         if (text.AsSpan().IndexOfAny('<', '{') < 0)
