@@ -219,7 +219,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (storageChangeCount > 0)
+                    if (sink is null && storageChangeCount > 0)
                     {
                         FlatStorageTree storageWarmer = new(
                             this,
@@ -247,7 +247,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 });
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                if (sink is not null)
+                {
+                    RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                    RunStorageChangeTrieWarmup(accountChanges, accounts!, snapshot, parallelOptions);
+                }
             }
             catch (OperationCanceledException) { }
             finally
@@ -255,6 +259,46 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 accountChanges.Dispose();
             }
         }, token);
+    }
+
+    private void RunStorageChangeTrieWarmup(
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
+        Account?[] accounts,
+        int snapshot,
+        ParallelOptions parallelOptions)
+    {
+        Parallel.For(0, accountChanges.Count, parallelOptions, (i) =>
+        {
+            if (parallelOptions.CancellationToken.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
+
+            ReadOnlySlotChanges[] storageChanges = accountChanges[i].StorageChanges;
+            if (storageChanges.Length == 0) return;
+
+            Account? account = accounts[i];
+            if (account is null) return;
+
+            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+            if (storageRoot == Keccak.EmptyTreeHash) return;
+
+            Address address = accountChanges[i].Address;
+            FlatStorageTree storageWarmer = new(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
+
+            foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+            {
+                UInt256 key = slotChanges.Key;
+                if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                    && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                    Interlocked.Increment(ref _outstandingWarmups);
+            }
+        });
     }
 
     private void RunSinkSlotReads(
