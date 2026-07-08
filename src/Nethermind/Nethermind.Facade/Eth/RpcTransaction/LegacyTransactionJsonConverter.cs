@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -24,9 +25,11 @@ public sealed class LegacyTransactionJsonConverter : JsonConverter<LegacyTransac
     /// any host (client, plugins, tests).
     /// </remarks>
     [ModuleInitializer]
+    [SuppressMessage("Usage", "CA2255:The 'ModuleInitializer' attribute should not be used in libraries",
+        Justification = "The converter must be registered before the first LegacyTransactionForRpc-declared member is bound in any host; a static constructor runs only after the serializer has already resolved converters for the type.")]
     internal static void Register() => EthereumJsonSerializer.AddConverter(new LegacyTransactionJsonConverter());
 
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> _withoutSelfCache = new();
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> _withoutSelfCache = [];
 
     /// <summary>
     /// Returns a copy of <paramref name="options"/> without this converter, letting the polymorphic
