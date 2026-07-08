@@ -398,49 +398,6 @@ namespace Nethermind.State
             _stateProvider.SetNonce(address, nonce);
         }
 
-        public bool TryApplyBlockAccessListAccountChanges(ReadOnlyAccountChanges accountChanges, IReleaseSpec spec)
-        {
-            DebugGuardInScope();
-
-            if (accountChanges.CodeChanges.Length != 0)
-            {
-                return false;
-            }
-
-            bool hasBalanceChange = accountChanges.BalanceChanges.Length != 0;
-            bool hasNonceChange = accountChanges.NonceChanges.Length != 0;
-            if (!hasBalanceChange && !hasNonceChange)
-            {
-                return true;
-            }
-
-            Address address = accountChanges.Address;
-            Account? current = _stateProvider.GetStateForDirectUpdate(address);
-
-            UInt256 balance = hasBalanceChange
-                ? accountChanges.BalanceChanges[^1].Value
-                : current?.Balance ?? UInt256.Zero;
-            ulong nonce = hasNonceChange
-                ? accountChanges.NonceChanges[^1].Value
-                : current?.Nonce ?? 0;
-
-            Account? updated = current is null
-                ? (balance.IsZero && nonce == 0 && spec.IsEip158Enabled ? null : new Account(nonce, balance))
-                : new Account(nonce, balance, current.StorageRoot, current.CodeHash);
-
-            if (updated?.IsEmpty == true && spec.IsEip158Enabled)
-            {
-                updated = null;
-            }
-
-            if (updated != current)
-            {
-                _stateProvider.SetState(address, updated);
-            }
-
-            return true;
-        }
-
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();

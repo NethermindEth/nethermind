@@ -36,33 +36,30 @@ public partial class BlockAccessListManager
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (!stateProvider.TryApplyBlockAccessListAccountChanges(accountChanges, spec))
+            if (accountChanges.BalanceChanges.Length > 0)
             {
-                if (accountChanges.BalanceChanges.Length > 0)
+                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
+                UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
+                if (newBalance > oldBalance)
                 {
-                    stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                    UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
-                    UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
-                    if (newBalance > oldBalance)
-                    {
-                        stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
-                    }
-                    else if (newBalance < oldBalance)
-                    {
-                        stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
-                    }
+                    stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
                 }
+                else if (newBalance < oldBalance)
+                {
+                    stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                }
+            }
 
-                if (accountChanges.NonceChanges.Length > 0)
-                {
-                    stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                    stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
-                }
+            if (accountChanges.NonceChanges.Length > 0)
+            {
+                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
+            }
 
-                if (accountChanges.CodeChanges.Length > 0)
-                {
-                    stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
-                }
+            if (accountChanges.CodeChanges.Length > 0)
+            {
+                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
 
             foreach (ReadOnlySlotChanges slotChange in accountChanges.StorageChanges)
