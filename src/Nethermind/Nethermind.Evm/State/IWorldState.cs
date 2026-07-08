@@ -139,6 +139,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SetNonce(Address address, in ulong nonce);
 
+    bool TryApplyBlockAccessListAccountChanges(ReadOnlyAccountChanges accountChanges, IReleaseSpec spec) => false;
+
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
 

@@ -100,6 +100,52 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void ApplyStateChanges_removes_empty_account_after_balance_reaches_zero()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 0))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
+            assertState: stateProvider => Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False));
+    }
+
+    [Test]
+    public void ApplyStateChanges_preserves_existing_code_for_balance_and_nonce_changes()
+    {
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 150))
+                .WithNonceChanges(new NonceChange(0, 3))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: stateProvider =>
+            {
+                stateProvider.CreateAccount(TestItem.AddressA, 100);
+                stateProvider.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, Amsterdam.Instance);
+            },
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
+                }
+            });
+    }
+
+    [Test]
     public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();

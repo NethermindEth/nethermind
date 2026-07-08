@@ -766,6 +766,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         return accountChanges.After;
     }
 
+    internal Account? GetStateForDirectUpdate(Address address) => GetState(address);
+
     internal void SetState(Address address, Account? account)
     {
         _metrics.IncrementAccountWrites();

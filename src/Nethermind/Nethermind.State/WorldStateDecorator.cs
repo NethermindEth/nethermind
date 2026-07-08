@@ -132,6 +132,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SetNonce(Address address, in ulong nonce)
         => State.SetNonce(address, in nonce);
 
+    public virtual bool TryApplyBlockAccessListAccountChanges(ReadOnlyAccountChanges accountChanges, IReleaseSpec spec)
+        => State.TryApplyBlockAccessListAccountChanges(accountChanges, spec);
+
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
