@@ -164,15 +164,17 @@ jobs:
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
   # The pyspec fixtures under the build variants now run through the reusable nethtest
-  # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards: all fixture
-  # formats it covered (engine/block/state/sync/tx), sequential (patricia) config,
-  # coarsely chunked, once per variant. checked builds the runner with DEBUG defines;
-  # no-intrinsics disables hardware intrinsics at run time.
+  # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the
+  # NUnit TEST_SKIP_HEAVY=1 scope those variant jobs used: the heavy engine / sync /
+  # Amsterdam-BAL fixtures are skipped (build-config bugs live in the EVM + crypto, which
+  # blockTest exercises as well as engineTest), leaving block + state + tx. Sequential
+  # (patricia) config, coarsely chunked, once per variant. checked builds the runner with
+  # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
   pyspec-checked:
     name: EEST nethtest (checked)
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest
+      test_types: blockTest,stateTest,txTest
       setup_group: sequential
       variant: checked
 
@@ -180,7 +182,7 @@ jobs:
     name: EEST nethtest (no-intrinsics)
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest
+      test_types: blockTest,stateTest,txTest
       setup_group: sequential
       variant: no-intrinsics
 
