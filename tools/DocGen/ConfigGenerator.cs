@@ -213,7 +213,7 @@ internal static class ConfigGenerator
 
                   Defaults to:
 
-                  {attr.DefaultValue.Replace("\n", "\n  ")}
+                  {EscapeForMdx(attr.DefaultValue).Replace("\n", "\n  ")}
                 """);
         }
         else
