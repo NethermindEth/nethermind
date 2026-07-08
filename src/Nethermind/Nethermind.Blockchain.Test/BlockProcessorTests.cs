@@ -489,7 +489,7 @@ public class BlockProcessorTests
 
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
-        public void StartSpeculativePreWarm(Block speculativeBlock, BlockHeader head, IReleaseSpec spec) { }
+        public void StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs) { }
         public void CancelSpeculativePreWarm() { }
         public void Dispose() { }
     }

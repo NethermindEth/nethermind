@@ -109,42 +109,51 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return WarmCaches(suggestedBlock, parent, spec, cancellationToken, systemAccessLists);
     }
 
-    /// <summary>Warms the caches against <paramref name="parent"/>'s post-state; assumes the caches are already prepared (cleared or handed off).</summary>
+    /// <summary>Warms the caches against <paramref name="parent"/>'s post-state on a background task; assumes the caches are already prepared (cleared or handed off).</summary>
     private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
-        {
-            BlockState blockState = new(this, suggestedBlock, parent, spec);
-            // Reset main-thread progress. Safe for the speculative caller too: a speculative pass never overlaps main
-            // execution — the reactive path joins it (CancelAndJoinSpeculative) before ProcessOne runs, and the next
-            // speculative pass only starts on NewHeadBlock, i.e. after processing has completed.
-            Volatile.Write(ref _mainThreadTxIndex, -1);
-            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
+        if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-            // BAL makes speculative tx execution redundant — when BAL-based read warming
-            // is in use, drive warmup directly off the suggested block's access list.
-            ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
-
-            // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-            AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
-            ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-            // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-            return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
-        }
-
-        return Task.CompletedTask;
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, cancellationToken, systemAccessLists);
+        // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
     }
 
-    public void StartSpeculativePreWarm(Block speculativeBlock, BlockHeader head, IReleaseSpec spec)
+    /// <summary>Warms one delta block into the caches synchronously (joins its workers before returning); used by the speculative loop.</summary>
+    private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
     {
-        // _concurrencyLevel <= 1 disables warming (see WarmCaches); a pass that warms nothing must not publish a
-        // handoff marker, or the reactive path would skip its clear believing the caches are warm.
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, token, systemAccessLists: default);
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        PreWarmCachesParallel(blockState, delta, head, spec, parallelOptions, addressWarmer, token);
+    }
+
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    {
+        BlockState blockState = new(this, block, parent, spec);
+        // Reset main-thread progress. Safe for the speculative caller too: a speculative pass never overlaps main
+        // execution — the reactive path joins it (CancelAndJoinSpeculative) before ProcessOne runs, and the next
+        // speculative pass only starts on NewHeadBlock, i.e. after processing has completed.
+        Volatile.Write(ref _mainThreadTxIndex, -1);
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = token };
+        // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
+        // directly off the block's access list.
+        ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
+        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, systemAccessLists, this, bal);
+        return (blockState, parallelOptions, addressWarmer);
+    }
+
+    public void StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs)
+    {
+        // _concurrencyLevel <= 1 disables warming (see PrepareWarm/WarmCaches); a session that warms nothing must not
+        // publish a handoff marker, or the reactive path would skip its clear believing the caches are warm.
         if (_preBlockCaches is null || !ShouldPreWarm(spec) || _concurrencyLevel <= 1) return;
         if (head.Hash is not Hash256 headHash) return;
 
         lock (_speculativeLock)
         {
-            // Only one speculative pass at a time; drop any earlier one before warming against the new head.
+            // Only one speculative session at a time; drop any earlier one before warming against the new head.
             CancelAndJoinSpeculativeLocked();
 
             CancellationTokenSource cts = new();
@@ -157,20 +166,45 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 
-            Task warmTask = WarmCaches(speculativeBlock, head, spec, token, systemAccessLists: default);
+            // The loop itself is the speculative task, so a single cancel + join (from the reactive path) drains every
+            // delta pass and guarantees no speculative writer overlaps block processing.
+            _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
+        }
+    }
 
-            // Publish the handoff marker only if the pass ran to completion without cancellation.
-            _speculativeTask = warmTask.ContinueWith(
-                task =>
+    /// <summary>
+    /// Runs repeated delta passes against <paramref name="head"/> until cancelled: warms each batch of not-yet-warmed
+    /// transactions from <paramref name="nextDelta"/>, accumulating committed base-state reads into the caches, and
+    /// re-samples after a short idle so transactions arriving later in the slot are still warmed.
+    /// </summary>
+    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                Block? delta = nextDelta(token);
+                if (token.IsCancellationRequested) break;
+
+                if (delta is null || delta.Transactions.Length == 0)
                 {
-                    if (task.IsCompletedSuccessfully && !token.IsCancellationRequested)
-                    {
-                        PublishWarmMarker(headHash, spec);
-                    }
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+                    // Nothing new to warm right now; back off, then re-sample to catch late-arriving transactions.
+                    // A cancellation (next block, or a superseding head) wakes us immediately and ends the loop.
+                    if (token.WaitHandle.WaitOne(Math.Max(1, idlePassDelayMs))) break;
+                    continue;
+                }
+
+                WarmDeltaSync(delta, head, spec, token);
+                // Caches now hold committed base-state reads for this head + fork; enable handoff to the next block.
+                PublishWarmMarker(headHash, spec);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Error during speculative pre-warming. {ex}");
         }
     }
 
@@ -188,11 +222,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    /// <summary>The in-flight (or last) speculative pass, exposed for tests to await deterministic completion.</summary>
+    /// <summary>The in-flight (or last) speculative session, exposed for tests to await deterministic completion.</summary>
     internal Task SpeculativePreWarmTask
     {
         get { lock (_speculativeLock) return _speculativeTask; }
     }
+
+    /// <summary>True once a speculative session has warmed at least one delta and published its handoff marker; for tests.</summary>
+    internal bool SpeculativeMarkerPublished => Volatile.Read(ref _warmMarker) is not null;
 
     private void CancelAndJoinSpeculative()
     {

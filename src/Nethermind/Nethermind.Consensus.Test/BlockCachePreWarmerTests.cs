@@ -583,11 +583,18 @@ public class BlockCachePreWarmerTests
         Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
             .WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
 
-    // Sync on purpose — the speculative pass builds its own per-worker state scopes; blocking here keeps the test thread
-    // free of TrieStore's thread-affine scope disposal (see RunPreWarmCaches).
+    // Sync on purpose — the speculative loop builds its own per-worker state scopes; blocking here keeps the test thread
+    // free of TrieStore's thread-affine scope disposal (see RunPreWarmCaches). The delta source yields one batch, then
+    // we wait for the handoff marker (first delta warmed) and cancel + join the loop.
     private Task RunSpeculativePreWarm(BlockCachePreWarmer preWarmer, BlockHeader head, IReleaseSpec spec)
     {
-        preWarmer.StartSpeculativePreWarm(BuildTwoSenderBlock(), head, spec);
+        Block delta = BuildTwoSenderBlock();
+        int calls = 0;
+        Block? Next(CancellationToken _) => Interlocked.Increment(ref calls) == 1 ? delta : null;
+
+        preWarmer.StartSpeculativePreWarm(head, spec, Next, idlePassDelayMs: 5);
+        SpinWait.SpinUntil(() => preWarmer.SpeculativeMarkerPublished, TimeSpan.FromSeconds(5));
+        preWarmer.CancelSpeculativePreWarm();
         preWarmer.SpeculativePreWarmTask.GetAwaiter().GetResult();
         return Task.CompletedTask;
     }

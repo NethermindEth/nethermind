@@ -17,13 +17,19 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Speculatively warms the block-processing state caches in the idle gap between blocks, using top-of-mempool
-/// transactions executed against the current head's post-state. When the next block builds on that head under the same
-/// fork, <see cref="IBlockCachePreWarmer"/> reuses the warmed entries, so the main execution loop starts against a warm
-/// cache instead of cold storage. The speculative pass is bounded (per-sender transaction depth and a block gas budget)
-/// and is cancelled the moment a real block enters processing, so it never competes with block validation.
+/// transactions executed against the current head's post-state. It runs repeated delta passes across the slot so
+/// transactions arriving late still get warmed, deduping per sender so an already-warmed sender is only re-warmed when
+/// new (or higher-nonce) transactions appear for it. When the next block builds on that head under the same fork,
+/// <see cref="IBlockCachePreWarmer"/> reuses the warmed entries, so the main execution loop starts against a warm cache
+/// instead of cold storage. Warming is bounded (per-sender transaction depth and a block gas budget per pass) and is
+/// cancelled the moment a real block enters processing, so it never competes with block validation.
 /// </summary>
 public sealed class MempoolStatePrewarmer : IDisposable
 {
+    // How long a delta pass waits before re-sampling the mempool when it found nothing new to warm. Small enough to
+    // catch transactions arriving late in the slot, large enough not to busy-spin.
+    private const int IdlePassDelayMs = 100;
+
     private readonly ITxPool _txPool;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
@@ -92,11 +98,15 @@ public sealed class MempoolStatePrewarmer : IDisposable
             BlockHeader headHeader = head.Header;
             NextBlockContext next = PrepareNextBlockContext(headHeader);
 
-            Block speculativeBlock = BuildSpeculativeBlock(next);
-            if (speculativeBlock.Transactions.Length == 0) return;
+            // Per-session dedup state: how many transactions we have already warmed for each sender. Accessed only by
+            // the speculative loop thread (the delta source below is invoked serially), so no synchronization is needed.
+            Dictionary<AddressAsKey, int> warmedPerSender = [];
 
-            if (IsStale(generation)) return;
-            _preWarmer.StartSpeculativePreWarm(speculativeBlock, headHeader, next.Spec);
+            _preWarmer.StartSpeculativePreWarm(
+                headHeader,
+                next.Spec,
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(next, warmedPerSender),
+                IdlePassDelayMs);
         }
         catch (Exception ex)
         {
@@ -131,21 +141,24 @@ public sealed class MempoolStatePrewarmer : IDisposable
         return new NextBlockContext(header, spec);
     }
 
-    private Block BuildSpeculativeBlock(NextBlockContext next)
+    private Block? BuildDeltaBlock(NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         IDictionary<AddressAsKey, Transaction[]> bySender = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true, next.Header.BaseFeePerGas);
-        if (bySender.Count == 0) return EmptyBlock(next.Header);
+        if (bySender.Count == 0) return null;
 
-        Transaction[] selected = SelectTransactions(bySender, _maxTxPerSender, next.Header.GasLimit);
-        return new Block(next.Header, new BlockBody(selected, uncles: [], withdrawals: null));
+        Transaction[] delta = SelectDirtySenders(bySender, warmedPerSender, _maxTxPerSender, next.Header.GasLimit);
+        return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
     }
 
     /// <summary>
-    /// Picks the transactions to warm: at most <paramref name="maxTxPerSender"/> per sender (in nonce order, as returned
-    /// by the pool) and no more in total than <paramref name="gasBudget"/> worth of gas. Bounding both dimensions caps
-    /// the work a flooded mempool can force during a speculative pass.
+    /// Picks the transactions to warm on this delta pass, deduping per sender. A sender is skipped when its whole in-cap
+    /// queue (at most <paramref name="maxTxPerSender"/>, in nonce order) is already warmed; otherwise its full in-cap
+    /// queue is replayed — the already-warmed prefix is cheap (its reads hit the warm cache) and it gives the new
+    /// later-nonce transactions their predecessors' nonce/balance so they actually warm rather than failing a nonce
+    /// check. Total selected gas is capped at <paramref name="gasBudget"/>. <paramref name="warmedPerSender"/> is updated
+    /// in place with how far each sender has now been warmed.
     /// </summary>
-    internal static Transaction[] SelectTransactions(IDictionary<AddressAsKey, Transaction[]> bySender, int maxTxPerSender, ulong gasBudget)
+    internal static Transaction[] SelectDirtySenders(IDictionary<AddressAsKey, Transaction[]> bySender, Dictionary<AddressAsKey, int> warmedPerSender, int maxTxPerSender, ulong gasBudget)
     {
         ulong gasUsed = 0;
         List<Transaction> selected = new(Math.Min(bySender.Count * maxTxPerSender, 4096));
@@ -154,21 +167,24 @@ public sealed class MempoolStatePrewarmer : IDisposable
         {
             Transaction[] txs = senderTxs.Value;
             int take = Math.Min(txs.Length, maxTxPerSender);
+            int alreadyWarmed = warmedPerSender.TryGetValue(senderTxs.Key, out int warmed) ? warmed : 0;
+            if (take <= alreadyWarmed) continue; // nothing new within the cap for this sender
+
+            int added = 0;
             for (int i = 0; i < take; i++)
             {
-                Transaction tx = txs[i];
-                if (gasUsed + tx.GasLimit > gasBudget) break;
-                gasUsed += tx.GasLimit;
-                selected.Add(tx);
+                if (gasUsed + txs[i].GasLimit > gasBudget) break;
+                gasUsed += txs[i].GasLimit;
+                selected.Add(txs[i]);
+                added++;
             }
 
+            if (added > 0) warmedPerSender[senderTxs.Key] = added;
             if (gasUsed >= gasBudget) break;
         }
 
         return selected.ToArray();
     }
-
-    private static Block EmptyBlock(BlockHeader header) => new(header, new BlockBody([], [], null));
 
     public void Dispose()
     {
