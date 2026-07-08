@@ -280,7 +280,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Calculate_Eip7623FloorWithoutEip2028_UsesFixedTokenCost()
         {
-            // EIP-7623 floor uses the fixed post-EIP-2028 weight (4) even on a chain without EIP-2028 (multiplier 17).
             ReleaseSpec spec = new()
             {
                 IsEip2Enabled = true,
