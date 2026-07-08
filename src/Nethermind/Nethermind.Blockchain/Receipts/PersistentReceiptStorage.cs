@@ -71,13 +71,18 @@ namespace Nethermind.Blockchain.Receipts
         /// captured lookup-limit horizon so the write (and the barrier-gated flush) index exactly the
         /// same transactions the live event decided to. A plain class so removal keys on reference identity.
         /// </summary>
-        private sealed class PendingCanonicalEntry(ulong blockNumber, Block block, ulong lastBlockNumber, PendingTxIndexValue txIndexValue)
+        private sealed class PendingCanonicalEntry(ulong blockNumber, Block block, ulong lastBlockNumber, PendingTxIndexValue txIndexValue, long sequence)
         {
             public ulong BlockNumber { get; } = blockNumber;
             public Block Block { get; } = block;
             public ulong LastBlockNumber { get; } = lastBlockNumber;
             public PendingTxIndexValue TxIndexValue { get; } = txIndexValue;
+            // Publication order; the barrier flushes canonical entries in this order so a reorg's remap
+            // and the sequential prune land the same way the writer's FIFO would.
+            public long Sequence { get; } = sequence;
         }
+
+        private long _canonicalSequence;
 
         // Serialises a queued background write against a synchronous removal of the same data, so a
         // write cannot land after a delete and resurrect it. Uncontended except when a removal races
@@ -172,7 +177,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 // Publish the canonical ledger entry before the event and enqueue, so the barrier gate can
                 // force this block's tx-index durable before its state persists (see _pendingCanonical).
-                canonical = new PendingCanonicalEntry(block.Number, block, lastBlockNumber, pending);
+                canonical = new PendingCanonicalEntry(block.Number, block, lastBlockNumber, pending, Interlocked.Increment(ref _canonicalSequence));
                 _pendingCanonical[block.Hash!.ValueHash256] = canonical;
             }
 
@@ -515,12 +520,17 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
+            // Canonical tx-index writes are order-sensitive (a reorg remaps the same tx across blocks and
+            // pruning is sequential), so flush them in publication order rather than dictionary order.
+            List<PendingCanonicalEntry> canonical = [];
             foreach (KeyValuePair<ValueHash256, PendingCanonicalEntry> kv in _pendingCanonical)
             {
-                if (kv.Value.BlockNumber <= upTo)
-                {
-                    PersistDeferredCanonical(kv.Value);
-                }
+                if (kv.Value.BlockNumber <= upTo) canonical.Add(kv.Value);
+            }
+            canonical.Sort(static (a, b) => a.Sequence.CompareTo(b.Sequence));
+            foreach (PendingCanonicalEntry entry in canonical)
+            {
+                PersistDeferredCanonical(entry);
             }
 
             // Fsync at the columns-DB level (a per-column Flush would force a full memtable flush).

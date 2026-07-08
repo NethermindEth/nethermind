@@ -31,8 +31,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
-            .AddSingleton<IDeferredBlockDataWriter, IReceiptConfig, ILogManager>((receiptConfig, logManager) =>
-                new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredBlocks, logManager))
+            .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
@@ -74,6 +73,16 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         {
             builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
         }
+    }
+
+    // Activate the DBs the writer targets before the writer itself, so Autofac's reverse-activation-order
+    // disposal drains the writer (flushing queued writes) before it closes those DBs.
+    private IDeferredBlockDataWriter CreateDeferredWriter(IComponentContext ctx)
+    {
+        ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+        ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
+        ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
+        return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredBlocks, ctx.Resolve<ILogManager>());
     }
 
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>

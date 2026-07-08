@@ -1115,7 +1115,10 @@ namespace Nethermind.Blockchain
                 BlockHeader header = deferred.Header;
                 Block block = headBlock is not null && headBlock.Hash == header.Hash ? headBlock : GetBlock(cache, header);
 
-                _balStore.InsertFromBlock(block);
+                // Deferred so the authoritative generated BAL supersedes any suggested BAL entry from Suggest
+                // (the later overlay entry wins; the stale suggested write no-ops). Falls back to synchronous
+                // when deferral is off.
+                _balStore.InsertFromBlockDeferred(block);
 
                 if (ShouldCache(block.Number)) _blockStore.Cache(block);
 
