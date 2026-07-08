@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
@@ -91,6 +91,8 @@ public class RetryCacheTests
         TestHandler request2 = new();
         TestHandler request3 = new();
         long handlersCalledOnTimeout = Metrics.PendingTransactionRetryHandlersCalledOnTimeout;
+        long resourcesTimedOutWithHandlers = Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers;
+        long resourcesTimedOutWithHandlersAgeMilliseconds = Metrics.PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds;
 
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
@@ -99,7 +101,21 @@ public class RetryCacheTests
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => Metrics.PendingTransactionRetryHandlersCalledOnTimeout, Is.GreaterThanOrEqualTo(handlersCalledOnTimeout + 2).After(AssertTimeoutMs, 100));
+        Assert.That(() => Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers, Is.GreaterThanOrEqualTo(resourcesTimedOutWithHandlers + 1).After(AssertTimeoutMs, 100));
+        Assert.That(() => Metrics.PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds, Is.GreaterThan(resourcesTimedOutWithHandlersAgeMilliseconds).After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Announced_AfterTimeoutWithoutRetryHandlers_DoesNotTrackResourceTimeoutWithHandlers()
+    {
+        long resourcesTimedOutWithHandlers = Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers;
+
+        _cache.Announced(1, new TestHandler());
+
+        Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 100));
+        Assert.That(Metrics.PendingTransactionRetryResourcesTimedOutWithHandlers, Is.EqualTo(resourcesTimedOutWithHandlers));
     }
 
     [Test]
@@ -138,6 +154,8 @@ public class RetryCacheTests
         TestHandler request2 = new();
         TestHandler request3 = new();
         long handlersSkippedOnReceived = Metrics.PendingTransactionRetryHandlersSkippedOnReceived;
+        long resourcesSkippedOnReceived = Metrics.PendingTransactionRetryResourcesSkippedOnReceived;
+        long resourcesSkippedOnReceivedAgeMilliseconds = Metrics.PendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds;
 
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
@@ -145,6 +163,8 @@ public class RetryCacheTests
         _cache.Received(1);
 
         Assert.That(Metrics.PendingTransactionRetryHandlersSkippedOnReceived, Is.GreaterThanOrEqualTo(handlersSkippedOnReceived + 2));
+        Assert.That(Metrics.PendingTransactionRetryResourcesSkippedOnReceived, Is.GreaterThanOrEqualTo(resourcesSkippedOnReceived + 1));
+        Assert.That(Metrics.PendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds, Is.GreaterThanOrEqualTo(resourcesSkippedOnReceivedAgeMilliseconds));
 
         await Task.Delay(CacheTimeoutMs * 3, _cancellationTokenSource.Token);
 
@@ -209,6 +229,69 @@ public class RetryCacheTests
 
     [Test]
     public void Received_NonExistentResource_DoesNotThrow() => Assert.That(() => _cache.Received(999), Throws.Nothing);
+
+    [Test]
+    [NonParallelizable]
+    public void Received_WithoutRetryHandlers_DoesNotTrackSkippedResource()
+    {
+        long resourcesSkippedOnReceived = Metrics.PendingTransactionRetryResourcesSkippedOnReceived;
+
+        _cache.Announced(1, new TestHandler());
+        _cache.Received(1);
+
+        Assert.That(Metrics.PendingTransactionRetryResourcesSkippedOnReceived, Is.EqualTo(resourcesSkippedOnReceived));
+    }
+
+    [Test]
+    public async Task Announced_WhenRetryHandlerLimitReached_TracksRejectedHandlers()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, maxRetryRequests: 2, token: cancellationTokenSource.Token);
+        try
+        {
+            long handlersRejectedByLimit = Metrics.PendingTransactionRetryHandlersRejectedByLimit;
+
+            cache.Announced(1, new TestHandler());
+            AnnounceResult result1 = cache.Announced(1, new TestHandler());
+            AnnounceResult result2 = cache.Announced(1, new TestHandler());
+            AnnounceResult result3 = cache.Announced(1, new TestHandler());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result1, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(result3, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(Metrics.PendingTransactionRetryHandlersRejectedByLimit, Is.GreaterThanOrEqualTo(handlersRejectedByLimit + 1));
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_WhenRetryQueueIsFull_TracksQueueFull()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, expiringQueueLimit: 0, token: cancellationTokenSource.Token);
+        try
+        {
+            long queueFull = Metrics.PendingTransactionRetryQueueFull;
+
+            cache.Announced(1, new TestHandler());
+            AnnounceResult result = cache.Announced(2, new TestHandler());
+
+            Assert.That(result, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(Metrics.PendingTransactionRetryQueueFull, Is.GreaterThanOrEqualTo(queueFull + 1));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
 
     [Test]
     public void HandlerBag_StaleAddAfterDrainAndReuse_IsRejected()

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -31,8 +31,32 @@ namespace Nethermind.TxPool
         public static long PendingTransactionRetryHandlersSkippedOnReceived;
 
         [CounterMetric]
+        [Description("Number of pending transaction retry resources received before timeout with at least one retry handler skipped.")]
+        public static long PendingTransactionRetryResourcesSkippedOnReceived;
+
+        [CounterMetric]
+        [Description("Cumulative milliseconds pending transaction retry resources spent waiting before being received with retry handlers skipped.")]
+        public static long PendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds;
+
+        [CounterMetric]
         [Description("Number of pending transaction retry handlers called after the original transaction request timed out.")]
         public static long PendingTransactionRetryHandlersCalledOnTimeout;
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry resources that timed out and called at least one retry handler.")]
+        public static long PendingTransactionRetryResourcesTimedOutWithHandlers;
+
+        [CounterMetric]
+        [Description("Cumulative milliseconds pending transaction retry resources spent waiting before timeout when retry handlers were called.")]
+        public static long PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds;
+
+        [CounterMetric]
+        [Description("Number of pending transaction retry handlers rejected because the per-resource retry handler limit was reached.")]
+        public static long PendingTransactionRetryHandlersRejectedByLimit;
+
+        [CounterMetric]
+        [Description("Number of pending transaction announcements requested immediately because the retry queue was full.")]
+        public static long PendingTransactionRetryQueueFull;
 
         [CounterMetric]
         [Description("Number of pending transaction hashes announced by peers, grouped by peer client.")]
@@ -206,8 +230,26 @@ namespace Nethermind.TxPool
         public static void AddPendingTransactionRetryHandlersSkippedOnReceived(long count) =>
             Add(ref PendingTransactionRetryHandlersSkippedOnReceived, count);
 
+        public static void AddPendingTransactionRetryResourcesSkippedOnReceived(long count) =>
+            Add(ref PendingTransactionRetryResourcesSkippedOnReceived, count);
+
+        public static void AddPendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds(long count) =>
+            Add(ref PendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds, count);
+
         public static void AddPendingTransactionRetryHandlersCalledOnTimeout(long count) =>
             Add(ref PendingTransactionRetryHandlersCalledOnTimeout, count);
+
+        public static void AddPendingTransactionRetryResourcesTimedOutWithHandlers(long count) =>
+            Add(ref PendingTransactionRetryResourcesTimedOutWithHandlers, count);
+
+        public static void AddPendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds(long count) =>
+            Add(ref PendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds, count);
+
+        public static void AddPendingTransactionRetryHandlersRejectedByLimit(long count) =>
+            Add(ref PendingTransactionRetryHandlersRejectedByLimit, count);
+
+        public static void AddPendingTransactionRetryQueueFull(long count) =>
+            Add(ref PendingTransactionRetryQueueFull, count);
 
         private static void Add(ref long metric, long count)
         {
