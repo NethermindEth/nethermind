@@ -156,6 +156,8 @@ public class BranchProcessor(
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
+                    // Quiesce prewarm workers first: they may still push trie warm hints into the scope being disposed.
+                    WaitAndClear(ref preWarmTask);
                     worldStateCloser?.Dispose();
                     worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
                 }
