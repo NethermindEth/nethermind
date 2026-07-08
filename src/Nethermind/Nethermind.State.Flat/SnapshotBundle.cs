@@ -393,6 +393,20 @@ public sealed class SnapshotBundle : IDisposable
     // as most of the slot should already be queued by prewarmer.
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
+    /// <summary>
+    /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
+    /// </summary>
+    /// <remarks>
+    /// Warmer jobs race scope disposal by design; the managed fallout is caught in the warmer, but a read that is
+    /// already inside the persistence reader when the last lease is released would touch a freed native RocksDB
+    /// snapshot and crash the process. Holding a lease per in-flight traversal defers that release until the job ends.
+    /// </remarks>
+    /// <returns><c>false</c> when the bundle is already fully disposed; the caller must skip the traversal.</returns>
+    internal bool TryLeaseReadOnlyBundle() => _readOnlySnapshotBundle.TryLease();
+
+    /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
+    internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
+
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot

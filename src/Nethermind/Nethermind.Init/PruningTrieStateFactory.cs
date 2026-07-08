@@ -26,7 +26,6 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
-    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
@@ -35,6 +34,7 @@ public class PruningTrieStateFactory(
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
+    StateBoundaryStore boundaryStore,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
 )
@@ -71,7 +71,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
-            pruningConfig,
+            boundaryStore,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);

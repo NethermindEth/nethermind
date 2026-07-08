@@ -305,6 +305,36 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(DecodeContext, Throws.InstanceOf(exceptionType).With.Message.Contains(error).IgnoreCase);
         }
 
+        [Test]
+        public void Rejects_trailing_bytes_for_skip_typed_wrapping_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformed = AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+
+            void Decode()
+            {
+                RlpReader ctx = new(malformed);
+                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            }
+
+            Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        }
+
+        [Test]
+        public void Rejects_trailing_bytes_for_wrapped_typed_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformedWrapped = Rlp.Encode(AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)).Bytes;
+
+            void Decode()
+            {
+                RlpReader ctx = new(malformedWrapped);
+                _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm);
+            }
+
+            Assert.That(Decode, Throws.InstanceOf<RlpException>());
+        }
+
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
         {
             yield return
@@ -445,5 +475,20 @@ namespace Nethermind.Core.Test.Encoding
             GasLimit = 21000,
             AuthorizationList = new AuthorizationTuple[authCount]
         }, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        private static Transaction BuildTypedTransaction() => Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        private static byte[] AppendTrailingByte(byte[] encoded)
+        {
+            byte[] malformed = new byte[encoded.Length + 1];
+            encoded.CopyTo(malformed, 0);
+            malformed[^1] = Rlp.EmptyByteArrayByte;
+            return malformed;
+        }
     }
 }

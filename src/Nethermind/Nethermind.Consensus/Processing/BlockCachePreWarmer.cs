@@ -35,6 +35,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    private int _mainThreadTxIndex = -1;
+    internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
@@ -82,6 +85,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
+                Volatile.Write(ref _mainThreadTxIndex, -1);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
@@ -106,6 +110,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
+
+    /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
+    /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
+    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
     public CacheType ClearCaches()
     {
@@ -260,7 +268,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            if (tx.SenderAddress is not Address sender)
+            {
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                continue;
+            }
 
             if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
             {
@@ -282,6 +294,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Already started by the main thread — warming it now is redundant and contends; skip.
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+
+            // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 

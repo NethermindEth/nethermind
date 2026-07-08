@@ -86,7 +86,7 @@ public partial class BlockAccessListManager
         private readonly ITransactionProcessorFactory _txProcessorFactory;
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
-        private readonly bool _witnessMode;
+        private readonly CodeInfoRepositoryFactory _codeInfoRepositoryFactory;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
@@ -97,14 +97,14 @@ public partial class BlockAccessListManager
             PreBlockCaches? preBlockCaches,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
             ITransactionProcessorFactory txProcessorFactory,
-            bool witnessMode)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
             _txProcessorFactory = txProcessorFactory;
-            _witnessMode = witnessMode;
+            _codeInfoRepositoryFactory = codeInfoRepositoryFactory;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -230,7 +230,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _witnessMode);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -338,9 +338,9 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            bool witnessMode)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, witnessMode);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -383,7 +383,7 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            bool witnessMode = false)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -394,13 +394,7 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            // Witness mode must record every code access, so it uses the non-caching CodeInfoRepository.
-            // EthereumCodeInfoRepository wraps a CacheCodeInfoRepository whose process-wide static code
-            // cache serves hits without reading through the (traced) WorldState, so cached code accesses
-            // would be missing from the generated witness.
-            ICodeInfoRepository codeInfoRepository = witnessMode
-                ? new CodeInfoRepository(WorldState, new EthereumPrecompileProvider())
-                : new EthereumCodeInfoRepository(WorldState);
+            ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
             TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
         }

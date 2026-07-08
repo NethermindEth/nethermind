@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Specs.Forks;
@@ -25,5 +26,24 @@ public class EthereumGasPolicyTests
         ulong baseCost = isExternalCode ? Cancun.Instance.GasCosts.ExtCodeCost : GasCostOf.VeryLow;
         ulong expected = baseCost + GasCostOf.Memory * words;
         Assert.That(initial - EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Default_gas_policy_implementations_are_aggressively_inlined()
+    {
+        int defaultImplementations = 0;
+        foreach (MethodInfo method in typeof(IGasPolicy<>).GetMethods(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (method.IsAbstract) continue;
+
+            defaultImplementations++;
+            Assert.That(
+                method.MethodImplementationFlags.HasFlag(MethodImplAttributes.AggressiveInlining),
+                Is.True,
+                $"{method} must carry [MethodImpl(MethodImplOptions.AggressiveInlining)]: without it, per-opcode gas " +
+                "charges compile to real calls in no-dynamic-PGO regimes (e.g. the NativeAOT zkEVM guest).");
+        }
+
+        Assert.That(defaultImplementations, Is.GreaterThan(0));
     }
 }

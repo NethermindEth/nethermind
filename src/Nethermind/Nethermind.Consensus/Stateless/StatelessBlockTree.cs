@@ -70,12 +70,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     }
     public Block? Head => throw new NotSupportedException();
 
-    public ulong? BestPersistedState
-    {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
-    }
-
     public ulong NetworkId => throw new NotSupportedException();
     public ulong ChainId => throw new NotSupportedException();
     public BlockHeader? Genesis => throw new NotSupportedException();
