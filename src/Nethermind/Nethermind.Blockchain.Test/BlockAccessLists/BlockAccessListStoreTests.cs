@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -119,7 +118,7 @@ public class BlockAccessListStoreTests
     public async Task Deferred_insert_is_visible_before_flush_and_frees_the_live_bal()
     {
         TestMemDb db = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         BlockAccessListStore store = new(db, null, writer, deferBal: true);
 
         byte[] bal = [0xc1, 0x80];
@@ -145,7 +144,7 @@ public class BlockAccessListStoreTests
     {
         TestMemDb db = new();
         StatePersistenceBarrier barrier = new();
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, barrier, startConsumer: false);
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
         BlockAccessListStore store = new(db, null, writer, deferBal: true, persistenceBarrier: barrier);
 
         byte[] balA = [0xc1, 0x01];
@@ -168,7 +167,7 @@ public class BlockAccessListStoreTests
     public async Task Disabled_writer_inserts_bal_synchronously()
     {
         TestMemDb db = new();
-        await using DeferredBlockDataWriter disabled = new(enabled: false, capacity: 8, LimboLogs.Instance, startConsumer: false);
+        await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
         BlockAccessListStore store = new(db, null, disabled, deferBal: true);
 
         byte[] bal = [0xc1, 0x80];

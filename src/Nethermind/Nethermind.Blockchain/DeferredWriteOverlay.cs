@@ -10,10 +10,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Blockchain;
 
 /// <summary>
-/// Read-through overlay of block-data writes whose durable persistence is deferred to the shared
-/// <see cref="IDeferredBlockDataWriter"/>. An entry is published synchronously (so reads never miss it),
-/// its database write is enqueued, and it is removed only after that write returns - value-conditionally
-/// on reference identity, so a synchronous delete or a re-insert can never be resurrected or clobbered.
+/// Read-through overlay of block-data writes deferred to the shared <see cref="IDeferredBlockDataWriter"/>.
+/// Entries are published synchronously so reads never miss them, and removed value-conditionally (on
+/// reference identity) only after their write returns, so a delete or re-insert is never resurrected.
 /// </summary>
 /// <typeparam name="TPayload">What a reader needs and the write consumes (e.g. encoded bytes).</typeparam>
 /// <param name="writer">Background writer the durable write is queued on.</param>
@@ -46,8 +45,7 @@ internal sealed class DeferredWriteOverlay<TPayload>(
     {
         lock (_lock)
         {
-            // Skip if a synchronous removal already dropped this exact entry; value-conditional so a
-            // re-insert queued behind us keeps its own overlay entry.
+            // Skip if a removal dropped this exact entry; value-conditional so a queued re-insert keeps its own.
             ValueHash256 key = entry.BlockHash.ValueHash256;
             if (!_pending.TryGetValue(key, out Entry? current) || !ReferenceEquals(current, entry))
             {

@@ -50,10 +50,8 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
-        // startConsumer: false makes pre-flush states deterministic; Pump() / the barrier drain on demand.
-        // The writer registers its drain with the barrier so a FlushBefore drains queued writes then fsyncs.
         _barrier = new StatePersistenceBarrier();
-        _writer = new DeferredBlockDataWriter(enabled: true, capacity: 8, LimboLogs.Instance, _barrier, startConsumer: false);
+        _writer = DeferredWriteTestHelpers.ManualWriter(_barrier);
         _storage = CreateStorage(_writer, _barrier);
     }
 
@@ -152,7 +150,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Disabled_writer_falls_back_to_synchronous_insert()
     {
-        await using DeferredBlockDataWriter disabled = new(enabled: false, capacity: 8, LimboLogs.Instance, startConsumer: false);
+        await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
         PersistentReceiptStorage storage = CreateStorage(disabled);
 
         (Block block, TxReceipt[] receipts) = PrepareBlock();
@@ -166,7 +164,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Writer_fault_falls_back_to_inline_execution()
     {
-        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, startConsumer: false);
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         int failures = 0;
         writer.Enqueue(() => { failures++; throw new InvalidOperationException("boom"); });
 

@@ -14,12 +14,9 @@ namespace Nethermind.Blockchain;
 /// writes) on a single background consumer so the engine API paths do not wait on RocksDB.
 /// </summary>
 /// <remarks>
-/// Durability is deferred, visibility is not: callers publish an in-memory overlay synchronously
-/// before enqueueing, so reads never observe missing data. The single FIFO queue is load-bearing -
-/// per block the body write must precede the receipts write because compact-receipt sender recovery
-/// reads the body database directly. Consistency between a queued write and a synchronous delete of
-/// the same block is the caller's responsibility (the enqueued work and the delete take a shared
-/// lock and re-check the overlay), so this type is a plain ordered executor with no per-key state.
+/// Durability is deferred, not visibility: callers publish an in-memory overlay before enqueueing.
+/// The single FIFO queue is load-bearing - a block's body write must precede its receipts write
+/// (compact-receipt sender recovery reads the body database directly).
 /// </remarks>
 public interface IDeferredBlockDataWriter : IAsyncDisposable
 {
@@ -47,8 +44,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     private readonly Task? _consumer;
     private readonly bool _manualPump;
     private readonly ILogger _logger;
-    // Set (before _faulted, whose volatile write publishes it) on a hard write failure or an unexpected
-    // consumer exit. Drain rethrows it so state persistence aborts rather than proceeding without the data.
+    // Set before _faulted (whose volatile write publishes it) on a hard write failure; Drain rethrows it.
     private Exception? _faultException;
     private volatile bool _faulted;
 
@@ -104,8 +100,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
                 return;
             }
 
-            // Bounded-queue backpressure: intentionally blocks the producing (block-processing) thread
-            // so a slow disk degrades to synchronous behaviour instead of unbounded memory growth.
+            // Backpressure: block the producer so a slow disk degrades to synchronous, not unbounded memory.
             if (!_channel.Writer.WaitToWriteAsync().AsTask().GetAwaiter().GetResult())
             {
                 work();
@@ -134,15 +129,13 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         if (_channel is null) return;          // disabled: work ran inline, nothing is queued
         if (_manualPump) { Pump(); ThrowIfFaulted(); return; }   // no background consumer (tests)
 
-        // Fence: enqueue a completion marker and block until the single FIFO consumer reaches it, which
-        // proves every earlier queued write has executed. Wait on the marker OR consumer termination, so a
-        // consumer that ever stops without draining the marker aborts here instead of freezing this thread.
+        // Fence: block on a queued marker (all earlier writes ran) OR consumer termination, so a consumer
+        // that stops without reaching the marker aborts here instead of freezing this thread.
         TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Enqueue(drained.SetResult);
         Task.WhenAny(drained.Task, _consumer!).GetAwaiter().GetResult();
 
-        // A hard write failure - or a consumer that stopped before running the marker - means a block's
-        // data may not be durable; abort the state persist rather than fsyncing and letting state pass it.
+        // Marker not reached: a write may be lost or the consumer died; abort the persist rather than fsync.
         if (!drained.Task.IsCompleted)
         {
             ThrowIfFaulted();
@@ -171,8 +164,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         }
         catch (Exception e)
         {
-            // The consumer must never exit silently: fault so Enqueue/Drain fall back inline and surface it,
-            // rather than leaving a queued Drain sentinel that would never be signalled (a hang).
+            // Never exit silently: fault so Enqueue/Drain fall back inline instead of hanging on a lost marker.
             Fault(e);
         }
     }
@@ -192,9 +184,8 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             }
             catch (Exception secondException)
             {
-                // Hard persistence failure: keep the overlay published (reads stay correct) and run all
-                // future work inline so the failure surfaces on the producer as the synchronous path would;
-                // Drain rethrows it so a state persist cannot proceed past the lost write.
+                // Hard failure: fault so future work runs inline (reads stay correct via the overlay) and
+                // Drain rethrows, blocking a state persist past the lost write.
                 Fault(secondException);
             }
         }

@@ -22,8 +22,7 @@ public class BlockAccessListStore : IBlockAccessListStore
 
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
-    // Like a block body, a lost BAL cannot be regenerated once its state is persisted, so deferral is
-    // opt-in and coupled to body deferral. Null when off.
+    // Like a block body, a lost BAL cannot be regenerated, so deferral is opt-in and coupled to body deferral. Null when off.
     private readonly DeferredWriteOverlay<byte[]>? _pending;
 
     public BlockAccessListStore(
@@ -78,10 +77,8 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         Hash256 blockHash = block.Hash ?? throw new ArgumentException("Block hash is required to persist a block access list.", nameof(block));
 
-        // Snapshot the encoded bytes now, then free the live BAL immediately - exactly the reclamation
-        // InsertFromBlock does; only the database write defers. The pre-encoded array is cloned so a later
-        // mutation cannot diverge the deferred write from the header BAL hash. The BlockAccessList branch
-        // already encodes fresh.
+        // Snapshot the encoded bytes now and free the live BAL (as InsertFromBlock does); only the DB write
+        // defers. The pre-encoded array is cloned so a later mutation cannot diverge it from the header BAL hash.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? (byte[])encoded.Clone()
             : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
@@ -97,8 +94,7 @@ public class BlockAccessListStore : IBlockAccessListStore
     [SkipLocalsInit]
     public MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
-        // Non-owning wrapper: the array stays alive via the returned manager, and disposing it must not
-        // free the still-pending overlay buffer.
+        // Non-owning wrapper: disposing the returned manager must not free the still-pending overlay buffer.
         if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
         {
             return ArrayMemoryManager.From(pendingRlp);

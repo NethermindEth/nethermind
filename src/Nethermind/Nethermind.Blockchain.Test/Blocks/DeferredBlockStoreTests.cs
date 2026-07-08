@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -24,9 +23,7 @@ public class DeferredBlockStoreTests
     [SetUp]
     public void SetUp()
     {
-        // startConsumer:false makes pre-flush states deterministic; Pump() / the barrier drain on demand.
-        // The writer registers its drain with the barrier so a FlushBefore drains queued writes then fsyncs.
-        _writer = new DeferredBlockDataWriter(enabled: true, capacity: 8, LimboLogs.Instance, _barrier, startConsumer: false);
+        _writer = DeferredWriteTestHelpers.ManualWriter(_barrier);
         _store = new BlockStore(_db, null, _writer, deferBodies: true, persistenceBarrier: _barrier);
     }
 
@@ -118,7 +115,7 @@ public class DeferredBlockStoreTests
     [Test]
     public async Task Disabled_writer_inserts_synchronously()
     {
-        await using DeferredBlockDataWriter disabled = new(enabled: false, capacity: 8, LimboLogs.Instance, startConsumer: false);
+        await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
         BlockStore store = new(_db, null, disabled, deferBodies: true);
 
         Block block = BlockNumbered(1);

@@ -43,15 +43,12 @@ namespace Nethermind.Blockchain.Receipts
 
         private readonly IDeferredBlockDataWriter? _deferredWriter;
 
-        // Receipts whose durable write is still queued: a read-through overlay drained by the shared
-        // writer. Payload is the sender-recovered receipts (served to reads) plus the pre-encoded RLP
-        // (the deferred write). Null when deferral is off.
+        // Read-through overlay of receipts whose write is still queued. Payload = recovered receipts (for
+        // reads) + pre-encoded RLP (the deferred write). Null when deferral is off.
         private readonly DeferredWriteOverlay<(TxReceipt[] Receipts, byte[] Rlp)>? _pendingReceipts;
-        // Canonical tx-index served to FindBlockHash until the eager write lands: populated on
-        // BlockAddedToMain, cleared by the enqueued write, removed on RemoveReceipts.
+        // Canonical tx-index served to FindBlockHash until the write lands: set on BlockAddedToMain, cleared by the write.
         private readonly ConcurrentDictionary<ValueHash256, PendingTxIndexValue> _pendingTxIndex = new();
-        // Cancellation ledger for the queued canonical tx-index write: reference-conditional so a
-        // RemoveReceipts that clears a block's entry stops the queued write from resurrecting its index.
+        // Cancellation ledger for the queued canonical write: RemoveReceipts clears a block's entry so the write skips.
         private readonly ConcurrentDictionary<ValueHash256, PendingCanonicalEntry> _pendingCanonical = new();
 
         private sealed class PendingCanonicalEntry(Block block, ulong lastBlockNumber, PendingTxIndexValue txIndexValue)
@@ -61,14 +58,12 @@ namespace Nethermind.Blockchain.Receipts
             public PendingTxIndexValue TxIndexValue { get; } = txIndexValue;
         }
 
-        // Serialises the queued receipts write, the enqueued canonical-index write, and a synchronous
-        // removal against each other. Shared with _pendingReceipts; only used when deferral is on.
+        // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
         private readonly Lock _writeLock = new();
 
         /// <summary>
-        /// Mirrors exactly what the deferred tx-index database write will contain: the block number
-        /// under <see cref="IReceiptConfig.CompactTxIndex"/> (resolved canonically on read, so a
-        /// reorged-out block self-heals just like the persisted form), the block hash otherwise.
+        /// Mirrors the deferred tx-index write: block number under <see cref="IReceiptConfig.CompactTxIndex"/>
+        /// (resolved canonically on read, so a reorged-out block self-heals like the persisted form), else block hash.
         /// </summary>
         private readonly record struct PendingTxIndexValue(ulong BlockNumber, Hash256? BlockHash);
 
@@ -110,8 +105,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_deferredWriter is not null)
             {
                 _pendingReceipts = new DeferredWriteOverlay<(TxReceipt[] Receipts, byte[] Rlp)>(_deferredWriter, WriteReceipts, _writeLock);
-                // After the barrier drains the writer, fsync the whole receipts DB WAL (both the receipts
-                // and transaction columns) so the block's data is durable before its state is persisted.
+                // Fsync the whole receipts DB WAL (receipts + transaction columns) after the barrier drains the writer.
                 (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _database.Flush(onlyWal: true));
             }
         }
@@ -133,8 +127,7 @@ namespace Nethermind.Blockchain.Receipts
 
             Block block = e.Block;
 
-            // The lookup-limit horizon must be captured now: computed at writer-dequeue time it would
-            // run ahead by the queue lag and silently skip near-horizon indexes during fast replay.
+            // Capture the lookup-limit horizon now; at dequeue time queue lag would skip near-horizon indexes.
             ulong lastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
             bool shouldIndex = ShouldIndexTxs(block.Number, lastBlockNumber);
@@ -149,9 +142,8 @@ namespace Nethermind.Blockchain.Receipts
                     _pendingTxIndex[tx.Hash] = pending;
                 }
 
-                // The canonical write runs on the writer in FIFO order (so a reorg remap and the prune land
-                // correctly) and the barrier drains it before fsync. Publish the cancellation ledger and
-                // enqueue BEFORE the event, so a state persist that observes the block always drains this.
+                // Publish the cancellation ledger and enqueue BEFORE the event, so a state persist that
+                // observes the block always drains this. FIFO order keeps a reorg remap and the prune correct.
                 PendingCanonicalEntry canonical = new(block, lastBlockNumber, pending);
                 _pendingCanonical[block.Hash!.ValueHash256] = canonical;
                 _deferredWriter.Enqueue(() => PersistDeferredCanonical(canonical));
@@ -168,8 +160,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             lock (_writeLock)
             {
-                // Skip if RemoveReceipts cancelled this block (cleared the ledger); writing would resurrect
-                // the tx-index it deleted. Reference-conditional so a re-add keeps its own entry.
+                // Skip if RemoveReceipts cancelled this block; writing would resurrect its tx-index. Reference-conditional.
                 ValueHash256 key = entry.Block.Hash!.ValueHash256;
                 if (!_pendingCanonical.TryGetValue(key, out PendingCanonicalEntry? current) || !ReferenceEquals(current, entry))
                 {
@@ -211,8 +202,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_pendingTxIndex.TryGetValue(txHash, out PendingTxIndexValue pending))
             {
-                // Number-valued entries re-resolve canonically exactly like the persisted compact
-                // form, so a reorged-out block misses here just as it would after the flush.
+                // Number-valued entries re-resolve canonically like the persisted form, so a reorged-out block misses here too.
                 return pending.BlockHash ?? _blockTree.FindBlockHash(pending.BlockNumber);
             }
 
@@ -350,8 +340,7 @@ namespace Nethermind.Blockchain.Receipts
                 return true;
             }
 
-            // eth_getLogs reaches receipts through this iterator, not Get - without this arm an
-            // unflushed block whose LRU entry was evicted would silently return no logs.
+            // eth_getLogs reads receipts through this iterator; without this arm an evicted, unflushed block returns no logs.
             if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, byte[] Rlp) pending))
             {
                 iterator = new ReceiptsIterator(pending.Receipts);
@@ -422,8 +411,7 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            // Everything visibility-relevant is synchronous (recovery, immutable RLP encode, cache +
-            // overlay publish, migration watermark, insertion event); only the database write defers.
+            // Everything visibility-relevant is synchronous (recovery, encode, cache, overlay, watermark, event); only the DB write defers.
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
@@ -524,9 +512,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
-            // Only production caller is history pruning of ancient blocks. When deferral is on the removal
-            // runs under the shared lock (via the overlay) so a queued receipts write or the enqueued
-            // canonical write cannot interleave and resurrect the data.
+            // Only production caller is ancient-history pruning. Under deferral the removal runs under the
+            // shared lock (via the overlay) so a queued write cannot interleave and resurrect the data.
             if (_pendingReceipts is not null)
             {
                 _pendingReceipts.Remove(block.Hash!, () => RemoveReceiptsCore(block));

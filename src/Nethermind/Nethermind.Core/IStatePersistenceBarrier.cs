@@ -7,18 +7,15 @@ using System.Threading;
 namespace Nethermind.Core;
 
 /// <summary>
-/// Sequences deferred block-data durability against state persistence. The deferred writer registers a
-/// drain and each block-data database registers a write-ahead-log flush; the state-persistence path calls
-/// <see cref="FlushBefore"/> before persisting a block's state, which first drains every queued deferred
-/// write and then fsyncs those databases.
+/// Sequences deferred block-data durability against state persistence: the state-persistence path calls
+/// <see cref="FlushBefore"/> before persisting a block, which drains every queued deferred write and then
+/// fsyncs the block-data databases.
 /// </summary>
 /// <remarks>
-/// Guarantees <c>state(N) durable =&gt; block-data(&lt;= N) durable</c> on the live path: a block's deferred
-/// writes are enqueued while it is processed/made canonical, which precedes its state persistence, so
-/// draining the writer here writes them all (in the writer's FIFO order) and the flush makes them durable.
-/// A node re-executes on restart every block whose state is not persisted, so nothing durable is left
-/// without its block data. Drains and flushes run synchronously on the caller's state-persistence
-/// background thread, off the engine API path.
+/// Guarantees <c>state(N) durable =&gt; block-data(&lt;= N) durable</c>: a block's deferred writes are enqueued
+/// before its state is persisted, so draining then flushing here makes them durable first. On restart a node
+/// re-executes every block whose state was not persisted, so nothing durable lacks its block data. Runs on the
+/// caller's state-persistence background thread, off the engine API path.
 /// </remarks>
 public interface IStatePersistenceBarrier
 {
@@ -42,8 +39,7 @@ public interface IStatePersistenceBarrier
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
 public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
 {
-    // Copy-on-write: registration happens a handful of times at startup, FlushBefore runs on every state
-    // persist, so readers take a lock-free snapshot and writers rebuild the arrays under a lock.
+    // Copy-on-write: rare startup registration rebuilds the arrays under a lock; FlushBefore reads lock-free.
     private readonly Lock _registrationLock = new();
     private volatile Action[] _drains = [];
     private volatile Action[] _flushes = [];

@@ -19,8 +19,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
-    // A block body is a re-execution input, not an output, so a lost body cannot be regenerated on
-    // restart; deferral is opt-in even when the shared writer is running for receipts. Null when off.
+    // A block body is a re-execution input, so a lost body cannot be regenerated; deferral is opt-in. Null when off.
     private readonly DeferredWriteOverlay<byte[]>? _pending;
 
     private readonly AssociativeCache<ValueHash256, Block>
@@ -80,9 +79,8 @@ public class BlockStore : IBlockStore, IClearableCache
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // Encode now, into an immutable buffer: the caller mutates the live Block after suggesting
-        // (the BAL store nulls its access-list fields; total difficulty is hydrated later), and only
-        // the database write is worth deferring off the engine path.
+        // Encode now into an immutable buffer: the caller mutates the live Block after suggesting (BAL fields
+        // nulled, total difficulty hydrated later); only the database write defers.
         byte[] rlp;
         using (ArrayPoolSpan<byte> encoded = _blockDecoder.EncodeToArrayPoolSpan(block))
         {
@@ -113,8 +111,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        // Decode a fresh instance from the pending bytes, matching the database path's semantics
-        // (callers must not observe the mutable live Block held elsewhere).
+        // Decode a fresh instance from the pending bytes, as the DB path would; callers must not see the live Block.
         if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
         {
             return _blockDecoder.Decode(pendingRlp, rlpBehaviors);
