@@ -141,6 +141,81 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    /// <summary>
+    /// Warm-only batched read for many slots of one <paramref name="address" />. This mirrors
+    /// <see cref="GetSlot" />'s layered lookup but discards values after priming the underlying caches.
+    /// </summary>
+    public void WarmSlotBatch(Address address, ReadOnlySpan<UInt256> indices, int selfDestructStateIdx)
+    {
+        GuardDispose();
+
+        int n = indices.Length;
+        HashedKey<(Address, UInt256)>[] keys = new HashedKey<(Address, UInt256)>[n];
+        ValueHash256[] slotHashes = new ValueHash256[n];
+        int readOnlyCount = 0;
+
+        int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+        bool wholeBundleSelfDestructed = selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount;
+
+        for (int j = 0; j < n; j++)
+        {
+            UInt256 index = indices[j];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+
+            if (_changedSlots.ContainsKey(key) || wholeBundleSelfDestructed)
+            {
+                continue;
+            }
+
+            if (ResolveFromOwnSnapshots(key, currentBundleSelfDestructIdx))
+            {
+                continue;
+            }
+
+            keys[readOnlyCount] = key;
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref slotHash);
+            slotHashes[readOnlyCount] = slotHash;
+            readOnlyCount++;
+        }
+
+        if (readOnlyCount == 0)
+        {
+            return;
+        }
+
+        Span<ValueHash256> missScratch = new ValueHash256[readOnlyCount];
+        Span<SlotValue> valueScratch = new SlotValue[readOnlyCount];
+        Span<bool> foundScratch = new bool[readOnlyCount];
+
+        _readOnlySnapshotBundle.WarmSlotBatch(
+            address,
+            keys.AsSpan(0, readOnlyCount),
+            slotHashes.AsSpan(0, readOnlyCount),
+            selfDestructStateIdx,
+            missScratch,
+            valueScratch,
+            foundScratch);
+    }
+
+    private bool ResolveFromOwnSnapshots(HashedKey<(Address, UInt256)> key, int currentBundleSelfDestructIdx)
+    {
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorage(key, out _))
+            {
+                return true;
+            }
+
+            if (i <= currentBundleSelfDestructIdx)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();

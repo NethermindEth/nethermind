@@ -126,6 +126,60 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
+    /// <summary>
+    /// Warm-only batched read for many slots of one <paramref name="address" />. Snapshot hits and self-destruct
+    /// boundaries are resolved in memory; persistence misses are read through one batched raw-storage call.
+    /// </summary>
+    public void WarmSlotBatch(
+        Address address,
+        ReadOnlySpan<HashedKey<(Address, UInt256)>> keys,
+        ReadOnlySpan<ValueHash256> slotHashes,
+        int selfDestructStateIdx,
+        Span<ValueHash256> missScratch,
+        Span<SlotValue> valueScratch,
+        Span<bool> foundScratch)
+    {
+        GuardDispose();
+
+        int missCount = 0;
+        for (int k = 0; k < keys.Length; k++)
+        {
+            if (ResolveFromSnapshotChain(keys[k], selfDestructStateIdx))
+            {
+                continue;
+            }
+
+            missScratch[missCount++] = slotHashes[k];
+        }
+
+        if (missCount > 0)
+        {
+            persistenceReader.TryGetStorageBatchRaw(
+                address.ToAccountPath,
+                missScratch[..missCount],
+                valueScratch[..missCount],
+                foundScratch[..missCount]);
+        }
+    }
+
+    private bool ResolveFromSnapshotChain(HashedKey<(Address, UInt256)> key, int selfDestructStateIdx)
+    {
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStorage(key, out _))
+            {
+                return true;
+            }
+
+            if (i <= selfDestructStateIdx)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 

@@ -136,6 +136,38 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
+    public void WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId, int jobCount)
+    {
+        try
+        {
+            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            {
+                return;
+            }
+
+            if (!_bundle.TryLeaseReadOnlyBundle())
+            {
+                return;
+            }
+
+            try
+            {
+                _bundle.WarmSlotBatch(_address, indices, _selfDestructKnownStateIdx);
+            }
+            finally
+            {
+                _bundle.ReleaseReadOnlyBundleLease();
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < jobCount; i++)
+            {
+                _scope.DecrementOutstandingWarmups();
+            }
+        }
+    }
+
     public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);

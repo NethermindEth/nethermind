@@ -100,7 +100,46 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
+            DecodeSlotValue(buffer[..resultSize], ref outValue);
+            return true;
+        }
+
+        private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
+
+        /// <summary>
+        /// Batched variant of <see cref="TryGetStorage" /> for many slots belonging to one account.
+        /// </summary>
+        public void TryGetStorageBatch(in ValueHash256 address, ReadOnlySpan<ValueHash256> slots, Span<SlotValue> outValues, Span<bool> found)
+        {
+            int n = slots.Length;
+            byte[][] keys = new byte[n][];
+            for (int i = 0; i < n; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, address, slots[i]);
+                keys[i] = key;
+            }
+
+            byte[]?[] results = new byte[]?[n];
+            storage.MultiGet(keys, results);
+
+            for (int i = 0; i < n; i++)
+            {
+                byte[]? value = results[i];
+                if (value is null || value.Length == 0)
+                {
+                    found[i] = false;
+                    continue;
+                }
+
+                DecodeSlotValue(value, ref outValues[i]);
+                found[i] = true;
+            }
+        }
+
+        private void DecodeSlotValue(ReadOnlySpan<byte> storedValue, ref SlotValue outValue)
+        {
+            ReadOnlySpan<byte> value = storedValue;
             if (rlpWrapSlots)
             {
                 RlpReader ctx = new(value);
@@ -133,11 +172,7 @@ public static class BaseFlatPersistence
                     ref MemoryMarshal.GetReference(value),
                     (uint)len);
             }
-
-            return true;
         }
-
-        private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {
