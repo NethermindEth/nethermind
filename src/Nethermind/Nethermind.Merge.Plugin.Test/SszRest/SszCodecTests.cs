@@ -638,9 +638,6 @@ public class SszCodecTests
     [Test]
     public void PayloadAttributesV4_slot_number_and_target_gas_limit_sit_at_the_spec_byte_offsets()
     {
-        // execution-apis PayloadAttributesV4 / Rest-SSZ PayloadAttributesAmsterdam field order:
-        // ..., parent_beacon_block_root, slot_number, target_gas_limit — pinned by absolute offset
-        // because a round-trip test cannot detect a reordered container.
         PayloadAttributesWire attrsWire = new()
         {
             Timestamp = 0x0102030405060708UL,
