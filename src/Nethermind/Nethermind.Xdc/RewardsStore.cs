@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text.Json;
 using Autofac;
@@ -32,9 +31,6 @@ internal sealed class RewardsStore(
     private readonly ILogger _logger = logManager.GetClassLogger<RewardsStore>();
 
     private const byte EpochRewardsPrefix = 0x10;
-    private const byte RpcEpochRewardsPrefix = 0x11;
-    private const int AddressByteLength = 20;
-    private const int UInt256ByteLength = 32;
 
     public void Start() => _blockTree.BlockAddedToMain += OnBlockAddedToMain;
 
@@ -79,19 +75,15 @@ internal sealed class RewardsStore(
         ArgumentNullException.ThrowIfNull(epochBlockHash);
         ArgumentNullException.ThrowIfNull(rewards);
 
-        using IWriteBatch batch = _rewardsDb.StartWriteBatch();
-        batch[BuildRpcEpochRewardsKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
-        batch[BuildEpochRewardsKey(epochBlockHash)] = SerializeEpochRewards(SumAccountRewards(rewards));
+        _rewardsDb[BuildKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
     }
 
-
     public bool HasEpochRewards(Hash256 epochBlockHash) =>
-        _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockHash))
-        || _rewardsDb.KeyExists(BuildRpcEpochRewardsKey(epochBlockHash));
+        _rewardsDb.KeyExists(BuildKey(epochBlockHash));
 
     public bool TryGetEpochRewards(Hash256 epochBlockHash, out XdcEpochRewards? rewards)
     {
-        byte[]? bytes = _rewardsDb.Get(BuildRpcEpochRewardsKey(epochBlockHash));
+        byte[]? bytes = _rewardsDb.Get(BuildKey(epochBlockHash));
         if (bytes is null)
         {
             rewards = null;
@@ -104,27 +96,19 @@ internal sealed class RewardsStore(
 
     public bool TryGetAccountReward(Address account, Hash256 epochBlockHash, out UInt256 reward)
     {
-        byte[]? epochRewardsBytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockHash));
-        if (epochRewardsBytes is null)
+        if (!TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? breakdown) || breakdown is null)
         {
-            if (!TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? breakdown)
-                || breakdown is null)
-            {
-                reward = UInt256.Zero;
-                return false;
-            }
-
-            reward = SumAccountReward(breakdown, account);
-            return reward > UInt256.Zero;
+            reward = UInt256.Zero;
+            return false;
         }
 
-        Dictionary<Address, UInt256> rewards = DeserializeEpochRewards(epochRewardsBytes);
-        return rewards.TryGetValue(account, out reward);
+        reward = SumAccountReward(breakdown, account);
+        return reward > UInt256.Zero;
     }
 
     public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 
-    private static byte[] BuildEpochRewardsKey(Hash256 epochBlockHash)
+    private static byte[] BuildKey(Hash256 epochBlockHash)
     {
         byte[] key = new byte[1 + Hash256.Size];
         key[0] = EpochRewardsPrefix;
@@ -132,96 +116,13 @@ internal sealed class RewardsStore(
         return key;
     }
 
-    private static byte[] BuildRpcEpochRewardsKey(Hash256 epochBlockHash)
-    {
-        byte[] key = new byte[1 + Hash256.Size];
-        key[0] = RpcEpochRewardsPrefix;
-        epochBlockHash.Bytes.CopyTo(key.AsSpan(1));
-        return key;
-    }
-
-
-    private static byte[] SerializeEpochRewards(Dictionary<Address, UInt256> rewardsByAccount)
-    {
-        int entryLength = AddressByteLength + UInt256ByteLength;
-        byte[] bytes = new byte[sizeof(int) + rewardsByAccount.Count * entryLength];
-        Span<byte> span = bytes;
-        BinaryPrimitives.WriteInt32BigEndian(span, rewardsByAccount.Count);
-
-        int offset = sizeof(int);
-        foreach ((Address account, UInt256 reward) in rewardsByAccount)
-        {
-            account.Bytes.CopyTo(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            reward.ToBigEndian(span.Slice(offset, UInt256ByteLength));
-            offset += UInt256ByteLength;
-        }
-
-        return bytes;
-    }
-
-    private static Dictionary<Address, UInt256> DeserializeEpochRewards(byte[] bytes)
-    {
-        ReadOnlySpan<byte> span = bytes;
-        int count = BinaryPrimitives.ReadInt32BigEndian(span);
-        Dictionary<Address, UInt256> rewardsByAccount = new(count);
-
-        int offset = sizeof(int);
-        for (int i = 0; i < count; i++)
-        {
-            Address address = new(span.Slice(offset, AddressByteLength));
-            offset += AddressByteLength;
-
-            UInt256 reward = new(span.Slice(offset, UInt256ByteLength), isBigEndian: true);
-            offset += UInt256ByteLength;
-
-            rewardsByAccount[address] = reward;
-        }
-
-        return rewardsByAccount;
-    }
-
-    private static Dictionary<Address, UInt256> SumAccountRewards(XdcEpochRewards breakdown)
-    {
-        Dictionary<Address, UInt256> rewardsByAccount = [];
-        SumAccountRewards(breakdown.Rewards, rewardsByAccount);
-        SumAccountRewards(breakdown.RewardsProtector, rewardsByAccount);
-        SumAccountRewards(breakdown.RewardsObserver, rewardsByAccount);
-
-        return rewardsByAccount;
-    }
-
-    private static void SumAccountRewards(
-        Dictionary<string, Dictionary<string, string>> section,
-        Dictionary<Address, UInt256> rewardsByAccount)
-    {
-        foreach (Dictionary<string, string> holdersBySigner in section.Values)
-        {
-            foreach ((string accountKey, string valueStr) in holdersBySigner)
-            {
-                if (Address.TryParse(accountKey, out Address account)
-                    && UInt256.TryParse(valueStr, out UInt256 value))
-                {
-                    if (!rewardsByAccount.TryAdd(account, value))
-                    {
-                        rewardsByAccount[account] += value;
-                    }
-                }
-            }
-        }
-    }
-
-    private static UInt256 SumAccountReward(
-        XdcEpochRewards breakdown,
-        Address account)
+    private static UInt256 SumAccountReward(XdcEpochRewards breakdown, Address account)
     {
         string accountKey = account.ToString();
         UInt256 total = UInt256.Zero;
         SumAccountReward(breakdown.Rewards, accountKey, ref total);
         SumAccountReward(breakdown.RewardsProtector, accountKey, ref total);
         SumAccountReward(breakdown.RewardsObserver, accountKey, ref total);
-
         return total;
     }
 
