@@ -104,10 +104,19 @@ public static class IntrinsicGasCalculator
     private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
         (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
+    private static ulong CalculateEip7623FloorTokensInCallData(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData)
+    {
+        if (spec.IsEip2028Enabled) return tokensInCallData;
+
+        ReadOnlySpan<byte> data = transaction.Data.Span;
+        ulong totalZeros = (ulong)data.CountZeros();
+        return totalZeros + ((ulong)data.Length - totalZeros) * GasCostOf.TxDataNonZeroMultiplierEip2028;
+    }
+
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList) => spec switch
     {
         { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+        { IsEip7623Enabled: true } => GasCostOf.Transaction + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
         _ => 0
     };
 }
