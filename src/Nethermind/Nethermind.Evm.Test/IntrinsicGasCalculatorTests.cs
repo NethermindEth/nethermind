@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -274,6 +275,32 @@ namespace Nethermind.Evm.Test
 
             ulong regularPlusState = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.CreateState;
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
+        }
+
+        [Test]
+        public void Calculate_Eip7623FloorWithoutEip2028_UsesFixedTokenCost()
+        {
+            ReleaseSpec spec = new()
+            {
+                IsEip2Enabled = true,
+                IsEip7623Enabled = true,
+                IsEip2028Enabled = false,
+            };
+
+            byte[] data = new byte[30];
+            for (int i = 0; i < 10; i++) data[i] = 0x01; // 10 non-zero, 20 zero bytes
+            Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(data).TestObject;
+
+            EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
+
+            const ulong zeros = 20, nonZeros = 10;
+            ulong expectedFloor = GasCostOf.Transaction
+                + GasCostOf.TotalCostFloorPerTokenEip7623 * (zeros + nonZeros * GasCostOf.TxDataNonZeroMultiplierEip2028);
+            ulong expectedStandard = GasCostOf.Transaction
+                + (zeros + nonZeros * spec.GasCosts.TxDataNonZeroMultiplier) * GasCostOf.TxDataZero;
+
+            Assert.That(gas.FloorGas, Is.EqualTo(expectedFloor));   // 21600
+            Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
         }
     }
 }

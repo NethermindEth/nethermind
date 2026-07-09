@@ -95,7 +95,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId))
+            // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
+            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
+                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
                 _scope.IncrementOutstandingWarmups();
         }
     }
@@ -135,8 +137,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             _scope.DecrementOutstandingWarmups();
         }
     }
-
-    public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
 
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 

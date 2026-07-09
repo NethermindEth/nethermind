@@ -26,14 +26,18 @@ public sealed class NeighborsMsgSerializer(
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
         ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
+        IPEndPoint discoveryAddress = GetAddress(ip, ctx.DecodeInt());
+        IPEndPoint address = discoveryAddress;
         if (count > 3)
         {
-            ctx.DecodeInt();
+            int tcpPort = ctx.DecodeInt();
+            address = tcpPort == 0
+                ? new IPEndPoint(discoveryAddress.Address, 0)
+                : GetAddress(ip, tcpPort);
         }
 
         ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
-        return new Node(new PublicKey(id), address);
+        return new Node(new PublicKey(id), address, discoveryAddress.Port);
     }
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
@@ -50,7 +54,7 @@ public sealed class NeighborsMsgSerializer(
             for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
-                SerializeNode(ref writer, node.Address, node.Id.Bytes);
+                SerializeNode(ref writer, node);
             }
         }
         else
@@ -104,7 +108,7 @@ public sealed class NeighborsMsgSerializer(
         for (int i = 0; i < nodes.Count; i++)
         {
             Node node = nodes[i];
-            contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node.Address, node.Id.Bytes));
+            contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node));
         }
         return Rlp.LengthOfSequence(contentLength);
     }

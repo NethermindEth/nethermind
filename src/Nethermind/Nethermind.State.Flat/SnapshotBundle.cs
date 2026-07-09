@@ -393,6 +393,8 @@ public sealed class SnapshotBundle : IDisposable
     // as most of the slot should already be queued by prewarmer.
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
+    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
+
     /// <summary>
     /// Takes a lease on the underlying <see cref="ReadOnlySnapshotBundle"/> for the duration of a trie warmer traversal.
     /// </summary>
