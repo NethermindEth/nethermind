@@ -104,14 +104,17 @@ internal static class PersistedSnapshotBloomBuilder
     /// [16,24), [24,32).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong SlotKey(ulong addressKey, scoped ReadOnlySpan<byte> slot32)
-    {
-        ulong s0 = MemoryMarshal.Read<ulong>(slot32);
-        ulong s1 = MemoryMarshal.Read<ulong>(slot32[8..]);
-        ulong s2 = MemoryMarshal.Read<ulong>(slot32[16..]);
-        ulong s3 = MemoryMarshal.Read<ulong>(slot32[24..]);
-        return addressKey ^ s0 ^ s1 ^ s2 ^ s3;
-    }
+    internal static ulong SlotKey(ulong addressKey, scoped ReadOnlySpan<byte> slot32) =>
+        addressKey ^ Fold32(slot32);
+
+    /// <summary>XOR-fold of the first 32 bytes as four non-overlapping ulongs covering
+    /// [0,8), [8,16), [16,24), [24,32).</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Fold32(scoped ReadOnlySpan<byte> bytes) =>
+        MemoryMarshal.Read<ulong>(bytes)
+        ^ MemoryMarshal.Read<ulong>(bytes[8..])
+        ^ MemoryMarshal.Read<ulong>(bytes[16..])
+        ^ MemoryMarshal.Read<ulong>(bytes[24..]);
 
     /// <summary>
     /// Bloom key for a state-trie node, hashed from the same encoded byte-sequence
@@ -134,11 +137,7 @@ internal static class PersistedSnapshotBloomBuilder
             path.Path.Bytes.CopyTo(encoded);
             encoded[32] = (byte)length;
         }
-        ulong p0 = MemoryMarshal.Read<ulong>(encoded);
-        ulong p1 = MemoryMarshal.Read<ulong>(encoded[8..]);
-        ulong p2 = MemoryMarshal.Read<ulong>(encoded[16..]);
-        ulong p3 = MemoryMarshal.Read<ulong>(encoded[24..]);
-        return p0 ^ p1 ^ p2 ^ p3 ^ encoded[32];
+        return Fold32(encoded) ^ encoded[32];
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -158,10 +157,6 @@ internal static class PersistedSnapshotBloomBuilder
         Span<byte> encoded = stackalloc byte[33];
         encoded.Clear();
         encodedKey.CopyTo(encoded);
-        ulong p0 = MemoryMarshal.Read<ulong>(encoded);
-        ulong p1 = MemoryMarshal.Read<ulong>(encoded[8..]);
-        ulong p2 = MemoryMarshal.Read<ulong>(encoded[16..]);
-        ulong p3 = MemoryMarshal.Read<ulong>(encoded[24..]);
-        return p0 ^ p1 ^ p2 ^ p3 ^ encoded[32];
+        return Fold32(encoded) ^ encoded[32];
     }
 }

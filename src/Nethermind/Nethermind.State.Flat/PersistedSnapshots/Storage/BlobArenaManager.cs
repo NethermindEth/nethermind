@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -105,7 +106,7 @@ public sealed class BlobArenaManager : IDisposable
             throw new ObjectDisposedException(nameof(BlobArenaManager));
 
         ushort? chosen = null;
-        List<ushort>? toRemove = null;
+        using ArrayPoolList<ushort> toRemove = new(0);
         foreach (ushort id in _mutableFiles)
         {
             BlobArenaFile candidate = _files[id]!;
@@ -114,10 +115,9 @@ public sealed class BlobArenaManager : IDisposable
                 chosen = id;
                 break;
             }
-            (toRemove ??= []).Add(id);
+            toRemove.Add(id);
         }
-        if (toRemove is not null)
-            foreach (ushort id in toRemove) _mutableFiles.Remove(id);
+        foreach (ushort id in toRemove) _mutableFiles.Remove(id);
 
         ushort fileId;
         BlobArenaFile file;

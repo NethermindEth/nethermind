@@ -58,12 +58,7 @@ internal static class Block
     /// <c>[cp][suffixLen][valueLen][keySuffix][value]</c>, so the prefix is read in one blit and the key
     /// then value are sliced from the bytes after it. Single-byte fields, so endianness-independent.</summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal readonly struct DataRecordHeader(byte commonPrefix, byte suffixLength, byte valueLength)
-    {
-        internal readonly byte CommonPrefix = commonPrefix;
-        internal readonly byte SuffixLength = suffixLength;
-        internal readonly byte ValueLength = valueLength;
-    }
+    internal readonly record struct DataRecordHeader(byte CommonPrefix, byte SuffixLength, byte ValueLength);
 
     /// <summary>Fixed 3-byte prefix of an index record: the front-coded key (cp, suffixLen) then the
     /// number of little-endian low-order value bytes stored in <see cref="ValueChangedLength"/>. Layout
@@ -71,10 +66,5 @@ internal static class Block
     /// keeps the high bytes of the previous record's value and overwrites only its low bytes, reset against
     /// 0 at a <c>cp == 0</c> restart (see <see cref="BlockBuilder.AddChangedPrefixValue"/>).</summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal readonly struct IndexRecordHeader(byte commonPrefix, byte suffixLength, byte valueChangedLength)
-    {
-        internal readonly byte CommonPrefix = commonPrefix;
-        internal readonly byte SuffixLength = suffixLength;
-        internal readonly byte ValueChangedLength = valueChangedLength;
-    }
+    internal readonly record struct IndexRecordHeader(byte CommonPrefix, byte SuffixLength, byte ValueChangedLength);
 }
