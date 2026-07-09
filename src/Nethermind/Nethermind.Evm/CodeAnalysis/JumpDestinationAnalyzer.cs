@@ -39,6 +39,39 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
     }
 
+    // EIP-7979: valid ENTERSUB positions (code segment only, push immediates excluded). Built
+    // lazily on the first CALLSUB against this code and cached; JUMP/JUMPI paths are unaffected.
+    // The benign ??= race mirrors the jump-destination bitmap: concurrent builders compute the
+    // same content.
+    private long[]? _enterSubBitmap;
+
+    public bool ValidateEnterSub(int destination)
+    {
+        long[] bitmap = _enterSubBitmap ??= CreateEnterSubBitmap();
+        return (uint)destination < (uint)MachineCode.Length
+            && (bitmap[destination >> BitShiftPerInt64] & (1L << (destination & 63))) != 0;
+    }
+
+    private long[] CreateEnterSubBitmap()
+    {
+        ReadOnlySpan<byte> code = MachineCode.Span;
+        long[] bitmap = CreateBitmap(code.Length);
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            int op = code[pc];
+            if (op == (int)Instruction.ENTERSUB)
+            {
+                bitmap[pc >> BitShiftPerInt64] |= 1L << (pc & 63);
+            }
+            else if (op >= PUSH1 && op <= (int)Instruction.PUSH32)
+            {
+                pc += op - PUSHx;
+            }
+        }
+
+        return bitmap;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateOrWaitForJumpDestinationBitmap()
     {

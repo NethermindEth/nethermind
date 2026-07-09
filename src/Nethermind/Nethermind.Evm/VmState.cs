@@ -31,6 +31,12 @@ public class VmState<TGasPolicy> : IDisposable
     private static readonly StackPool _stackPool = new();
 
     public byte[]? DataStack;
+    /// <summary>
+    /// EIP-7979 return stack, lazily allocated on the first CALLSUB of the frame and kept for
+    /// reuse across poolings (only <see cref="ReturnStackHead"/> is reset).
+    /// </summary>
+    public int[]? ReturnStack;
+    public int ReturnStackHead;
     public TGasPolicy Gas;
     public ulong InitialStateGasUsed;
     public ulong StateGasRefundPending;
@@ -154,6 +160,7 @@ public class VmState<TGasPolicy> : IDisposable
         OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
+        ReturnStackHead = 0;
         ProgramCounter = 0;
         ExecutionType = executionType;
         IsTopLevel = isTopLevel;

@@ -356,6 +356,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
             }
 
+            releaseSpec.IsEip7979Enabled = (chainSpec.Parameters.Eip7979TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
             {
