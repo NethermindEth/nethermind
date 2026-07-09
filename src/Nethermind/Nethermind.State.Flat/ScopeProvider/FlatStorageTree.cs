@@ -136,8 +136,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    public byte[] Get(in ValueHash256 hash) => throw new NotSupportedException("Not supported");
-
     private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
 
     public void SelfDestruct()
