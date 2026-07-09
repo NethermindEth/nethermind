@@ -251,7 +251,8 @@ public class DiscoveryV5AppTests
             kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(added =>
                 added.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
                 added.Host == "8.8.8.8" &&
-                added.Port == 30304 &&
+                added.Port == 30303 &&
+                added.DiscoveryPort == 30304 &&
                 added.Enr == enr));
         }
         finally
@@ -294,7 +295,8 @@ public class DiscoveryV5AppTests
 
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
-        Assert.That(node!.Port, Is.EqualTo(30304));
+        Assert.That(node!.Port, Is.EqualTo(30303));
+        Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
     }
 
     [Test]
@@ -319,7 +321,8 @@ public class DiscoveryV5AppTests
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
-        Assert.That(node.Port, Is.EqualTo(9001));
+        Assert.That(node.Port, Is.Zero);
+        Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
     }
 
     [Test]
@@ -340,7 +343,8 @@ public class DiscoveryV5AppTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bootNodes, Has.Count.EqualTo(1));
-            Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Port, Is.Zero);
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Enr?.ToString(), Is.EqualTo(enr.ToString()));
         }
     }
@@ -363,8 +367,29 @@ public class DiscoveryV5AppTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bootNodes, Has.Count.EqualTo(1));
-            Assert.That(bootNodes[0].Port, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(30303));
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
             Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
         }
+    }
+
+    [TestCase("8.8.8.8", true, true)]
+    [TestCase("8.8.8.8", false, false)]
+    [TestCase("127.0.0.1", true, false)]
+    [TestCase("192.168.0.1", true, false)]
+    [TestCase("169.254.0.1", true, false)]
+    [TestCase("0.0.0.0", true, true)]
+    [TestCase("::", true, true)]
+    [TestCase("255.255.255.255", true, true)]
+    public void Should_Use_Default_Discv5_Bootnodes_Unless_Disabled_Or_Address_Is_Known_Private(string externalIp, bool configured, bool expected)
+    {
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = configured
+        };
+
+        bool result = DiscoveryV5App.ShouldUseDefaultDiscv5Bootnodes(IPAddress.Parse(externalIp), discoveryConfig);
+
+        Assert.That(result, Is.EqualTo(expected));
     }
 }

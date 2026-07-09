@@ -22,6 +22,41 @@ public partial class BlockTree
         LoadBestKnown();
         LoadBeaconBestKnown();
         LoadForkChoiceInfo();
+        FixLowestInsertedBeaconHeader();
+    }
+
+    private void FixLowestInsertedBeaconHeader()
+    {
+        BlockHeader? lowest = _lowestInsertedBeaconHeader;
+        if (lowest is null)
+        {
+            return;
+        }
+
+        // An unclean shutdown between a beacon header write and its pointer update can leave
+        // LowestInsertedBeaconHeader parked above headers the backfill had already inserted.
+        // Walk down through the contiguous beacon segment and stop at the merge junction — the
+        // first already-synced non-beacon block. Anchoring on IsKnownBlock (rather than the
+        // BestSuggestedHeader number) keeps the walk bounded to the beacon segment: post-merge
+        // BestSuggestedHeader can be null when headers sit ahead of the processed head, which
+        // used to collapse the stop bound and drag the walk down the whole canonical chain.
+        BlockHeader current = lowest;
+        while (current.ParentHash is not null)
+        {
+            BlockHeader? parent = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent?.Hash is null || IsKnownBlock(parent.Number, parent.Hash))
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        if (!ReferenceEquals(current, lowest))
+        {
+            if (Logger.IsInfo) Logger.Info($"Lowest inserted beacon header moved from {lowest.Number} down to {current.Number} through already inserted beacon headers");
+            LowestInsertedBeaconHeader = current;
+        }
     }
 
     public static ulong? BinarySearchBlockNumber(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
