@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -22,30 +21,6 @@ namespace Nethermind.Xdc.Test;
 public class RewardsStoreTests
 {
     [Test]
-    public void SaveEpochRewards_WhenSameAccountHasMultipleBlockRewards_ShouldAggregateAndReadRewardByAccount()
-    {
-        IDb db = new MemDb();
-        using RewardsStore store = CreateStore(db);
-        Address account = Address.FromNumber(1);
-        Hash256 epochBlockHash = TestItem.KeccakA;
-
-        BlockReward[] rewards =
-        [
-            new(account, (UInt256)10),
-            new(account, (UInt256)20),
-        ];
-
-        store.SaveEpochRewards(epochBlockHash, rewards);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
-            Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
-            Assert.That(savedReward, Is.EqualTo((UInt256)30));
-        }
-    }
-
-    [Test]
     public void TryGetAccountReward_WhenNoRewardForAccount_ShouldReturnFalse()
     {
         IDb db = new MemDb();
@@ -54,7 +29,10 @@ public class RewardsStoreTests
         Address missingAccount = Address.FromNumber(2);
         Hash256 epochBlockHash = TestItem.KeccakA;
 
-        store.SaveEpochRewards(epochBlockHash, [new BlockReward(savedAccount, (UInt256)10)]);
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
+        {
+            Rewards = new() { [Address.FromNumber(10).ToString()] = new() { [savedAccount.ToString()] = "10" } },
+        });
 
         Assert.That(store.TryGetAccountReward(missingAccount, epochBlockHash, out _), Is.False);
     }
@@ -65,15 +43,11 @@ public class RewardsStoreTests
         IDb db = new MemDb();
         using RewardsStore store = CreateStore(db);
         Hash256 epochBlockHash = TestItem.KeccakA;
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
-        {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "1000" },
-            },
-        };
 
-        store.SaveEpochRewards(epochBlockHash, payload);
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
+        {
+            Rewards = new() { [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "1000" } },
+        });
 
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
         Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
@@ -88,19 +62,11 @@ public class RewardsStoreTests
         Address account = Address.FromNumber(1);
         Address signer = Address.FromNumber(10);
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
         {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [signer.ToString()] = new() { [account.ToString()] = "100" },
-            },
-            [XdcConstants.RpcRewardSectionProtector] = new()
-            {
-                [signer.ToString()] = new() { [account.ToString()] = "50" },
-            },
-        };
-
-        store.SaveEpochRewards(epochBlockHash, payload);
+            Rewards = new() { [signer.ToString()] = new() { [account.ToString()] = "100" } },
+            RewardsProtector = new() { [signer.ToString()] = new() { [account.ToString()] = "50" } },
+        });
 
         Assert.That(store.TryGetAccountReward(account, epochBlockHash, out UInt256 savedReward), Is.True);
         Assert.That(savedReward, Is.EqualTo((UInt256)150));
@@ -117,24 +83,14 @@ public class RewardsStoreTests
         Address signer1 = Address.FromNumber(10);
         Address signer2 = Address.FromNumber(11);
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
         {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
+            Rewards = new()
             {
-                [signer1.ToString()] = new()
-                {
-                    [owner.ToString()] = "90",
-                    [foundation.ToString()] = "10",
-                },
-                [signer2.ToString()] = new()
-                {
-                    [owner.ToString()] = "180",
-                    [foundation.ToString()] = "20",
-                },
+                [signer1.ToString()] = new() { [owner.ToString()] = "90", [foundation.ToString()] = "10" },
+                [signer2.ToString()] = new() { [owner.ToString()] = "180", [foundation.ToString()] = "20" },
             },
-        };
-
-        store.SaveEpochRewards(epochBlockHash, payload);
+        });
 
         Assert.That(store.TryGetAccountReward(foundation, epochBlockHash, out UInt256 foundationReward), Is.True);
         Assert.That(foundationReward, Is.EqualTo((UInt256)30));
@@ -148,7 +104,7 @@ public class RewardsStoreTests
         Hash256 epochBlockHash = TestItem.KeccakA;
         Address account = Address.FromNumber(1);
 
-        store.SaveEpochRewards(epochBlockHash, new Dictionary<string, Dictionary<string, Dictionary<string, string>>>());
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards());
 
         Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
@@ -270,28 +226,18 @@ public class RewardsStoreTests
         using RewardsStore store = CreateStore(db);
         Hash256 epochBlockHash = TestItem.KeccakA;
 
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> initialPayload = new()
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
         {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "100" },
-            },
-        };
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> updatedPayload = new()
+            Rewards = new() { [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "100" } },
+        });
+        store.SaveEpochRewards(epochBlockHash, new XdcEpochRewards
         {
-            [XdcConstants.RpcRewardSectionMasternode] = new()
-            {
-                [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "200" },
-            },
-        };
-
-        store.SaveEpochRewards(epochBlockHash, initialPayload);
-        store.SaveEpochRewards(epochBlockHash, updatedPayload);
+            Rewards = new() { [Address.FromNumber(1).ToString()] = new() { [Address.FromNumber(2).ToString()] = "200" } },
+        });
 
         Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
         Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
-
 
     private static RewardsStore CreateStore(
         IDb db,

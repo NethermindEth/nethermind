@@ -8,7 +8,6 @@ using System.Text.Json;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -85,37 +84,6 @@ internal sealed class RewardsStore(
         batch[BuildEpochRewardsKey(epochBlockHash)] = SerializeEpochRewards(SumAccountRewards(rewards));
     }
 
-    public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
-    {
-        ArgumentNullException.ThrowIfNull(epochBlockHash);
-
-        XdcEpochRewards epochRewards = new();
-        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionMasternode, out Dictionary<string, Dictionary<string, string>>? masternodeRewards))
-            epochRewards.Rewards = masternodeRewards;
-        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionProtector, out Dictionary<string, Dictionary<string, string>>? protectorRewards))
-            epochRewards.RewardsProtector = protectorRewards;
-        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionObserver, out Dictionary<string, Dictionary<string, string>>? observerRewards))
-            epochRewards.RewardsObserver = observerRewards;
-
-        SaveEpochRewards(epochBlockHash, epochRewards);
-    }
-
-
-    public void SaveEpochRewards(Hash256 epochBlockHash, BlockReward[] rewards)
-    {
-        ArgumentNullException.ThrowIfNull(epochBlockHash);
-
-        Dictionary<Address, UInt256> rewardsByAccount = [];
-        foreach (BlockReward reward in rewards)
-        {
-            if (!rewardsByAccount.TryAdd(reward.Address, reward.Value))
-            {
-                rewardsByAccount[reward.Address] += reward.Value;
-            }
-        }
-
-        _rewardsDb[BuildEpochRewardsKey(epochBlockHash)] = SerializeEpochRewards(rewardsByAccount);
-    }
 
     public bool HasEpochRewards(Hash256 epochBlockHash) =>
         _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockHash))

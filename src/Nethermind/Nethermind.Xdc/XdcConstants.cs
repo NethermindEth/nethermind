@@ -57,12 +57,6 @@ internal static class XdcConstants
     // 4-byte selector + 32-byte block number + 32-byte block hash
     public const int SignTransactionDataLength = 68;
 
-    public const string RpcRewardSectionMasternode = "rewards";
-    public const string RpcRewardSectionProtector = "rewardsProtector";
-    public const string RpcRewardSectionObserver = "rewardsObserver";
-    public const string RpcSignerSectionMasternode = "signers";
-    public const string RpcSignerSectionProtector = "signersProtector";
-    public const string RpcSignerSectionObserver = "signersObserver";
 
     // Only sign recent head blocks.
     public const ulong MaxSignableBlockPeriods = 2;
