@@ -84,4 +84,8 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetric]
+    [Description("Time block processing stalled waiting for the compactor job channel to drain (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver CompactorStallTime { get; set; } = new NoopMetricObserver();
 }
