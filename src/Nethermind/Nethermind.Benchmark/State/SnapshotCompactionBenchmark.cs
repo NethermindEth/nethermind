@@ -104,8 +104,14 @@ public class SnapshotCompactionBenchmark
         }
     }
 
+    // Dispose the result each iteration so the compacted content returns to the pool, modelling the production
+    // lifecycle and exercising the NoResizeClear array reuse across compactions.
     [Benchmark]
-    public FlatSnapshot Compact() => _compactor.CompactSnapshotBundle(_snapshots);
+    public int Compact()
+    {
+        using FlatSnapshot compacted = _compactor.CompactSnapshotBundle(_snapshots);
+        return compacted.AccountsCount;
+    }
 
     private void Fill(FlatSnapshot snapshot, int b, Address[] contracts, Hash256[] contractHashes)
     {

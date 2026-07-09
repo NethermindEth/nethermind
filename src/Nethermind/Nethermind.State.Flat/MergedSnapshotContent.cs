@@ -15,40 +15,29 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// The immutable, sorted counterpart of <see cref="SnapshotContent"/> used for compacted snapshots. Each of the
-/// five collections is a build-once <see cref="SortedMergeDictionary{TKey,TValue}"/> produced by k-way merging
-/// the source snapshots, so lookups are O(1) and enumeration is already in key order (state and storage trie
-/// nodes iterate in the exact order the persistence layer would otherwise sort into).
+/// five collections is a <see cref="SortedMergeDictionary{TKey,TValue}"/> the compactor rebuilds in place by
+/// k-way merging the source snapshots, so lookups are O(1) and enumeration is already in key order (state and
+/// storage trie nodes iterate in the exact order the persistence layer would otherwise sort into).
 /// </summary>
 /// <remarks>
-/// Pooled like <see cref="SnapshotContent"/>. Populated once via <see cref="SetContent"/> right after a
-/// compaction merge; never mutated afterwards, so no concurrent access guards are needed for reads.
+/// Pooled like <see cref="SnapshotContent"/>. The dictionaries persist across pool cycles: <see cref="Reset"/>
+/// empties them with <c>NoResizeClear</c> so their rented arrays stay warm for the next compaction, and only
+/// <see cref="Dispose"/> (on pool eviction) returns those arrays. Never mutated after the compaction merge, so
+/// reads need no synchronization.
 /// </remarks>
 public sealed class MergedSnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Matches SnapshotContent; per-node size is estimated to avoid walking.
 
-    private SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = null!;
-    private SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _storages = null!;
-    private SortedMergeDictionary<HashedKey<Address>, bool> _selfDestructedStorageAddresses = null!;
-    private SortedMergeDictionary<HashedKey<TreePath>, TrieNode> _stateNodes = null!;
-    private SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _storageNodes = null!;
-
-    public void SetContent(
-        SortedMergeDictionary<HashedKey<Address>, Account?> accounts,
-        SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages,
-        SortedMergeDictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses,
-        SortedMergeDictionary<HashedKey<TreePath>, TrieNode> stateNodes,
-        SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes)
-    {
-        _accounts = accounts;
-        _storages = storages;
-        _selfDestructedStorageAddresses = selfDestructedStorageAddresses;
-        _stateNodes = stateNodes;
-        _storageNodes = storageNodes;
-    }
+    private readonly SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = new();
+    private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _storages = new();
+    private readonly SortedMergeDictionary<HashedKey<Address>, bool> _selfDestructedStorageAddresses = new();
+    private readonly SortedMergeDictionary<HashedKey<TreePath>, TrieNode> _stateNodes = new();
+    private readonly SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _storageNodes = new();
 
     internal SortedMergeDictionary<HashedKey<Address>, Account?> SortedAccounts => _accounts;
     internal SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> SortedStorages => _storages;
+    internal SortedMergeDictionary<HashedKey<Address>, bool> SortedSelfDestructs => _selfDestructedStorageAddresses;
     internal SortedMergeDictionary<HashedKey<TreePath>, TrieNode> SortedStateNodes => _stateNodes;
     internal SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> SortedStorageNodes => _storageNodes;
 
@@ -85,18 +74,22 @@ public sealed class MergedSnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        if (_stateNodes is not null)
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in _stateNodes) kvp.Value.PrunePersistedRecursively(1);
-        if (_storageNodes is not null)
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in _storageNodes) kvp.Value.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in _stateNodes) kvp.Value.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in _storageNodes) kvp.Value.PrunePersistedRecursively(1);
 
-        // Drop the merged arrays so the pooled shell does not pin them.
-        _accounts = null!;
-        _storages = null!;
-        _selfDestructedStorageAddresses = null!;
-        _stateNodes = null!;
-        _storageNodes = null!;
+        _accounts.NoResizeClear();
+        _storages.NoResizeClear();
+        _selfDestructedStorageAddresses.NoResizeClear();
+        _stateNodes.NoResizeClear();
+        _storageNodes.NoResizeClear();
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        _accounts.Dispose();
+        _storages.Dispose();
+        _selfDestructedStorageAddresses.Dispose();
+        _stateNodes.Dispose();
+        _storageNodes.Dispose();
+    }
 }

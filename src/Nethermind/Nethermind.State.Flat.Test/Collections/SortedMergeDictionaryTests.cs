@@ -131,6 +131,36 @@ public class SortedMergeDictionaryTests
         }
     }
 
+    [Test]
+    public void NoResizeClear_ThenRebuild_ReflectsNewDataAndReusesInstance()
+    {
+        using SortedMergeDictionary<int, int> dict = new();
+
+        Dictionary<int, int> first = [];
+        for (int i = 0; i < 300; i++) first[i] = i * 10;
+        dict.BuildFromUnsorted(first, Cmp);
+        Assert.That(dict.Count, Is.EqualTo(300));
+        Assert.That(dict.TryGetValue(5, out int v1), Is.True);
+        Assert.That(v1, Is.EqualTo(50));
+
+        dict.NoResizeClear();
+        Assert.That(dict.Count, Is.EqualTo(0));
+        Assert.That(dict.TryGetValue(5, out _), Is.False);
+
+        // Rebuild the same instance (arrays reused) via a merge with disjoint, smaller data.
+        SortedMergeDictionary<int, int> a = FromPairs((1000, 1), (1002, 1));
+        SortedMergeDictionary<int, int> b = FromPairs((1001, 2), (1002, 2));
+        dict.BuildFromMerge([a, b], Cmp);
+
+        Assert.That(dict.Count, Is.EqualTo(3));
+        Assert.That(dict.TryGetValue(5, out _), Is.False);       // old data gone
+        Assert.That(dict.TryGetValue(1001, out int v2), Is.True);
+        Assert.That(v2, Is.EqualTo(2));
+        Assert.That(dict.TryGetValue(1002, out int v3), Is.True);
+        Assert.That(v3, Is.EqualTo(2));                          // newest source wins
+        Assert.That(dict.Select(static kv => kv.Key), Is.EqualTo(new[] { 1000, 1001, 1002 }));
+    }
+
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)
     {
         Dictionary<int, int> source = [];

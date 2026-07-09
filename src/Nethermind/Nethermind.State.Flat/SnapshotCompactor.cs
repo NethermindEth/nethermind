@@ -154,32 +154,28 @@ public class SnapshotCompactor(
             ? null
             : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
-        SortedMergeDictionary<HashedKey<Address>, Account?> accounts = null!;
-        SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = null!;
-        SortedMergeDictionary<HashedKey<TreePath>, TrieNode> stateNodes = null!;
-        SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = null!;
+        // Rebuild the pooled content's dictionaries in place so their arrays are reused across compactions.
+        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(usage);
 
         using ArrayPoolListRef<Task> compactTask = new(4);
-        compactTask.Add(Task.Run(() => accounts = MergeCollection(
-            snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
-        compactTask.Add(Task.Run(() => storages = MergeCollection(
-            snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
-        compactTask.Add(Task.Run(() => stateNodes = MergeCollection(
-            snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
-        compactTask.Add(Task.Run(() => storageNodes = MergeCollection(
-            snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
+        compactTask.Add(Task.Run(() => MergeInto(
+            content.SortedAccounts, snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
+        compactTask.Add(Task.Run(() => MergeInto(
+            content.SortedStorages, snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
+        compactTask.Add(Task.Run(() => MergeInto(
+            content.SortedStateNodes, snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
+        compactTask.Add(Task.Run(() => MergeInto(
+            content.SortedStorageNodes, snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
 
-        SortedMergeDictionary<HashedKey<Address>, bool> selfDestructs =
-            SortedMergeDictionary<HashedKey<Address>, bool>.FromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
+        content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
 
         Task.WaitAll(compactTask.AsSpan());
 
-        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(usage);
-        content.SetContent(accounts, storages, selfDestructs, stateNodes, storageNodes);
         return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
-    private static SortedMergeDictionary<TKey, TValue> MergeCollection<TKey, TValue>(
+    private static void MergeInto<TKey, TValue>(
+        SortedMergeDictionary<TKey, TValue> target,
         SnapshotPooledList snapshots,
         IComparer<TKey> comparer,
         Func<MergedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromMerged,
@@ -188,14 +184,34 @@ public class SnapshotCompactor(
     {
         int count = snapshots.Count;
         SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
-        for (int i = 0; i < count; i++)
-        {
-            Snapshot source = snapshots[i];
-            sources[i] = source.IsSorted
-                ? fromMerged(source.MergedContent)
-                : SortedMergeDictionary<TKey, TValue>.FromUnsorted(fromMutable(source.Content), comparer);
-        }
 
-        return SortedMergeDictionary<TKey, TValue>.Merge(sources, comparer, keep);
+        // Already-sorted inputs are used directly; mutable inputs are sorted into a transient whose rented
+        // arrays are returned once the merge has copied their entries into the target.
+        List<SortedMergeDictionary<TKey, TValue>>? transients = null;
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Snapshot source = snapshots[i];
+                if (source.IsSorted)
+                {
+                    sources[i] = fromMerged(source.MergedContent);
+                }
+                else
+                {
+                    SortedMergeDictionary<TKey, TValue> transient = new();
+                    transient.BuildFromUnsorted(fromMutable(source.Content), comparer);
+                    sources[i] = transient;
+                    (transients ??= []).Add(transient);
+                }
+            }
+
+            target.BuildFromMerge(sources, comparer, keep);
+        }
+        finally
+        {
+            if (transients is not null)
+                foreach (SortedMergeDictionary<TKey, TValue> transient in transients) transient.Dispose();
+        }
     }
 }
