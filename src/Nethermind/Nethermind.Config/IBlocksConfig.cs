@@ -52,6 +52,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Experimental: skip speculative warming of main-thread-started transactions only below this gas limit; larger transactions keep warming after being started (races the main thread inside large cold transactions).", DefaultValue = "18446744073709551615", HiddenFromDocs = true)]
     ulong PreWarmSkipStartedMaxGas { get; set; }
 
+    [ConfigItem(Description = "Experimental: kick off a sender-free warm pass (tx.To + EIP-2930 lists) before sender recovery, overlapping block preparation with cache warming.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmEarlyKickoff { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

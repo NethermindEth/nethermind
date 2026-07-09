@@ -29,10 +29,8 @@ public class BranchProcessor(
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
-    private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -242,21 +240,10 @@ public class BranchProcessor(
     private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
         => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
 
-    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+    // Clear-task ownership lives in the prewarmer so an early (pre-recovery) kickoff can coordinate with it.
+    private void WaitForCacheClear() => preWarmer?.WaitForCacheClear();
 
-    private void QueueClearCaches(Task? preWarmTask)
-    {
-        if (preWarmTask is not null)
-        {
-            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
-        }
-        else if (preWarmer is not null)
-        {
-            preWarmer.ClearCaches();
-            _clearTask = Task.CompletedTask;
-        }
-    }
+    private void QueueClearCaches(Task? preWarmTask) => preWarmer?.QueueClearCaches(preWarmTask);
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {

@@ -186,6 +186,7 @@ public static class ReadTrace
     public static void BeginProvenance(long number)
     {
         if (!Enabled || _writerDead || _armed) return;
+        if (_provBlock == number) return; // already opened for this block (early kickoff + branch processor both call)
         if (!ShouldTrace(number)) return;
 
         _accountProv.Clear();

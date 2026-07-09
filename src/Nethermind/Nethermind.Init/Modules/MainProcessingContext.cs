@@ -77,6 +77,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         });
 
         _components = innerScope.Resolve<Components>();
+        // Same scoped instance BranchProcessor uses; enables the sender-free early warm kickoff.
+        innerScope.Resolve<BlockchainProcessor>().PreWarmer = innerScope.ResolveOptional<IBlockCachePreWarmer>();
 
         if (initConfig.ExitOnInvalidBlock)
         {

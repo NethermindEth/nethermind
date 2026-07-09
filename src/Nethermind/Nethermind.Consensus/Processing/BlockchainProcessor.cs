@@ -39,6 +39,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
 
+    /// <summary>Optional prewarmer for the sender-free early kickoff (wired for the main processor only).</summary>
+    public IBlockCachePreWarmer? PreWarmer { get; set; }
+
     private readonly IBranchProcessor _branchProcessor;
     private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
     private readonly IStateReader _stateReader;
@@ -678,6 +681,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     ThrowOrphanedBlock(firstBlock);
+                }
+
+                if (blocksToProcess.Count == 1 && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
+                {
+                    // Sender-free early warm: overlaps sender recovery (Preprocess below), branch setup, and scope open.
+                    PreWarmer?.PreWarmCachesEarly(firstBlock, parentOfFirstBlock);
                 }
             }
         }

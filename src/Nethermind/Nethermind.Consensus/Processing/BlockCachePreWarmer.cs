@@ -9,6 +9,8 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -36,6 +38,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly bool _parallelExecutionEnabled;
     private readonly bool _gasPriorityOrder;
     private readonly ulong _skipStartedMaxGas = ulong.MaxValue;
+    private readonly bool _earlyKickoffEnabled;
+    private readonly ISpecProvider? _specProvider;
+
+    private Task _clearTask = Task.CompletedTask;
+    private Hash256? _earlyWarmedBlock;
+    private Task? _earlyTask;
+    private CancellationTokenSource? _earlyCts;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -43,6 +52,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
+        ISpecProvider specProvider,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager
@@ -58,6 +68,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _gasPriorityOrder = blocksConfig.PreWarmGasPriorityOrder;
         _skipStartedMaxGas = blocksConfig.PreWarmSkipStartedMaxGas;
+        _earlyKickoffEnabled = blocksConfig.PreWarmEarlyKickoff;
+        _specProvider = specProvider;
     }
 
     internal BlockCachePreWarmer(
@@ -81,12 +93,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
-            CacheType result = _preBlockCaches.ClearCaches();
-            _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
-            if (result != default)
+            if (_earlyWarmedBlock is not null && _earlyWarmedBlock == suggestedBlock.Hash)
             {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
+                // Early kickoff already cleared the caches and is warming this exact block from the same
+                // parent basis — keep its warmth (and let a still-running early pass finish; Sets are idempotent).
+                _earlyWarmedBlock = null;
+            }
+            else
+            {
+                // Reorg or no early phase: drain any stale-basis early writers BEFORE clearing so a
+                // straggler cannot repopulate the cleared caches with wrong-parent values.
+                DrainEarlyWarm();
+                CacheType result = _preBlockCaches.ClearCaches();
+                _nodeStorageCache.ClearCaches();
+                _nodeStorageCache.Enabled = true;
+                if (result != default)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
+                }
             }
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
@@ -131,10 +155,117 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
+        DrainEarlyWarm();
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
+    }
+
+    public void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+
+    public void QueueClearCaches(Task? preWarmTask)
+    {
+        if (preWarmTask is not null)
+        {
+            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
+            _clearTask = preWarmTask.ContinueWith(static (_, state) => ((BlockCachePreWarmer)state!).ClearCaches(), this, TaskContinuationOptions.ExecuteSynchronously);
+        }
+        else
+        {
+            ClearCaches();
+            _clearTask = Task.CompletedTask;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Runs on the block-processing thread before sender recovery: clears the caches for the incoming
+    /// block (after awaiting the previous block's clear) and warms what is known without senders —
+    /// tx.To targets and EIP-2930 access lists — overlapping recovery, branch setup, and scope open.
+    /// The main <see cref="PreWarmCaches"/> detects the matching block hash and skips its entry clear.
+    /// </remarks>
+    public void PreWarmCachesEarly(Block suggestedBlock, BlockHeader parent)
+    {
+        if (!_earlyKickoffEnabled || _specProvider is null || _preBlockCaches is null || _concurrencyLevel <= 1) return;
+        if (suggestedBlock.Transactions.Length < 3 || suggestedBlock.Hash is null) return;
+
+        IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
+        if (!ShouldPreWarm(spec)) return;
+
+        WaitForCacheClear();
+        DrainEarlyWarm();
+        _preBlockCaches.ClearCaches();
+        _nodeStorageCache.ClearCaches();
+        _nodeStorageCache.Enabled = true;
+        ReadTrace.BeginProvenance((long)suggestedBlock.Number);
+
+        _earlyWarmedBlock = suggestedBlock.Hash;
+        _earlyCts = new CancellationTokenSource();
+        EarlyWarmer warmer = new(this, suggestedBlock, parent, spec, _earlyCts.Token);
+        _earlyTask = Task.Run(warmer.Warm);
+    }
+
+    private void DrainEarlyWarm()
+    {
+        Task? earlyTask = _earlyTask;
+        if (earlyTask is null) return;
+
+        _earlyCts?.Cancel();
+        try
+        {
+            earlyTask.GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            // Early warming is best-effort; failures must never surface on the processing path.
+        }
+
+        _earlyCts?.Dispose();
+        _earlyCts = null;
+        _earlyTask = null;
+        _earlyWarmedBlock = null;
+    }
+
+    /// <summary>Sender-free warm pass: tx.To addresses and EIP-2930 access lists against parent state.</summary>
+    private sealed class EarlyWarmer(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken token)
+    {
+        public void Warm()
+        {
+            try
+            {
+                // Modest parallelism: sender recovery (ecrecover) runs concurrently on the same cores.
+                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Min(4, preWarmer._concurrencyLevel), CancellationToken = token };
+                WarmingState<Block> baseState = new(preWarmer._envPool, block, parent);
+
+                ParallelUnbalancedWork.For(
+                    0,
+                    block.Transactions.Length,
+                    parallelOptions,
+                    baseState.InitThreadState,
+                    (i, state) =>
+                    {
+                        Transaction tx = state.Payload.Transactions[i];
+                        IWorldState worldState = state.Scope!.WorldState;
+                        WarmupSender(tx.SenderAddress, tx.To, worldState);
+                        if (spec.UseTxAccessLists)
+                        {
+                            worldState.WarmUp(tx.AccessList, token);
+                        }
+
+                        return state;
+                    },
+                    WarmingState<Block>.FinallyAction);
+            }
+            catch (OperationCanceledException)
+            {
+                // Drained by the main phase or a reorg clear.
+            }
+            catch (Exception ex)
+            {
+                preWarmer._logger.DebugError("Error early pre-warming", ex);
+            }
+        }
     }
 
     public void Dispose() => (_envPool as IDisposable)?.Dispose();
@@ -484,23 +615,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
-        {
-            try
-            {
-                if (sender is not null)
-                {
-                    worldState.WarmUp(sender);
-                }
+    }
 
-                if (to is not null)
-                {
-                    worldState.WarmUp(to);
-                }
-            }
-            catch (MissingTrieNodeException)
+    private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+    {
+        try
+        {
+            if (sender is not null)
             {
+                worldState.WarmUp(sender);
             }
+
+            if (to is not null)
+            {
+                worldState.WarmUp(to);
+            }
+        }
+        catch (MissingTrieNodeException)
+        {
         }
     }
 

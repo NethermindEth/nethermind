@@ -117,5 +117,7 @@ namespace Nethermind.Config
         public bool PreWarmGasPriorityOrder { get; set; }
 
         public ulong PreWarmSkipStartedMaxGas { get; set; } = ulong.MaxValue;
+
+        public bool PreWarmEarlyKickoff { get; set; }
     }
 }
