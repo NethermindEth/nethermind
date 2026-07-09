@@ -1070,6 +1070,58 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip7928_failed_create_transaction_converts_constructor_storage_writes_to_reads()
+    {
+        UInt256 firstSlot = 0x0213f3;
+        UInt256 secondSlot = 0x0299e5;
+        Address sender = new("0x794e2057f9431e744a4afe921b1b31e59cba098f");
+        const ulong senderNonce = 0x16f2;
+        Address createdAddress = ContractAddress.From(sender, senderNonce);
+        Address expectedCreatedAddress = new("0x156d71b39621fdc2874c338ad00ea3f217772bea");
+        byte[] initCode = Bytes.FromHexString("0x7f560366dc4c14e1aa851f2e7969f7c3548c4b7ef3956dd33c15478c1f69b4c0f77f00000000000000000000000000000000000000000000000000000000000359975b423d6202ffff165d7f00000000000000000000000000000000000000000000000000000000000000016000527f00000000000000000000000000000000000000000000000000000000000000026020527f00000000000000000000000000000000000000000000000000000000000000006040527f00000000000000000000000000000000000000000000000000000000000000006060526040608060806000600060065af160805160a0515b38805f5f397f63000001295679d1b17509c02f9d517586428cc0f274502d118da5e307fd2de95f5263d3957f48905f5ff55f5f5f5f5f855af25b5a5b5b5b5b6e1ab12b339bf5f833257bb589d8270f77a3559d51d2ae65b743fe7d754c875d02144c0a7648a313f37c5a250ad56acd7da32a235b9558e04cc64c6c9e731f454e2d16ae35046c73e817f4000fc7ea694874556a30b2d9d243fb99e55b6202ffff16556202ffff16556cfbf570e1773df9f20082487b8e5b4578f5f35da5f55fad85f36573dc922c2a67deccee3e0a6c3040d95b6100ef57921d6202ffff165d615e023261aa41608e60765f60145f5f635a65f89000");
+
+        InitWorldState(TestState);
+        TestState.CreateAccount(sender, _accountBalance, senderNonce);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(120_000_000)
+            .WithBaseFee(1)
+            .TestObject;
+        Transaction createTx = Build.A.Transaction
+            .WithCode(initCode)
+            .WithGasLimit(1_000_000)
+            .WithValue(UInt256.Zero)
+            .WithSenderAddress(sender)
+            .WithNonce(senderNonce)
+            .TestObject;
+        CallOutputTracer tracer = new();
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(createTx, tracer);
+
+        AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
+        Assert.That(createdChanges, Is.Not.Null);
+        AccountChangesAtIndex actualCreatedChanges = createdChanges!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdAddress, Is.EqualTo(expectedCreatedAddress));
+            Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(TestState.AccountExists(createdAddress), Is.False);
+            Assert.That(actualCreatedChanges.StorageChangeCount, Is.EqualTo(0));
+            Assert.That(actualCreatedChanges.StorageReads, Is.EquivalentTo(new[] { firstSlot, secondSlot }));
+            Assert.That(actualCreatedChanges.NonceChange, Is.Null);
+            Assert.That(actualCreatedChanges.CodeChange, Is.Null);
+            Assert.That(actualCreatedChanges.BalanceChange, Is.Null);
+        }
+    }
+
     private void InitWorldState(
         IWorldState worldState,
         byte[]? extraCode = null,

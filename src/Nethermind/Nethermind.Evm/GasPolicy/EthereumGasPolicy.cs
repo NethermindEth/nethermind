@@ -82,6 +82,25 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
+    {
+        if (stateGasCost <= 0)
+        {
+            return 0;
+        }
+
+        long reservoirContribution = gas.StateReservoir;
+        if (reservoirContribution <= 0)
+        {
+            return (ulong)stateGasCost;
+        }
+
+        return stateGasCost > reservoirContribution
+            ? (ulong)(stateGasCost - reservoirContribution)
+            : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, ulong cost)
     {
         if (gas.Value < cost)
@@ -107,22 +126,23 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost)
     {
-        if (gas.StateReservoir >= stateGasCost)
+        long reservoir = gas.StateReservoir;
+        if (reservoir >= stateGasCost)
         {
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
             return true;
         }
 
-        long spillAmount = stateGasCost - gas.StateReservoir;
-        if (!TryConsume(ref gas, (ulong)spillAmount))
+        ulong spillAmount = CalculateStateGasSpill(in gas, stateGasCost);
+        if (!TryConsume(ref gas, spillAmount))
         {
             return false;
         }
 
-        gas.StateReservoir = 0;
+        gas.StateReservoir = Math.Min(0, reservoir);
         gas.StateGasUsed += stateGasCost;
-        gas.StateGasSpill += spillAmount;
+        gas.StateGasSpill += (long)spillAmount;
         return true;
     }
 
