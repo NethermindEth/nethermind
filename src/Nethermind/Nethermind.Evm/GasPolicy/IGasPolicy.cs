@@ -64,6 +64,25 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong CalculateStateGasSpill(in TSelf gas, long stateGasCost)
+    {
+        if (stateGasCost <= 0)
+        {
+            return 0;
+        }
+
+        long reservoirContribution = TSelf.GetStateReservoir(in gas);
+        if (reservoirContribution <= 0)
+        {
+            return (ulong)stateGasCost;
+        }
+
+        return stateGasCost > reservoirContribution
+            ? (ulong)(stateGasCost - reservoirContribution)
+            : 0;
+    }
+
     static abstract void Consume(ref TSelf gas, ulong cost);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
