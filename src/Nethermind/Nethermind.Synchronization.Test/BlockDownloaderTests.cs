@@ -161,6 +161,39 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Full_sync_fast_forwards_over_blocks_already_covered_by_persisted_state()
+    {
+        SettableFullStateFinder stateFinder = new();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IFullStateFinder>(stateFinder));
+        Context ctx = node.Resolve<Context>();
+        Assert.That(node.Resolve<IFullStateFinder>(), Is.SameAs(stateFinder));
+
+        ulong persistedState = 16;
+        stateFinder.Best = persistedState;
+
+        SyncPeerMock syncPeer = new(persistedState + 1, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(persistedState));
+
+        // The persisted state jumps ahead of the now non-genesis head, as after a crash with a flat
+        // backend. Blocks in the gap must fast-forward onto the main chain rather than be sent for
+        // processing (which would find no parent state, throw, and delete the branch).
+        ulong advancedState = 32;
+        stateFinder.Best = advancedState;
+        syncPeer.ExtendTree(64);
+
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        Hash256 gapBlockHash = ctx.BlockTree.FindHeader(advancedState, BlockTreeLookupOptions.None)!.Hash!;
+        Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
+        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+        Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
     public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
     {
         ulong headNumber = 200;
@@ -1024,6 +1057,12 @@ public partial class BlockDownloaderTests
             ReceiptStorage = this.ReceiptStorage;
             PeerPool = this.PeerPool;
         }
+    }
+
+    private sealed class SettableFullStateFinder : IFullStateFinder
+    {
+        public ulong Best { get; set; }
+        public ulong FindBestFullState() => Best;
     }
 
     private class SyncPeerMock : ISyncPeer
