@@ -89,7 +89,7 @@ public class NetworkNode
 
     public PublicKey NodeId => IsEnode ? Enode.PublicKey : GetEnrPublicKey();
     public string Host => IsEnode ? Enode.HostIp.ToString() : HostIp.ToString();
-    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.DiscoveryIp ?? IPAddress.None;
+    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.Ip ?? IPAddress.None;
     public int Port => IsEnode ? Enode.Port : Enr!.TcpPort ?? 0;
     public int DiscoveryPort => IsEnode ? Enode.DiscoveryPort : Enr!.DiscoveryPort ?? 0;
     public long Reputation { get; set; }

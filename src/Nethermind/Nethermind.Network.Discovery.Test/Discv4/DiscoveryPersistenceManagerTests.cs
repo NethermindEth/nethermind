@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -153,6 +154,24 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Preserve_Tcp_And_Discovery_Ports(CancellationToken cancellationToken)
+        {
+            NetworkNode networkNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            _networkStorage.UpdateNodes([networkNode]);
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+
+            await _discv4Adapter.Received(1).Ping(
+                Arg.Is<Node>(n =>
+                    n.Id.Equals(networkNode.NodeId) &&
+                    n.Host == networkNode.Host &&
+                    n.Port == 30303 &&
+                    n.DiscoveryPort == 30304),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =
@@ -178,8 +197,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
         }
 
+        [TestCase(30303, 30304)]
+        [TestCase(0, 30304)]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Tcp_And_Discovery_Ports(
+            int tcpPort,
+            int discoveryPort,
+            CancellationToken cancellationToken)
+        {
+            Node node = tcpPort == 0
+                ? Node.FromDiscoveryEndpoint(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("192.168.1.1"), discoveryPort))
+                : new Node(TestItem.PublicKeyA, "192.168.1.1", tcpPort, discoveryPort);
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node, cancellationToken);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                Assert.That(persistedNodes[0].Port, Is.EqualTo(tcpPort));
+                Assert.That(persistedNodes[0].DiscoveryPort, Is.EqualTo(discoveryPort));
+            }
+        }
+
         [Test]
-        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage()
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage(CancellationToken cancellationToken)
         {
             NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
             Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
@@ -187,22 +228,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 Enr = enr
             };
 
-            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
-
-            _kademlia.IterateNodes().Returns([node]);
-
-            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
-
-            while (_discoveryDb.Count == 0)
-            {
-                cts.Token.ThrowIfCancellationRequested();
-                await Task.Delay(10, cts.Token);
-            }
-
-            await cts.CancelAsync();
-
-            NetworkStorage reloadedStorage = new(_discoveryDb, LimboLogs.Instance);
-            NetworkNode[] persistedNodes = reloadedStorage.GetPersistedNodes();
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node, cancellationToken);
 
             using (Assert.EnterMultipleScope())
             {
@@ -219,5 +245,57 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
         }
 
+        private async Task<NetworkNode[]> RunSinglePersistenceCommit(Node node, CancellationToken cancellationToken)
+        {
+            TaskCompletionSource commitSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            INetworkStorage storage = new SignallingNetworkStorage(_networkStorage, commitSource);
+            using CancellationTokenSource cts = new();
+            DiscoveryPersistenceManager persistenceManager = CreateManager(storage);
+
+            _kademlia.IterateNodes().Returns([node]);
+
+            Task persistenceTask = persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
+            await commitSource.Task.WaitAsync(cancellationToken);
+            await StopPersistenceCommit(persistenceTask, cts);
+
+            NetworkStorage reloadedStorage = new(_discoveryDb, LimboLogs.Instance);
+            return reloadedStorage.GetPersistedNodes();
+        }
+
+        private static async Task StopPersistenceCommit(Task persistenceTask, CancellationTokenSource cts)
+        {
+            await cts.CancelAsync();
+            try
+            {
+                await persistenceTask;
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                return;
+            }
+        }
+
+        private sealed class SignallingNetworkStorage(INetworkStorage storage, TaskCompletionSource commitSource) : INetworkStorage
+        {
+            public NetworkNode[] GetPersistedNodes() => storage.GetPersistedNodes();
+
+            public int PersistedNodesCount => storage.PersistedNodesCount;
+
+            public void UpdateNode(NetworkNode node) => storage.UpdateNode(node);
+
+            public void UpdateNodes(IEnumerable<NetworkNode> nodes) => storage.UpdateNodes(nodes);
+
+            public void RemoveNode(PublicKey nodeId) => storage.RemoveNode(nodeId);
+
+            public void StartBatch() => storage.StartBatch();
+
+            public void Commit()
+            {
+                storage.Commit();
+                commitSource.TrySetResult();
+            }
+
+            public bool AnyPendingChange() => storage.AnyPendingChange();
+        }
     }
 }
