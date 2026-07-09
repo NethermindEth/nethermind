@@ -204,9 +204,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void getState_reads_live_slot_by_raw_key()
     {
-        // Regression: db.getState takes the raw storage slot (the preimage) like Geth, and must reflect the
-        // in-flight (uncommitted) value written earlier in the same execution. SStore_double writes
-        // SampleHexData1 to slot 0 and SampleHexData2 to slot 32; at STOP both are still uncommitted.
         string userTracer = @"{
                     retVal: [],
                     step: function(log, db) {
