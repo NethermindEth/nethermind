@@ -15,16 +15,14 @@ internal sealed class XdcSubnetRewardCalculatorSource(
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
-    ISigningTxCache signingTxCache,
-    IRewardsStore rewardsStore)
+    ISigningTxCache signingTxCache)
     : XdcRewardCalculatorSource(
         epochSwitchManager,
         specProvider,
         blockTree,
         masternodeVotingContract,
         mintedRecordContract,
-        signingTxCache,
-        rewardsStore)
+        signingTxCache)
 {
     public override IRewardCalculator Get(ITransactionProcessor processor) => new XdcSubnetRewardCalculator(
         EpochSwitchManager,
@@ -33,6 +31,5 @@ internal sealed class XdcSubnetRewardCalculatorSource(
         MasternodeVotingContract,
         MintedRecordContract,
         SigningTxCache,
-        processor,
-        RewardsStore);
+        processor);
 }
