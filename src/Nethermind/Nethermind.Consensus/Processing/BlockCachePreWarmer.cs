@@ -192,8 +192,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // Hashes of the transactions this session warms, accumulated by this single loop thread and handed to the
-        // reactive pass (via the marker) so it can skip senders already fully warmed here. Marker + set are allocated
-        // once per session (not per delta) and the set grows in place.
+        // reactive pass (via the marker) so it can skip senders already fully warmed here. The set is reused across
+        // sessions (cleared at session start); only the small marker is allocated per session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
         try
         {
