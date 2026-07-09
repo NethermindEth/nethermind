@@ -13,6 +13,7 @@ public interface ISnapshotRepository
 
     void AddStateId(in StateId stateId);
     bool TryAddSnapshot(Snapshot snapshot);
+    bool TryReplaceSnapshot(in StateId stateId, Snapshot newSnapshot);
     bool TryAddCompactedSnapshot(Snapshot snapshot);
     bool TryLeaseState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);

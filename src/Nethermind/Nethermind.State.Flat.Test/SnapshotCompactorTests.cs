@@ -665,4 +665,71 @@ public class SnapshotCompactorTests
 
         Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
     }
+
+    [Test]
+    public void ConvertToSorted_PreservesDataAsSortedContent()
+    {
+        Address address = new("0x1111111111111111111111111111111111111111");
+        UInt256 storageIndex = new(7);
+        TreePath statePath = TreePath.FromHexString("abcd");
+        TreePath storagePath = TreePath.FromHexString("1234");
+        Hash256 addressHash = address.ToAccountPath.ToCommitment();
+        SlotValue slotValue = new(new byte[] { 1, 2, 3 });
+
+        StateId from = new(4, Keccak.Zero);
+        StateId to = new(5, Keccak.Zero);
+        using Snapshot mutable = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        mutable.Content.Accounts[address] = new Account(1, 100);
+        mutable.Content.Storages[(address, storageIndex)] = slotValue;
+        mutable.Content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        mutable.Content.StorageNodes[(addressHash, storagePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        mutable.Content.SelfDestructedStorageAddresses[address] = false;
+        Assert.That(mutable.IsSorted, Is.False);
+
+        using Snapshot sorted = _compactor.ConvertToSorted(mutable);
+
+        Assert.That(sorted.IsSorted, Is.True);
+        Assert.That(sorted.From, Is.EqualTo(from));
+        Assert.That(sorted.To, Is.EqualTo(to));
+        Assert.That(sorted.AccountsCount, Is.EqualTo(1));
+        Assert.That(sorted.StoragesCount, Is.EqualTo(1));
+        Assert.That(sorted.StateNodesCount, Is.EqualTo(1));
+        Assert.That(sorted.StorageNodesCount, Is.EqualTo(1));
+
+        Assert.That(sorted.TryGetAccount(address, out Account? account), Is.True);
+        AssertAccountSame(new Account(1, 100), account);
+        Assert.That(sorted.TryGetStorage((address, storageIndex), out SlotValue? stored), Is.True);
+        AssertSlotValueEqual(slotValue, stored);
+        Assert.That(sorted.TryGetStateNode(statePath, out _), Is.True);
+        Assert.That(sorted.TryGetStorageNode((addressHash, storagePath), out _), Is.True);
+        Assert.That(sorted.HasSelfDestruct(address), Is.True);
+    }
+
+    [Test]
+    public void TryReplaceSnapshot_SwapsRegistryEntryToSortedForm()
+    {
+        Address address = new("0x2222222222222222222222222222222222222222");
+        StateId from = new(4, Keccak.Zero);
+        StateId to = new(5, Keccak.Zero);
+
+        Snapshot mutable = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        mutable.Content.Accounts[address] = new Account(2, 200);
+        Assert.That(_snapshotRepository.TryAddSnapshot(mutable), Is.True);
+
+        Snapshot sorted = _compactor.ConvertToSorted(mutable);
+        Assert.That(_snapshotRepository.TryReplaceSnapshot(to, sorted), Is.True);
+
+        Assert.That(_snapshotRepository.TryLeaseState(to, out Snapshot? leased), Is.True);
+        using (leased)
+        {
+            Assert.That(leased, Is.SameAs(sorted));
+            Assert.That(leased!.IsSorted, Is.True);
+            Assert.That(leased.TryGetAccount(address, out Account? account), Is.True);
+            AssertAccountSame(new Account(2, 200), account);
+        }
+
+        // Replacing a state id that is not present fails.
+        using Snapshot orphan = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        Assert.That(_snapshotRepository.TryReplaceSnapshot(new StateId(999, Keccak.Zero), orphan), Is.False);
+    }
 }

@@ -174,6 +174,20 @@ public class SnapshotCompactor(
         return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
+    public Snapshot ConvertToSorted(Snapshot source)
+    {
+        SnapshotContent mutable = source.Content;
+        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(ResourcePool.Usage.ConvertedBase);
+
+        content.SortedAccounts.BuildFromUnsorted(mutable.Accounts, SnapshotKeyComparers.Address);
+        content.SortedStorages.BuildFromUnsorted(mutable.Storages, SnapshotKeyComparers.Storage);
+        content.SortedSelfDestructs.BuildFromUnsorted(mutable.SelfDestructedStorageAddresses, SnapshotKeyComparers.Address);
+        content.SortedStateNodes.BuildFromUnsorted(mutable.StateNodes, SnapshotKeyComparers.StateNode);
+        content.SortedStorageNodes.BuildFromUnsorted(mutable.StorageNodes, SnapshotKeyComparers.StorageNode);
+
+        return new Snapshot(source.From, source.To, content, _resourcePool, ResourcePool.Usage.ConvertedBase);
+    }
+
     private static void MergeInto<TKey, TValue>(
         SortedMergeDictionary<TKey, TValue> target,
         SnapshotPooledList snapshots,
