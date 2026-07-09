@@ -445,9 +445,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        long childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        long stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
-        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + (ulong)stateSpill;
+        ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
+        ulong codeDepositGasCost = regularDepositCost + stateSpill;
+        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost
+            && gasAvailableForCodeDeposit - regularDepositCost >= stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -460,7 +461,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
                 if (_isTracingActionsCached)
                 {
-                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, code);
+                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
                 }
             }
         }
@@ -938,14 +939,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong regularDepositCost = 0;
         long stateDepositCost = 0;
-        ulong codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
+        ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
         if (currentState.ExecutionType.IsAnyCreate())
         {
-            _ = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost);
-            hasEnoughGasForCodeDeposit =
-                TGasPolicy.GetRemainingGas(currentState.Gas) >= regularDepositCost &&
-                TGasPolicy.GetRemainingGas(currentState.Gas) + (ulong)TGasPolicy.GetStateReservoir(in currentState.Gas) >= (ulong)stateDepositCost;
+            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost))
+            {
+                ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
+                ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
+                codeDepositGasCost = regularDepositCost + stateSpill;
+                hasEnoughGasForCodeDeposit = remainingGas >= regularDepositCost
+                    && remainingGas - regularDepositCost >= stateSpill;
+            }
+            else
+            {
+                codeDepositGasCost = ulong.MaxValue;
+                hasEnoughGasForCodeDeposit = false;
+            }
         }
 
         // Cache the output bytes for reuse in the tracing reports.

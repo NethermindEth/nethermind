@@ -1596,7 +1596,9 @@ namespace Nethermind.Evm.TransactionProcessing
             byte[] code)
         {
             ulong remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
-            bool hasEnoughGas = remainingGas >= regularDepositCost && remainingGas + (ulong)TGasPolicy.GetStateReservoir(in unspentGas) >= (ulong)stateDepositCost;
+            ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in unspentGas, stateDepositCost);
+            bool hasEnoughGas = remainingGas >= regularDepositCost
+                && remainingGas - regularDepositCost >= stateSpill;
 
             if (!hasEnoughGas)
                 return !spec.ChargeForTopLevelCreate;
