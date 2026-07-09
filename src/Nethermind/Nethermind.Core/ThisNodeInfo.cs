@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -11,7 +12,7 @@ namespace Nethermind.Core
     public static class ThisNodeInfo
     {
         // Layout breakpoints based on what content can fit (without wrapping):
-        //   - GlyphLogoMinWidth: room for the glyph art (47 cols + breathing room)
+        //   - GlyphLogoMinWidth: room for the glyph art (widest line is 50 cols)
         //   - FullLogoMinWidth:  room for the figlet wordmark (69 cols + breathing room)
         // Below GlyphLogoMinWidth we fall back to a one-line text logo.
         private const int GlyphLogoMinWidth = 50;
@@ -23,7 +24,7 @@ namespace Nethermind.Core
         private const string SeparatorTitle = "  Initialization Completed  ";
 
         // Visible widths used to compute centered padding at runtime.
-        private const int GlyphWidth = 47;
+        private const int GlyphWidth = 50;
         private const int WordmarkWidth = 69;
         private const string Url = "https://www.nethermind.io";
 
@@ -152,7 +153,7 @@ namespace Nethermind.Core
                 int w = Console.WindowWidth;
                 return w > 0 ? w : SeparatorMaxWidth;
             }
-            catch
+            catch (IOException)
             {
                 return SeparatorMaxWidth;
             }
