@@ -144,21 +144,23 @@ public partial class BlockProcessor(
 
         CommitState(spec);
 
-        CalculateBlooms(receipts);
-
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        // Overlapped readers of `receipts` only touch fields already populated by CalculateBlooms, so no data race.
-        Task<Hash256>? receiptsRootTask = null;
-        if (ShouldCalculateReceiptsRootInParallel(receipts.Length))
+        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
+        if (ShouldCalculateReceiptsInBackground(receipts))
         {
-            receiptsRootTask = Task.Run(() => CalculateReceiptsRoot(receipts, spec, block));
+            bloomsAndReceiptsRootTask = Task.Run(() =>
+            {
+                CalculateBlooms(receipts);
+                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
+            });
         }
         else
         {
+            CalculateBlooms(receipts);
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
@@ -171,7 +173,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        ReceiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 
         CommitStateAndStorageRoots(spec);
 
@@ -187,9 +189,9 @@ public partial class BlockProcessor(
 
         _balManager.SetBlockAccessList(block);
 
-        if (receiptsRootTask is not null)
+        if (bloomsAndReceiptsRootTask is not null)
         {
-            header.ReceiptsRoot = receiptsRootTask.GetAwaiter().GetResult();
+            (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
         }
 
         header.Hash = header.CalculateHash();
@@ -218,7 +220,29 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static partial bool ShouldCalculateReceiptsRootInParallel(int receiptCount);
+    private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts);
+
+    private static int CountLogs(TxReceipt[] receipts)
+    {
+        int count = 0;
+        foreach (TxReceipt? t in receipts)
+        {
+            count += t.Logs?.Length ?? 0;
+        }
+
+        return count;
+    }
+
+    private static Bloom AccumulateBlockBloom(TxReceipt[] receipts)
+    {
+        Bloom blockBloom = new();
+        foreach (TxReceipt? t in receipts)
+        {
+            blockBloom.Accumulate(t.Bloom!);
+        }
+
+        return blockBloom;
+    }
 
     private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
@@ -236,9 +260,9 @@ public partial class BlockProcessor(
         // allocation overhead that exceeds the bloom computation cost for small blocks.
         if (receipts.Length <= Environment.ProcessorCount)
         {
-            for (int i = 0; i < receipts.Length; i++)
+            foreach (TxReceipt? t in receipts)
             {
-                receipts[i].CalculateBloom();
+                t.CalculateBloom();
             }
 
             return;
