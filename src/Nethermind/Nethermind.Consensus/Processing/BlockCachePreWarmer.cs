@@ -41,7 +41,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ulong _skipStartedMaxGas = ulong.MaxValue;
     private readonly bool _earlyKickoffEnabled;
     private readonly ISpecProvider? _specProvider;
-    private readonly IHasAccessList? _beaconBlockRootHandler;
 
     private Task _clearTask = Task.CompletedTask;
     private Hash256? _earlyWarmedBlock;
@@ -55,7 +54,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         ISpecProvider specProvider,
-        IBeaconBlockRootHandler beaconBlockRootHandler,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager
@@ -73,7 +71,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _skipStartedMaxGas = blocksConfig.PreWarmSkipStartedMaxGas;
         _earlyKickoffEnabled = blocksConfig.PreWarmEarlyKickoff;
         _specProvider = specProvider;
-        _beaconBlockRootHandler = beaconBlockRootHandler;
     }
 
     internal BlockCachePreWarmer(
@@ -186,50 +183,80 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>
     /// Runs on the block-processing thread before sender recovery: clears the caches for the incoming
     /// block (after awaiting the previous block's clear) and warms what is known without senders —
-    /// tx.To targets and EIP-2930 access lists — overlapping recovery, branch setup, and scope open.
-    /// The main <see cref="PreWarmCaches"/> detects the matching block hash and skips its entry clear.
+    /// tx.To targets, EIP-2930 access lists, and the EIP-4788 system slots — overlapping recovery,
+    /// branch setup, and scope open. The main <see cref="PreWarmCaches"/> detects the matching block
+    /// hash and skips its entry clear. MUST NOT touch the main world state: it has no open scope at
+    /// this point (BeaconBlockRootHandler.GetAccessList does, hence the state-free list below).
     /// </remarks>
     public void PreWarmCachesEarly(Block suggestedBlock, BlockHeader parent)
     {
         if (!_earlyKickoffEnabled || _specProvider is null || _preBlockCaches is null || _concurrencyLevel <= 1) return;
         if (suggestedBlock.Transactions.Length < 3 || suggestedBlock.Hash is null) return;
 
-        IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
-        if (!ShouldPreWarm(spec)) return;
-
-        WaitForCacheClear();
-        DrainEarlyWarm();
-        _preBlockCaches.ClearCaches();
-        _nodeStorageCache.ClearCaches();
-        _nodeStorageCache.Enabled = true;
-        ReadTrace.BeginProvenance((long)suggestedBlock.Number);
-
-        _earlyWarmedBlock = suggestedBlock.Hash;
-        _earlyCts = new CancellationTokenSource();
-        CancellationToken token = _earlyCts.Token;
-
-        // System-call slots need the most lead: the beacon-roots call is the very first thing the
-        // block executes, and a kickoff at PreWarmCaches time demonstrably loses that race.
-        SystemAccessListsWarmer? systemWarmer = null;
-        if (_beaconBlockRootHandler is not null)
+        try
         {
-            systemWarmer = new SystemAccessListsWarmer(this, parent, GetAccessLists(suggestedBlock, spec, [_beaconBlockRootHandler]));
-            ThreadPool.UnsafeQueueUserWorkItem(systemWarmer, preferLocal: false);
+            IReleaseSpec spec = _specProvider.GetSpec(suggestedBlock.Header);
+            if (!ShouldPreWarm(spec)) return;
+
+            WaitForCacheClear();
+            DrainEarlyWarm();
+            _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
+            ReadTrace.BeginProvenance((long)suggestedBlock.Number);
+
+            _earlyCts = new CancellationTokenSource();
+            CancellationToken token = _earlyCts.Token;
+
+            // System-call slots need the most lead: the beacon-roots call is the very first thing the
+            // block executes, and a kickoff at PreWarmCaches time demonstrably loses that race.
+            SystemAccessListsWarmer? systemWarmer = null;
+            ArrayPoolList<AccessList>? systemLists = BuildEip4788AccessLists(suggestedBlock, spec);
+            if (systemLists is not null)
+            {
+                systemWarmer = new SystemAccessListsWarmer(this, parent, systemLists);
+                ThreadPool.UnsafeQueueUserWorkItem(systemWarmer, preferLocal: false);
+            }
+
+            EarlyWarmer warmer = new(this, suggestedBlock, parent, spec, token);
+            _earlyTask = Task.Run(() =>
+            {
+                try
+                {
+                    warmer.Warm();
+                }
+                finally
+                {
+                    systemWarmer?.Wait();
+                    systemWarmer?.Dispose();
+                }
+            });
+            _earlyWarmedBlock = suggestedBlock.Hash;
         }
-
-        EarlyWarmer warmer = new(this, suggestedBlock, parent, spec, token);
-        _earlyTask = Task.Run(() =>
+        catch (Exception ex)
         {
-            try
-            {
-                warmer.Warm();
-            }
-            finally
-            {
-                systemWarmer?.Wait();
-                systemWarmer?.Dispose();
-            }
-        });
+            // Early warming must never surface on the processing path; leave no partial tag behind.
+            _earlyWarmedBlock = null;
+            _logger.DebugError("Error starting early pre-warm", ex);
+        }
+    }
+
+    /// <summary>State-free EIP-4788 access list (contract + the two ring-buffer slots derived from the header timestamp).</summary>
+    /// <remarks>Unlike <see cref="BeaconBlockRootHandler.BeaconRootsAccessList"/> this skips the contract-existence
+    /// check, which reads the main world state — not available before the processing scope opens. Warming the slots
+    /// of a nonexistent contract is harmless (throwaway reads on a scratch scope).</remarks>
+    private static ArrayPoolList<AccessList>? BuildEip4788AccessLists(Block block, IReleaseSpec spec)
+    {
+        const int HistoryBufferLength = 8191;
+        if (!spec.IsBeaconBlockRootAvailable || block.IsGenesis || block.Header.ParentBeaconBlockRoot is null) return null;
+
+        Address contract = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+        ulong slotIndex = block.Header.Timestamp % HistoryBufferLength;
+        UInt256 slot = slotIndex;
+        AccessList.Builder builder = new AccessList.Builder().AddAddress(contract).AddStorage(in slot);
+        slot = slotIndex + HistoryBufferLength;
+        builder.AddStorage(in slot);
+        return new ArrayPoolList<AccessList>(1) { builder.Build() };
     }
 
     private void DrainEarlyWarm()
