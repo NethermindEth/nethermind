@@ -18,11 +18,8 @@ public interface IBlockCachePreWarmer : IDisposable
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 
     /// <summary>
-    /// Starts a speculative warming session against <paramref name="head"/>'s post-state, warming batches from
-    /// <paramref name="nextDelta"/> until <paramref name="cancellationToken"/> fires or the next block enters processing.
-    /// If that block builds on <paramref name="head"/> under the same fork, <see cref="PreWarmCaches"/> reuses the warmed
-    /// caches. <paramref name="generation"/> is a monotonic head counter; a session is dropped if a newer one has already
-    /// started. Returns the session task.
+    /// Speculatively warms against <paramref name="head"/> from <paramref name="nextDelta"/> until cancelled or the next
+    /// block enters processing; <paramref name="generation"/> drops the session if a newer head has already started one.
     /// </summary>
     Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken);
 }

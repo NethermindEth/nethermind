@@ -18,12 +18,9 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Speculatively warms the block-processing state caches in the idle gap between blocks. It selects transactions with
-/// the block producer's own <see cref="ITxSource"/> (effective-gas-price ordered, gas-limited, fully filtered), so it
-/// warms the transactions most likely to be in the next block, and runs repeated delta passes across the slot to catch
-/// late arrivals. When the next block builds on that head under the same fork, <see cref="IBlockCachePreWarmer"/> reuses
-/// the warmed caches instead of clearing them. Warming is cancelled the moment a real block enters processing, so it
-/// never competes with block validation.
+/// Speculatively warms the state caches in the idle gap between blocks, selecting the txs most likely to be in the next
+/// block via the producer's <see cref="ITxSource"/> and re-sampling across the slot. The warmed caches are reused when
+/// the next block builds on that head; warming is cancelled the moment a real block enters processing.
 /// </summary>
 public sealed class MempoolStatePrewarmer : IDisposable
 {
@@ -71,11 +68,11 @@ public sealed class MempoolStatePrewarmer : IDisposable
     {
         Block head = e.Block;
 
-        // Skip while syncing/catching up: a stale head means there is no pre-block idle gap to fill.
+        // Skip while catching up: a stale head means there is no idle gap to fill.
         if (head.Header.Timestamp + _maxHeadAgeSeconds < _timestamper.UnixTime.Seconds) return;
 
         long generation = Interlocked.Increment(ref _generation);
-        // Select and warm off the block-tree notification thread so head updates are never delayed.
+        // Queue off the notification thread so head updates are never delayed.
         ThreadPool.UnsafeQueueUserWorkItem(
             static state => state.self.PreWarmFromMempool(state.head, state.generation),
             (self: this, head, generation),
