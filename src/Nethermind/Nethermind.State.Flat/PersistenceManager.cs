@@ -460,7 +460,7 @@ public class PersistenceManager(
         // the background persistence loop that unwinds this does not otherwise report it.
         try
         {
-            persistenceBarrier.FlushBefore(snapshot.To.BlockNumber);
+            persistenceBarrier.FlushDeferred();
         }
         catch (Exception e)
         {

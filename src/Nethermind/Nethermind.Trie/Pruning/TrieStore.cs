@@ -78,7 +78,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private readonly IFinalizedStateProvider _finalizedStateProvider;
-    private readonly IStatePersistenceBarrier _persistenceBarrier;
 
     public TrieStore(
         INodeStorage nodeStorage,
@@ -86,15 +85,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPersistenceStrategy persistenceStrategy,
         IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
-        ILogManager logManager,
-        IStatePersistenceBarrier? persistenceBarrier = null)
+        ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<TrieStore>();
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
         _persistenceStrategy = persistenceStrategy;
         _finalizedStateProvider = finalizedStateProvider;
-        _persistenceBarrier = persistenceBarrier ?? NullStatePersistenceBarrier.Instance;
 
         _publicStore = new TrieKeyValueStore(this);
         _persistedNodeRecorder = PersistedNodeRecorder;
@@ -1096,10 +1093,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         WriteFlags writeFlags = WriteFlags.None
     )
     {
-        // Make this block's deferred block-data durable before its state is written and the node storage
-        // WAL is flushed below, so a crash cannot leave persisted state without it. See IStatePersistenceBarrier.
-        _persistenceBarrier.FlushBefore(commitSet.BlockNumber);
-
         INodeStorage.IWriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
         const int parallelBoundaryPathLength = 2;
 

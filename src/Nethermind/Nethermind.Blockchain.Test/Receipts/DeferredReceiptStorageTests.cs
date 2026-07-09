@@ -221,7 +221,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // Consumer is not running, so only the barrier (via the writer's drain) makes it durable.
         Assert.That(DurableReceipts(block), Is.Empty, "not durable until the barrier flushes");
 
-        _barrier.FlushBefore(block.Number);
+        _barrier.FlushDeferred();
 
         DurableReceipts(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
     }
@@ -236,7 +236,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         Hash256 txHash = block.Transactions[0].Hash!;
         Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.Null, "tx-index not durable until the barrier flushes");
 
-        _barrier.FlushBefore(block.Number);
+        _barrier.FlushDeferred();
 
         Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.EqualTo(block.Hash), "tx-index durable after the barrier flush");
     }

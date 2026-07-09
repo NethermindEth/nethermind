@@ -105,7 +105,7 @@ public class DeferredBlockStoreTests
         // The consumer is not running, so only the barrier (via the writer's drain) makes these durable.
         Assert.That(Reopen().Get(a.Number, a.Hash!), Is.Null, "not durable until the barrier flushes");
 
-        _barrier.FlushBefore(6);
+        _barrier.FlushDeferred();
 
         Assert.That(Reopen().Get(a.Number, a.Hash!), Is.EqualTo(a).UsingBlockComparer());
         Assert.That(Reopen().Get(b.Number, b.Hash!), Is.EqualTo(b).UsingBlockComparer());

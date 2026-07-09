@@ -8,7 +8,7 @@ namespace Nethermind.Core;
 
 /// <summary>
 /// Sequences deferred block-data durability against state persistence: the state-persistence path calls
-/// <see cref="FlushBefore"/> before persisting a block, which drains every queued deferred write and then
+/// <see cref="FlushDeferred"/> before persisting a block, which drains every queued deferred write and then
 /// fsyncs the block-data databases.
 /// </summary>
 /// <remarks>
@@ -29,17 +29,16 @@ public interface IStatePersistenceBarrier
     void RegisterFlush(Action flush);
 
     /// <summary>
-    /// Invoked before the state for <paramref name="blockNumber"/> is persisted: runs every registered drain,
-    /// then every registered flush, so all deferred block data is durable first.
+    /// Invoked before a block's state is persisted: runs every registered drain, then every registered
+    /// flush, so all deferred block data is durable first.
     /// </summary>
-    /// <param name="blockNumber">The block number whose state is about to be persisted (informational).</param>
-    void FlushBefore(ulong blockNumber);
+    void FlushDeferred();
 }
 
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
 public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
 {
-    // Copy-on-write: rare startup registration rebuilds the arrays under a lock; FlushBefore reads lock-free.
+    // Copy-on-write: rare startup registration rebuilds the arrays under a lock; FlushDeferred reads lock-free.
     private readonly Lock _registrationLock = new();
     private volatile Action[] _drains = [];
     private volatile Action[] _flushes = [];
@@ -58,7 +57,7 @@ public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
         lock (_registrationLock) _flushes = Append(_flushes, flush);
     }
 
-    public void FlushBefore(ulong blockNumber)
+    public void FlushDeferred()
     {
         Action[] drains = _drains;
         for (int i = 0; i < drains.Length; i++) drains[i]();
@@ -89,5 +88,5 @@ public sealed class NullStatePersistenceBarrier : IStatePersistenceBarrier
 
     public void RegisterFlush(Action flush) { }
 
-    public void FlushBefore(ulong blockNumber) { }
+    public void FlushDeferred() { }
 }

@@ -155,7 +155,7 @@ public class BlockAccessListStoreTests
 
         Assert.That(new BlockAccessListStore(db).Exists(a.Number, a.Hash!), Is.False, "not durable until the barrier flushes");
 
-        barrier.FlushBefore(6);
+        barrier.FlushDeferred();
 
         Assert.That(ReadDurable(db, a), Is.EqualTo(balA));
         Assert.That(ReadDurable(db, b), Is.EqualTo(balB));
