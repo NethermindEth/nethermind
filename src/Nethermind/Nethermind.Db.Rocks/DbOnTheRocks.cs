@@ -564,10 +564,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // Capping it into the block cache bounds it; pinning L0 keeps the hottest filters resident for reads.
             // Applied through the options string (not the C# table-options API) so it survives the
             // rocksdb_get_options_from_string merge below, which rewrites block_based_table_factory fields.
+            //
+            // Partitioned index/filter (two-level index + partitioned filter, top level pinned) is the canonical
+            // way to bound this without the whole-filter thrash of monolithic caching: only the small top-level
+            // block stays resident and individual partitions are cached/evicted at block granularity, so a random
+            // point-get touches one partition instead of re-reading a whole SST's filter. It is a write-time SST
+            // format, so it applies to newly written/compacted files (existing files keep their monolithic filters,
+            // read transparently), and needs no migration.
             rocksDbOptions +=
                 "block_based_table_factory.cache_index_and_filter_blocks=true;" +
                 "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
-                "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;";
+                "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
+                "block_based_table_factory.partition_filters=true;" +
+                "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
+                "block_based_table_factory.pin_top_level_index_and_filter=true;" +
+                "block_based_table_factory.metadata_block_size=4096;";
         }
 
         IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(rocksDbOptions));
