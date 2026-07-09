@@ -69,8 +69,6 @@ public class Eip7981Tests
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         (int addressCount, int storageKeyCount) = accessList.Count;
-        // Standard intrinsic: TX_BASE + recipient cold touch + per access-list entry + floor tokens;
-        // the calldata floor is TX_BASE + floor tokens only (no recipient/access-entry component).
         ulong expectedStandard = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
             + (ulong)addressCount * Eip8038Constants.AccessListAddressCost
@@ -104,13 +102,11 @@ public class Eip7981Tests
 
     private static IEnumerable<TestCaseData> CalldataWithAccessListCases()
     {
-        // standardWins: with little calldata the standard's fixed recipient/access-entry component
-        // dominates the floor's 16-vs-4 per-token premium.
+        // standardWins: the fixed recipient/access-entry component dominates the small-calldata floor premium.
         yield return new TestCaseData(new byte[] { 0 }, 1, 0, true)
             .SetName("1 zero byte + 1 address: standard wins");
 
-        // floorWins: enough calldata that the floor's per-token premium outgrows the standard's
-        // fixed recipient + access-entry costs.
+        // floorWins: enough calldata for the floor's per-token premium to outgrow the fixed component.
         yield return new TestCaseData(new byte[800], 1, 0, false)
             .SetName("800 zero bytes + 1 address: floor wins");
 
@@ -135,7 +131,6 @@ public class Eip7981Tests
         Transaction transaction = new() { To = Address.Zero, Data = data, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
-        // The transaction is charged the larger of the standard and floor intrinsic.
         if (standardWins)
         {
             Assert.That(cost.Standard, Is.GreaterThan(cost.FloorGas));

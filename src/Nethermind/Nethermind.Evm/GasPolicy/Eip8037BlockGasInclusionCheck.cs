@@ -40,10 +40,8 @@ public static class Eip8037BlockGasInclusionCheck
         return Outcome.Ok;
     }
 
-    // EIP-8037: tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas); block gasUsed =
-    // max(ΣregularPreRefund, Σstate). Before-refund gas is EIP-8037's "Integration with EIP-7778"
-    // form and assumes both are active together (base EIP-8037 uses after-refund gas). The
-    // EIP-7623/7976 calldata floor is sender-only and must not inflate this dimension.
+    // tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas) (EIP-8037's EIP-7778 form;
+    // both are assumed active together). The calldata floor is sender-only and must not inflate this.
     public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas)
         => preRefundGas.SaturatingSub(blockStateGas);
 }

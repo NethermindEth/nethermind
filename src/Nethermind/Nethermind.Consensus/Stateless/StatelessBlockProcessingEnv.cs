@@ -60,7 +60,7 @@ public class StatelessBlockProcessingEnv(
             },
             new WithdrawalProcessorFactory(logManager),
             codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
-            witnessMode: true
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(

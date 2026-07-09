@@ -5,10 +5,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// Pins the EIP-8038 gas parameters and guards the derivation relationships so the derived
-/// values stay consistent with the base parameters.
-/// </summary>
+/// <summary>Pins the EIP-8038 gas parameters and guards the derivation relationships.</summary>
 public class Eip8038ConstantsTests
 {
     [Test]

@@ -118,7 +118,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
-        // EIP-8038 reprices the CREATE/CREATE2 account-creation regular cost to CREATE_ACCESS.
         ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
             : TEip8037.IsActive ? GasCostOf.CreateRegular
             : GasCostOf.Create;
@@ -252,7 +251,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
-    // EIP-2780/EIP-8038 flat value-moving call cost.
     static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas);
     static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
     static abstract bool ConsumeLogEmission(ref TSelf gas, ulong topicCount, ulong dataSize);

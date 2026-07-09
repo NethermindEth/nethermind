@@ -4,7 +4,6 @@
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -54,12 +53,8 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        // In witness (stateless) mode the requests hash is a consensus-layer attestation that the
-        // stateless guest does not re-derive; use the stateless processor so the block keeps its
-        // provided requests hash while the request system calls still run for their state effects.
-        IExecutionRequestsProcessor executionRequestsProcessor = witnessMode
-            ? new StatelessExecutionRequestsProcessor(postExecution.TxProcessor)
-            : new ExecutionRequestsProcessor(postExecution.TxProcessor);
+        IExecutionRequestsProcessor executionRequestsProcessor =
+            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
         executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

@@ -110,8 +110,6 @@ public class Eip8037BlockGasIntegrationTests
     [Test]
     public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
     {
-        // cap (filler) + the create's full tx.gas (intrinsic_regular + intrinsic_state) so the
-        // regular-dimension reservation of min(TX_MAX, tx.gas) exactly fits.
         ulong blockGasLimit = 16_777_216 + 53_000 + IntrinsicNewAccountState;
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         Transaction createTx = Build.A.Transaction.WithHash(TestItem.KeccakB)

@@ -606,8 +606,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         _previousCallResult = StatusCode.FailureBytes;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
-        // Captured before the pop: the failed *CALL did not create its (dead) recipient, so the parent
-        // refunds the NEW_ACCOUNT state gas it charged up-front for the value transfer (EIP-8037).
+        // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
 
         // Reset output destination and return data.
@@ -796,8 +795,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         _previousCallResult = StatusCode.FailureBytes;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
-        // Captured before the pop: the halted *CALL did not create its (dead) recipient, so the parent
-        // refunds the NEW_ACCOUNT state gas it charged up-front for the value transfer (EIP-8037).
+        // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
 
         // Reset output destination and clear return data.

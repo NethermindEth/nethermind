@@ -372,7 +372,6 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // Charge gas based on whether this is a cold or warm storage access.
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
