@@ -29,7 +29,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private readonly SpmcRingBuffer<SlotJob> _slotJobBuffer = new(SlotBufferSize);
 
-    // This was also used to store the job from prewarmer. It will be added back in another PR.
+    // Multi-producer jobs: BAL reads and prewarmer-driven warm hints.
     private readonly MpmcRingBuffer<Job> _jobBufferMultiThreaded = new(BufferSize);
 
     // A job needs to be small, within one cache line (64B) ideally.
