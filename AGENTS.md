@@ -18,7 +18,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - When designing a solution, try to design as a plugin, altering behavior through module registration without modifying existing code (see [di-patterns.md](./.agents/rules/di-patterns.md)). Even if not a plugin, it's generally a good idea to alter behavior without changing current code:
   - Where possible, do not add additional interfaces or public methods — this tends to break plugins, cause unnecessarily tight coupling, and make implications harder to reason about.
   - Prefer composition over inheritance — inheritance has caused many extensibility issues in this code base.
-- Prefer solutions that remove code over ones that add it. If a change makes existing code unused, remove it.
+- Prefer solutions in this order: first removing code, then adding code, and only when neither works, modifying existing code. If a change makes existing code unused, remove it.
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
 - Prefer self-documenting code — clear names and structure should remove the need for most comments. Emit a comment only when it captures context that is not obvious from the code itself: the _why_ behind a non-obvious choice, an invariant, a workaround, an EIP/Yellow-Paper reference, a subtle edge case, etc. Comments that merely restate the code are noise — don't add them, and remove them when you encounter them. Keep comments concise and ensure that they make sense in the context of the master branch, not referencing the specifics of the current session.
