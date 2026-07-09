@@ -250,8 +250,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots.Clear();
     }
 
+    /// <summary>
+    /// Flushes finalized storage roots while leaving excluded contracts for the final commit.
+    /// </summary>
+    internal void FlushToTreeExcept(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, IReadOnlySet<AddressAsKey> exclude)
+    {
+        if (_toUpdateRoots.Count == 0)
+            return;
+
+        using ArrayPoolList<AddressAsKey> processed = new(_toUpdateRoots.Count);
+        foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
+        {
+            if (kv.Value && !exclude.Contains(kv.Key))
+            {
+                processed.Add(kv.Key);
+            }
+        }
+
+        if (processed.Count == 0)
+            return;
+
+        UpdateRootHashes(writeBatch, processed);
+
+        foreach (AddressAsKey key in processed.AsSpan())
+        {
+            _toUpdateRoots.Remove(key);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys);
 
     private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {

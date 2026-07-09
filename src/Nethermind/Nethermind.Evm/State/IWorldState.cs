@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -32,6 +33,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
+
+    /// <summary>
+    /// Starts computing storage roots for contracts whose storage is final for the block.
+    /// </summary>
+    /// <param name="exclude">Contracts whose storage may still be written before the final commit.</param>
+    void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude) { }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell.

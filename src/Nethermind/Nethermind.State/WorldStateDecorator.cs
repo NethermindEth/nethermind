@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -98,6 +99,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
+
+    public virtual void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude)
+        => State.BeginEarlyStorageRoots(exclude);
 
     public virtual void DeleteAccount(Address address)
         => State.DeleteAccount(address);

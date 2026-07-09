@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -148,6 +149,16 @@ public partial class BlockProcessor(
         TransactionsExecuted?.Invoke();
 
         CommitState(spec);
+
+        // User-transaction storage is final here. Compute those storage roots while the
+        // remaining block stages prepare receipts, blooms, rewards, and requests. The request
+        // predeploys are excluded because they are written later in this method.
+        HashSet<AddressAsKey> lateStorageWriters = [];
+        if (spec.Eip7002ContractAddress is not null) lateStorageWriters.Add(spec.Eip7002ContractAddress);
+        if (spec.Eip7251ContractAddress is not null) lateStorageWriters.Add(spec.Eip7251ContractAddress);
+        _stateProvider.BeginEarlyStorageRoots(lateStorageWriters);
+
+        CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
         {
