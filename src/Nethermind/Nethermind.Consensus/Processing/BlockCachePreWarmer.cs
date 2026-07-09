@@ -41,18 +41,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
 
-    // Speculative (mempool-driven) warming state. All start/cancel/join transitions are serialized by _speculativeLock
-    // so at most one speculative pass ever writes to the shared caches, and it is always joined before the reactive
-    // path (PreWarmCaches / ClearCaches) touches them.
+    // Start/cancel/join are serialized by _speculativeLock, and a session is always joined before the reactive path
+    // touches the shared caches.
     private readonly Lock _speculativeLock = new();
     private CancellationTokenSource? _speculativeCts;
     private Task _speculativeTask = Task.CompletedTask;
     private long _speculativeGeneration = long.MinValue;
 
-    // Published (via Volatile) by a speculative session; consumed once by the reactive path when the next block builds
-    // on the warmed parent under the same fork. Carries the set of speculatively-warmed tx hashes so the reactive pass
-    // can skip senders already fully warmed here. The set is written only by the (single) speculative loop thread and
-    // read by the reactive workers after they join that loop, so no synchronization on the set itself is needed.
+    // Written only by the loop thread and read after it is joined, so the marker and its tx-hash set need no further sync.
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
@@ -93,13 +89,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
 
-        // A speculative mempool pass may still be writing to the shared caches; take exclusive ownership before touching them.
         CancelAndJoinSpeculative();
 
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
-            // Handoff: a speculative pass already warmed these caches for this exact parent and fork. Keep the entries;
-            // the reactive warm below skips senders already fully warmed and only fills the gap (e.g. builder txs).
+            // Handoff: keep the speculatively-warmed caches; the reactive warm below fills only the un-warmed senders.
             PrewarmMetrics.MempoolPrewarmHandoffs++;
             _nodeStorageCache.Enabled = true;
         }
@@ -117,7 +111,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, systemAccessLists);
     }
 
-    /// <summary>Warms the caches against <paramref name="parent"/>'s post-state on a background task; assumes the caches are already prepared (cleared or handed off).</summary>
     private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
@@ -129,7 +122,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
     }
 
-    /// <summary>Warms one delta block into the caches synchronously (joins its workers before returning); used by the speculative loop.</summary>
+    // Synchronous variant used by the speculative loop: joins its workers before returning.
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
     {
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, token, systemAccessLists: default);
@@ -140,9 +133,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
-        // Reset main-thread progress. Safe for the speculative caller too: a speculative pass never overlaps main
-        // execution — the reactive path joins it (CancelAndJoinSpeculative) before ProcessOne runs, and the next
-        // speculative pass only starts on NewHeadBlock, i.e. after processing has completed.
+        // Safe for the speculative caller too: it never overlaps main execution (reactive path joins it before
+        // ProcessOne; the next session only starts on NewHeadBlock, after processing completes).
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
@@ -164,7 +156,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (generation <= _speculativeGeneration) return _speculativeTask;
             _speculativeGeneration = generation;
 
-            // One speculative session at a time; drop any earlier one before warming against the new head.
             CancelAndJoinSpeculativeLocked();
 
             // Link to the caller's token so the caller can cancel (dispose); the reactive path cancels this CTS directly.
@@ -178,21 +169,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 
-            // The loop is the session task, so a single cancel + join (reactive path) drains every delta pass.
             return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
         }
     }
 
-    /// <summary>
-    /// Runs repeated delta passes against <paramref name="head"/> until cancelled: warms each batch of not-yet-warmed
-    /// transactions from <paramref name="nextDelta"/>, accumulating committed base-state reads into the caches, and
-    /// re-samples after a short idle so transactions arriving later in the slot are still warmed.
-    /// </summary>
+    /// <summary>Repeated delta passes against <paramref name="head"/> until cancelled, re-sampling after a short idle so late-arriving txs are still warmed.</summary>
     private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
-        // Hashes of the transactions this session warms, accumulated by this single loop thread and handed to the
-        // reactive pass (via the marker) so it can skip senders already fully warmed here. The set is reused across
-        // sessions (cleared at session start); only the small marker is allocated per session.
+        // The tx-hash set is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
         try
         {
@@ -205,8 +189,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (delta is not null && delta.Transactions.Length > 0)
                 {
                     WarmDeltaSync(delta, head, spec, token);
-                    // A delta cancelled mid-warm only partially warmed; don't record its hashes or the reactive pass
-                    // would skip senders never fully warmed. The prior completed delta's marker still stands.
+                    // Don't record hashes of a delta cancelled mid-warm, or the reactive pass would skip senders never
+                    // fully warmed. The prior completed delta's marker still stands.
                     if (token.IsCancellationRequested) break;
                     foreach (Transaction tx in delta.Transactions)
                     {
@@ -217,9 +201,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     Volatile.Write(ref _warmMarker, marker);
                 }
 
-                // Rate-limit every pass (not just empty ones): a churning mempool can't keep a lazy, non-cancellable
-                // ITxSource selection continuously in flight, which caps txpool-lock/CPU pressure and reactive join
-                // latency. A cancellation wakes us immediately and ends the loop.
+                // Rate-limit every pass (not only empty ones) so a churning mempool can't keep a lazy, non-cancellable
+                // ITxSource selection continuously in flight. Cancellation wakes us immediately and ends the loop.
                 if (token.WaitHandle.WaitOne(delay)) break;
             }
         }
@@ -266,10 +249,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
         WarmMarker? marker = Volatile.Read(ref _warmMarker);
-        // Fork identity via ReferenceEquals: ISpecProvider returns cached per-fork singletons, so the speculative pass
-        // and the reactive path see the same instance for the same fork. A mismatch (fresh instance, or the speculative
-        // pass's estimated timestamp landing on the other side of a fork boundary) only disables the handoff — the
-        // caches are then cleared as usual, so this is a warming-effectiveness guard, not a correctness one.
+        // Fork identity via ReferenceEquals: ISpecProvider hands out per-fork singletons, so a match means same fork.
+        // A mismatch only disables the handoff (caches are cleared as usual) — an effectiveness guard, not correctness.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
             warmedTxHashes = marker.WarmedTxHashes;
@@ -296,8 +277,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        // A speculative pass may still be warming the caches (e.g. when a tiny block skips reactive prewarming);
-        // stop it before clearing so we don't clear underneath a live writer.
         CancelAndJoinSpeculative();
         ClearWarmMarker();
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
@@ -409,8 +388,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
-                        // A sender whose whole group was already warmed speculatively is in the cache; re-warming it is
-                        // waste, so skip it and leave the reactive pass to the transactions we did not pre-warm.
+                        // Whole group already warmed speculatively — skip; leave the rest to the reactive pass.
                         if (blockState.SpeculativelyWarmed is { } warmed)
                         {
                             if (AllSpeculativelyWarmed(txList, warmed))
@@ -706,6 +684,5 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
 
-    /// <summary>Handoff descriptor for a speculative session: the parent and fork it warmed, and the tx hashes it warmed (so the reactive pass can skip them).</summary>
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
 }

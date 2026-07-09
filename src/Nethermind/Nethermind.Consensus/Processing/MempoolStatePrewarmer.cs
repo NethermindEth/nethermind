@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -26,8 +27,6 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public sealed class MempoolStatePrewarmer : IDisposable
 {
-    // How long a delta pass waits before re-sampling when it found nothing new to warm: small enough to catch
-    // transactions arriving late in the slot, large enough not to busy-spin.
     private const int IdlePassDelayMs = 100;
 
     private readonly ITxSource _txSource;
@@ -38,10 +37,9 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly ILogger _logger;
     private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
-    // Cancels the in-flight speculative session on dispose; linked into the prewarmer's own session token.
     private readonly CancellationTokenSource _cts = new();
 
-    // Monotonic head counter so a queued pass runs only while it still reflects the latest head.
+    // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
 
     public MempoolStatePrewarmer(
@@ -93,8 +91,6 @@ public sealed class MempoolStatePrewarmer : IDisposable
             BlockHeader headHeader = head.Header;
             NextBlockContext next = PrepareNextBlockContext(headHeader);
 
-            // Per-session dedup: how far each sender is already warmed. Only the speculative loop thread touches it
-            // (the delta source below is invoked serially), so no synchronization is needed.
             Dictionary<AddressAsKey, int> warmedPerSender = [];
 
             _preWarmer.StartSpeculativePreWarm(
@@ -144,14 +140,14 @@ public sealed class MempoolStatePrewarmer : IDisposable
     }
 
     /// <summary>
-    /// Picks the transactions to warm on this delta pass from the producer's already gas-price-ordered, gas-limited,
-    /// filtered selection, deduping per sender: a sender is skipped when all of its selected transactions are already
-    /// warmed; otherwise its full selected set is replayed so later-nonce transactions get their predecessors' state.
-    /// <paramref name="warmedPerSender"/> is updated in place with how far each sender has now been warmed.
+    /// Picks the transactions to warm this pass from the producer's ordered/filtered selection, skipping senders whose
+    /// selected txs are all already warmed (tracked in <paramref name="warmedPerSender"/>); a sender with new txs has its
+    /// full set replayed so later-nonce txs see their predecessors' state.
     /// </summary>
     internal static Transaction[] SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender)
     {
         Dictionary<AddressAsKey, List<Transaction>> bySender = [];
+        int total = 0;
         foreach (Transaction tx in orderedTxs)
         {
             if (tx.SenderAddress is not Address sender) continue;
@@ -161,9 +157,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 bySender[sender] = group;
             }
             group.Add(tx);
+            total++;
         }
 
-        List<Transaction> delta = [];
+        using ArrayPoolListRef<Transaction> delta = new(total);
         foreach (KeyValuePair<AddressAsKey, List<Transaction>> senderGroup in bySender)
         {
             if (senderGroup.Value.Count <= warmedPerSender.GetValueOrDefault(senderGroup.Key)) continue;
