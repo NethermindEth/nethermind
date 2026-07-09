@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -50,7 +51,7 @@ public partial class BlockAccessListManager(
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
     ITransactionProcessorFactory? transactionProcessorFactory = null,
-    bool witnessMode = false)
+    IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();

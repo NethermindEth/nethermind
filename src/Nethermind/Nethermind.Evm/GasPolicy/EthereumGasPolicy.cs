@@ -230,8 +230,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             accessTracker.WarmUp(address);
         }
 
-        // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at
-        // tx start, so the reorder does not change what is charged.
+        // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
             true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
@@ -240,7 +239,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         };
     }
 
-    // EIP-8038 reprices the (flat) cold account-access cost.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ColdAccountAccessCost(IReleaseSpec spec) =>
         spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
@@ -261,8 +259,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         if (accessTracker.WarmUp(in storageCell))
             return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
-        // EIP-8038 charges the warm-access cost on SSTORE too (the net-metered charge is dropped);
-        // pre-8038, a warm SSTORE access is free here and the warm cost comes from net metering.
+        // EIP-8038 charges the warm-access cost on SSTORE too; the net-metered charge is dropped.
         if (storageAccessType == StorageAccessType.SLOAD || spec.IsEip8038Enabled)
             return UpdateGas(ref gas, GasCostOf.WarmStateRead);
         return true;
@@ -310,8 +307,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag
     {
-        // EIP-8038 reprices the SSTORE write component (charged on the first change to a slot,
-        // for both fresh slots and resets) to a flat STORAGE_WRITE.
+        // EIP-8038: STORAGE_WRITE is charged on the first change to a slot (fresh or reset).
         if (!TIsSlotCreation.IsActive)
             return UpdateGas(ref gas, spec.IsEip8038Enabled ? Eip8038Constants.StorageWrite : spec.GasCosts.SStoreResetCost);
 
@@ -425,16 +421,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong ApplyCodeInsertRefunds(ref EthereumGasPolicy gas, ulong codeInsertRefunds, IReleaseSpec spec, long stateGasFloor)
-        // Under EIP-8037 the per-authorization state refund is applied pre-execution in
-        // Apply8037DelegationRefunds; only the regular refund is surfaced for the refund counter here.
         => GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeCallValueTransfer(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
-    // EIP-2780/EIP-8038: a value-bearing call charges a flat CALL_VALUE; the new-account cost
-    // is a separate NEW_ACCOUNT state charge.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeCallValueTransferEip2780(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, Eip8038Constants.CallValue);
