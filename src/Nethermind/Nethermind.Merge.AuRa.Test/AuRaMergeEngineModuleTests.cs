@@ -79,7 +79,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         "0x6a48eec80d3637d43c48957ef7248cd5d674fb21a71815dd929c95394b7d625a",
         "0x20b06a2d847a9aec7dd557e884e9944fec06783c45cf74ad1b77e9aca9817253",
         "0x9292b2b53d9dfc6f3b1f23d1ed2fdfef79b1be03a121d2b5191ea8bdcca71f5e",
-        "0xa24fe41c710a4080",
+        "0xe98c1541c6165f4a",
         _auraWithdrawalContractAddress)]
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? customWithdrawalContractAddress)
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);

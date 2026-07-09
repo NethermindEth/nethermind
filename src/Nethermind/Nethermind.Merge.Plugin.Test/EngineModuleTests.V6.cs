@@ -42,7 +42,8 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
-    [TestCase("0xfa626c866af6101fff6c41cd7a58eb16d76cb15cd4c4dc3823feeca5427f0cf0", "0xcc8e83383f9e859ea506694937d26f41a428f53672cc6cf22b6418af55b23679", "0x4df9e49a3232355b73d9536ac066c9c4d80e1055216568169a75a6627c7cc050", "0x9d653f691832a003")]
+    [TestCase("0xfa626c866af6101fff6c41cd7a58eb16d76cb15cd4c4dc3823feeca5427f0cf0", "0xcc8e83383f9e859ea506694937d26f41a428f53672cc6cf22b6418af55b23679", "0x4df9e49a3232355b73d9536ac066c9c4d80e1055216568169a75a6627c7cc050", "0x72ebf00f29826cfe")]
+    [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
         string blockHash,
@@ -57,6 +58,7 @@ public partial class EngineModuleTests
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         const ulong slotNumber = 1;
+        ulong targetGasLimit = chain.BlockTree.Head!.GasLimit;
         var fcuState = new
         {
             headBlockHash = startingHead.ToString(),
@@ -72,6 +74,7 @@ public partial class EngineModuleTests
             withdrawals,
             parentBeaconBLockRoot = Keccak.Zero,
             slotNumber = slotNumber.ToHexString(true),
+            targetGasLimit = targetGasLimit.ToHexString(true),
         };
         object?[] parameters = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
 
@@ -368,6 +371,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [],
             SlotNumber = 1,
+            TargetGasLimit = genesis.Header.GasLimit
         };
 
         Transaction tx = Build.A.Transaction
@@ -512,6 +516,7 @@ public partial class EngineModuleTests
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
             SlotNumber = chain.BlockTree.Head!.SlotNumber + 1,
+            TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
@@ -852,6 +857,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = [withdrawal],
             SlotNumber = slotNumber,
+            TargetGasLimit = chain.BlockTree.Head!.GasLimit
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
