@@ -43,7 +43,7 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null)
+        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
 
@@ -82,6 +82,11 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                     .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
+
+            if (trieWarmer is not null)
+            {
+                _containerBuilder.AddSingleton(trieWarmer);
+            }
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
@@ -891,6 +896,59 @@ public class FlatWorldStateScopeProviderTests
         reader.ResumeReads.Set();
 
         Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
+    }
+
+    [TestCase(true, false, TestName = "StorageHintSet_SlotRingAccepts_DoesNotFallBack")]
+    [TestCase(false, true, TestName = "StorageHintSet_SlotRingFull_FallsBackToMpmcBuffer")]
+    [TestCase(false, false, TestName = "StorageHintSet_BothBuffersFull_DropsHint")]
+    public void StorageHintSet_FallsBackToMpmcBufferWhenSlotRingIsFull(bool slotRingAccepts, bool mpmcAccepts)
+    {
+        RecordingTrieWarmer warmer = new(slotRingAccepts, mpmcAccepts);
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+
+        storageTree.HintSet((UInt256)1, [1]);
+
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
+        storageTree.HintSet((UInt256)1, [1]);
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // An accepted push must have incremented the outstanding-warmup counter (and a dropped one must not):
+        // after balancing accepted pushes, Dispose should not enter the wait loop.
+        bool enteredWaitLoop = false;
+        scope.OnWaitingForWarmups = () => enteredWaitLoop = true;
+        if (slotRingAccepts || mpmcAccepts) scope.DecrementOutstandingWarmups();
+        scope.Dispose();
+        Assert.That(enteredWaitLoop, Is.False);
+    }
+
+    private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
+    {
+        public int SlotJobPushes { get; private set; }
+        public int MpmcSlotJobPushes { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobPushes++;
+            return acceptSlotJob;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            MpmcSlotJobPushes++;
+            return acceptMpmcSlotJob;
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
     }
 
     private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader

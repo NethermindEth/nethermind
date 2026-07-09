@@ -4,6 +4,7 @@
 using System.Net;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Enr;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
@@ -12,17 +13,50 @@ namespace Nethermind.Network.Dns.Test;
 [TestFixture]
 public class EnrDiscoveryCreateNodeTests
 {
-    [TestCase(30303, 30304, ExpectedResult = 30303)]
-    [TestCase(null, 30303, ExpectedResult = null)]
-    [TestCase(0, 30303, ExpectedResult = null)]
-    public int? Creates_node_only_for_records_with_a_nonzero_tcp_port(int? tcpPort, int? udpPort)
+    [TestCase(30303, 30304, true, 30303, 30304, true)]
+    [TestCase(30303, null, true, 30303, 30303, false)]
+    [TestCase(null, 30304, false, null, null, false)]
+    [TestCase(0, 30304, false, null, null, false)]
+    public void TryCreateNode_creates_peer_candidate_with_optional_discovery_port(
+        int? tcpPort,
+        int? udpPort,
+        bool expectedResult,
+        int? expectedPort,
+        int? expectedDiscoveryPort,
+        bool expectedDiscoveryEndpoint)
     {
-        NodeRecord record = new();
-        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-        record.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
-        if (tcpPort is not null) record.SetEntry(new TcpEntry(tcpPort.Value));
-        if (udpPort is not null) record.SetEntry(new UdpEntry(udpPort.Value));
+        NodeRecord nodeRecord = CreateNodeRecord(tcpPort, udpPort);
 
-        return EnrDiscovery.CreateNode(record)?.Port;
+        bool result = EnrDiscovery.TryCreateNode(nodeRecord, out Node? node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(node is not null, Is.EqualTo(expectedResult));
+            if (expectedResult)
+            {
+                Assert.That(node!.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(node.Port, Is.EqualTo(expectedPort));
+                Assert.That(node.DiscoveryPort, Is.EqualTo(expectedDiscoveryPort));
+                Assert.That(node.HasDiscoveryEndpoint, Is.EqualTo(expectedDiscoveryEndpoint));
+                Assert.That(node.Enr, Is.SameAs(nodeRecord));
+            }
+        }
+    }
+
+    private static NodeRecord CreateNodeRecord(int? tcpPort, int? udpPort)
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+        if (tcpPort is { } tcp)
+        {
+            nodeRecord.SetEntry(new TcpEntry(tcp));
+        }
+        if (udpPort is { } udp)
+        {
+            nodeRecord.SetEntry(new UdpEntry(udp));
+        }
+        return nodeRecord;
     }
 }

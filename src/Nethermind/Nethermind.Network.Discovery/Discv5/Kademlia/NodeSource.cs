@@ -18,6 +18,7 @@ public sealed class NodeSource(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IDiscv5RecordFilter recordFilter,
+    IForkInfo forkInfo,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -153,6 +154,12 @@ public sealed class NodeSource(
         {
             if (recordFilter.Excludes(record))
             {
+                return false;
+            }
+
+            if (!forkInfo.IsNodeRecordForkCompatible(record))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping discv5 discovered node {discoveryNode:s} with incompatible fork ID.");
                 return false;
             }
 

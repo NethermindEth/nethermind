@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -61,5 +63,54 @@ public class NodeSourceToDiscV4FeederTests
         await expectedNodesAdded.Task.WaitAsync(token);
 
         discoveryApp.Received(10).AddNodeToDiscovery(Arg.Any<Node>());
+    }
+
+    [Test]
+    [CancelAfter(1000)]
+    public async Task Test_ShouldNotAddNodeWhenLimitIsZero(CancellationToken token)
+    {
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 0);
+
+        await feeder.Run().WaitAsync(token);
+
+        discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Any<Node>());
+    }
+
+    [Test]
+    [CancelAfter(1000)]
+    public async Task Test_ShouldSkipNodeWithoutDiscoveryEndpointAndContinueToLimit(CancellationToken token)
+    {
+        TestNodeSource source = new();
+        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, 1);
+        TaskCompletionSource validNodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => validNodeAdded.TrySetResult());
+        Task feederTask = feeder.Run();
+        Assert.That(Node.TryFromEnr(CreateTcpOnlyRecord(), out Node? tcpOnlyNode), Is.True);
+        Node validNode = new(TestItem.PublicKeyA, TestItem.IPEndPointA);
+
+        source.AddNode(tcpOnlyNode!);
+        source.AddNode(validNode);
+        await validNodeAdded.Task.WaitAsync(token);
+        await feederTask.WaitAsync(token);
+
+        discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, validNode)));
+        discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Is<Node>(node => ReferenceEquals(node, tcpOnlyNode)));
+    }
+
+    private static NodeRecord CreateTcpOnlyRecord()
+    {
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        nodeRecord.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+        nodeRecord.SetEntry(new TcpEntry(30303));
+        return nodeRecord;
     }
 }
