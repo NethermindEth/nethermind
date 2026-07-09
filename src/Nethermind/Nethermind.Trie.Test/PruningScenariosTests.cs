@@ -426,7 +426,10 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public Task StartSyncPruneInBackground() => Task.Run(() => _trieStore.SyncPruneQueue());
+            // Dedicated thread, not a pool worker: SyncPruneQueue blocks on parallel-persist pool
+            // tasks, so backgrounding it on the pool can starve and deadlock the pool.
+            public Task StartSyncPruneInBackground() =>
+                Task.Factory.StartNew(() => _trieStore.SyncPruneQueue(), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
             public PruningContext DisposeAndRecreate()
             {
@@ -1373,14 +1376,15 @@ namespace Nethermind.Trie.Test
             ctx.TurnOnPrune();
 
             TimeSpan syncPruneCheckTime = TimeSpan.Zero;
-            Task pruneTime = Task.Run(() =>
+            // Dedicated thread, not a pool worker: SyncPruneCheck blocks on parallel-persist pool tasks.
+            Task pruneTime = Task.Factory.StartNew(() =>
             {
                 long sw = Stopwatch.GetTimestamp();
                 ctx.SyncPruneCheck();
                 ctx.TurnOffPrune();
                 ctx.AssertThatCachedPersistedNodeCountIs(21747L);
                 syncPruneCheckTime = Stopwatch.GetElapsedTime(sw);
-            });
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
             long sw = Stopwatch.GetTimestamp();
             for (int i = 0; i < 1000; i++)
