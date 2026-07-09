@@ -129,19 +129,43 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     // ingests it into this column — bypassing the memtable -> flush -> L0-compaction burst of a large WriteBatch.
     private sealed class SstIngestWriteBatch(ColumnDb columnDb) : IWriteBatch
     {
-        // Last write wins: a SelfDestruct (delete) followed by re-creation (put) can target the same key in one
-        // snapshot, and an SST forbids duplicate keys, so collapse to the final value before writing.
-        private readonly Dictionary<byte[], byte[]?> _entries = new(Bytes.EqualityComparer);
+        // Byte cap on the in-memory buffer. At the cap we flush+ingest one SST and free the buffer, so a large
+        // persist (e.g. 10x state) never holds the whole batch in managed memory — that transient spike, on top
+        // of the working set, OOM-kills the node. Overlapping chunks are fine: each ingest gets a higher global
+        // seqno, so the later (final) value wins, which also preserves last-write-wins across chunk boundaries.
+        private const long MaxBufferedBytes = 128L * 1024 * 1024;
+        // Throttle the persist thread when L0 files pile up, bounding the native compaction working set.
+        private const int MaxL0FilesBeforeThrottle = 20;
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
-            _entries[key.ToArray()] = value;
+        // Last write wins within a chunk: a SelfDestruct (delete) followed by re-creation (put) can target the
+        // same key, and an SST forbids duplicate keys, so collapse to the final value before writing.
+        private readonly Dictionary<byte[], byte[]?> _entries = new(Bytes.EqualityComparer);
+        private long _bufferedBytes;
+        private readonly IngestExternalFileOptions _options = new IngestExternalFileOptions()
+            .SetMoveFiles(true)
+            .SetAllowGlobalSeqno(true)
+            .SetAllowBlockingFlush(true);
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            byte[] k = key.ToArray();
+            if (_entries.TryGetValue(k, out byte[]? existing)) _bufferedBytes -= existing?.Length ?? 0;
+            else _bufferedBytes += k.Length;
+            _entries[k] = value;
+            _bufferedBytes += value?.Length ?? 0;
+            if (_bufferedBytes >= MaxBufferedBytes) FlushChunk();
+        }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
             throw new NotSupportedException("SST ingestion does not support merge writes");
 
-        public void Clear() => _entries.Clear();
+        public void Clear()
+        {
+            _entries.Clear();
+            _bufferedBytes = 0;
+        }
 
-        public void Dispose()
+        private void FlushChunk()
         {
             if (_entries.Count == 0) return;
 
@@ -163,12 +187,25 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 writer.Finish();
             }
 
-            IngestExternalFileOptions options = new IngestExternalFileOptions()
-                .SetMoveFiles(true)
-                .SetAllowGlobalSeqno(true)
-                .SetAllowBlockingFlush(true);
-            columnDb._rocksDb.IngestExternalFiles([file], options, columnDb._columnFamily);
+            columnDb._rocksDb.IngestExternalFiles([file], _options, columnDb._columnFamily);
+            Clear();
+            WaitForCompactionHeadroom();
         }
+
+        // Ingestion bypasses RocksDB's memtable write-stall, so back-to-back ingests pile up L0 files and the
+        // compaction working set grows without bound (native memory OOM at large state). Replicate the missing
+        // flow control: throttle the persist thread until L0 drains — exactly what the memtable write path does.
+        private void WaitForCompactionHeadroom()
+        {
+            for (int i = 0; i < 1500; i++) // ~30s safety cap
+            {
+                string? v = columnDb._rocksDb.GetProperty("rocksdb.num-files-at-level0", columnDb._columnFamily);
+                if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
+                Thread.Sleep(20);
+            }
+        }
+
+        public void Dispose() => FlushChunk();
     }
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
