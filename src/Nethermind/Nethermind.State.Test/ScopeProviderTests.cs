@@ -350,7 +350,7 @@ public class ScopeProviderTests(bool useFlat)
 
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
         {
-            if (!isPrewarmer && scope.SupportsTrieWarmHints)
+            if (!isPrewarmer)
                 Assert.That(caches.MainScope, Is.Not.Null);
             else
                 Assert.That(caches.MainScope, Is.Null);
@@ -363,7 +363,6 @@ public class ScopeProviderTests(bool useFlat)
     public void Test_ScopeDecorators_ForwardWarmHints()
     {
         IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
-        inner.SupportsTrieWarmHints.Returns(true);
         IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
         innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
 
@@ -373,14 +372,15 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = new();
         PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false);
 
+        ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (main.BeginScope(null))
         {
-            caches.MainScope.HintWarmAccount(TestItem.AddressA);
-            caches.MainScope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+            caches.MainScope.HintWarmAccount(in addressA);
+            caches.MainScope.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        inner.Received(1).HintWarmAccount(TestItem.AddressA);
-        inner.Received(1).HintWarmSlot(TestItem.AddressA, (UInt256)1);
+        inner.Received(1).HintWarmAccount(addressA);
+        inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
     [Test]
@@ -413,7 +413,44 @@ public class ScopeProviderTests(bool useFlat)
             scope.Get(TestItem.AddressA);
         }
 
-        mainScope.Received(1).HintWarmAccount(TestItem.AddressA);
+        mainScope.Received(1).HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+    }
+
+    [Test]
+    public void Test_PopulatorSlotGetMiss_PushesSlotTrieWarmHint()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
+        {
+            caches.MainScope = null;
+            IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+            storageTree.Get((UInt256)1);
+            // The second read hits the pre-block cache backfill and must not re-hint.
+            storageTree.Get((UInt256)1);
+        }
+
+        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)1);
     }
 
     [Test]
@@ -446,12 +483,15 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.DoesNotThrow(() =>
             {
-                scope.HintWarmAccount(TestItem.AddressA);
-                scope.HintWarmSlot(TestItem.AddressA, 1);
-                scope.HintWarmSlot(TestItem.AddressB, 1);
-                scope.HintWarmSlot(TestItem.AddressC, 1);
-                scope.HintWarmAccount(TestItem.AddressA);
-                scope.HintWarmSlot(TestItem.AddressA, 1);
+                ValueAddress addressA = new(TestItem.AddressA.Bytes);
+                ValueAddress addressB = new(TestItem.AddressB.Bytes);
+                ValueAddress addressC = new(TestItem.AddressC.Bytes);
+                scope.HintWarmAccount(in addressA);
+                scope.HintWarmSlot(in addressA, 1);
+                scope.HintWarmSlot(in addressB, 1);
+                scope.HintWarmSlot(in addressC, 1);
+                scope.HintWarmAccount(in addressA);
+                scope.HintWarmSlot(in addressA, 1);
             });
         }
     }

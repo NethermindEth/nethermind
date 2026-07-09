@@ -138,7 +138,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => _stateTree.RootHash;
     public void UpdateRootHash() => _stateTree.UpdateRootHash();
-    public bool SupportsTrieWarmHints => _warmer is not NoopTrieWarmer;
 
     public Account? Get(Address address)
     {
@@ -345,20 +344,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
-    public void HintWarmAccount(Address address)
+    public void HintWarmAccount(in ValueAddress address)
     {
         if (IsDisposed || _pausePrewarmer) return;
+        // The managed Address is materialized only after the dedupe bloom passes, so the
+        // allocation happens at most once per account per block.
         if (_snapshotBundle.ShouldQueuePrewarm(address)
-            && _warmer.PushAddressJob(this, address, _hintSequenceId))
+            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
             Interlocked.Increment(ref _outstandingWarmups);
     }
 
-    public void HintWarmSlot(Address address, in UInt256 index)
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
         if (IsDisposed || _pausePrewarmer) return;
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
-        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
+        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
         if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
             Interlocked.Increment(ref _outstandingWarmups);
     }

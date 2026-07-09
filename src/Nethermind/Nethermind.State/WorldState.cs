@@ -33,7 +33,6 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private readonly PreBlockCaches? _populatorCaches;
         // Per-scope counter accumulator shared with the providers and scope; folded into the global
         // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.
         private readonly LocalMetrics _localMetrics = new();
@@ -56,7 +55,6 @@ namespace Nethermind.State
         {
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
-            _populatorCaches = scopeProvider is IPreBlockCaches { IsWarmWorldState: false } populator ? populator.Caches : null;
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager, _localMetrics);
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
@@ -161,6 +159,12 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorage(address);
             _transientStorageProvider.ClearStorage(address);
         }
+        public void MarkStorageDestroyed(Address address)
+        {
+            DebugGuardInScope();
+            _persistentStorageProvider.MarkStorageDestroyed(address);
+            _transientStorageProvider.ClearStorage(address);
+        }
         public void RecalculateStateRoot()
         {
             DebugGuardInScope();
@@ -244,7 +248,7 @@ namespace Nethermind.State
             {
                 _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
                 _stateProvider.SetScope(_currentScope);
-                _persistentStorageProvider.SetBackendScope(_currentScope, _populatorCaches?.MainScope);
+                _persistentStorageProvider.SetBackendScope(_currentScope);
             }
             catch
             {

@@ -53,7 +53,7 @@ public class PrewarmerScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
-        if (!isPrewarmer && scope.SupportsTrieWarmHints) preBlockCaches.MainScope = scope;
+        if (!isPrewarmer) preBlockCaches.MainScope = scope;
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
     }
 
@@ -93,7 +93,8 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
-                _metrics);
+                _metrics,
+                mainScope);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -126,8 +127,6 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseScope.RootHash;
 
-        public bool SupportsTrieWarmHints => baseScope.SupportsTrieWarmHints;
-
         public void UpdateRootHash()
         {
             if (!_measureMetric)
@@ -157,7 +156,7 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                mainScope?.HintWarmAccount(address);
+                mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
             return account;
@@ -165,9 +164,9 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
+        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
 
-        public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -207,7 +206,8 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
-        LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
+        LocalMetrics metrics,
+        IWorldStateScopeProvider.IScope? mainScope) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -234,6 +234,10 @@ public class PrewarmerScopeProvider(
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
+                // First resolve of this slot in the block. Written slots are always read first
+                // (EIP-2200 original-value load), so hinting populator read misses covers the
+                // commit-path trie warm-up without touching the write path.
+                mainScope?.HintWarmSlot(new ValueAddress(address.Bytes), in index);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;

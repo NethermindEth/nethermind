@@ -31,18 +31,13 @@ public interface IWorldStateScopeProvider
         void UpdateRootHash();
 
         /// <summary>
-        /// Indicates whether this scope can use speculative trie warm-up hints.
-        /// </summary>
-        bool SupportsTrieWarmHints => false;
-
-        /// <summary>
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>
-        void HintWarmAccount(Address address) { }
+        void HintWarmAccount(in ValueAddress address) { }
 
         /// <inheritdoc cref="HintWarmAccount"/>
-        void HintWarmSlot(Address address, in UInt256 index) { }
+        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
