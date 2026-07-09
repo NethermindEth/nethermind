@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
