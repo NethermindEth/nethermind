@@ -93,8 +93,7 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
-                _metrics,
-                mainScope);
+                _metrics);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -164,9 +163,13 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
+        // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
+        // consumer hints go straight to the backend.
+        public void HintWarmAccount(in ValueAddress address) =>
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -206,8 +209,7 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
-        LocalMetrics metrics,
-        IWorldStateScopeProvider.IScope? mainScope) : IWorldStateScopeProvider.IStorageTree
+        LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -234,10 +236,6 @@ public class PrewarmerScopeProvider(
                 value = LoadFromTreeStorage(in storageCell);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in storageCell, value);
-                // First resolve of this slot in the block. Written slots are always read first
-                // (EIP-2200 original-value load), so hinting populator read misses covers the
-                // commit-path trie warm-up without touching the write path.
-                mainScope?.HintWarmSlot(new ValueAddress(address.Bytes), in index);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;

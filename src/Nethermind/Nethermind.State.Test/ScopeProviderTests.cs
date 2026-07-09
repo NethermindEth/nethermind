@@ -417,40 +417,23 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_PopulatorSlotGetMiss_PushesSlotTrieWarmHint()
+    public void Test_PopulatorHintWarmSlot_RoutesToMainScope()
     {
         using Context ctx = new(useFlat);
-
-        Hash256 stateRoot;
-        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
-        {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
-                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
-            }
-
-            scope.Commit(1);
-            stateRoot = scope.RootHash;
-        }
 
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
 
-        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
-        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
+        ValueAddress addressA = new(TestItem.AddressA.Bytes);
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
         {
             caches.MainScope = null;
-            IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
-            storageTree.Get((UInt256)1);
-            // The second read hits the pre-block cache backfill and must not re-hint.
-            storageTree.Get((UInt256)1);
+            scope.HintWarmSlot(in addressA, (UInt256)1);
         }
 
-        mainScope.Received(1).HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)1);
+        mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
     [Test]

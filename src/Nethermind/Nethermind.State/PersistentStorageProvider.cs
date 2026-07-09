@@ -65,6 +65,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
+        // (populator) executions, which never commit. No-op for backends without trie warm-up.
+        if (!storageCell.IsHash)
+        {
+            _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
+        }
     }
 
     /// <summary>
