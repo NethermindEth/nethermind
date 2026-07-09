@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -43,7 +44,7 @@ public class DeferredBlockStoreTests
 
         Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.True);
 
-        // Served as a fresh decode (senders recovered on demand as for a DB read), so assert hash + shape.
+        // Served from the pending snapshot (a distinct instance from the live block), so assert hash + shape.
         Block? served = _store.Get(block.Number, block.Hash!);
         Assert.That(served, Is.Not.Null);
         Assert.That(served!.Hash, Is.EqualTo(block.Hash));
@@ -61,7 +62,7 @@ public class DeferredBlockStoreTests
         Block block = BlockNumbered(1);
         _store.InsertDeferred(block);
 
-        // The overlay holds encoded bytes, so a read decodes a distinct instance the caller cannot mutate.
+        // The overlay holds a sanitized header+body snapshot, so a read serves a distinct instance, never the live block.
         Assert.That(_store.Get(block.Number, block.Hash!), Is.Not.SameAs(block));
         Assert.That(_store.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
     }
@@ -110,6 +111,28 @@ public class DeferredBlockStoreTests
         Assert.That(Reopen().Get(a.Number, a.Hash!), Is.EqualTo(a).UsingBlockComparer());
         Assert.That(Reopen().Get(b.Number, b.Hash!), Is.EqualTo(b).UsingBlockComparer());
         Assert.That(_db.FlushCount, Is.GreaterThan(0), "blocks WAL was fsynced before state persist");
+    }
+
+    [Test]
+    public void Deferred_insert_with_pre_encoded_transactions_is_byte_identical_to_from_scratch()
+    {
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(txs).TestObject;
+
+        byte[] fromScratch = new BlockDecoder().Encode(block).Bytes;
+
+        // Mirror the newPayload path: the block arrives with pre-encoded transactions the snapshot must carry
+        // through the deferred write without changing the persisted bytes.
+        block.EncodedTransactions = Array.ConvertAll(txs, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+
+        _store.InsertDeferred(block);
+        _writer.Pump();
+
+        Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(fromScratch));
     }
 
     [Test]

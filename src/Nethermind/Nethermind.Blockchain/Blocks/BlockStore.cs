@@ -20,7 +20,9 @@ public class BlockStore : IBlockStore, IClearableCache
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, so a lost body cannot be regenerated; deferral is opt-in. Null when off.
-    private readonly DeferredWriteOverlay<byte[]>? _pending;
+    // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
+    // on header/txs/uncles/withdrawals, none mutated after processing, so encoding defers to the consumer.
+    private readonly DeferredWriteOverlay<Block>? _pending;
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
@@ -37,7 +39,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
         if (deferBodies && deferredWriter is { Enabled: true })
         {
-            _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, (number, hash, rlp) => _blockDb.Set(number, hash, rlp, WriteFlags.None));
+            _pending = new DeferredWriteOverlay<Block>(deferredWriter, WriteBlock);
             (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _blockDb.Flush(onlyWal: true));
         }
     }
@@ -79,15 +81,19 @@ public class BlockStore : IBlockStore, IClearableCache
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // Encode now into an immutable buffer: the caller mutates the live Block after suggesting (BAL fields
-        // nulled, total difficulty hydrated later); only the database write defers.
-        byte[] rlp;
-        using (ArrayPoolSpan<byte> encoded = _blockDecoder.EncodeToArrayPoolSpan(block))
-        {
-            rlp = ((ReadOnlySpan<byte>)encoded).ToArray();
-        }
+        // Snapshot header+body only - a distinct instance from the live block, which additionally carries large
+        // BAL/account-change structures downstream consumers dispose. No encode or copy here: the body RLP depends
+        // solely on header/txs/uncles/withdrawals (none mutated after processing), so encoding defers to the consumer.
+        // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
+        // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
+        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions });
+    }
 
-        _pending.Publish(block.Number, block.Hash, rlp);
+    private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
+    {
+        // Runs on the deferred-writer consumer: encode here, off the processing path.
+        using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
+        _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -111,10 +117,10 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        // Decode a fresh instance from the pending bytes, as the DB path would; callers must not see the live Block.
-        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
+        // Served from the pending snapshot - a distinct instance from the live block - until the write lands.
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.Decode(pendingRlp, rlpBehaviors);
+            return pendingBlock;
         }
 
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
@@ -124,9 +130,10 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
-        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
+        // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return pendingRlp;
+            return _blockDecoder.Encode(pendingBlock).Bytes;
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -138,10 +145,9 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
-        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingRlp))
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            Block? pendingBlock = _blockDecoder.Decode(pendingRlp);
-            return pendingBlock is null ? null : new ReceiptRecoveryBlock(pendingBlock);
+            return new ReceiptRecoveryBlock(pendingBlock);
         }
 
         Span<byte> keyWithBlockNumber = stackalloc byte[40];

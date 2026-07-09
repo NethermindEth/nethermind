@@ -131,6 +131,46 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Pending_index_scan_resolves_each_tx_to_its_own_block()
+    {
+        Block blockA = Build.A.Block
+            .WithNumber(10)
+            .WithTransactions(
+                Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        Block blockB = Build.A.Block
+            .WithNumber(11)
+            .WithTransactions(Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject)
+            .WithReceiptsRoot(TestItem.KeccakB).TestObject;
+
+        foreach (Block b in (Block[])[blockA, blockB])
+        {
+            _blockTree.FindBlock(b.Hash!).Returns(b);
+            _blockTree.FindBlockHash(b.Number).Returns(b.Hash);
+        }
+        _blockTree.FindBestSuggestedHeader().Returns(blockB.Header);
+
+        TxReceipt[] receiptsA = [Build.A.Receipt.WithCalculatedBloom().TestObject, Build.A.Receipt.WithCalculatedBloom().TestObject];
+        TxReceipt[] receiptsB = [Build.A.Receipt.WithCalculatedBloom().TestObject];
+
+        _storage.InsertDeferred(blockA, receiptsA, _specProvider.GetSpec(blockA.Header));
+        _storage.InsertDeferred(blockB, receiptsB, _specProvider.GetSpec(blockB.Header));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(blockA));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(blockB));
+
+        // The lazy scan must resolve every tx of every pending block to its own block, not just the first.
+        Assert.That(_storage.FindBlockHash(blockA.Transactions[0].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 0");
+        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 1");
+        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "pending scan, block B tx 0");
+
+        _writer.Pump();
+
+        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "durable index, block A tx 1");
+        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "durable index, block B tx 0");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Removed_receipts_are_not_resurrected_by_queued_writes()
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
