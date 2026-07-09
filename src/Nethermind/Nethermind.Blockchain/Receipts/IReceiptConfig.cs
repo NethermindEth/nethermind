@@ -31,7 +31,7 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether receipt and canonical transaction-index writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are served from an in-memory overlay until flushed, and a state-persistence barrier makes a block's data durable before its state, so an unclean shutdown never leaves persisted state without it.", DefaultValue = "true")]
     bool DeferredPersistence { get; set; }
 
-    [ConfigItem(Description = "Whether block body writes are also deferred (only when `DeferredPersistence` is enabled). Off by default: a body is a processing input, not a regenerable output, so one lost on an unclean shutdown must be re-downloaded from peers.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether block body and block-access-list writes are also deferred (only when `DeferredPersistence` is enabled). A body/BAL is a processing input rather than a regenerable output; the state-persistence barrier keeps it durable before its block's state is persisted, and a not-yet-persisted one lost on an unclean shutdown is re-downloaded from peers.", DefaultValue = "true")]
     bool DeferBlockBodyPersistence { get; set; }
 
     [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A block enqueues up to three writes (body, receipts, canonical index). Bounds the pending-overlay memory.", DefaultValue = "32", HiddenFromDocs = true)]
