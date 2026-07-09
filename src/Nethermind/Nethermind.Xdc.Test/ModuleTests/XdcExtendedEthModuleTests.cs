@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.State.Proofs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
 using NSubstitute;
@@ -87,6 +88,45 @@ public class XdcExtendedEthModuleTests
 
         ResultWrapper<XdcTransactionAndReceiptProof?> result = await module.eth_getTransactionAndReceiptProof(TestItem.KeccakA);
         Assert.That(result.Data, Is.Null);
+    }
+
+    [Test]
+    public async Task eth_getTransactionAndReceiptProof_returns_valid_proof_for_known_transaction()
+    {
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakB).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        Hash256 blockHash = block.Hash!;
+
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(TestItem.KeccakB).Returns(blockHash);
+        receiptFinder.Get(block).Returns([receipt]);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(blockHash).Returns(block);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(block.Header).Returns(releaseSpec);
+
+        IXdcExtendedEthRpcModule module = new XdcExtendedEthModule(
+            blockFinder,
+            receiptFinder,
+            specProvider,
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<IRewardsStore>());
+
+        ResultWrapper<XdcTransactionAndReceiptProof?> result = await module.eth_getTransactionAndReceiptProof(TestItem.KeccakB);
+
+        Assert.That(result.Data, Is.Not.Null);
+        XdcTransactionAndReceiptProof proof = result.Data!;
+        Assert.That(proof.BlockHash, Is.EqualTo(blockHash));
+        Assert.That(proof.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(block.Transactions)));
+        Assert.That(proof.TxProofKeys, Has.Length.GreaterThan(0));
+        Assert.That(proof.TxProofValues, Has.Length.EqualTo(proof.TxProofKeys.Length));
+        Assert.That(proof.ReceiptProofKeys, Has.Length.GreaterThan(0));
+        Assert.That(proof.ReceiptProofValues, Has.Length.EqualTo(proof.ReceiptProofKeys.Length));
     }
 
     private static IXdcExtendedEthRpcModule CreateOwnerModule(Address owner)

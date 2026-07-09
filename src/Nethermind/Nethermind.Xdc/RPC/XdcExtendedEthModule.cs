@@ -47,7 +47,7 @@ internal sealed class XdcExtendedEthModule(
             return Task.FromResult(ResultWrapper<XdcEpochRewards>.Success(new XdcEpochRewards()));
         }
 
-        if (!rewardsStore.TryGetEpochRewards(header.Hash!, out XdcEpochRewards? rewards)
+        if (!rewardsStore.TryGetEpochRewards(header.Hash ?? blockHash, out XdcEpochRewards? rewards)
             || rewards is null)
         {
             rewards = new XdcEpochRewards();
