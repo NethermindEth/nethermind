@@ -31,6 +31,8 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
     private readonly int _concurrencyLevel;
+    // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
+    private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
@@ -62,6 +64,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
+        blocksConfig.MempoolPreWarmConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
@@ -71,12 +74,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
         int maxPoolSize,
         int concurrency,
+        int speculativeConcurrency,
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
@@ -113,7 +118,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, systemAccessLists);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
         // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
@@ -122,17 +127,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
     {
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, token, systemAccessLists: default);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, systemAccessLists: default);
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         PreWarmCachesParallel(blockState, delta, head, spec, parallelOptions, addressWarmer, token);
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
-        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = token };
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
