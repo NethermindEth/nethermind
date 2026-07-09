@@ -397,8 +397,8 @@ namespace Nethermind.Xdc
             string roundDuration = _pendingLastRoundDuration.HasValue ? $", prev={_pendingPrevRound} in {_pendingLastRoundDuration.Value.TotalSeconds:F2}s" : "";
             string myTurn = isMyTurn ? "true" : "false";
             BlockRoundInfo? blockRoundInfo = _xdcContext.HighestCommitBlock;
-            string committedBlock = blockRoundInfo is null ? "Committed=none" : $"Committed=#{blockRoundInfo?.BlockNumber} round={blockRoundInfo?.Round} ({blockRoundInfo?.Hash?.ToShortString()})"; 
-            
+            string committedBlock = blockRoundInfo is null ? "Committed=none" : $"Committed=#{blockRoundInfo?.BlockNumber} round={blockRoundInfo?.Round} ({blockRoundInfo?.Hash?.ToShortString()})";
+
             _logger.Info($"Round {round}{roundDuration}: head={headInfo} | {committedBlock} | Leader={leader?.ToShortString()}, MyTurn={myTurn}, Committee={committee} nodes");
         }
 
