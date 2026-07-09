@@ -64,21 +64,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
-        blocksConfig.MempoolPreWarmConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager,
+        blocksConfig.MempoolPreWarmConcurrency) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
         int maxPoolSize,
         int concurrency,
-        int speculativeConcurrency,
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager)
+        ILogManager logManager,
+        int speculativeConcurrency = 0)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
