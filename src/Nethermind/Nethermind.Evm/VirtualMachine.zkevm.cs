@@ -42,7 +42,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         ExecutionType executionType,
         bool isStatic,
         scoped in Snapshot snapshot,
-        scoped ref EvmStack stack)
+        scoped ref EvmStack stack,
+        bool newAccountCharged)
         where TTracingInst : struct, IFlag
     {
         VmState<TGasPolicy> parent = _currentState;
@@ -55,7 +56,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             isCreateOnPreExistingAccount: false,
             env: callEnv,
             stateForAccessLists: in parent.AccessTracker,
-            snapshot: in snapshot);
+            snapshot: in snapshot,
+            newAccountCharged: newAccountCharged);
 
         CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
 
@@ -66,6 +68,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             RevertParityTouchBugAccount();
             RemoveAdvancedStateGasRefund(child, ref child.Gas);
             TGasPolicy.RestoreChildStateGasOnHalt(ref parent.Gas, in child.Gas);
+            // EIP-8037: the failed call did not create its (dead) recipient; refund NEW_ACCOUNT.
+            if (child.NewAccountCharged)
+                CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
             ReturnDataBuffer = Array.Empty<byte>();
             return stack.PushZero<TTracingInst>();
@@ -82,6 +87,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             TGasPolicy.UpdateGasUp(ref parent.Gas, TGasPolicy.GetRemainingGas(in child.Gas));
             RemoveAdvancedStateGasRefund(child, ref child.Gas);
             TGasPolicy.RestoreChildStateGas(ref parent.Gas, in child.Gas);
+            // EIP-8037: the reverted call did not create its (dead) recipient; refund NEW_ACCOUNT.
+            if (child.NewAccountCharged)
+                CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
         ReturnDataBuffer = callResult.Output;

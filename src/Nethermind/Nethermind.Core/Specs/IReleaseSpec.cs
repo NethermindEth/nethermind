@@ -316,6 +316,11 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
+
+        /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }
@@ -440,6 +445,13 @@ namespace Nethermind.Core.Specs
         /// EIP-8246: SELFDESTRUCT no longer burns ETH
         /// </summary>
         public bool IsEip8246Enabled { get; }
+
+        /// <summary>
+        /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
+        /// and cold-account costs against actual state work.
+        /// </summary>
+        /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
+        public bool IsEip2780Enabled { get; }
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
