@@ -92,8 +92,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState),
-            Substitute.For<IRewardsStore>()
+            CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState)
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -229,8 +228,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState),
-            Substitute.For<IRewardsStore>()
+            CreateXdcTransactionProcessor(chain.SpecProvider, masternodeVotingContract, chain.MainWorldState)
         );
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -409,7 +407,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(1));
 
         SigningTxCache signingTxCache = new(tree, specProvider);
-        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, CreateXdcTransactionProcessor(specProvider, votingContract), Substitute.For<IRewardsStore>());
+        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, CreateXdcTransactionProcessor(specProvider, votingContract));
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -561,8 +559,7 @@ public class RewardTests
             votingContract,
             mintedRecordContract,
             signingTxCache,
-            transactionProcessor,
-            Substitute.For<IRewardsStore>());
+            transactionProcessor);
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
@@ -613,9 +610,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract),
-            Substitute.For<IRewardsStore>()
-            );
+            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract));
 
         UInt256 totalReward = UInt256.Parse("171000000000000000000");
         ulong totalSigner = 177, sign = 59;
@@ -652,8 +647,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract),
-            Substitute.For<IRewardsStore>());
+            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract));
 
         Address signer = new("0x80b329b66ddfe2180904d6ae737283a3f1860b83");
         Address foundationWalletAddr = new("0x5cb041be27deb4a506ad63d082c6043b4a5c6898");
@@ -692,10 +686,9 @@ public class RewardTests
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
         IMintedRecordContract mintedRecordContract = Substitute.For<IMintedRecordContract>();
         ISigningTxCache signingTxCache = Substitute.For<ISigningTxCache>();
-        IRewardsStore rewardsStore = Substitute.For<IRewardsStore>();
         return isSubnet
-            ? new XdcSubnetRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, rewardsStore)
-            : new XdcRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, rewardsStore);
+            ? new XdcSubnetRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache)
+            : new XdcRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache);
     }
 
     private static XdcTransactionProcessor CreateXdcTransactionProcessor(
