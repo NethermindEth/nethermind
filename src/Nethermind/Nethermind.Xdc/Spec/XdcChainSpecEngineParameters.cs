@@ -103,8 +103,16 @@ public sealed class V2ConfigParams
 {
     public ulong SwitchRound { get; init; }
     public int MaxMasternodes { get; init; }
+    public int MaxProtectorNodes { get; init; }
+    public int MaxObserverNodes { get; init; }
     public double CertificateThreshold { get; init; }
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public ulong MinePeriod { get; init; }
+    public UInt256 MasternodeReward { get; init; }
+    public UInt256 ProtectorReward { get; init; }
+    public UInt256 ObserverReward { get; init; }
+    public ulong MinimumMinerBlockPerEpoch { get; init; }
+    public ulong LimitPenaltyEpoch { get; init; }
+    public ulong MinimumSigningTx { get; init; }
 }
