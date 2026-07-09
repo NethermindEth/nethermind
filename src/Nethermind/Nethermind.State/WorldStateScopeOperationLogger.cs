@@ -79,13 +79,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintSet(in UInt256 index, byte[]? value) => storageTree.HintSet(in index, value);
-
-        public byte[] Get(in ValueHash256 hash)
-        {
-            byte[]? bytes = storageTree.Get(in hash);
-            logger.Trace($"{scopeId}: S:{address} Get slot via hash {hash}, got {bytes?.ToHexString()}");
-            return bytes;
-        }
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

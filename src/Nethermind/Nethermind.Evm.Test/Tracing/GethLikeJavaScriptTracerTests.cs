@@ -202,6 +202,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void getState_reads_live_slot_by_raw_key()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        if (log.op.toNumber() == 0x00) {
+                            let a = log.contract.getAddress();
+                            this.retVal.push(toHex(db.getState(a, toWord('0'))));
+                            this.retVal.push(toHex(db.getState(a, toWord('20'))));
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) {
+                        return this.retVal;
+                    }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                SStore_double(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+    }
+
+    [Test]
     public void operation_results()
     {
         string userTracer = """

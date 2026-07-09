@@ -165,13 +165,6 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index, byte[]? value);
-
-        /// <summary>
-        /// Used by JS tracer. May not work on some database layout.
-        /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

@@ -142,8 +142,6 @@ namespace Nethermind.State
         {
         }
 
-        public byte[] Get(in ValueHash256 hash) => GetArray(in hash, null);
-
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
