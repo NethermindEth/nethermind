@@ -208,7 +208,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         // Only blocks at heights that are multiples of MergeSignRange are considered.
         // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
         ulong start = (startBlockNumber + mergeSignRange - 1) / mergeSignRange * mergeSignRange;
-        for (ulong i = start; i <= endBlockNumber; i += mergeSignRange)
+        for (ulong i = start; i < endBlockNumber; i += mergeSignRange)
         {
             if (!blockNumberToHash.TryGetValue(i, out Hash256 blockHash)) continue;
             if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address> addresses)) continue;
