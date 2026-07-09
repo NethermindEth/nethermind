@@ -14,7 +14,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>The sorted, pooled counterpart of <see cref="SnapshotContent"/> used for compacted snapshots.</summary>
-public sealed class MergedSnapshotContent : IDisposable, IResettable
+public sealed class SortedSnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650;
 

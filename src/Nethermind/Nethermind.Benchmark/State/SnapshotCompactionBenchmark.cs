@@ -82,8 +82,7 @@ public class SnapshotCompactionBenchmark
                 CreateStateId((ulong)b), CreateStateId((ulong)(b + 1)), ResourcePool.Usage.ReadOnlyProcessingEnv);
             Fill(snapshot, b, contracts, contractHashes);
 
-            // Compacting a single snapshot yields its sorted (MergedSnapshotContent) form, modelling the
-            // already-compacted inputs a higher-tier merge sees.
+            // Compacting a single snapshot yields its sorted form, as a higher-tier merge's inputs would be.
             if (SortedInputs)
             {
                 SnapshotPooledList single = new(1) { snapshot };

@@ -56,9 +56,9 @@ public class ResourcePool : IResourcePool
 
     public void ReturnSnapshotContent(Usage usage, SnapshotContent snapshotContent) => _categories[usage].ReturnSnapshotContent(snapshotContent);
 
-    public MergedSnapshotContent GetMergedSnapshotContent(Usage usage) => _categories[usage].GetMergedSnapshotContent();
+    public SortedSnapshotContent GetSortedSnapshotContent(Usage usage) => _categories[usage].GetSortedSnapshotContent();
 
-    public void ReturnMergedSnapshotContent(Usage usage, MergedSnapshotContent mergedContent) => _categories[usage].ReturnMergedSnapshotContent(mergedContent);
+    public void ReturnSortedSnapshotContent(Usage usage, SortedSnapshotContent sortedContent) => _categories[usage].ReturnSortedSnapshotContent(sortedContent);
 
     public TransientResource GetCachedResource(Usage usage) => _categories[usage].GetCachedResource();
 
@@ -132,11 +132,11 @@ public class ResourcePool : IResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        private readonly ConcurrentStackPool<MergedSnapshotContent> _mergedPool = new(snapshotContentPoolSize);
+        private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
-        private readonly PooledResourceLabel _mergedLabel = new(usage.ToString(), "MergedSnapshotContent");
+        private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
@@ -162,24 +162,24 @@ public class ResourcePool : IResourcePool
             Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
         }
 
-        public MergedSnapshotContent GetMergedSnapshotContent()
+        public SortedSnapshotContent GetSortedSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_mergedLabel, 1);
-            if (_mergedPool.TryGet(out MergedSnapshotContent? mergedContent))
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
+            if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
             {
-                Metrics.CachedPooledResource[_mergedLabel] = (long)_mergedPool.PooledItemCount;
-                return mergedContent;
+                Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+                return sortedContent;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_mergedLabel, 1);
-            return new MergedSnapshotContent();
+            Metrics.CreatedPooledResource.AddBy(_sortedLabel, 1);
+            return new SortedSnapshotContent();
         }
 
-        public void ReturnMergedSnapshotContent(MergedSnapshotContent mergedContent)
+        public void ReturnSortedSnapshotContent(SortedSnapshotContent sortedContent)
         {
-            Metrics.ActivePooledResource.AddBy(_mergedLabel, -1);
-            _mergedPool.Return(mergedContent);
-            Metrics.CachedPooledResource[_mergedLabel] = (long)_mergedPool.PooledItemCount;
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, -1);
+            _sortedPool.Return(sortedContent);
+            Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
         }
 
         public TransientResource GetCachedResource()

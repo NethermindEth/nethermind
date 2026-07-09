@@ -150,7 +150,7 @@ public class SnapshotCompactor(
             ? null
             : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
-        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(usage);
+        SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
 
         using ArrayPoolListRef<Task> compactTask = new(4);
         compactTask.Add(Task.Run(() => MergeInto(
@@ -172,7 +172,7 @@ public class SnapshotCompactor(
     public Snapshot ConvertToSorted(Snapshot source)
     {
         SnapshotContent mutable = source.Content;
-        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(ResourcePool.Usage.ConvertedBase);
+        SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(ResourcePool.Usage.ConvertedBase);
 
         content.SortedAccounts.BuildFromUnsorted(mutable.Accounts, SnapshotKeyComparers.Address);
         content.SortedStorages.BuildFromUnsorted(mutable.Storages, SnapshotKeyComparers.Storage);
@@ -187,7 +187,7 @@ public class SnapshotCompactor(
         SortedMergeDictionary<TKey, TValue> target,
         SnapshotPooledList snapshots,
         IComparer<TKey> comparer,
-        Func<MergedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromMerged,
+        Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
         Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
         Func<int, TKey, bool>? keep) where TKey : IEquatable<TKey>
     {
@@ -203,7 +203,7 @@ public class SnapshotCompactor(
                 Snapshot source = snapshots[i];
                 if (source.IsSorted)
                 {
-                    sources[i] = fromMerged(source.MergedContent);
+                    sources[i] = fromSorted(source.SortedContent);
                 }
                 else
                 {

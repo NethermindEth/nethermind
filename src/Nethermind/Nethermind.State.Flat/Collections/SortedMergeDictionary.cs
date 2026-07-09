@@ -86,9 +86,9 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
         LoserTree tree = new(sources, keyComparer);
         int count = 0;
-        while (tree.TryNextRun(keep, out Entry chosen, out bool hasChosen))
+        while (tree.TryNext(keep, out Entry chosen))
         {
-            if (hasChosen) _entries[count++] = chosen;
+            _entries[count++] = chosen;
         }
 
         _count = count;
@@ -143,6 +143,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         _bucketMask = (uint)(size - 1);
         Array.Clear(_buckets, 0, size);
 
+        // buckets store a 1-based entry index (0 == empty); Next is the 0-based previous chain head, -1 at the end.
         for (int i = 0; i < _count; i++)
         {
             ref Entry entry = ref _entries[i];
@@ -170,12 +171,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return dictionary;
     }
 
+    // Target load factor: size buckets so at most ~70% are occupied, keeping chains short.
+    private const double MaxLoadFactor = 0.7;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BucketSize(int count)
-    {
-        if (count <= 1) return 1;
-        return (int)BitOperations.RoundUpToPowerOf2((uint)count);
-    }
+    private static int BucketSize(int count) =>
+        count == 0 ? 1 : (int)BitOperations.RoundUpToPowerOf2((uint)(count / MaxLoadFactor) + 1);
 
     public Enumerator GetEnumerator() => new(this);
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() => GetEnumerator();
@@ -206,6 +207,13 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
 
+    /// <summary>
+    /// Tournament (loser) tree over the k sorted runs. Each internal node holds the loser of a match; the overall
+    /// winner (smallest current head) ends up at <c>_tree[0]</c>. <see cref="TryNext"/> reads that winner, advances
+    /// its run, and <see cref="Adjust"/> replays only that leaf's path to the root — O(log k) per element rather
+    /// than O(k). Leaf index <c>_k</c> is a sentinel: it seeds the tree (smaller than any real head) and marks
+    /// exhausted runs (larger than any real head).
+    /// </summary>
     private ref struct LoserTree
     {
         private readonly ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> _sources;
@@ -222,43 +230,46 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             _tree = new int[_k];
             _position = new int[_k];
 
-            // Leaf index _k is a MIN sentinel used only to seed the tree; playing each real leaf in stores losers.
             for (int i = 0; i < _k; i++) _tree[i] = _k;
             for (int i = _k - 1; i >= 0; i--) Adjust(i);
         }
 
-        public bool TryNextRun(Func<int, TKey, bool>? keep, out Entry chosen, out bool hasChosen)
+        // Emits the next distinct key, collapsing equal-keyed heads to the highest-index kept value. Fully
+        // filtered keys are skipped, so a returned entry is always a real one.
+        public bool TryNext(Func<int, TKey, bool>? keep, out Entry chosen)
         {
-            int winner = _tree[0];
-            if (winner == _k || _position[winner] >= _sources[winner]._count)
-            {
-                chosen = default;
-                hasChosen = false;
-                return false;
-            }
-
-            TKey key = _sources[winner]._entries[_position[winner]].Key;
-            chosen = default;
-            hasChosen = false;
-
             while (true)
             {
-                int current = _tree[0];
-                if (current == _k || _position[current] >= _sources[current]._count) break;
-
-                ref Entry currentHead = ref _sources[current]._entries[_position[current]];
-                if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
-
-                if (keep is null || keep(current, currentHead.Key))
+                int winner = _tree[0];
+                if (winner == _k || _position[winner] >= _sources[winner]._count)
                 {
-                    chosen = currentHead;
-                    hasChosen = true;
+                    chosen = default;
+                    return false;
                 }
-                _position[current]++;
-                Adjust(current);
-            }
 
-            return true;
+                TKey key = _sources[winner]._entries[_position[winner]].Key;
+                bool hasChosen = false;
+                chosen = default;
+
+                while (true)
+                {
+                    int current = _tree[0];
+                    if (current == _k || _position[current] >= _sources[current]._count) break;
+
+                    ref Entry currentHead = ref _sources[current]._entries[_position[current]];
+                    if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
+
+                    if (keep is null || keep(current, currentHead.Key))
+                    {
+                        chosen = currentHead;
+                        hasChosen = true;
+                    }
+                    _position[current]++;
+                    Adjust(current);
+                }
+
+                if (hasChosen) return true;
+            }
         }
 
         private void Adjust(int s)
