@@ -98,8 +98,6 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
-    public void Prefetch(byte[][] keys) => _mainDb.PrefetchWithColumnFamily(keys, _columnFamily);
-
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 
 

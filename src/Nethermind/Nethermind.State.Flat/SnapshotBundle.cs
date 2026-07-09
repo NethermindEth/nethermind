@@ -290,12 +290,6 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    public void PrefetchStorageNodes(Hash256 address, ReadOnlySpan<TreePath> paths)
-    {
-        GuardDispose();
-        _readOnlySnapshotBundle.PrefetchStorageNodes(address, paths);
-    }
-
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {

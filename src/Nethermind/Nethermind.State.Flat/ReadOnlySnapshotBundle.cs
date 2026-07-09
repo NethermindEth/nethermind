@@ -196,9 +196,6 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public void PrefetchStorageNodes(Hash256 address, ReadOnlySpan<TreePath> paths) =>
-        persistenceReader.PrefetchStorageNodes(address, paths);
-
     private void GuardDispose()
     {
         if (_isDisposed) throw new ObjectDisposedException($"{nameof(ReadOnlySnapshotBundle)} is disposed");

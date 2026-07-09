@@ -34,7 +34,6 @@ public interface IPersistence
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
-        void PrefetchStorageNodes(Hash256 address, ReadOnlySpan<TreePath> paths) { }
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);

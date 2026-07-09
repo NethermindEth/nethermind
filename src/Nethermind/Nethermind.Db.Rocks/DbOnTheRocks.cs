@@ -871,41 +871,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _ => WriteOptions
     };
 
-    public void Prefetch(byte[][] keys)
-    {
-        try
-        {
-            _db.MultiGet(keys);
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-    }
-
-    internal void PrefetchWithColumnFamily(byte[][] keys, ColumnFamilyHandle? columnFamily)
-    {
-        try
-        {
-            if (columnFamily is null)
-            {
-                _db.MultiGet(keys);
-            }
-            else
-            {
-                ColumnFamilyHandle[] cfs = new ColumnFamilyHandle[keys.Length];
-                Array.Fill(cfs, columnFamily);
-                _db.MultiGet(keys, cfs);
-            }
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-    }
-
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
     {
