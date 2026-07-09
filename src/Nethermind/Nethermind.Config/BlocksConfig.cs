@@ -65,8 +65,6 @@ namespace Nethermind.Config
 
         public bool PreWarmStateFromMempool { get; set; } = false;
 
-        public bool MempoolPreWarmReactiveDedup { get; set; } = true;
-
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 

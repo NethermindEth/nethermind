@@ -49,9 +49,6 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to speculatively pre-warm the state cache between blocks using top-of-mempool transactions, so the next block's execution starts against a warm cache. Requires PreWarmStateOnBlockProcessing. Experimental.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmStateFromMempool { get; set; }
 
-    [ConfigItem(Description = "When mempool pre-warming hands off to block processing, skip re-warming senders already warmed speculatively. Disable to make the reactive prewarmer re-warm every sender regardless (diagnostic/measurement). Only affects PreWarmStateFromMempool.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool MempoolPreWarmReactiveDedup { get; set; }
-
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

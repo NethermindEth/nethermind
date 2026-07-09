@@ -36,7 +36,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
-    private readonly bool _reactiveDedup;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -67,8 +66,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager,
-        blocksConfig.MempoolPreWarmReactiveDedup) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -77,8 +75,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager,
-        bool reactiveDedup = true)
+        ILogManager logManager)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -86,7 +83,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
-        _reactiveDedup = reactiveDedup;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -114,8 +110,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        // _reactiveDedup off makes the reactive pass re-warm every sender regardless of the handoff (diagnostic).
-        return WarmCaches(suggestedBlock, parent, spec, _reactiveDedup ? speculativelyWarmed : null, cancellationToken, systemAccessLists);
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, systemAccessLists);
     }
 
     /// <summary>Warms the caches against <paramref name="parent"/>'s post-state on a background task; assumes the caches are already prepared (cleared or handed off).</summary>
