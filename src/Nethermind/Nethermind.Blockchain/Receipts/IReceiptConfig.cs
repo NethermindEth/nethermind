@@ -34,7 +34,7 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether block body and block-access-list writes are also deferred (only when `DeferredPersistence` is enabled). A body/BAL is a processing input rather than a regenerable output; the state-persistence barrier keeps it durable before its block's state is persisted, and a not-yet-persisted one lost on an unclean shutdown is re-downloaded from peers.", DefaultValue = "true")]
     bool DeferBlockBodyPersistence { get; set; }
 
-    [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A block enqueues up to three writes (body, receipts, canonical index). Bounds the pending-overlay memory.", DefaultValue = "32", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A BAL-enabled block can enqueue up to five writes (body, suggested BAL, receipts, generated BAL, canonical index), although superseded pending writes are coalesced. Bounds the pending-overlay memory.", DefaultValue = "128", HiddenFromDocs = true)]
     int MaxDeferredWrites { get; set; }
 
     [ConfigItem(Description =

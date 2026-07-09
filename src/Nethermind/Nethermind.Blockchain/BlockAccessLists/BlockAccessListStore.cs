@@ -77,9 +77,9 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         Hash256 blockHash = block.Hash ?? throw new ArgumentException("Block hash is required to persist a block access list.", nameof(block));
 
-        // Snapshot the encoded bytes now and free the live BAL (as InsertFromBlock does); only the DB write
-        // defers. The pre-encoded array is cloned so a later mutation cannot diverge it from the header BAL hash.
-        byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? (byte[])encoded.Clone()
+        // Retain the immutable encoded bytes and free the live BAL (as InsertFromBlock does); only the DB write
+        // defers. Clearing the block property does not affect the array retained by the overlay.
+        byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
             : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
 

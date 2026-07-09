@@ -26,40 +26,72 @@ internal sealed class DeferredWriteOverlay<TPayload>(
 {
     private readonly ConcurrentDictionary<ValueHash256, Entry> _pending = new();
     private readonly Lock _lock = sharedLock ?? new Lock();
+    private long _nextOperationId;
+    private int _pendingCount;
 
-    private sealed class Entry(ulong blockNumber, Hash256 blockHash, TPayload payload)
+    private sealed class Entry(
+        DeferredWriteOverlay<TPayload> owner,
+        long operationId,
+        ulong blockNumber,
+        Hash256 blockHash,
+        TPayload payload) : IDeferredWriteOperation
     {
+        public long OperationId { get; } = operationId;
         public ulong BlockNumber { get; } = blockNumber;
         public Hash256 BlockHash { get; } = blockHash;
         public TPayload Payload { get; } = payload;
+
+        public void Execute() => owner.Persist(BlockHash.ValueHash256, OperationId);
     }
 
     public void Publish(ulong blockNumber, Hash256 blockHash, TPayload payload)
     {
-        Entry entry = new(blockNumber, blockHash, payload);
-        _pending[blockHash.ValueHash256] = entry;
-        writer.Enqueue(() => Persist(entry));
-    }
-
-    private void Persist(Entry entry)
-    {
-        lock (_lock)
+        ValueHash256 key = blockHash.ValueHash256;
+        while (true)
         {
-            // Skip if a removal dropped this exact entry; value-conditional so a queued re-insert keeps its own.
-            ValueHash256 key = entry.BlockHash.ValueHash256;
-            if (!_pending.TryGetValue(key, out Entry? current) || !ReferenceEquals(current, entry))
+            if (_pending.TryGetValue(key, out Entry? current))
             {
+                Entry replacement = new(this, current.OperationId, blockNumber, blockHash, payload);
+                if (_pending.TryUpdate(key, replacement, current)) return;
+                continue;
+            }
+
+            Entry entry = new(this, Interlocked.Increment(ref _nextOperationId), blockNumber, blockHash, payload);
+
+            // Increment first so a reader can observe a harmless false positive, never a false zero after publication.
+            Interlocked.Increment(ref _pendingCount);
+            if (_pending.TryAdd(key, entry))
+            {
+                writer.Enqueue(entry);
                 return;
             }
 
-            write(entry.BlockNumber, entry.BlockHash, entry.Payload);
-            _pending.TryRemove(new KeyValuePair<ValueHash256, Entry>(key, entry));
+            Interlocked.Decrement(ref _pendingCount);
+        }
+    }
+
+    private void Persist(ValueHash256 key, long operationId)
+    {
+        lock (_lock)
+        {
+            while (_pending.TryGetValue(key, out Entry? current) && current.OperationId == operationId)
+            {
+                write(current.BlockNumber, current.BlockHash, current.Payload);
+                if (_pending.TryRemove(new KeyValuePair<ValueHash256, Entry>(key, current)))
+                {
+                    Interlocked.Decrement(ref _pendingCount);
+                    return;
+                }
+
+                // A publisher replaced the payload while it was being written. Persist the latest value under
+                // the same queued operation so the superseded publication needs no additional channel item.
+            }
         }
     }
 
     public bool TryGet(Hash256 blockHash, out TPayload payload)
     {
-        if (_pending.TryGetValue(blockHash.ValueHash256, out Entry? entry))
+        if (Volatile.Read(ref _pendingCount) != 0 && _pending.TryGetValue(blockHash.ValueHash256, out Entry? entry))
         {
             payload = entry.Payload;
             return true;
@@ -69,7 +101,8 @@ internal sealed class DeferredWriteOverlay<TPayload>(
         return false;
     }
 
-    public bool Contains(Hash256 blockHash) => _pending.ContainsKey(blockHash.ValueHash256);
+    public bool Contains(Hash256 blockHash) =>
+        Volatile.Read(ref _pendingCount) != 0 && _pending.ContainsKey(blockHash.ValueHash256);
 
     /// <summary>
     /// Removes the overlay entry and runs <paramref name="alsoUnderLock"/> atomically against a queued
@@ -79,7 +112,10 @@ internal sealed class DeferredWriteOverlay<TPayload>(
     {
         lock (_lock)
         {
-            _pending.TryRemove(blockHash.ValueHash256, out _);
+            if (_pending.TryRemove(blockHash.ValueHash256, out _))
+            {
+                Interlocked.Decrement(ref _pendingCount);
+            }
             alsoUnderLock();
         }
     }

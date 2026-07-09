@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -65,6 +66,34 @@ public class DeferredBlockStoreTests
         // The overlay holds a sanitized header+body snapshot, so a read serves a distinct instance, never the live block.
         Assert.That(_store.Get(block.Number, block.Hash!), Is.Not.SameAs(block));
         Assert.That(_store.Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public void Cache_reuses_the_pending_sanitized_block()
+    {
+        Block block = BlockNumbered(1);
+        _store.InsertDeferred(block);
+        Block? pending = _store.Get(block.Number, block.Hash!);
+
+        _store.Cache(block);
+
+        Assert.That(_store.Get(block.Number, block.Hash!), Is.SameAs(pending));
+    }
+
+    [Test]
+    public void Coalesced_operation_does_not_consume_a_reinsert_after_removal()
+    {
+        List<string> writes = [];
+        DeferredWriteOverlay<string> overlay = new(_writer, (_, _, payload) => writes.Add(payload));
+
+        overlay.Publish(1, TestItem.KeccakA, "removed");
+        overlay.Remove(TestItem.KeccakA, static () => { });
+        overlay.Publish(2, TestItem.KeccakB, "intervening");
+        overlay.Publish(1, TestItem.KeccakA, "reinserted");
+
+        _writer.Pump();
+
+        Assert.That(writes, Is.EqualTo((string[])["intervening", "reinserted"]));
     }
 
     [Test]

@@ -139,6 +139,27 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
+    public async Task Replacing_pending_bal_coalesces_the_queued_write()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer, deferBal: true);
+
+        Block block = BlockWithBal(5, [0xc1, 0x01]);
+        store.InsertFromBlockDeferred(block);
+
+        byte[] authoritativeBal = [0xc1, 0x02];
+        block.EncodedBlockAccessList = authoritativeBal;
+        store.InsertFromBlockDeferred(block);
+
+        Assert.That(writer.QueuedCount, Is.EqualTo(1), "the replacement should reuse the existing queued operation");
+
+        writer.Pump();
+
+        Assert.That(ReadDurable(db, block), Is.EqualTo(authoritativeBal));
+    }
+
+    [Test]
     public async Task Barrier_flush_drains_queued_bal_and_fsyncs_before_state_persists()
     {
         TestMemDb db = new();

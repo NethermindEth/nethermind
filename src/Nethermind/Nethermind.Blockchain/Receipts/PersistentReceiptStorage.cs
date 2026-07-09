@@ -52,11 +52,22 @@ namespace Nethermind.Blockchain.Receipts
         // this also doubles as the cancellation ledger - RemoveReceipts clears a block's entry so the write skips.
         private readonly ConcurrentDictionary<ValueHash256, PendingCanonicalEntry> _pendingCanonical = new();
 
-        private sealed class PendingCanonicalEntry(Block block, ulong lastBlockNumber, PendingTxIndexValue txIndexValue)
+        private sealed class PendingCanonicalEntry(
+            PersistentReceiptStorage owner,
+            Block block,
+            ulong lastBlockNumber,
+            PendingTxIndexValue txIndexValue) : IDeferredWriteOperation
         {
             public Block Block { get; } = block;
             public ulong LastBlockNumber { get; } = lastBlockNumber;
             public PendingTxIndexValue TxIndexValue { get; } = txIndexValue;
+
+            public void Execute() => owner.PersistDeferredCanonical(this);
+        }
+
+        private sealed class PruneTxIndexOperation(PersistentReceiptStorage owner, Block block) : IDeferredWriteOperation
+        {
+            public void Execute() => owner.PruneOldTxIndex(block);
         }
 
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
@@ -140,13 +151,13 @@ namespace Nethermind.Blockchain.Receipts
 
                 // Publish the block-level entry and enqueue BEFORE the event, so a state persist that observes
                 // the block always drains this. FIFO order keeps a reorg remap and the prune correct.
-                PendingCanonicalEntry canonical = new(block, lastBlockNumber, pending);
+                PendingCanonicalEntry canonical = new(this, block, lastBlockNumber, pending);
                 _pendingCanonical[block.Hash!.ValueHash256] = canonical;
-                _deferredWriter.Enqueue(() => PersistDeferredCanonical(canonical));
+                _deferredWriter.Enqueue(canonical);
             }
             else
             {
-                _deferredWriter.Enqueue(() => PruneOldTxIndex(block));
+                _deferredWriter.Enqueue(new PruneTxIndexOperation(this, block));
             }
 
             NewCanonicalReceipts?.Invoke(this, e);

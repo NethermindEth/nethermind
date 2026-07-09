@@ -50,6 +50,8 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
+        ValueHash256 cacheKey = blockHash.ValueHash256;
+        if (_blockCache.TryGetNoRefresh(in cacheKey, out _)) return true;
         if (_pending?.Contains(blockHash) == true) return true;
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -94,6 +96,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Runs on the deferred-writer consumer: encode here, off the processing path.
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
         _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
+        block.EncodedTransactions = null;
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -117,15 +120,26 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
+        ValueHash256 cacheKey = blockHash.ValueHash256;
+        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock)) return cachedBlock;
+
         // Served from the pending snapshot - a distinct instance from the live block - until the write lands.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
             return pendingBlock;
         }
 
-        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
-        if (b is not null) return b;
-        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? block = _blockDb.Get(blockNumber, blockHash, _blockDecoder,
+            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false)
+            ?? _blockDb.Get(blockHash, _blockDecoder,
+                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
+
+        if (shouldCache && block is not null)
+        {
+            _blockCache.Set(in cacheKey, block);
+        }
+
+        return block;
     }
 
     public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
@@ -145,6 +159,12 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
+        ValueHash256 cacheKey = blockHash.ValueHash256;
+        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock))
+        {
+            return new ReceiptRecoveryBlock(cachedBlock);
+        }
+
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
             return new ReceiptRecoveryBlock(pendingBlock);
@@ -160,12 +180,17 @@ public class BlockStore : IBlockStore, IClearableCache
         return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
     }
 
-    public void Cache(Block block) =>
-        // Cache a sanitized copy to avoid retaining large BAL/account-change
-        // structures, without mutating the original block instance which may
-        // still be used by downstream consumers (e.g., TxPool reads and
-        // disposes AccountChanges after this call).
-        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
+    public void Cache(Block block)
+    {
+        ValueHash256 cacheKey = block.Hash.ValueHash256;
+        Block cachedBlock = _pending is not null && _pending.TryGet(block.Hash!, out Block? pendingBlock)
+            ? pendingBlock
+            // Cache a sanitized copy to avoid retaining large BAL/account-change structures without mutating
+            // the original block, which downstream consumers may still use and dispose.
+            : new Block(block.Header, block.Body);
+
+        _blockCache.Set(in cacheKey, cachedBlock);
+    }
 
     void IClearableCache.ClearCache() => _blockCache.Clear();
 }

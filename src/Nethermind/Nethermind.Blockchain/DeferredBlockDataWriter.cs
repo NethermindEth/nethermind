@@ -40,17 +40,37 @@ public interface IDeferredBlockDataWriter : IAsyncDisposable
     void Drain();
 }
 
+internal interface IDeferredWriteOperation
+{
+    void Execute();
+}
+
+internal static class DeferredBlockDataWriterExtensions
+{
+    public static void Enqueue(this IDeferredBlockDataWriter writer, IDeferredWriteOperation operation)
+    {
+        if (writer is DeferredBlockDataWriter deferredWriter)
+        {
+            deferredWriter.Enqueue(operation);
+        }
+        else
+        {
+            writer.Enqueue(operation.Execute);
+        }
+    }
+}
+
 /// <inheritdoc cref="IDeferredBlockDataWriter"/>
 public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 {
-    private readonly Channel<Action>? _channel;
+    private readonly Channel<IDeferredWriteOperation>? _channel;
     private readonly Task? _consumer;
     private readonly bool _manualPump;
     private readonly ILogger _logger;
     private readonly Lock _faultLock = new();
     // Writes that failed twice, retained for an inline retry at the next Drain (their overlay entries stay
     // pending), so a transient disk fault self-heals instead of wedging persistence. Guarded by _faultLock.
-    private List<Action>? _failedWrites;
+    private List<IDeferredWriteOperation>? _failedWrites;
     // Set before _faulted (whose volatile write publishes them). _unrecoverable marks a dead consumer with
     // no retained work to retry, so Drain always aborts rather than proceeding.
     private Exception? _faultException;
@@ -59,8 +79,8 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     /// <param name="enabled">When false the writer is a no-op passthrough that runs work inline.</param>
     /// <param name="capacity">Maximum queued work items before producers backpressure. Note this
-    /// counts individual writes, not blocks: a block can enqueue a body, a receipts and a canonical
-    /// item, so the block headroom is roughly a third of this value.</param>
+    /// counts individual writes, not blocks: a BAL-enabled block can enqueue up to five items, although
+    /// superseded pending writes are coalesced.</param>
     /// <param name="logManager">Log manager.</param>
     /// <param name="persistenceBarrier">Barrier to register this writer's <see cref="Drain"/> with, so a
     /// state persist drains queued writes before fsyncing. No drain is registered when null/disabled.</param>
@@ -73,7 +93,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         _manualPump = !startConsumer;
         if (enabled)
         {
-            _channel = Channel.CreateBounded<Action>(new BoundedChannelOptions(Math.Max(1, capacity))
+            _channel = Channel.CreateBounded<IDeferredWriteOperation>(new BoundedChannelOptions(Math.Max(1, capacity))
             {
                 SingleReader = true,
                 FullMode = BoundedChannelFullMode.Wait
@@ -93,12 +113,19 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     public bool Enabled { get; }
 
+    internal int QueuedCount => _channel?.Reader.Count ?? 0;
+
     public void Enqueue(Action work)
     {
         ArgumentNullException.ThrowIfNull(work);
+        Enqueue(new ActionOperation(work));
+    }
+
+    internal void Enqueue(IDeferredWriteOperation work)
+    {
         if (_channel is null || _faulted)
         {
-            work();
+            work.Execute();
             return;
         }
 
@@ -106,14 +133,14 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         {
             if (_faulted || _channel.Reader.Completion.IsCompleted)
             {
-                work();
+                work.Execute();
                 return;
             }
 
             // Backpressure: block the producer so a slow disk degrades to synchronous, not unbounded memory.
             if (!_channel.Writer.WaitToWriteAsync().AsTask().GetAwaiter().GetResult())
             {
-                work();
+                work.Execute();
                 return;
             }
         }
@@ -128,7 +155,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     public void Pump()
     {
         if (!_manualPump) throw new InvalidOperationException("Pump is only usable when the consumer task is not running.");
-        while (_channel is not null && _channel.Reader.TryRead(out Action? work))
+        while (_channel is not null && _channel.Reader.TryRead(out IDeferredWriteOperation? work))
         {
             Run(work);
         }
@@ -170,15 +197,15 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         {
             if (_failedWrites is not { Count: > 0 }) return;   // no retained writes, or an earlier drain landed them
 
-            List<Action> retrying = _failedWrites;
+            List<IDeferredWriteOperation> retrying = _failedWrites;
             _failedWrites = null;
-            List<Action>? stillFailing = null;
+            List<IDeferredWriteOperation>? stillFailing = null;
             Exception? lastException = null;
-            foreach (Action work in retrying)
+            foreach (IDeferredWriteOperation work in retrying)
             {
                 try
                 {
-                    work();
+                    work.Execute();
                 }
                 catch (Exception e)
                 {
@@ -200,7 +227,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     {
         try
         {
-            await foreach (Action work in _channel!.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (IDeferredWriteOperation work in _channel!.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 Run(work);
             }
@@ -212,18 +239,18 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         }
     }
 
-    private void Run(Action work)
+    private void Run(IDeferredWriteOperation work)
     {
         try
         {
-            work();
+            work.Execute();
         }
         catch (Exception firstException)
         {
             if (_logger.IsWarn) _logger.Warn($"Deferred block-data write failed, retrying once: {firstException}");
             try
             {
-                work();
+                work.Execute();
             }
             catch (Exception secondException)
             {
@@ -236,7 +263,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     // A queued write failed twice. Retain it for an inline retry at the next Drain and complete the channel
     // so the consumer stops and all further work runs inline in producer order.
-    private void RetainFailure(Action work, Exception exception)
+    private void RetainFailure(IDeferredWriteOperation work, Exception exception)
     {
         lock (_faultLock)
         {
@@ -270,5 +297,10 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         {
             Pump();
         }
+    }
+
+    private sealed class ActionOperation(Action action) : IDeferredWriteOperation
+    {
+        public void Execute() => action();
     }
 }
