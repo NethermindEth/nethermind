@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -127,6 +129,7 @@ namespace Nethermind.State
         }
         public void Reset(bool resetBlockChanges = true)
         {
+            AbortEarlyStorageRoots();
             DebugGuardInScope();
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
@@ -158,6 +161,44 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.RecalculateStateRoot();
+        }
+
+        private IWorldStateScopeProvider.IWorldStateWriteBatch? _earlyWriteBatch;
+        private Task? _earlyStorageRootsTask;
+        private readonly ConcurrentQueue<IWorldStateScopeProvider.AccountUpdated> _earlyAccountUpdates = new();
+        private EventHandler<IWorldStateScopeProvider.AccountUpdated>? _earlyAccountUpdatedHandler;
+
+        public void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude)
+        {
+            DebugGuardInScope();
+            if (_earlyWriteBatch is not null) return;
+
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
+                _currentScope!.StartWriteBatch(_stateProvider.ChangedAccountCount);
+            _earlyAccountUpdatedHandler = (_, updatedAccount) => _earlyAccountUpdates.Enqueue(updatedAccount);
+            writeBatch.OnAccountUpdated += _earlyAccountUpdatedHandler;
+            _earlyWriteBatch = writeBatch;
+            _earlyStorageRootsTask = Task.Run(() => _persistentStorageProvider.FlushToTreeExcept(writeBatch, exclude));
+        }
+
+        private void AbortEarlyStorageRoots()
+        {
+            IWorldStateScopeProvider.IWorldStateWriteBatch? writeBatch = _earlyWriteBatch;
+            if (writeBatch is null) return;
+
+            _earlyWriteBatch = null;
+            try
+            {
+                _earlyStorageRootsTask?.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                _earlyStorageRootsTask = null;
+                writeBatch.OnAccountUpdated -= _earlyAccountUpdatedHandler;
+                _earlyAccountUpdatedHandler = null;
+                writeBatch.Dispose();
+                _earlyAccountUpdates.Clear();
+            }
         }
         public void DeleteAccount(Address address)
         {
@@ -336,13 +377,31 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             DebugGuardInScope();
+
+            IWorldStateScopeProvider.IWorldStateWriteBatch? earlyWriteBatch = null;
+            if (commitRoots && _earlyWriteBatch is not null)
+            {
+                earlyWriteBatch = _earlyWriteBatch;
+                _earlyWriteBatch = null;
+                _earlyStorageRootsTask!.GetAwaiter().GetResult();
+                _earlyStorageRootsTask = null;
+                earlyWriteBatch.OnAccountUpdated -= _earlyAccountUpdatedHandler;
+                _earlyAccountUpdatedHandler = null;
+            }
+
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
+                    earlyWriteBatch ?? _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                while (_earlyAccountUpdates.TryDequeue(out IWorldStateScopeProvider.AccountUpdated? updatedAccount))
+                {
+                    _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                }
+
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);

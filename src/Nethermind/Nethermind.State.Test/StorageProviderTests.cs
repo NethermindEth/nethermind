@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -178,6 +179,25 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance);
 
         Assert.That(provider.Get(new StorageCell(ctx.Address1, 1)).IsZero(), Is.True);
+    }
+
+    [Test]
+    public void Early_storage_root_flush_applies_storage_root_to_account()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = ctx.StateProvider;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        provider.CreateAccount(ctx.Address1, 0);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, _values[1]);
+        provider.Commit(Frontier.Instance, commitRoots: false);
+
+        provider.BeginEarlyStorageRoots(new HashSet<AddressAsKey>());
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[1]));
+        Assert.That(provider.GetAccount(ctx.Address1).StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]

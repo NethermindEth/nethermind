@@ -71,4 +71,42 @@ internal sealed partial class PersistentStorageProvider
             (state) => ReportMetrics(state.writes, state.skips)
         );
     }
+
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys)
+    {
+        using ArrayPoolList<(
+            AddressAsKey Key, PerContractState ContractState,
+            IWorldStateScopeProvider.IStorageWriteBatch WriteBatch
+            )> storages = new(keys.Count);
+
+        foreach (AddressAsKey key in keys.AsSpan())
+        {
+            if (_storages.TryGetValue(key, out PerContractState? contractState))
+            {
+                storages.Add((
+                    key,
+                    contractState,
+                    writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges)));
+            }
+        }
+
+        if (storages.Count == 0) return;
+
+        storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
+
+        ParallelUnbalancedWork.For(
+            0,
+            storages.Count,
+            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            (storages, writes: 0, skips: 0),
+            static (i, state) =>
+            {
+                ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
+                (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
+                state.writes += writes;
+                state.skips += skipped;
+                return state;
+            },
+            static state => ReportMetrics(state.writes, state.skips));
+    }
 }
