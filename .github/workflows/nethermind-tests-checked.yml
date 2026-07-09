@@ -19,8 +19,51 @@ defaults:
     shell: bash
 
 jobs:
+  build:
+    name: Build [${{ matrix.variant.label }}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - label: checked
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
+          - label: no-intrinsics
+            dotnet-args: ''
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Build test solutions
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx --locked-mode
+          dotnet build src/Nethermind/Nethermind.slnx -c release --no-restore ${{ matrix.variant.dotnet-args }}
+          dotnet restore src/Nethermind/EthereumTests.slnx --locked-mode
+          dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore ${{ matrix.variant.dotnet-args }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts
+          retention-days: 1
+          include-hidden-files: true
+
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -102,6 +145,15 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts
 
       - name: ${{ matrix.project }}
         id: test
@@ -109,14 +161,13 @@ jobs:
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -160,6 +211,15 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ matrix.variant.label }}
+          path: src/Nethermind/artifacts
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -169,21 +229,20 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-chunked]
+    needs: [build, tests, tests-chunked]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
           [[ \
+            "${{ needs.build.result }}" == "success" && \
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" \
           ]]

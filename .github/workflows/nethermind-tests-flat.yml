@@ -16,8 +16,43 @@ env:
   TEST_USE_FLAT: 1
 
 jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Build test solutions
+        run: |
+          dotnet restore src/Nethermind/Nethermind.slnx --locked-mode
+          dotnet build src/Nethermind/Nethermind.slnx -c release --no-restore
+          dotnet restore src/Nethermind/EthereumTests.slnx --locked-mode
+          dotnet build src/Nethermind/EthereumTests.slnx -c release --no-restore
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-ubuntu-latest
+          path: src/Nethermind/artifacts
+          retention-days: 1
+          include-hidden-files: true
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -74,6 +109,15 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build-ubuntu-latest
+          path: src/Nethermind/artifacts
 
       - name: ${{ matrix.project }}
         id: test
@@ -81,8 +125,6 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
 
   # EEST fixtures under the flat state layout (formerly the Ethereum.Blockchain.Pyspec.Test
@@ -100,13 +142,14 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, nethtest]
+    needs: [build, tests, nethtest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
           [[ \
+            "${{ needs.build.result }}" == "success" && \
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" \
           ]]
