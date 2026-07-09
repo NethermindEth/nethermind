@@ -10,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -25,8 +24,7 @@ namespace Nethermind.Init.Steps
         IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
         IBlockTreeHealer blockTreeHealer,
-        ILogManager logManager,
-        IStateBoundary? stateBoundary = null
+        ILogManager logManager
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
@@ -34,53 +32,9 @@ namespace Nethermind.Init.Steps
         public Task Execute(CancellationToken cancellationToken)
         {
             HealCanonicalChainIfEnabled();
-            FastForwardHeadToPersistedState();
             return initConfig.ProcessingEnabled
                 ? RunBlockTreeInitTasks(cancellationToken)
                 : Task.CompletedTask;
-        }
-
-        private void FastForwardHeadToPersistedState()
-        {
-            if (stateBoundary is null
-                || !stateBoundary.TryGetBestPersistedState(out ulong persistedNumber, out Hash256? persistedRoot))
-            {
-                return;
-            }
-
-            Block? head = blockTree.Head;
-            if (head is null || head.Number >= persistedNumber)
-            {
-                return;
-            }
-
-            ChainLevelInfo? level = blockTree.FindLevel(persistedNumber);
-            if (level is null)
-            {
-                return;
-            }
-
-            foreach (BlockInfo blockInfo in level.BlockInfos)
-            {
-                Block? block = blockTree.FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-                if (block?.StateRoot != persistedRoot)
-                {
-                    continue;
-                }
-
-                if (blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block))
-                {
-                    if (_logger.IsInfo) _logger.Info($"Fast-forwarded head from {head.Number} to {block.ToString(Block.Format.Short)} matching the persisted state.");
-                }
-                else if (_logger.IsWarn)
-                {
-                    _logger.Warn($"Could not fast-forward head to persisted state block {block.ToString(Block.Format.Short)}; a branch predecessor is missing.");
-                }
-
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Persisted state {persistedNumber} is ahead of head {head.Number} and has no matching local block; waiting for forward sync.");
         }
 
         private void HealCanonicalChainIfEnabled()

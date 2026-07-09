@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.State;
 
 /// <summary>
@@ -32,13 +29,6 @@ public interface IStateBoundary
     /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
     /// </summary>
     ulong? BestPersistedState { get; }
-
-    /// <summary>
-    /// Like <see cref="BestPersistedState"/> but also returns the state root verified against the
-    /// persisted block. Returns <c>false</c> when there is no usable persisted state (nothing
-    /// persisted, still syncing, or a backend without one) — callers fall back to re-execution.
-    /// </summary>
-    bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot);
 }
 
 /// <summary>
@@ -66,11 +56,4 @@ public sealed class NullStateBoundary : IStateBoundary
     public ulong? OldestStateBlock => null;
     public ulong? RetentionWindowBlocks => null;
     public ulong? BestPersistedState => null;
-
-    public bool TryGetBestPersistedState(out ulong blockNumber, [NotNullWhen(true)] out Hash256? stateRoot)
-    {
-        blockNumber = 0;
-        stateRoot = null;
-        return false;
-    }
 }

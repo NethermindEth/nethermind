@@ -484,11 +484,6 @@ namespace Nethermind.Blockchain
 
                 if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
                 {
-                    if (TryAbsorbIntoPersistedState(block))
-                    {
-                        return AddBlockResult.Added;
-                    }
-
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
