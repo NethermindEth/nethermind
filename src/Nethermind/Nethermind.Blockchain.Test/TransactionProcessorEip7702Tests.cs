@@ -67,7 +67,7 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<TestCaseData> Eip8037AuthRefundCases()
     {
-        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0UL)
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0L)
             .SetName("Nonexistent authority - no auth state refund");
         yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.PerAuthBaseState)
             .SetName("Nonexistent authority clear - refunds auth-base state gas");
@@ -86,7 +86,7 @@ internal class TransactionProcessorEip7702Tests
         AuthorityPreState authorityPreState,
         bool clearDelegation,
         ulong authorityNonce,
-        ulong expectedStateGasRefund)
+        long expectedStateGasRefund)
     {
         UseSpec(Amsterdam.Instance);
 
@@ -112,7 +112,6 @@ internal class TransactionProcessorEip7702Tests
             _stateProvider.InsertCode(authority.Address, ValueKeccak.Compute(delegation), delegation, Amsterdam.Instance);
         }
 
-        ulong intrinsicRegularGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular;
         ulong intrinsicStateGas = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -138,9 +137,19 @@ internal class TransactionProcessorEip7702Tests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-        Assert.That(tx.SpentGas, Is.EqualTo(intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund));
-        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(intrinsicRegularGas + intrinsicStateGas - expectedStateGasRefund));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - expectedStateGasRefund)));
+        // Intrinsic regular = TX base + value-bearing recipient touch + EIP-7702 per-auth regular;
+        // existing authorities refund ACCOUNT_WRITE, capped at before/5.
+        ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
+            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
+        ulong stateGasRefund = (ulong)expectedStateGasRefund;
+        ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - stateGasRefund;
+        ulong regularRefund = authorityPreState == AuthorityPreState.Nonexistent
+            ? 0
+            : Math.Min(beforeRegularRefund / 5, Eip8038Constants.AccountWrite);
+        ulong expectedSpentGas = beforeRegularRefund - regularRefund;
+        Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
+        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - stateGasRefund)));
         Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
 
         byte[] expectedCode = clearDelegation

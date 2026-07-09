@@ -21,7 +21,7 @@ public readonly record struct EthereumIntrinsicGas(ulong Standard, ulong FloorGa
     public ulong MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator ulong(EthereumIntrinsicGas gas) => gas.MinimalGas;
     public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
+        new(gas.Standard.Value + (ulong)gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator
@@ -66,8 +66,11 @@ public static class IntrinsicGasCalculator
         }
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
-        return (ulong)addressesCount * GasCostOf.AccessAccountListEntry
-            + (ulong)storageKeysCount * GasCostOf.AccessStorageListEntry
+        // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
+        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
+        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        return (ulong)addressesCount * addressCost
+            + (ulong)storageKeysCount * storageKeyCost
             + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
 
         [DoesNotReturn, StackTraceHidden]
@@ -75,7 +78,7 @@ public static class IntrinsicGasCalculator
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    internal static (ulong RegularCost, ulong StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    internal static (ulong RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -89,10 +92,11 @@ public static class IntrinsicGasCalculator
         }
 
         ulong authCount = (ulong)authList.Length;
+        ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
             ? (
-                authCount * GasCostOf.PerAuthBaseRegular,
-                authCount * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+                authCount * perAuthRegular,
+                authList.Length * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             )
             : (authCount * GasCostOf.NewAccount, 0);
 
@@ -104,10 +108,15 @@ public static class IntrinsicGasCalculator
     private static ulong CalculateFloorTokensInCallData(Transaction transaction, IReleaseSpec spec) =>
         (ulong)transaction.Data.Length * spec.GasCosts.TxDataNonZeroMultiplier;
 
-    internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList) => spec switch
+    internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList)
     {
-        { IsEip7976Enabled: true } => GasCostOf.Transaction + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
-        { IsEip7623Enabled: true } => GasCostOf.Transaction + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
-        _ => 0
-    };
+        // The floor tracks the reduced EIP-2780 base, else the legacy floor would dominate.
+        ulong floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return spec switch
+        {
+            { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
+            { IsEip7623Enabled: true } => floorBase + tokensInCallData * spec.GasCosts.TotalCostFloorPerToken,
+            _ => 0
+        };
+    }
 }

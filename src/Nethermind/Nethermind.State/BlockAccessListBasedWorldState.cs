@@ -230,27 +230,11 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override bool AccountExists(Address address)
-    {
-        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
-
-        if (parentReader.AccountExists(address))
-        {
-            return true;
-        }
-
-        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out _))
-        {
-            return true;
-        }
-
-        if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out _))
-        {
-            return true;
-        }
-
-        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange) &&
-               codeChange.Code.Length != 0;
-    }
+        // EIP-161 non-emptiness of the effective state at this index: reading only the parent would miss
+        // same-block deletions and wrongly refund EIP-8037 create-state gas on a later CREATE2 over the address.
+        => !GetBalance(address).IsZero
+           || GetNonce(address) != 0
+           || IsContract(address);
 
     public override bool IsContract(Address address)
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
