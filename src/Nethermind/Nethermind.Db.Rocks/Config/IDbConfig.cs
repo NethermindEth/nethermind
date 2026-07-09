@@ -25,6 +25,9 @@ public interface IDbConfig : IConfig
 
 
     int? MaxOpenFiles { get; set; }
+
+    [ConfigItem(Description = "Store RocksDB index and filter blocks in the block cache instead of pinning them in unbounded table-reader memory. Bounds native memory at large state, where index+filter blocks across many SST files can reach tens of GB and grow with the file count. Trades some read latency for cache misses on cold filters.", DefaultValue = "false")]
+    bool CacheIndexAndFilterBlocks { get; set; }
     bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }

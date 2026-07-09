@@ -55,6 +55,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), _prefixes);
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
+    public bool CacheIndexAndFilterBlocks => ReadConfig<bool>(nameof(CacheIndexAndFilterBlocks));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;

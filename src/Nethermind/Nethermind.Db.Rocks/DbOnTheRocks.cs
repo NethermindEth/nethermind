@@ -555,7 +555,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // changes to the table options must be applied before setting to set.
         options.SetBlockBasedTableFactory(tableOptions);
 
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
+        string rocksDbOptions = dbConfig.RocksDbOptions;
+        if (dbConfig.CacheIndexAndFilterBlocks)
+        {
+            // Move index + filter blocks into the (bounded) block cache instead of pinning them in unbounded
+            // table-reader memory. At large state (10x) this is the dominant native RAM — index+filter for every
+            // open SST across hundreds of thousands of files — and it grows with the SST count, OOM-ing the node.
+            // Capping it into the block cache bounds it; pinning L0 keeps the hottest filters resident for reads.
+            // Applied through the options string (not the C# table-options API) so it survives the
+            // rocksdb_get_options_from_string merge below, which rewrites block_based_table_factory fields.
+            rocksDbOptions +=
+                "block_based_table_factory.cache_index_and_filter_blocks=true;" +
+                "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
+                "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;";
+        }
+
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(rocksDbOptions));
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);

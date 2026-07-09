@@ -22,6 +22,7 @@ public class AdjustedRocksdbConfig(
     public string AdditionalRocksDbOptions => baseConfig.AdditionalRocksDbOptions;
 
     public int? MaxOpenFiles => baseConfig.MaxOpenFiles;
+    public bool CacheIndexAndFilterBlocks => baseConfig.CacheIndexAndFilterBlocks;
 
     public bool WriteAheadLogSync => baseConfig.WriteAheadLogSync;
 
