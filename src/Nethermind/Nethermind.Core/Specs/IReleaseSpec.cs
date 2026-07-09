@@ -437,6 +437,13 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// SELFDESTRUCT only moves the whole balance to the target and never destroys the
+        /// account, removing the same-transaction destruction that EIP-6780 still allowed.
+        /// </summary>
+        public bool IsEip4758Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.
