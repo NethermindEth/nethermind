@@ -32,7 +32,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
-    private readonly ConcurrentQueue<AddressAsKey> _storagesToCommit = new();
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -367,19 +366,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
 
-        ArrayPoolList<Task>? storageCommitTasks = StartDirtyStorageTreeCommits();
-        try
-        {
-            _stateTree.Commit();
-        }
-        finally
-        {
-            if (storageCommitTasks is not null)
-            {
-                Task.WaitAll(storageCommitTasks.AsSpan());
-                storageCommitTasks.Dispose();
-            }
-        }
+        // Storage tree commits already happened during WriteBatch.Dispose() via
+        // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
+        _stateTree.Commit();
 
         _storages.Clear();
 
@@ -402,56 +391,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _currentStateId = newStateId;
         _pausePrewarmer = false;
-    }
-
-    private ArrayPoolList<Task>? StartDirtyStorageTreeCommits()
-    {
-        if (_storagesToCommit.IsEmpty) return null;
-
-        using ArrayPoolList<FlatStorageTree> storages = new(_storagesToCommit.Count);
-        HashSet<AddressAsKey> committed = [];
-
-        while (_storagesToCommit.TryDequeue(out AddressAsKey address))
-        {
-            if (committed.Add(address) && _storages.TryGetValue(address, out FlatStorageTree? storage))
-            {
-                storages.Add(storage);
-            }
-        }
-
-        if (storages.Count == 0) return null;
-
-        ArrayPoolList<Task> tasks = new(storages.Count);
-        foreach (FlatStorageTree storage in storages.AsSpan())
-        {
-            if (_concurrencyQuota.TryRequestConcurrencyQuota())
-            {
-                tasks.Add(Task.Factory.StartNew(static state =>
-                {
-                    (FlatWorldStateScope scope, FlatStorageTree storage) = ((FlatWorldStateScope, FlatStorageTree))state!;
-                    try
-                    {
-                        storage.CommitTree();
-                    }
-                    finally
-                    {
-                        scope._concurrencyQuota.ReturnConcurrencyQuota();
-                    }
-                }, (this, storage), CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-            }
-            else
-            {
-                storage.CommitTree();
-            }
-        }
-
-        if (tasks.Count == 0)
-        {
-            tasks.Dispose();
-            return null;
-        }
-
-        return tasks;
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
@@ -487,11 +426,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
-        {
-            scope._storagesToCommit.Enqueue(address);
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-        }
 
         public void Dispose()
         {
