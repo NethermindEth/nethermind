@@ -96,13 +96,17 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
     /// <summary>
     /// Merges already-sorted inputs into a single sorted dictionary using a loser tree. Sources are in ascending
     /// priority order (<paramref name="sources"/><c>[0]</c> is the oldest); when several sources hold the same
-    /// key the value from the highest-index (newest) source wins and all of them are consumed.
+    /// key the value from the highest-index (newest) source wins and all of them are consumed. When
+    /// <paramref name="keep"/> is supplied it is called with each entry's source index and key; entries for
+    /// which it returns <c>false</c> are dropped, and a key with no surviving entry is not emitted.
     /// </summary>
     public static SortedMergeDictionary<TKey, TValue> Merge(
-        ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources, IComparer<TKey> keyComparer)
+        ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources,
+        IComparer<TKey> keyComparer,
+        Func<int, TKey, bool>? keep = null)
     {
         if (sources.Length == 0) return new SortedMergeDictionary<TKey, TValue>([], 0);
-        if (sources.Length == 1) return sources[0];
+        if (sources.Length == 1 && keep is null) return sources[0];
 
         int total = 0;
         foreach (SortedMergeDictionary<TKey, TValue> source in sources) total += source._count;
@@ -110,9 +114,9 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
 
         LoserTree tree = new(sources, keyComparer);
         int outCount = 0;
-        while (tree.TryNext(out Entry winner))
+        while (tree.TryNextRun(keep, out Entry chosen, out bool hasChosen))
         {
-            output[outCount++] = winner;
+            if (hasChosen) output[outCount++] = chosen;
         }
 
         return new SortedMergeDictionary<TKey, TValue>(output, outCount);
@@ -181,20 +185,21 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
             for (int i = _k - 1; i >= 0; i--) Adjust(i);
         }
 
-        public bool TryNext(out Entry result)
+        public bool TryNextRun(Func<int, TKey, bool>? keep, out Entry chosen, out bool hasChosen)
         {
             int winner = _tree[0];
             if (winner == _k || _position[winner] >= _sources[winner]._count)
             {
-                result = default;
+                chosen = default;
+                hasChosen = false;
                 return false;
             }
 
-            ref Entry head = ref _sources[winner]._entries[_position[winner]];
-            TKey key = head.Key;
-            result = head;
+            TKey key = _sources[winner]._entries[_position[winner]].Key;
+            chosen = default;
+            hasChosen = false;
 
-            // Consume every source whose current head has this key; the highest-index source wins the value.
+            // Consume every source whose current head has this key; the highest-index kept entry wins the value.
             while (true)
             {
                 int current = _tree[0];
@@ -203,8 +208,12 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
                 ref Entry currentHead = ref _sources[current]._entries[_position[current]];
                 if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
 
-                // Sources are visited in ascending index order for equal keys, so the last one seen is newest.
-                result = currentHead;
+                // Sources are visited in ascending index order for equal keys, so the last kept one is newest.
+                if (keep is null || keep(current, currentHead.Key))
+                {
+                    chosen = currentHead;
+                    hasChosen = true;
+                }
                 _position[current]++;
                 Adjust(current);
             }

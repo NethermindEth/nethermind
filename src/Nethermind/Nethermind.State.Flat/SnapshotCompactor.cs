@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -9,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -118,37 +118,28 @@ public class SnapshotCompactor(
 
         ulong compactSize = _schedule.GetCompactSize(to.BlockNumber);
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
+        int count = snapshots.Count;
 
-        Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
-        ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;
-        ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = snapshot.Content.Storages;
-        ConcurrentDictionary<HashedKey<Address>, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
-
-        using ArrayPoolListRef<Task> compactTask = new(2);
-
-        // Precompute self-destruct clear boundaries and the merged self-destruct map in one pass.
-        // For each self-destructed (cleared) address, the boundary is the highest snapshot index that clears
-        // it: a slot or storage node written before that index is cleared by the self-destruct and never
-        // re-added, so the merge can simply skip it instead of adding it and then removing it with a full
-        // dictionary scan. Slots are keyed by address, storage trie nodes by the account-path hash, matching
-        // how each collection is keyed. Both maps stay null until a self-destruct is seen, keeping the common
-        // (no self-destruct) case on the plain AddOrUpdateRange fast path.
+        // Merge the self-destruct markers ("false wins") and record each cleared address's boundary: the highest
+        // snapshot index that clears it. A slot or storage node written before that index is cleared by the
+        // self-destruct and never re-added, so the merge drops it instead of adding then removing it. Slots are
+        // keyed by address, storage trie nodes by the account-path hash. Both boundary maps stay null until a
+        // self-destruct is seen, keeping the common case on the plain (unfiltered) merge.
+        Dictionary<HashedKey<Address>, bool> selfDestructMerged = [];
         Dictionary<Address, int>? slotClearBoundary = null;
         Dictionary<Hash256, int>? nodeClearBoundary = null;
-        for (int i = 0; i < snapshots.Count; i++)
+        for (int i = 0; i < count; i++)
         {
             foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
             {
                 if (isNewAccount)
                 {
                     // Note, if it's already false, we should not set it to true, hence the TryAdd
-                    selfDestructedStorageAddresses.TryAdd(address, true);
+                    selfDestructMerged.TryAdd(address, true);
                 }
                 else
                 {
-                    selfDestructedStorageAddresses[address] = false;
+                    selfDestructMerged[address] = false;
                     // i is ascending, so the last write wins and holds the highest clearing index.
                     (slotClearBoundary ??= [])[address.Key] = i;
                     (nodeClearBoundary ??= [])[address.Key.ToAccountPath.ToCommitment()] = i;
@@ -156,61 +147,55 @@ public class SnapshotCompactor(
             }
         }
 
-        // Accounts
-        compactTask.Add(Task.Run(() =>
-        {
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                Snapshot knownState = snapshots[i];
-                accounts.AddOrUpdateRange(knownState.Accounts);
-            }
-        }));
+        Func<int, HashedKey<(Address, UInt256)>, bool>? slotKeep = slotClearBoundary is null
+            ? null
+            : (i, key) => !(slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
+        Func<int, HashedKey<(Hash256, TreePath)>, bool>? nodeKeep = nodeClearBoundary is null
+            ? null
+            : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
-        // Slots
-        compactTask.Add(Task.Run(() =>
-        {
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                if (slotClearBoundary is null)
-                {
-                    storages.AddOrUpdateRange(snapshots[i].Storages);
-                    continue;
-                }
+        SortedMergeDictionary<HashedKey<Address>, Account?> accounts = null!;
+        SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> storages = null!;
+        SortedMergeDictionary<HashedKey<TreePath>, TrieNode> stateNodes = null!;
+        SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = null!;
 
-                foreach ((HashedKey<(Address, UInt256)> key, SlotValue? value) in snapshots[i].Storages)
-                {
-                    if (slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary)
-                        continue;
-                    storages[key] = value;
-                }
-            }
-        }));
+        using ArrayPoolListRef<Task> compactTask = new(4);
+        compactTask.Add(Task.Run(() => accounts = MergeCollection(
+            snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
+        compactTask.Add(Task.Run(() => storages = MergeCollection(
+            snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
+        compactTask.Add(Task.Run(() => stateNodes = MergeCollection(
+            snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
+        compactTask.Add(Task.Run(() => storageNodes = MergeCollection(
+            snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
 
-        // State tries
-        for (int i = 0; i < snapshots.Count; i++)
-            stateNodes.AddOrUpdateRange(snapshots[i].StateNodes);
-
-        // Storage tries
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            if (nodeClearBoundary is null)
-            {
-                storageNodes.AddOrUpdateRange(snapshots[i].StorageNodes);
-                continue;
-            }
-
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshots[i].StorageNodes)
-            {
-                if (nodeClearBoundary.TryGetValue(kvp.Key.Key.Item1, out int boundary) && i < boundary)
-                    continue;
-                storageNodes[kvp.Key] = kvp.Value;
-            }
-        }
+        SortedMergeDictionary<HashedKey<Address>, bool> selfDestructs =
+            SortedMergeDictionary<HashedKey<Address>, bool>.FromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
 
         Task.WaitAll(compactTask.AsSpan());
 
-        return snapshot;
+        MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(usage);
+        content.SetContent(accounts, storages, selfDestructs, stateNodes, storageNodes);
+        return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
+    private static SortedMergeDictionary<TKey, TValue> MergeCollection<TKey, TValue>(
+        SnapshotPooledList snapshots,
+        IComparer<TKey> comparer,
+        Func<MergedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromMerged,
+        Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
+        Func<int, TKey, bool>? keep) where TKey : IEquatable<TKey>
+    {
+        int count = snapshots.Count;
+        SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
+        for (int i = 0; i < count; i++)
+        {
+            Snapshot source = snapshots[i];
+            sources[i] = source.IsSorted
+                ? fromMerged(source.MergedContent)
+                : SortedMergeDictionary<TKey, TValue>.FromUnsorted(fromMutable(source.Content), comparer);
+        }
 
+        return SortedMergeDictionary<TKey, TValue>.Merge(sources, comparer, keep);
+    }
 }

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -14,49 +16,87 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Snapshot are written keys between state From to state To
+/// Snapshot are written keys between state From to state To. The backing content is either the mutable
+/// <see cref="SnapshotContent"/> (during commit) or the sorted immutable <see cref="MergedSnapshotContent"/>
+/// (after compaction). A snapshot holds one of the two directly and branches on <see cref="IsSorted"/> so reads
+/// stay concrete calls (no interface dispatch on the hot path).
 /// </summary>
-/// <param name="From"></param>
-/// <param name="To"></param>
-/// <param name="Accounts"></param>
-/// <param name="Storages"></param>
-public class Snapshot(
-    StateId from,
-    StateId to,
-    SnapshotContent content,
-    IResourcePool resourcePool,
-    ResourcePool.Usage usage
-) : RefCountingDisposable
+public class Snapshot : RefCountingDisposable
 {
-    public long EstimateMemory() => content.EstimateMemory();
-    public ResourcePool.Usage Usage => usage;
+    private readonly StateId _from;
+    private readonly StateId _to;
+    private readonly IResourcePool _resourcePool;
+    private readonly ResourcePool.Usage _usage;
+    private readonly SnapshotContent? _mutable;
+    private readonly MergedSnapshotContent? _merged;
+    private readonly bool _isSorted;
 
-    public StateId From => from;
-    public StateId To => to;
-    public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => content.Accounts;
-    public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => content.Storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => content.StorageNodes;
-    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Select(static kvp => kvp.Key.Key);
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => content.StateNodes;
-    public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Select(static kvp => kvp.Key.Key);
-    public int AccountsCount => content.Accounts.Count;
-    public int StoragesCount => content.Storages.Count;
-    public int StateNodesCount => content.StateNodes.Count;
-    public int StorageNodesCount => content.StorageNodes.Count;
-    public SnapshotContent Content => content;
+    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    {
+        _from = from;
+        _to = to;
+        _mutable = content;
+        _resourcePool = resourcePool;
+        _usage = usage;
+        _isSorted = false;
+    }
 
-    public bool TryGetAccount(HashedKey<Address> key, out Account? acc) => content.Accounts.TryGetValue(key, out acc);
+    public Snapshot(in StateId from, in StateId to, MergedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    {
+        _from = from;
+        _to = to;
+        _merged = content;
+        _resourcePool = resourcePool;
+        _usage = usage;
+        _isSorted = true;
+    }
 
-    public bool HasSelfDestruct(HashedKey<Address> key) => content.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
+    public long EstimateMemory() => _isSorted ? _merged!.EstimateMemory() : _mutable!.EstimateMemory();
+    public long EstimateCompactedMemory() => _isSorted ? _merged!.EstimateCompactedMemory() : _mutable!.EstimateCompactedMemory();
+    public ResourcePool.Usage Usage => _usage;
 
-    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value) => content.Storages.TryGetValue(key, out value);
+    /// <summary>True when the content enumerates in key order, so persistence can skip its trie-node sort.</summary>
+    public bool IsSorted => _isSorted;
 
-    public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) => content.StateNodes.TryGetValue(key, out node);
+    public StateId From => _from;
+    public StateId To => _to;
+    public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _merged!.Accounts : _mutable!.Accounts;
+    public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _merged!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
+    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _merged!.Storages : _mutable!.Storages;
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _merged!.StorageNodes : _mutable!.StorageNodes;
+    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => StorageNodes.Select(static kvp => kvp.Key.Key);
+    public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _merged!.StateNodes : _mutable!.StateNodes;
+    public IEnumerable<TreePath> StateNodeKeys => StateNodes.Select(static kvp => kvp.Key.Key);
+    public int AccountsCount => _isSorted ? _merged!.AccountsCount : _mutable!.Accounts.Count;
+    public int StoragesCount => _isSorted ? _merged!.StoragesCount : _mutable!.Storages.Count;
+    public int StateNodesCount => _isSorted ? _merged!.StateNodesCount : _mutable!.StateNodes.Count;
+    public int StorageNodesCount => _isSorted ? _merged!.StorageNodesCount : _mutable!.StorageNodes.Count;
 
-    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) => content.StorageNodes.TryGetValue(key, out node);
+    /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
+    public SnapshotContent Content => _mutable!;
 
-    protected override void CleanUp() => resourcePool.ReturnSnapshotContent(usage, content);
+    internal MergedSnapshotContent MergedContent => _merged!;
+
+    public bool TryGetAccount(HashedKey<Address> key, out Account? acc)
+        => _isSorted ? _merged!.TryGetAccount(key, out acc) : _mutable!.Accounts.TryGetValue(key, out acc);
+
+    public bool HasSelfDestruct(HashedKey<Address> key)
+        => _isSorted ? _merged!.HasSelfDestruct(key) : _mutable!.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
+
+    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value)
+        => _isSorted ? _merged!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
+
+    public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
+        => _isSorted ? _merged!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+
+    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
+        => _isSorted ? _merged!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+
+    protected override void CleanUp()
+    {
+        if (_isSorted) _resourcePool.ReturnMergedSnapshotContent(_usage, _merged!);
+        else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
+    }
 
     public bool TryAcquire() => TryAcquireLease();
 }

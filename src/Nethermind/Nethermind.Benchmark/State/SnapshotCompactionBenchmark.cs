@@ -51,9 +51,15 @@ public class SnapshotCompactionBenchmark
     [Params(2, 8, 32)]
     public int SnapshotCount;
 
-    // 0 measures the pure merge; > 0 additionally exercises the full accumulated-storage scan per self-destruct.
+    // 0 measures the pure merge; > 0 additionally exercises the per-self-destruct boundary skip.
     [Params(0, 16)]
     public int SelfDestructsPerSnapshot;
+
+    // false: inputs are raw mutable (ConcurrentDictionary) snapshots — the first-tier merge, which must sort
+    // each input. true: inputs are already compacted (sorted) snapshots — the higher-tier merge that dominates
+    // the leveled schedule and needs no re-sort.
+    [Params(false, true)]
+    public bool SortedInputs;
 
     private static readonly TrieNode PlaceholderNode = new(NodeType.Leaf, Keccak.EmptyTreeHash);
 
@@ -85,6 +91,15 @@ public class SnapshotCompactionBenchmark
             FlatSnapshot snapshot = resourcePool.CreateSnapshot(
                 CreateStateId((ulong)b), CreateStateId((ulong)(b + 1)), ResourcePool.Usage.ReadOnlyProcessingEnv);
             Fill(snapshot, b, contracts, contractHashes);
+
+            // Compacting a single snapshot yields its sorted (MergedSnapshotContent) form, modelling the
+            // already-compacted inputs a higher-tier merge sees.
+            if (SortedInputs)
+            {
+                SnapshotPooledList single = new(1) { snapshot };
+                snapshot = _compactor.CompactSnapshotBundle(single);
+            }
+
             _snapshots.Add(snapshot);
         }
     }

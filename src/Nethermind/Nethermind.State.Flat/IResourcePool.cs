@@ -7,6 +7,8 @@ public interface IResourcePool
 {
     SnapshotContent GetSnapshotContent(ResourcePool.Usage usage);
     void ReturnSnapshotContent(ResourcePool.Usage usage, SnapshotContent snapshotContent);
+    MergedSnapshotContent GetMergedSnapshotContent(ResourcePool.Usage usage);
+    void ReturnMergedSnapshotContent(ResourcePool.Usage usage, MergedSnapshotContent mergedContent);
     TransientResource GetCachedResource(ResourcePool.Usage usage);
     void ReturnCachedResource(ResourcePool.Usage usage, TransientResource transientResource);
     Snapshot CreateSnapshot(in StateId from, in StateId to, ResourcePool.Usage usage);

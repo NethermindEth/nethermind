@@ -162,7 +162,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.CompactedSnapshotCount++;
 
-            long compactedBytes = snapshot.Content.EstimateCompactedMemory();
+            long compactedBytes = snapshot.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
 
@@ -259,7 +259,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         {
             Metrics.CompactedSnapshotCount--;
 
-            long compactedBytes = existingState.Content.EstimateCompactedMemory();
+            long compactedBytes = existingState.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory -= compactedBytes;
             Metrics.TotalSnapshotMemory -= compactedBytes;
 

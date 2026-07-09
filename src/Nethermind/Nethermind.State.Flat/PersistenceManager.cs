@@ -287,62 +287,49 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            _trieNodesSortBuffer.Clear();
-            foreach (TreePath path in snapshot.StateNodeKeys)
-            {
-                _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
-            }
-            _trieNodesSortBuffer.Sort();
-
+            // A sorted (compacted) snapshot already enumerates trie nodes in key order, so it can be written
+            // directly; otherwise the keys are collected and sorted first for locality-friendly DB writes.
             long stateNodesSize = 0;
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            if (snapshot.IsSorted)
             {
-                (_, TreePath path) = k;
-
-                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
+                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
+                    stateNodesSize += WriteStateNode(batch, kvp.Key.Key, kvp.Value);
             }
+            else
+            {
+                _trieNodesSortBuffer.Clear();
+                foreach (TreePath path in snapshot.StateNodeKeys)
+                {
+                    _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
+                }
+                _trieNodesSortBuffer.Sort();
 
-            _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
-            _trieNodesSortBuffer.Sort();
+                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+                {
+                    (_, TreePath path) = k;
+                    snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
+                    stateNodesSize += WriteStateNode(batch, path, node!);
+                }
+            }
 
             long storageNodesSize = 0;
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            if (snapshot.IsSorted)
             {
-                (Hash256 address, TreePath path) = k;
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+                    storageNodesSize += WriteStorageNode(batch, kvp.Key.Key.Item1, kvp.Key.Key.Item2, kvp.Value);
+            }
+            else
+            {
+                _trieNodesSortBuffer.Clear();
+                _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
+                _trieNodesSortBuffer.Sort();
 
-                snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
+                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
+                    (Hash256 address, TreePath path) = k;
+                    snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
+                    storageNodesSize += WriteStorageNode(batch, address, path, node!);
                 }
-
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
@@ -350,5 +337,29 @@ public class PersistenceManager(
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
+    }
+
+    private static long WriteStateNode(IPersistence.IWriteBatch batch, TreePath path, TrieNode node)
+    {
+        // TODO: Need to double check this case. Does it need a rewrite or not?
+        if (node.FullRlp.Length == 0 && node.NodeType == NodeType.Unknown) return 0;
+
+        // Note: Even if the node already marked as persisted, we still re-persist it
+        batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
+        node.IsPersisted = true;
+        node.PrunePersistedRecursively(1);
+        return node.FullRlp.Length;
+    }
+
+    private static long WriteStorageNode(IPersistence.IWriteBatch batch, Hash256 address, TreePath path, TrieNode node)
+    {
+        // TODO: Need to double check this case. Does it need a rewrite or not?
+        if (node.FullRlp.Length == 0 && node.NodeType == NodeType.Unknown) return 0;
+
+        // Note: Even if the node already marked as persisted, we still re-persist it
+        batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+        node.IsPersisted = true;
+        node.PrunePersistedRecursively(1);
+        return node.FullRlp.Length;
     }
 }
