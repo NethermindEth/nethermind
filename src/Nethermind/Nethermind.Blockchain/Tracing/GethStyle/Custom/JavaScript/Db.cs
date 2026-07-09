@@ -24,11 +24,6 @@ public class Db(IWorldState worldState)
     {
         using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
-        // Geth's db.getState(addr, key) takes the raw storage slot (the preimage) and reads it live from the
-        // executing state, hashing to the trie key internally (see go-ethereum eth/tracers/js/goja.go
-        // dbObj.GetState -> StateDB.GetState). Mirror that: treat the JS argument as the slot index and read
-        // through the normal storage path, which resolves in-flight writes and computes Keccak(index) for the
-        // trie key. Any remaining semantic differences from Geth's tracer are accepted rather than special-cased.
         ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), new UInt256(index.ToBytes(), isBigEndian: true)));
         if (bytes.Length < array.Length)
         {
