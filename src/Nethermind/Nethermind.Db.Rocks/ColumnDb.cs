@@ -125,8 +125,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public IWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
 
-    // Buffers point puts/deletes for one persisted snapshot, then on Dispose writes a single sorted SST and
-    // ingests it into this column — bypassing the memtable -> flush -> L0-compaction burst of a large WriteBatch.
+    // Buffers point puts/deletes in a byte-capped managed buffer; at the cap (and on Dispose) it flushes the buffer
+    // as a sorted SST and ingests it into this column — bypassing the memtable -> flush -> L0-compaction burst of a
+    // large WriteBatch. Buffering is on the managed heap, hence the byte cap to bound peak persist memory.
     private sealed class SstIngestWriteBatch(ColumnDb columnDb) : IWriteBatch
     {
         // Byte cap on the in-memory buffer. At the cap we flush+ingest one SST and free the buffer, so a large
@@ -176,18 +177,29 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             Directory.CreateDirectory(dir);
             string file = Path.Combine(dir, $"{columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
 
-            using (SstFileWriter writer = new(new EnvOptions(), new ColumnFamilyOptions()))
+            try
             {
-                writer.Open(file);
-                foreach ((byte[] key, byte[]? value) in items)
+                using (SstFileWriter writer = new(new EnvOptions(), new ColumnFamilyOptions()))
                 {
-                    if (value is null) writer.Delete(key);
-                    else writer.Put(key, value);
+                    writer.Open(file);
+                    foreach ((byte[] key, byte[]? value) in items)
+                    {
+                        if (value is null) writer.Delete(key);
+                        else writer.Put(key, value);
+                    }
+                    writer.Finish();
                 }
-                writer.Finish();
+
+                // SetMoveFiles(true): on success RocksDB moves (consumes) the file. Only a Finish/ingest failure
+                // leaves it staged, so delete it on failure to stop sst_ingest/ accumulating orphaned files.
+                columnDb._rocksDb.IngestExternalFiles([file], _options, columnDb._columnFamily);
+            }
+            catch
+            {
+                try { if (File.Exists(file)) File.Delete(file); } catch { /* best effort */ }
+                throw;
             }
 
-            columnDb._rocksDb.IngestExternalFiles([file], _options, columnDb._columnFamily);
             Clear();
             WaitForCompactionHeadroom();
         }
