@@ -100,13 +100,18 @@ public partial class BlockProcessor(
             throw new InvalidBlockException(suggestedBlock, error);
         }
 
+        PostValidation(suggestedBlock, block, receipts, options);
+    }
+
+    protected virtual void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+    {
         // Block is valid, copy the execution artifacts back onto the suggested block.
         // Forward sync suggests blocks without BAL payloads, so the generated BAL needs to
         // follow the suggested block through main-chain updates and persistence.
-        suggestedBlock.AccountChanges = block.AccountChanges;
-        suggestedBlock.ExecutionRequests = block.ExecutionRequests;
-        suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
-        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
+        suggestedBlock.AccountChanges = processedBlock.AccountChanges;
+        suggestedBlock.ExecutionRequests = processedBlock.ExecutionRequests;
+        suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        suggestedBlock.EncodedBlockAccessList = processedBlock.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
