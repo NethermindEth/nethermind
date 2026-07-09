@@ -171,6 +171,7 @@ public partial class BlockProcessor(
 
         ReceiptsTracer.EndBlockTrace();
 
+        _stateProvider.CompleteEarlyStorageRoots();
         CommitStateAndStorageRoots(spec);
 
         if (BlockchainProcessor.IsMainProcessingThread)

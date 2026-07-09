@@ -40,6 +40,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude) { }
 
     /// <summary>
+    /// Completes the early storage-root pass and applies its account updates before final hashing.
+    /// </summary>
+    void CompleteEarlyStorageRoots() { }
+
+    /// <summary>
     /// Return the original persistent storage value from the storage cell.
     /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
     /// </summary>

@@ -102,6 +102,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void BeginEarlyStorageRoots(IReadOnlySet<AddressAsKey> exclude)
         => State.BeginEarlyStorageRoots(exclude);
 
+    public virtual void CompleteEarlyStorageRoots()
+        => State.CompleteEarlyStorageRoots();
+
     public virtual void DeleteAccount(Address address)
         => State.DeleteAccount(address);
 

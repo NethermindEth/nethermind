@@ -181,6 +181,27 @@ namespace Nethermind.State
             _earlyStorageRootsTask = Task.Run(() => _persistentStorageProvider.FlushToTreeExcept(writeBatch, exclude));
         }
 
+        public void CompleteEarlyStorageRoots()
+        {
+            DebugGuardInScope();
+            CompleteEarlyStorageRootsCore();
+        }
+
+        private void CompleteEarlyStorageRootsCore()
+        {
+            if (_earlyWriteBatch is null) return;
+
+            _earlyStorageRootsTask?.GetAwaiter().GetResult();
+            _earlyStorageRootsTask = null;
+            _earlyWriteBatch.OnAccountUpdated -= _earlyAccountUpdatedHandler;
+            _earlyAccountUpdatedHandler = null;
+
+            while (_earlyAccountUpdates.TryDequeue(out IWorldStateScopeProvider.AccountUpdated? updatedAccount))
+            {
+                _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+            }
+        }
+
         private void AbortEarlyStorageRoots()
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch? writeBatch = _earlyWriteBatch;
@@ -381,12 +402,9 @@ namespace Nethermind.State
             IWorldStateScopeProvider.IWorldStateWriteBatch? earlyWriteBatch = null;
             if (commitRoots && _earlyWriteBatch is not null)
             {
+                CompleteEarlyStorageRootsCore();
                 earlyWriteBatch = _earlyWriteBatch;
                 _earlyWriteBatch = null;
-                _earlyStorageRootsTask!.GetAwaiter().GetResult();
-                _earlyStorageRootsTask = null;
-                earlyWriteBatch.OnAccountUpdated -= _earlyAccountUpdatedHandler;
-                _earlyAccountUpdatedHandler = null;
             }
 
             _transientStorageProvider.Commit(tracer);
@@ -397,11 +415,6 @@ namespace Nethermind.State
             {
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch =
                     earlyWriteBatch ?? _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                while (_earlyAccountUpdates.TryDequeue(out IWorldStateScopeProvider.AccountUpdated? updatedAccount))
-                {
-                    _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
-                }
-
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
                 _persistentStorageProvider.FlushToTree(writeBatch);
                 _stateProvider.FlushToTree(writeBatch);
