@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -129,6 +128,34 @@ public class SnapshotCompactor(
 
         using ArrayPoolListRef<Task> compactTask = new(2);
 
+        // Precompute self-destruct clear boundaries and the merged self-destruct map in one pass.
+        // For each self-destructed (cleared) address, the boundary is the highest snapshot index that clears
+        // it: a slot or storage node written before that index is cleared by the self-destruct and never
+        // re-added, so the merge can simply skip it instead of adding it and then removing it with a full
+        // dictionary scan. Slots are keyed by address, storage trie nodes by the account-path hash, matching
+        // how each collection is keyed. Both maps stay null until a self-destruct is seen, keeping the common
+        // (no self-destruct) case on the plain AddOrUpdateRange fast path.
+        Dictionary<Address, int>? slotClearBoundary = null;
+        Dictionary<Hash256, int>? nodeClearBoundary = null;
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
+            {
+                if (isNewAccount)
+                {
+                    // Note, if it's already false, we should not set it to true, hence the TryAdd
+                    selfDestructedStorageAddresses.TryAdd(address, true);
+                }
+                else
+                {
+                    selfDestructedStorageAddresses[address] = false;
+                    // i is ascending, so the last write wins and holds the highest clearing index.
+                    (slotClearBoundary ??= [])[address.Key] = i;
+                    (nodeClearBoundary ??= [])[address.Key.ToAccountPath.ToCommitment()] = i;
+                }
+            }
+        }
+
         // Accounts
         compactTask.Add(Task.Run(() =>
         {
@@ -139,43 +166,23 @@ public class SnapshotCompactor(
             }
         }));
 
-        // Slots and Selfdestruct
+        // Slots
         compactTask.Add(Task.Run(() =>
         {
-            using PooledSet<Address> addressToClear = new();
-
             for (int i = 0; i < snapshots.Count; i++)
             {
-                Snapshot knownState = snapshots[i];
-                addressToClear.Clear();
-
-                foreach ((HashedKey<Address> address, bool isNewAccount) in knownState.SelfDestructedStorageAddresses)
+                if (slotClearBoundary is null)
                 {
-                    if (isNewAccount)
-                    {
-                        // Note, if it's already false, we should not set it to true, hence the TryAdd
-                        selfDestructedStorageAddresses.TryAdd(address, true);
-                    }
-                    else
-                    {
-                        selfDestructedStorageAddresses[address] = false;
-                        addressToClear.Add(address.Key);
-                    }
+                    storages.AddOrUpdateRange(snapshots[i].Storages);
+                    continue;
                 }
 
-                if (addressToClear.Count > 0)
+                foreach ((HashedKey<(Address, UInt256)> key, SlotValue? value) in snapshots[i].Storages)
                 {
-                    // Clear
-                    foreach ((HashedKey<(Address, UInt256)> key, SlotValue? _) in storages)
-                    {
-                        if (addressToClear.Contains(key.Key.Item1))
-                        {
-                            storages.TryRemove(key, out _);
-                        }
-                    }
+                    if (slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary)
+                        continue;
+                    storages[key] = value;
                 }
-
-                storages.AddOrUpdateRange(knownState.Storages);
             }
         }));
 
@@ -186,24 +193,18 @@ public class SnapshotCompactor(
         // Storage tries
         for (int i = 0; i < snapshots.Count; i++)
         {
-            // Clear storage nodes for self-destructed accounts
-            using PooledSet<Hash256> addressHashToClear = new();
-            foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
+            if (nodeClearBoundary is null)
             {
-                if (!isNewAccount)
-                    addressHashToClear.Add(address.Key.ToAccountPath.ToCommitment());
+                storageNodes.AddOrUpdateRange(snapshots[i].StorageNodes);
+                continue;
             }
 
-            if (addressHashToClear.Count > 0)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshots[i].StorageNodes)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in storageNodes)
-                {
-                    if (addressHashToClear.Contains(kvp.Key.Key.Item1))
-                        storageNodes.TryRemove(kvp.Key, out _);
-                }
+                if (nodeClearBoundary.TryGetValue(kvp.Key.Key.Item1, out int boundary) && i < boundary)
+                    continue;
+                storageNodes[kvp.Key] = kvp.Value;
             }
-
-            storageNodes.AddOrUpdateRange(snapshots[i].StorageNodes);
         }
 
         Task.WaitAll(compactTask.AsSpan());
