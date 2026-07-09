@@ -35,6 +35,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
     private readonly CancellationTokenSource _cts = new();
+    private int _disposed;
 
     // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
@@ -170,6 +171,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         if (_enabled)
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
