@@ -228,14 +228,8 @@ public class PrewarmerScopeProvider(
         {
             _metrics.IncrementStorageTreeReads();
 
-            return !storageCell.IsHash
-                ? baseStorageTree.Get(storageCell.Index)
-                : baseStorageTree.Get(storageCell.Hash);
+            return baseStorageTree.Get(storageCell.Index);
         }
-
-        public byte[] Get(in ValueHash256 hash) =>
-            // Not a critical path. so we just forward for simplicity
-            baseStorageTree.Get(in hash);
     }
 
     private class WriteBatchLifetimeMeasurer(IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch, IMetricObserver metricObserver, long startTime, bool isPrewarmer) : IWorldStateScopeProvider.IWorldStateWriteBatch

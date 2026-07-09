@@ -553,11 +553,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
 
-            if (!storageCell.IsHash)
-            {
-                EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
-            }
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index, value);
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -574,7 +571,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            _provider.CaptureOriginalValue(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -583,9 +580,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+            return _backend.Get(storageCell.Index);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
