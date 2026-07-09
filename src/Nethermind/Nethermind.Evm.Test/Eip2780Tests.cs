@@ -15,10 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// EIP-2780 reprices the value-moving call cost and cold-account touches. These tests pin the
-/// gas-policy primitives to the EIP's reference values and exercise the intrinsic path end-to-end.
-/// </summary>
+/// <summary>Pins the EIP-2780 gas-policy primitives and exercises the intrinsic path end-to-end.</summary>
 [TestFixture]
 public class Eip2780Tests
 {
@@ -52,8 +49,7 @@ public class Eip2780Tests
         BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(
             new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true })));
 
-    // Whole-transaction gas: base + flat recipient cold touch + value-move + transfer log costs.
-    // Recipient existence is irrelevant to the intrinsic (state-independent by design).
+    // Whole-transaction totals; recipient existence is irrelevant (state-independent intrinsic).
     [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (21000)")]
     [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (21000)")]
     [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess, TestName = "no-transfer to existing EOA (15000)")]

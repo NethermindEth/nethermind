@@ -233,8 +233,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): the value-bearing recipient touch adds
-            // COLD_ACCOUNT_ACCESS + TRANSFER_LOG + TX_VALUE; the authorization adds ACCOUNT_WRITE + base.
+            // Recipient touch: COLD + TRANSFER_LOG + TX_VALUE; authorization: ACCOUNT_WRITE + base.
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular));
             Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
@@ -248,8 +247,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): create regular = CREATE_ACCESS (+ TRANSFER_LOG
-            // for the value endowment), create state = NEW_ACCOUNT.
+            // Create regular = CREATE_ACCESS + TRANSFER_LOG (value endowment); state = NEW_ACCOUNT.
             ulong expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
             ulong expectedState = GasCostOf.CreateState;
             Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
@@ -264,7 +262,6 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Amsterdam (EIP-2780 + EIP-8038): value-bearing recipient touch + authorization.
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
             ulong expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;

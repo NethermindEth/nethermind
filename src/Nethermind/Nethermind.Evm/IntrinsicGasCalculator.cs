@@ -92,7 +92,6 @@ public static class IntrinsicGasCalculator
         }
 
         ulong authCount = (ulong)authList.Length;
-        // EIP-8038 reprices the per-authorization regular cost (ACCOUNT_WRITE + auth-base).
         ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
             ? (
@@ -111,8 +110,7 @@ public static class IntrinsicGasCalculator
 
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList)
     {
-        // EIP-2780 reduces the intrinsic base; the calldata floor must track it or the legacy
-        // floor would dominate and negate the reduction.
+        // The floor tracks the reduced EIP-2780 base, else the legacy floor would dominate.
         ulong floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         return spec switch
         {
