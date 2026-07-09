@@ -358,8 +358,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void EndBlockTrace() => EndBlockTrace(accumulateBlockBloom: true);
 
-    // Pass false when a background task computes the header bloom — accumulating here would
-    // race its per-receipt bloom writes.
+    /// <param name="accumulateBlockBloom">
+    /// Pass <c>false</c> when a background task computes the header bloom; accumulating it here
+    /// would race that task's per-receipt bloom writes.
+    /// </param>
     public void EndBlockTrace(bool accumulateBlockBloom)
     {
         _otherTracer.EndBlockTrace();
