@@ -20,7 +20,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Node[] _nodes = new Node[MaxNodesResponseRecords];
     private readonly Hash256?[] _seenNodeIds = new Hash256?[SeenNodeIdsCapacity];
-    private readonly bool _allowNonRoutableRelays = receiver.Address.Address.IsLoopbackOrPrivateOrLinkLocal;
+    private readonly bool _allowNonRoutableRelays = receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal;
 
     private readonly Lock _lock = new();
     private bool _done;
@@ -113,7 +113,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
             NodeRecord record = nodes.Records[i];
             if (recordFilter.Excludes(record) ||
                 !Node.TryFromDiscoveryEnr(record, out Node? node) ||
-                !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.Address.Address, _allowNonRoutableRelays) ||
+                !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, _allowNonRoutableRelays) ||
                 !TryMarkSeen(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {

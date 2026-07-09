@@ -143,9 +143,12 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                QueueClearCaches(preWarmTask);
+                // Hint producers touch the active snapshot bundle, which CommitTree rotates.
+                WaitAndClear(ref preWarmTask);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask);
                 processedBlocksCount = i + 1;
 
                 if (notReadOnly)
@@ -168,8 +171,6 @@ public class BranchProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
