@@ -37,17 +37,14 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The fraction of slot time that can be used for a single block improvement.", DefaultValue = "0.25", HiddenFromDocs = true)]
     double SingleBlockImprovementOfSlot { get; set; }
 
-    [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
-    bool PreWarmStateOnBlockProcessing { get; set; }
+    [ConfigItem(Description = "State pre-warming level while processing blocks: `None`, `Block` (warm the block's own transactions), or `BlockAndMempool` (also speculatively warm from the mempool between blocks).", DefaultValue = "BlockAndMempool")]
+    PreWarmMode PreWarming { get; set; }
 
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
-
-    [ConfigItem(Description = "Whether to speculatively pre-warm the state cache between blocks using top-of-mempool transactions, so the next block's execution starts against a warm cache. Requires PreWarmStateOnBlockProcessing. Experimental.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool PreWarmStateFromMempool { get; set; }
 
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }

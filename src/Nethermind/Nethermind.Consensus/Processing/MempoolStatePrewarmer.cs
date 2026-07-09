@@ -38,6 +38,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly ILogger _logger;
     private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
+    // Cancels the in-flight speculative session on dispose; linked into the prewarmer's own session token.
+    private readonly CancellationTokenSource _cts = new();
 
     // Monotonic head counter so a queued pass runs only while it still reflects the latest head.
     private long _generation;
@@ -58,7 +60,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
         _maxHeadAgeSeconds = Math.Max(1UL, blocksConfig.SecondsPerSlot) * 4;
-        _enabled = blocksConfig.PreWarmStateFromMempool;
+        _enabled = blocksConfig.PreWarming == PreWarmMode.BlockAndMempool;
 
         if (_enabled)
         {
@@ -98,8 +100,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
             _preWarmer.StartSpeculativePreWarm(
                 headHeader,
                 next.Spec,
+                generation,
                 token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, next, warmedPerSender),
-                IdlePassDelayMs);
+                IdlePassDelayMs,
+                _cts.Token);
         }
         catch (Exception ex)
         {
@@ -176,7 +180,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
-        _preWarmer.CancelSpeculativePreWarm();
+        _cts.Cancel();
+        _cts.Dispose();
     }
 
     private readonly record struct NextBlockContext(BlockHeader Header, IReleaseSpec Spec);

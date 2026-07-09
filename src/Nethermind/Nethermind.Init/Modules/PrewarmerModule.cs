@@ -20,7 +20,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        if (blocksConfig.PreWarmStateOnBlockProcessing)
+        if (blocksConfig.PreWarming != PreWarmMode.None)
         {
             builder
 
@@ -34,16 +34,6 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have
                 // branch processor, and use block processor instead.
                 .AddSingleton<IMainProcessingModule, PrewarmerMainProcessingModule>();
-        }
-        else if (blocksConfig.PreWarmStateFromMempool)
-        {
-            // Mempool pre-warming lives inside the prewarmer module above; without PreWarmStateOnBlockProcessing it is
-            // never registered, so warn instead of silently doing nothing.
-            builder.OnBuild(scope =>
-            {
-                ILogger logger = scope.Resolve<ILogManager>().GetClassLogger<PrewarmerModule>();
-                if (logger.IsWarn) logger.Warn($"{nameof(IBlocksConfig.PreWarmStateFromMempool)} is enabled but {nameof(IBlocksConfig.PreWarmStateOnBlockProcessing)} is disabled; mempool state pre-warming will not run.");
-            });
         }
     }
 
@@ -84,7 +74,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
 
-            if (blocksConfig.PreWarmStateFromMempool)
+            if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
             {
                 // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved
                 // when the prewarmer is activated so it subscribes to head updates as soon as processing is wired up.
