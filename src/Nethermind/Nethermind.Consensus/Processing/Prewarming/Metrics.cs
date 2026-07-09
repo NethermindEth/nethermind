@@ -19,12 +19,4 @@ public static class Metrics
     [CounterMetric]
     [Description("Sender groups the reactive prewarmer still warmed on a handoff block (not covered by speculative warming, e.g. builder transactions).")]
     public static long MempoolPrewarmSendersWarmed;
-
-    [CounterMetric]
-    [Description("Speculative delta passes executed while warming from the mempool.")]
-    public static long MempoolPrewarmDeltaPasses;
-
-    [CounterMetric]
-    [Description("Transactions warmed speculatively from the mempool.")]
-    public static long MempoolPrewarmTxsWarmed;
 }

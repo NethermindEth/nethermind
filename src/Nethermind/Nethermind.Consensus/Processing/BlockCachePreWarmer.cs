@@ -193,8 +193,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     {
                         if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
                     }
-                    PrewarmMetrics.MempoolPrewarmDeltaPasses++;
-                    PrewarmMetrics.MempoolPrewarmTxsWarmed += delta.Transactions.Length;
                     Volatile.Write(ref _warmMarker, marker);
                 }
 
