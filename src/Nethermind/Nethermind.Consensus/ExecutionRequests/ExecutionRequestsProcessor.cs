@@ -47,11 +47,33 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         GasPrice = 0,
     };
 
+    private readonly SystemCall _builderDepositTransaction = new()
+    {
+        Value = 0,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = 0,
+    };
+
+    private readonly SystemCall _builderExitTransaction = new()
+    {
+        Value = 0,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderExitRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = 0,
+    };
+
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
         _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
+        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
+        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -59,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
-        ArrayPoolListRef<byte[]> requests = new(3);
+        ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {
             ProcessDeposits(block, receipts, spec, ref requests);
@@ -76,6 +98,18 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
+            }
+
+            // EIP-8282: dequeued after withdrawal/consolidation so the flat encoding stays in request-type order.
+            if (spec.BuilderRequestsEnabled)
+            {
+                ReadRequests(block, state, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,
+                    ExecutionRequestType.BuilderDepositRequest,
+                    BlockErrorMessages.BuilderDepositsContractEmpty, BlockErrorMessages.BuilderDepositsContractFailed);
+
+                ReadRequests(block, state, Eip8282Constants.BuilderExitRequestPredeployAddress, ref requests, _builderExitTransaction,
+                    ExecutionRequestType.BuilderExitRequest,
+                    BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
             block.ExecutionRequests = [.. requests];

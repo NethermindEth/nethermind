@@ -24,7 +24,7 @@ public class ExecutionRequestExtensionsTests
             WithdrawalRequests,
             ConsolidationRequests);
 
-        Assert.That(flatEncodedRequests, Has.Count.EqualTo(ExecutionRequestExtensions.MaxRequestsCount));
+        Assert.That(flatEncodedRequests, Has.Count.EqualTo(ExecutionRequestExtensions.StatelessRequestTypesCount));
         AssertFlatEncodedRequests(flatEncodedRequests[0], ExecutionRequestType.Deposit, DepositRequests, ExecutionRequestExtensions.DepositRequestsBytesSize);
         AssertFlatEncodedRequests(flatEncodedRequests[1], ExecutionRequestType.WithdrawalRequest, WithdrawalRequests, ExecutionRequestExtensions.WithdrawalRequestsBytesSize);
         AssertFlatEncodedRequests(flatEncodedRequests[2], ExecutionRequestType.ConsolidationRequest, ConsolidationRequests, ExecutionRequestExtensions.ConsolidationRequestsBytesSize);
