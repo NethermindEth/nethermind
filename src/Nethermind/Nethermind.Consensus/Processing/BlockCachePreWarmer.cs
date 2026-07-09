@@ -55,7 +55,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // read by the reactive workers after they join that loop, so no synchronization on the set itself is needed.
     private WarmMarker? _warmMarker;
 
-    private readonly PooledSet<Hash256> _warmedTxHashes = new();
+    private readonly PooledSet<Hash256> _warmedTxHashes = [];
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
