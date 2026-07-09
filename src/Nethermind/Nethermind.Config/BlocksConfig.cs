@@ -114,10 +114,11 @@ namespace Nethermind.Config
 
         public string? ReadTraceBlocks { get; set; }
 
-        public bool PreWarmGasPriorityOrder { get; set; }
+        // Bench-on variant defaults: all three read-trace-derived levers enabled for image-based A/B.
+        public bool PreWarmGasPriorityOrder { get; set; } = true;
 
-        public ulong PreWarmSkipStartedMaxGas { get; set; } = ulong.MaxValue;
+        public ulong PreWarmSkipStartedMaxGas { get; set; } = 2_000_000;
 
-        public bool PreWarmEarlyKickoff { get; set; }
+        public bool PreWarmEarlyKickoff { get; set; } = true;
     }
 }
