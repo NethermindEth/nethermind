@@ -23,8 +23,7 @@ public class Eip8037BlockGasInclusionCheckTests
     [TestCase(1UL, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded, TestName = "Boundary_state_exceeded_by_one_rejects_on_state_dimension")]
     public void Boundary_state(ulong delta, Eip8037BlockGasInclusionCheck.Outcome expected)
     {
-        // tx1: 50 cold SSTOREs in regular cap budget. Reproduces the spec test
-        // setup: tx1_state = num_sstores * sstore_state_gas; tx1_gas = cap + tx1_state.
+        // tx1: 50 cold SSTOREs within the regular cap; tx1_gas = cap + tx1_state (spec test setup).
         const int numSstores = 50;
         ulong tx1State = numSstores * SStoreStateGas;
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
@@ -75,8 +74,7 @@ public class Eip8037BlockGasInclusionCheckTests
     public void Single_tx_state_check_exceeds_block_limit_rejects()
     {
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
-        // Full tx.gas exceeds state_available (= blockGasLimit) by one; the regular dimension
-        // still fits because worst-case regular is capped at the EIP-7825 limit.
+        // One over state_available; regular still fits because of the EIP-7825 cap.
         ulong txGas = blockGasLimit + 1;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
@@ -125,8 +123,6 @@ public class Eip8037BlockGasInclusionCheckTests
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             blockGasLimit, 0, 0, txGas);
 
-        // Regular passes due to the cap; the uncapped state worst-case (full tx.gas) is enormous
-        // and exceeds blockGasLimit -> state dimension rejects.
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded));
     }
 

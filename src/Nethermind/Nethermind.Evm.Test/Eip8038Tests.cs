@@ -19,9 +19,6 @@ namespace Nethermind.Evm.Test;
 /// EIP-8038: State-access gas cost update. With the EIP active, EXTCODESIZE and EXTCODECOPY pay an
 /// additional WARM_ACCESS for the extra database read they perform.
 /// </summary>
-/// <remarks>
-/// The extra EXT* warm access is asserted against both the EIP-on and EIP-off baselines.
-/// </remarks>
 [TestFixture(true)]
 [TestFixture(false)]
 public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
@@ -80,7 +77,6 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     [Test]
     public void ExtCodeCopy_charges_extra_warm_access()
     {
-        // EXTCODECOPY pops address, destOffset, srcOffset, length (address on top); length 0 skips the copy.
         byte[] code = Prepare.EvmCode
             .PushData(0)
             .PushData(0)
@@ -103,7 +99,6 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     [Test]
     public void ExtCodeSize_charges_extra_warm_access_on_warm_account()
     {
-        // The first EXTCODESIZE warms Target; the second pays the warm access cost plus the EIP-8038 extra.
         byte[] code = Prepare.EvmCode
             .PushData(Target).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
             .PushData(Target).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
@@ -125,7 +120,6 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
     [Test]
     public void ExtCodeCopy_charges_extra_warm_access_on_warm_account()
     {
-        // The first EXTCODECOPY warms Target; the second pays the warm access cost plus the EIP-8038 extra.
         byte[] code = Prepare.EvmCode
             .PushData(0).PushData(0).PushData(0).PushData(Target).Op(Instruction.EXTCODECOPY)
             .PushData(0).PushData(0).PushData(0).PushData(Target).Op(Instruction.EXTCODECOPY)

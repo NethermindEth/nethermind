@@ -314,8 +314,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // sender forfeits all gas; merely draining the gas would let a zero-cost frame succeed.
             bool topFrameOutOfGas = false;
 
-            // A value transfer materialising a new (dead) recipient — including an empty
-            // precompile — pays NEW_ACCOUNT state gas.
+            // A new (dead) recipient — including an empty precompile — pays NEW_ACCOUNT state gas.
             if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
@@ -778,8 +777,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    // AUTH_BASE refill: clearing always refills, twice when installed
-                    // earlier in THIS tx; setting refills when the slot holds a delegation now or at tx start.
+                    // AUTH_BASE refill: clearing always refills, twice when installed earlier in THIS tx;
+                    // setting refills when the slot holds a delegation now or at tx start.
                     if (clearsDelegation)
                     {
                         authBaseRefunds++;
