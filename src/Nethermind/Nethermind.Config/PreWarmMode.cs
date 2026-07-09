@@ -12,6 +12,6 @@ public enum PreWarmMode
     /// <summary>Warm the caches from the processed block's own transactions.</summary>
     Block,
 
-    /// <summary>Also speculatively warm from the mempool in the gap between blocks (experimental).</summary>
+    /// <summary>Also speculatively warm from the mempool in the gap between blocks.</summary>
     BlockAndMempool,
 }
