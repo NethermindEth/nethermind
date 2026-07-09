@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Collections;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -24,8 +23,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public TValue Value;
     }
 
-    private Entry[] _entries = [];
-    private int[] _buckets = [];
+    private readonly SegmentedList<Entry> _entries = new(clearOnReturn: true);
+    private readonly SegmentedList<int> _buckets = new(clearOnReturn: false);
     private int _count;
     private int _bucketCount;
     private uint _bucketMask;
@@ -37,7 +36,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (_count != 0)
         {
             uint hashCode = (uint)key.GetHashCode();
-            int i = _buckets[hashCode & _bucketMask] - 1;
+            int i = _buckets[(int)(hashCode & _bucketMask)] - 1;
             while ((uint)i < (uint)_count)
             {
                 ref Entry entry = ref _entries[i];
@@ -64,7 +63,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
         }
 
-        Array.Sort(_entries, 0, count, new EntryKeyComparer(keyComparer));
+        _entries.Sort(count, new EntryKeyComparer(keyComparer));
         _count = count;
         BuildBuckets();
     }
@@ -102,57 +101,36 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     public void NoResizeClear()
     {
-        if (_count > 0) Array.Clear(_entries, 0, _count);
-        if (_bucketCount > 0) Array.Clear(_buckets, 0, _bucketCount);
+        if (_count > 0) _entries.Clear(_count);
+        if (_bucketCount > 0) _buckets.Clear(_bucketCount);
         _count = 0;
         _bucketCount = 0;
     }
 
     public void Dispose()
     {
-        if (_entries.Length > 0)
-        {
-            ArrayPool<Entry>.Shared.Return(_entries, clearArray: true);
-            _entries = [];
-        }
-        if (_buckets.Length > 0)
-        {
-            ArrayPool<int>.Shared.Return(_buckets);
-            _buckets = [];
-        }
+        _entries.Dispose();
+        _buckets.Dispose();
         _count = 0;
         _bucketCount = 0;
     }
 
-    private void EnsureEntryCapacity(int count)
-    {
-        if (_entries.Length >= count) return;
-
-        Entry[] old = _entries;
-        _entries = ArrayPool<Entry>.Shared.Rent(count);
-        Array.Clear(_entries); // rented arrays aren't zeroed; keep the tail clear so it never pins stale objects
-        if (old.Length > 0) ArrayPool<Entry>.Shared.Return(old, clearArray: true);
-    }
+    private void EnsureEntryCapacity(int count) => _entries.EnsureCapacity(count);
 
     private void BuildBuckets()
     {
         int size = BucketSize(_count);
-        if (_buckets.Length < size)
-        {
-            int[] old = _buckets;
-            _buckets = ArrayPool<int>.Shared.Rent(size);
-            if (old.Length > 0) ArrayPool<int>.Shared.Return(old);
-        }
+        _buckets.EnsureCapacity(size);
 
         _bucketCount = size;
         _bucketMask = (uint)(size - 1);
-        Array.Clear(_buckets, 0, size);
+        _buckets.Clear(size);
 
         // buckets store a 1-based entry index (0 == empty); Next is the 0-based previous chain head, -1 at the end.
         for (int i = 0; i < _count; i++)
         {
             ref Entry entry = ref _entries[i];
-            ref int bucket = ref _buckets[entry.HashCode & _bucketMask];
+            ref int bucket = ref _buckets[(int)(entry.HashCode & _bucketMask)];
             entry.Next = bucket - 1;
             bucket = i + 1;
         }
