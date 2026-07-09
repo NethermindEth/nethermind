@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,6 +41,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ulong _skipStartedMaxGas = ulong.MaxValue;
     private readonly bool _earlyKickoffEnabled;
     private readonly ISpecProvider? _specProvider;
+    private readonly IHasAccessList? _beaconBlockRootHandler;
 
     private Task _clearTask = Task.CompletedTask;
     private Hash256? _earlyWarmedBlock;
@@ -53,6 +55,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         ISpecProvider specProvider,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager
@@ -70,6 +73,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _skipStartedMaxGas = blocksConfig.PreWarmSkipStartedMaxGas;
         _earlyKickoffEnabled = blocksConfig.PreWarmEarlyKickoff;
         _specProvider = specProvider;
+        _beaconBlockRootHandler = beaconBlockRootHandler;
     }
 
     internal BlockCachePreWarmer(
@@ -202,8 +206,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         _earlyWarmedBlock = suggestedBlock.Hash;
         _earlyCts = new CancellationTokenSource();
-        EarlyWarmer warmer = new(this, suggestedBlock, parent, spec, _earlyCts.Token);
-        _earlyTask = Task.Run(warmer.Warm);
+        CancellationToken token = _earlyCts.Token;
+
+        // System-call slots need the most lead: the beacon-roots call is the very first thing the
+        // block executes, and a kickoff at PreWarmCaches time demonstrably loses that race.
+        SystemAccessListsWarmer? systemWarmer = null;
+        if (_beaconBlockRootHandler is not null)
+        {
+            systemWarmer = new SystemAccessListsWarmer(this, parent, GetAccessLists(suggestedBlock, spec, [_beaconBlockRootHandler]));
+            ThreadPool.UnsafeQueueUserWorkItem(systemWarmer, preferLocal: false);
+        }
+
+        EarlyWarmer warmer = new(this, suggestedBlock, parent, spec, token);
+        _earlyTask = Task.Run(() =>
+        {
+            try
+            {
+                warmer.Warm();
+            }
+            finally
+            {
+                systemWarmer?.Wait();
+                systemWarmer?.Dispose();
+            }
+        });
     }
 
     private void DrainEarlyWarm()
