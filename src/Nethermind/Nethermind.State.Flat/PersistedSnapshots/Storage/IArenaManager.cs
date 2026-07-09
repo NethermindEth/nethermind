@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
-public unsafe interface IArenaManager : IArenaReclaim, IDisposable
+public unsafe interface IArenaManager : IDisposable
 {
     void Initialize(IReadOnlyList<CatalogEntry> entries);
 
@@ -17,15 +17,7 @@ public unsafe interface IArenaManager : IArenaReclaim, IDisposable
     /// </param>
     ArenaWriter CreateWriter(long estimatedSize, bool small = false);
     ArenaReservation Open(in SnapshotLocation location);
-}
 
-/// <summary>
-/// The reclaim side of an arena manager: the residency-tracker and dead-space callbacks an
-/// <see cref="ArenaReservation"/> needs over its lifetime. Narrower than <see cref="IArenaManager"/>
-/// so the read path does not see the manager's lifecycle surface (initialize / create / open / dispose).
-/// </summary>
-public interface IArenaReclaim
-{
     /// <summary>
     /// Drop <paramref name="deadSize"/> bytes of <paramref name="file"/> as dead. The caller
     /// (typically <see cref="ArenaReservation.CleanUp"/>) handles file-side <c>madvise</c> /

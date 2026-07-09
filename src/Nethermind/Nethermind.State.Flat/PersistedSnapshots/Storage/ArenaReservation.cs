@@ -8,11 +8,11 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// <summary>
 /// A reservation of space within an arena. Owns a lease on its <see cref="ArenaFile"/> and
 /// coordinates lifecycle (eviction, punch-hole, tracker bookkeeping) with the owning
-/// manager's <see cref="IArenaReclaim"/> side on disposal.
+/// <see cref="IArenaManager"/> on disposal.
 /// </summary>
 public sealed class ArenaReservation : SmallRefCountingDisposable
 {
-    private readonly IArenaReclaim _arenaManager;
+    private readonly IArenaManager _arenaManager;
     // The owning file. Held directly so read-path operations skip the manager's id →
     // ArenaFile dictionary lookup.
     private readonly ArenaFile _arenaFile;
@@ -38,7 +38,7 @@ public sealed class ArenaReservation : SmallRefCountingDisposable
     /// </summary>
     private long Footprint => Math.Min(PageLayout.RoundUpToOsPage(Size), _arenaFile.MappedSize - Offset);
 
-    public ArenaReservation(IArenaReclaim arenaManager, ArenaFile arenaFile,
+    public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
                             int arenaId, long offset, long size)
         : base(1)
     {
