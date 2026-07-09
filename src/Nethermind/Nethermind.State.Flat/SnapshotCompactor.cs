@@ -120,11 +120,8 @@ public class SnapshotCompactor(
         ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
         int count = snapshots.Count;
 
-        // Merge the self-destruct markers ("false wins") and record each cleared address's boundary: the highest
-        // snapshot index that clears it. A slot or storage node written before that index is cleared by the
-        // self-destruct and never re-added, so the merge drops it instead of adding then removing it. Slots are
-        // keyed by address, storage trie nodes by the account-path hash. Both boundary maps stay null until a
-        // self-destruct is seen, keeping the common case on the plain (unfiltered) merge.
+        // A slot/node written before the highest snapshot index that clears its address is dropped by the merge
+        // rather than added then removed. Boundary maps stay null until a self-destruct is seen.
         Dictionary<HashedKey<Address>, bool> selfDestructMerged = [];
         Dictionary<Address, int>? slotClearBoundary = null;
         Dictionary<Hash256, int>? nodeClearBoundary = null;
@@ -140,7 +137,6 @@ public class SnapshotCompactor(
                 else
                 {
                     selfDestructMerged[address] = false;
-                    // i is ascending, so the last write wins and holds the highest clearing index.
                     (slotClearBoundary ??= [])[address.Key] = i;
                     (nodeClearBoundary ??= [])[address.Key.ToAccountPath.ToCommitment()] = i;
                 }
@@ -154,7 +150,6 @@ public class SnapshotCompactor(
             ? null
             : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
-        // Rebuild the pooled content's dictionaries in place so their arrays are reused across compactions.
         MergedSnapshotContent content = _resourcePool.GetMergedSnapshotContent(usage);
 
         using ArrayPoolListRef<Task> compactTask = new(4);
@@ -199,8 +194,7 @@ public class SnapshotCompactor(
         int count = snapshots.Count;
         SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
 
-        // Already-sorted inputs are used directly; mutable inputs are sorted into a transient whose rented
-        // arrays are returned once the merge has copied their entries into the target.
+        // Mutable inputs are sorted into transients that are disposed once the merge has copied them.
         List<SortedMergeDictionary<TKey, TValue>>? transients = null;
         try
         {

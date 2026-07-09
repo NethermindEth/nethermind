@@ -11,25 +11,17 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.State.Flat.Collections;
 
 /// <summary>
-/// A build-once, then read-only dictionary optimized for k-way merging of compacted snapshot content.
-/// Entries live in a single array kept sorted by key; a <see cref="System.Collections.Generic.Dictionary{TKey,TValue}"/>-style
-/// bucket index is built alongside, so lookups are O(1) and enumeration is already in key order (no separate
-/// sort needed at persist time).
+/// Build-once, read-only dictionary for k-way merging compacted snapshot content: entries kept sorted by key
+/// with a BCL-dictionary-style bucket index, so lookups are O(1) and enumeration is in key order. Backing arrays
+/// are pooled and reused across builds via <see cref="NoResizeClear"/>.
 /// </summary>
-/// <remarks>
-/// The backing arrays are rented from <see cref="ArrayPool{T}"/> and reused: rebuild it in place with
-/// <see cref="BuildFromMerge"/> (loser-tree merge of already-sorted inputs) or <see cref="BuildFromUnsorted"/>
-/// (sort a standard dictionary), and empty it with <see cref="NoResizeClear"/> to keep the arrays for the next
-/// build. This lets a pooled content hold warm dictionaries across compactions instead of reallocating. The
-/// bucket array uses a power-of-two size with open chaining identical in shape to the BCL dictionary.
-/// </remarks>
-public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
+internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
     private struct Entry
     {
         public uint HashCode;
-        public int Next;   // 0-based index of the next entry in the bucket chain; -1 terminates.
+        public int Next;
         public TKey Key;
         public TValue Value;
     }
@@ -37,7 +29,7 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
     private Entry[] _entries = [];
     private int[] _buckets = [];
     private int _count;
-    private int _bucketCount;   // active prefix of _buckets, a power of two <= _buckets.Length
+    private int _bucketCount;
     private uint _bucketMask;
 
     public int Count => _count;
@@ -64,7 +56,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
         return false;
     }
 
-    /// <summary>Rebuilds this dictionary in place from an unsorted standard dictionary by sorting its entries once.</summary>
     public void BuildFromUnsorted(IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, IComparer<TKey> keyComparer)
     {
         int count = source.Count;
@@ -81,11 +72,8 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
     }
 
     /// <summary>
-    /// Rebuilds this dictionary in place by merging already-sorted inputs with a loser tree. Sources are in
-    /// ascending priority order (<paramref name="sources"/><c>[0]</c> is the oldest); when several sources hold
-    /// the same key the value from the highest-index (newest) source wins and all of them are consumed. When
-    /// <paramref name="keep"/> is supplied it is called with each entry's source index and key; entries for
-    /// which it returns <c>false</c> are dropped, and a key with no surviving entry is not emitted.
+    /// Merges already-sorted inputs (ascending priority; the highest-index source wins on equal keys). When
+    /// <paramref name="keep"/> is supplied, entries it rejects are dropped and keys with no survivor are omitted.
     /// </summary>
     public void BuildFromMerge(
         ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources,
@@ -107,7 +95,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
         BuildBuckets();
     }
 
-    /// <summary>Empties the dictionary while keeping its rented arrays for the next build.</summary>
     public void NoResizeClear()
     {
         if (_count > 0) Array.Clear(_entries, 0, _count);
@@ -138,8 +125,7 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
 
         Entry[] old = _entries;
         _entries = ArrayPool<Entry>.Shared.Rent(count);
-        // Rented arrays are not zeroed; clear the tail so entries above the live count never pin stale objects.
-        Array.Clear(_entries);
+        Array.Clear(_entries); // rented arrays aren't zeroed; keep the tail clear so it never pins stale objects
         if (old.Length > 0) ArrayPool<Entry>.Shared.Return(old, clearArray: true);
     }
 
@@ -166,7 +152,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
         }
     }
 
-    /// <summary>Builds a fresh dictionary from an unsorted standard dictionary (convenience for one-off use).</summary>
     public static SortedMergeDictionary<TKey, TValue> FromUnsorted(
         IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, IComparer<TKey> keyComparer)
     {
@@ -175,7 +160,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
         return dictionary;
     }
 
-    /// <summary>Builds a fresh dictionary by merging already-sorted inputs (convenience for one-off use).</summary>
     public static SortedMergeDictionary<TKey, TValue> Merge(
         ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources,
         IComparer<TKey> keyComparer,
@@ -197,7 +181,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    /// <summary>Enumerates entries in ascending key order.</summary>
     public struct Enumerator(SortedMergeDictionary<TKey, TValue> dictionary) : IEnumerator<KeyValuePair<TKey, TValue>>
     {
         private int _index = -1;
@@ -223,16 +206,12 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
 
-    /// <summary>
-    /// A loser tree (tournament tree) over the sorted source runs. Emits merged entries in ascending key order,
-    /// collapsing duplicate keys to the highest-priority source's value.
-    /// </summary>
     private ref struct LoserTree
     {
         private readonly ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> _sources;
         private readonly IComparer<TKey> _keyComparer;
         private readonly int _k;
-        private readonly int[] _tree;   // _tree[0] is the winner leaf; _tree[1..] hold losers.
+        private readonly int[] _tree;
         private readonly int[] _position;
 
         public LoserTree(ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources, IComparer<TKey> keyComparer)
@@ -243,8 +222,7 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
             _tree = new int[_k];
             _position = new int[_k];
 
-            // Initialize: every internal node holds the MIN sentinel (leaf index _k), then play each real leaf
-            // in so the smaller of each match is carried up and the larger stored as the node's loser.
+            // Leaf index _k is a MIN sentinel used only to seed the tree; playing each real leaf in stores losers.
             for (int i = 0; i < _k; i++) _tree[i] = _k;
             for (int i = _k - 1; i >= 0; i--) Adjust(i);
         }
@@ -263,7 +241,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
             chosen = default;
             hasChosen = false;
 
-            // Consume every source whose current head has this key; the highest-index kept entry wins the value.
             while (true)
             {
                 int current = _tree[0];
@@ -272,7 +249,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
                 ref Entry currentHead = ref _sources[current]._entries[_position[current]];
                 if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
 
-                // Sources are visited in ascending index order for equal keys, so the last kept one is newest.
                 if (keep is null || keep(current, currentHead.Key))
                 {
                     chosen = currentHead;
@@ -299,7 +275,6 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
 
         private readonly int CompareHeads(int a, int b)
         {
-            // The MIN sentinel (leaf index _k) is smaller than every real head; it only exists during init.
             if (a == _k) return b == _k ? 0 : -1;
             if (b == _k) return 1;
 
@@ -308,13 +283,13 @@ public sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePa
             if (aExhausted || bExhausted)
             {
                 if (aExhausted && bExhausted) return a.CompareTo(b);
-                return aExhausted ? 1 : -1; // an exhausted run ranks after every live one
+                return aExhausted ? 1 : -1;
             }
 
             int cmp = _keyComparer.Compare(
                 _sources[a]._entries[_position[a]].Key,
                 _sources[b]._entries[_position[b]].Key);
-            return cmp != 0 ? cmp : a.CompareTo(b); // equal keys: lower source index is emitted first
+            return cmp != 0 ? cmp : a.CompareTo(b);
         }
     }
 }

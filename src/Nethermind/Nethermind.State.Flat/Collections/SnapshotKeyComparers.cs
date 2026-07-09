@@ -10,12 +10,8 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Collections;
 
-/// <summary>
-/// Total-order comparers over the <see cref="HashedKey{T}"/> keys used by snapshot content. The trie-node
-/// comparers reproduce the exact <c>(Hash256, TreePath)</c> tuple order the persistence layer sorts by, so a
-/// sorted content can be persisted without re-sorting.
-/// </summary>
-public static class SnapshotKeyComparers
+/// <summary>Key comparers for snapshot content; trie-node order matches the persistence layer's sort.</summary>
+internal static class SnapshotKeyComparers
 {
     public static readonly IComparer<HashedKey<Address>> Address = new AddressComparer();
     public static readonly IComparer<HashedKey<(Address, UInt256)>> Storage = new StorageComparer();

@@ -287,8 +287,7 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // A sorted (compacted) snapshot already enumerates trie nodes in key order, so it can be written
-            // directly; otherwise the keys are collected and sorted first for locality-friendly DB writes.
+            // Sorted content already enumerates nodes in key order; otherwise sort the keys first.
             long stateNodesSize = 0;
             if (snapshot.IsSorted)
             {

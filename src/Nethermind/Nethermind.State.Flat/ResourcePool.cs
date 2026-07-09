@@ -30,8 +30,7 @@ public class ResourcePool : IResourcePool
             // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
             { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
 
-            // Sorted content for base snapshots converted from their mutable form; sized to the number of base
-            // snapshots kept in memory so the merged shells recycle instead of churning.
+            // Sorted content for converted base snapshots.
             { Usage.ConvertedBase, new ResourcePoolCategory(Usage.ConvertedBase, (int)flatConfig.CompactSize + 8, 1) },
 
             // Note: prewarmer use readonly processing env

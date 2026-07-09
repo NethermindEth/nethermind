@@ -10,9 +10,6 @@ public interface ISnapshotCompactor
     SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot);
     Snapshot CompactSnapshotBundle(SnapshotPooledList snapshots);
 
-    /// <summary>
-    /// Builds a new snapshot with the same state ids whose content is the sorted <see cref="MergedSnapshotContent"/>
-    /// form of <paramref name="source"/>'s mutable content, so the mutable content can be returned to its pool.
-    /// </summary>
+    /// <summary>Builds a new snapshot with the same state ids holding the sorted form of a mutable snapshot's content.</summary>
     Snapshot ConvertToSorted(Snapshot source);
 }

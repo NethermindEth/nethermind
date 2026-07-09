@@ -16,10 +16,8 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Snapshot are written keys between state From to state To. The backing content is either the mutable
-/// <see cref="SnapshotContent"/> (during commit) or the sorted immutable <see cref="MergedSnapshotContent"/>
-/// (after compaction). A snapshot holds one of the two directly and branches on <see cref="IsSorted"/> so reads
-/// stay concrete calls (no interface dispatch on the hot path).
+/// Snapshot are written keys between state From to state To. Backed by either the mutable
+/// <see cref="SnapshotContent"/> or the sorted <see cref="MergedSnapshotContent"/>, selected by <see cref="IsSorted"/>.
 /// </summary>
 public class Snapshot : RefCountingDisposable
 {
@@ -55,7 +53,6 @@ public class Snapshot : RefCountingDisposable
     public long EstimateCompactedMemory() => _isSorted ? _merged!.EstimateCompactedMemory() : _mutable!.EstimateCompactedMemory();
     public ResourcePool.Usage Usage => _usage;
 
-    /// <summary>True when the content enumerates in key order, so persistence can skip its trie-node sort.</summary>
     public bool IsSorted => _isSorted;
 
     public StateId From => _from;

@@ -13,21 +13,10 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
 
-/// <summary>
-/// The immutable, sorted counterpart of <see cref="SnapshotContent"/> used for compacted snapshots. Each of the
-/// five collections is a <see cref="SortedMergeDictionary{TKey,TValue}"/> the compactor rebuilds in place by
-/// k-way merging the source snapshots, so lookups are O(1) and enumeration is already in key order (state and
-/// storage trie nodes iterate in the exact order the persistence layer would otherwise sort into).
-/// </summary>
-/// <remarks>
-/// Pooled like <see cref="SnapshotContent"/>. The dictionaries persist across pool cycles: <see cref="Reset"/>
-/// empties them with <c>NoResizeClear</c> so their rented arrays stay warm for the next compaction, and only
-/// <see cref="Dispose"/> (on pool eviction) returns those arrays. Never mutated after the compaction merge, so
-/// reads need no synchronization.
-/// </remarks>
+/// <summary>The sorted, pooled counterpart of <see cref="SnapshotContent"/> used for compacted snapshots.</summary>
 public sealed class MergedSnapshotContent : IDisposable, IResettable
 {
-    private const int NodeSizeEstimate = 650; // Matches SnapshotContent; per-node size is estimated to avoid walking.
+    private const int NodeSizeEstimate = 650;
 
     private readonly SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = new();
     private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _storages = new();

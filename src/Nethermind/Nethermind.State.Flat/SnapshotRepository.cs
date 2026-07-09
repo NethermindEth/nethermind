@@ -190,9 +190,7 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public bool TryReplaceSnapshot(in StateId stateId, Snapshot newSnapshot)
     {
-        // Atomically swap the registry entry, then drop the old snapshot's registry reference. Readers that
-        // already leased the old snapshot keep it alive until they release; its content then returns to its
-        // pool. A reader mid-lease that loses the race retries and picks up the replacement.
+        // Swap the entry, then drop the old registry reference; leased readers keep it alive until they release.
         while (_snapshots.TryGetValue(stateId, out Snapshot? existing))
         {
             if (_snapshots.TryUpdate(stateId, newSnapshot, existing))

@@ -15,18 +15,10 @@ using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Benchmarks <see cref="SnapshotCompactor.CompactSnapshotBundle"/> — merging a window of per-block
-/// <see cref="FlatSnapshot"/>s into a single compacted snapshot. Measures the merge in isolation: the
-/// input snapshots are built once in <see cref="Setup"/> and only read during the benchmark.
+/// Benchmarks <see cref="SnapshotCompactor.CompactSnapshotBundle"/>. The per-snapshot profile approximates a
+/// mainnet block (~2k accounts, ~10k slots over ~200 contracts, ~5x that in trie nodes) with a shared hot-key
+/// fraction so the merge exercises dedup rather than a disjoint union.
 /// </summary>
-/// <remarks>
-/// The per-snapshot write profile is calibrated to a representative mainnet block from the flat state-diff
-/// archive (~2k account writes and ~10k storage slots across ~200 contracts), with the trie-node count set
-/// to ~5x the flat account/slot write count (node bytes end up ~20x the flat write bytes). A fixed fraction of each snapshot's
-/// keys is drawn from a shared hot set reused across all snapshots, so the merge exercises the
-/// overwrite/dedup path rather than a pure disjoint union. <see cref="SelfDestructsPerSnapshot"/> toggles
-/// the per-self-destruct full-storage scan, the one super-linear path in the merge.
-/// </remarks>
 [MemoryDiagnoser]
 [WarmupCount(3)]
 [MinIterationCount(3)]
@@ -55,9 +47,7 @@ public class SnapshotCompactionBenchmark
     [Params(0, 16)]
     public int SelfDestructsPerSnapshot;
 
-    // false: inputs are raw mutable (ConcurrentDictionary) snapshots — the first-tier merge, which must sort
-    // each input. true: inputs are already compacted (sorted) snapshots — the higher-tier merge that dominates
-    // the leveled schedule and needs no re-sort.
+    // false: raw mutable inputs (first-tier, sorts each). true: already-sorted inputs (higher-tier, no re-sort).
     [Params(false, true)]
     public bool SortedInputs;
 
