@@ -46,6 +46,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
+    [ConfigItem(Description = "Experimental: warm sender groups in descending total-gas order so the largest transactions get maximal warming lead. Grouping semantics are unchanged.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmGasPriorityOrder { get; set; }
+
+    [ConfigItem(Description = "Experimental: skip speculative warming of main-thread-started transactions only below this gas limit; larger transactions keep warming after being started (races the main thread inside large cold transactions).", DefaultValue = "18446744073709551615", HiddenFromDocs = true)]
+    ulong PreWarmSkipStartedMaxGas { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

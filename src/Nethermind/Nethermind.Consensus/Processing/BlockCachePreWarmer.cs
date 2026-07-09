@@ -34,6 +34,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly bool _gasPriorityOrder;
+    private readonly ulong _skipStartedMaxGas = ulong.MaxValue;
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -51,7 +53,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _gasPriorityOrder = blocksConfig.PreWarmGasPriorityOrder;
+        _skipStartedMaxGas = blocksConfig.PreWarmSkipStartedMaxGas;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -92,11 +99,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // is in use, drive warmup directly off the suggested block's access list.
                 ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
+                // System-call slots (e.g. EIP-4788 ring buffer) race the main thread's system call, which is
+                // the very first thing the block executes — warm them on a dedicated item so they never queue
+                // behind the address pass setup.
+                SystemAccessListsWarmer systemWarmer = new(this, parent, GetAccessLists(suggestedBlock, spec, systemAccessLists));
+                ThreadPool.UnsafeQueueUserWorkItem(systemWarmer, preferLocal: false);
+
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
+                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, this, bal);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, systemWarmer, cancellationToken));
             }
         }
 
@@ -126,7 +139,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public void Dispose() => (_envPool as IDisposable)?.Dispose();
 
-    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, SystemAccessListsWarmer systemWarmer, CancellationToken cancellationToken)
     {
         try
         {
@@ -148,9 +161,53 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
-            // Don't complete the task until address warmer is also done.
+            // Don't complete the task until the address and system warmers are also done.
             addressWarmer.Wait();
             addressWarmer.Dispose();
+            systemWarmer.Wait();
+            systemWarmer.Dispose();
+        }
+    }
+
+    /// <summary>Warms the system-call access lists (e.g. the EIP-4788 beacon-roots slots) with minimal dispatch latency.</summary>
+    private sealed class SystemAccessListsWarmer(BlockCachePreWarmer preWarmer, BlockHeader parent, ArrayPoolList<AccessList>? accessLists)
+        : IThreadPoolWorkItem, IDisposable
+    {
+        private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+
+        public void Wait() => _doneEvent.Wait();
+
+        public void Dispose() => _doneEvent.Dispose();
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            try
+            {
+                if (accessLists is null) return;
+
+                IReadOnlyTxProcessorSource env = preWarmer._envPool.Get();
+                try
+                {
+                    using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                    foreach (AccessList list in accessLists.AsSpan())
+                    {
+                        scope.WorldState.WarmUp(list);
+                    }
+                }
+                finally
+                {
+                    preWarmer._envPool.Return(env);
+                }
+            }
+            catch (Exception ex)
+            {
+                preWarmer._logger.DebugError("Error pre-warming system access lists", ex);
+            }
+            finally
+            {
+                accessLists?.Dispose();
+                _doneEvent.Set();
+            }
         }
     }
 
@@ -211,6 +268,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Convert to array for parallel iteration
                 using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
 
+                if (_gasPriorityOrder)
+                {
+                    // Give the largest cold read sets a worker first: order groups by total gas descending.
+                    // Grouping (sequential same-sender warming) is unchanged — only the claim order across groups.
+                    groupArray.AsSpan().Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
+                }
+
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
                     0,
@@ -261,6 +325,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
+    {
+        ulong total = 0;
+        foreach ((int _, Transaction tx) in group.AsSpan())
+        {
+            total += tx.GasLimit;
+        }
+
+        return total;
+    }
+
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
@@ -295,7 +370,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            // High-gas txs are exempt (PreWarmSkipStartedMaxGas): racing the main thread inside a
+            // large cold tx keeps its remaining reads one step ahead instead of leaving them all cold.
+            if (tx.GasLimit < blockState.PreWarmer._skipStartedMaxGas && blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
 
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -326,13 +403,26 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    {
+        if (systemAccessLists.Length == 0) return null;
+
+        ArrayPoolList<AccessList> list = new(systemAccessLists.Length);
+
+        foreach (IHasAccessList systemAccessList in systemAccessLists)
+        {
+            list.Add(systemAccessList.GetAccessList(block, spec));
+        }
+
+        return list;
+    }
+
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ReadOnlyBlockAccessList? Bal = bal;
-        private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public bool HasBal => Bal is not null;
@@ -340,20 +430,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public void Wait() => _doneEvent.Wait();
 
         public void Dispose() => _doneEvent.Dispose();
-
-        private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
-        {
-            if (systemAccessLists.Length == 0) return null;
-
-            ArrayPoolList<AccessList> list = new(systemAccessLists.Length);
-
-            foreach (IHasAccessList systemAccessList in systemAccessLists)
-            {
-                list.Add(systemAccessList.GetAccessList(block, spec));
-            }
-
-            return list;
-        }
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -376,32 +452,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested)
             {
-                SystemTxAccessLists?.Dispose();
                 return;
             }
 
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try
             {
-                if (SystemTxAccessLists is not null)
-                {
-                    IReadOnlyTxProcessorSource env = envPool.Get();
-                    try
-                    {
-                        using IReadOnlyTxProcessingScope scope = env.Build(parent);
-
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
-                        {
-                            scope.WorldState.WarmUp(list);
-                        }
-                    }
-                    finally
-                    {
-                        envPool.Return(env);
-                        SystemTxAccessLists.Dispose();
-                    }
-                }
-
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {

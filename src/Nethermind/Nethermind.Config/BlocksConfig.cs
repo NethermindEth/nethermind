@@ -113,5 +113,9 @@ namespace Nethermind.Config
         public string? ReadTraceOutput { get; set; }
 
         public string? ReadTraceBlocks { get; set; }
+
+        public bool PreWarmGasPriorityOrder { get; set; }
+
+        public ulong PreWarmSkipStartedMaxGas { get; set; } = ulong.MaxValue;
     }
 }
