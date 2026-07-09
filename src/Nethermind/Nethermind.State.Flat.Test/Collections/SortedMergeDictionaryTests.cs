@@ -161,6 +161,52 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.Select(static kv => kv.Key), Is.EqualTo(new[] { 1000, 1001, 1002 }));
     }
 
+    [TestCase(200, 100)]  // 2 keys per hash — exercises cuckoo kick chains
+    [TestCase(100, 25)]   // 4 per hash — a full bucket pair, the largest placeable group
+    [TestCase(1000, 999)] // near-unique hashes at scale
+    [TestCase(10, 2)]     // 5 per hash — beyond bucket capacity, spills to the overflow list
+    [TestCase(10, 1)]     // all keys share one hash
+    public void FromUnsorted_WithHashCollisions_LooksUpAllKeys(int count, int hashMod)
+    {
+        Dictionary<CollidingKey, int> source = [];
+        for (int i = 0; i < count; i++) source[new CollidingKey(i, hashMod)] = i * 10;
+
+        using SortedMergeDictionary<CollidingKey, int> dict = new();
+        dict.BuildFromUnsorted(source, CollidingCmp);
+        AssertAllPresent(dict, count, hashMod);
+
+        // Rebuild the same instance: slot array and overflow list are reused across the cuckoo rebuild.
+        dict.NoResizeClear();
+        Assert.That(dict.TryGetValue(new CollidingKey(0, hashMod), out _), Is.False);
+        dict.BuildFromUnsorted(source, CollidingCmp);
+        AssertAllPresent(dict, count, hashMod);
+    }
+
+    private static void AssertAllPresent(SortedMergeDictionary<CollidingKey, int> dict, int count, int hashMod)
+    {
+        Assert.That(dict.Count, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(dict.TryGetValue(new CollidingKey(i, hashMod), out int value), Is.True, $"missing key {i}");
+            Assert.That(value, Is.EqualTo(i * 10), $"key {i}");
+        }
+        // A miss sharing its hash with present keys: the hash matches but the key doesn't, so probing must continue.
+        Assert.That(dict.TryGetValue(new CollidingKey(count, hashMod), out _), Is.False);
+        Assert.That(dict.Select(static kv => kv.Key.Value), Is.Ordered);
+    }
+
+    private readonly struct CollidingKey(int value, int hashMod) : IEquatable<CollidingKey>
+    {
+        public readonly int Value = value;
+        private readonly int _hashMod = hashMod;
+        public bool Equals(CollidingKey other) => Value == other.Value;
+        public override bool Equals(object? obj) => obj is CollidingKey other && Equals(other);
+        public override int GetHashCode() => Value % _hashMod;
+    }
+
+    private static readonly IComparer<CollidingKey> CollidingCmp =
+        Comparer<CollidingKey>.Create(static (a, b) => a.Value.CompareTo(b.Value));
+
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)
     {
         Dictionary<int, int> source = [];

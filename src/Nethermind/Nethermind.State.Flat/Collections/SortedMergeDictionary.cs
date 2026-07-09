@@ -9,23 +9,38 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.State.Flat.Collections;
 
 /// <summary>
-/// Build-once, read-only dictionary for k-way merging compacted snapshot content: entries kept sorted by key
-/// with a BCL-dictionary-style bucket index, so lookups are O(1) and enumeration is in key order. Backing arrays
-/// are pooled and reused across builds via <see cref="NoResizeClear"/>.
+/// A cuckoo index slot: the key's full 32-bit hash plus a 1-based index into the sorted entry array
+/// (0 == empty, so <see cref="Array.Clear(Array)"/> resets a table). Non-generic so every
+/// <see cref="SortedMergeDictionary{TKey,TValue}"/> instantiation shares one <see cref="ArrayPool{T}"/>.
 /// </summary>
+internal struct CuckooSlot
+{
+    public uint HashCode;
+    public int EntryIndex;
+}
+
+/// <summary>
+/// Build-once, read-only dictionary for k-way merging compacted snapshot content: entries kept sorted by key
+/// with a bucketized cuckoo hash index (two candidate buckets of two slots each; hashes live in the index, so
+/// entries hold only key and value), so lookups are O(1) and enumeration is in key order. Backing arrays are
+/// pooled and reused across builds via <see cref="NoResizeClear"/>.
+/// </summary>
+/// <remarks>
+/// Items still homeless after capped table growth — five or more keys sharing one full 32-bit hash can never fit
+/// their four fixed slots — spill to an overflow list scanned only when non-empty, so a build never fails.
+/// </remarks>
 internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
     private struct Entry
     {
-        public uint HashCode;
-        public int Next;
         public TKey Key;
         public TValue Value;
     }
 
     private Entry[] _entries = [];
-    private int[] _buckets = [];
+    private CuckooSlot[] _slots = []; // bucket b occupies slots [2b, 2b+1]
+    private List<CuckooSlot>? _overflow;
     private int _count;
     private int _bucketCount;
     private uint _bucketMask;
@@ -37,16 +52,42 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (_count != 0)
         {
             uint hashCode = (uint)key.GetHashCode();
-            int i = _buckets[hashCode & _bucketMask] - 1;
-            while ((uint)i < (uint)_count)
+            // Distinct keys can share a full 32-bit hash, so a hash match with a key mismatch must keep probing.
+            if (TryMatchBucket(hashCode & _bucketMask, hashCode, key, out value)) return true;
+            if (TryMatchBucket(SecondBucket(hashCode), hashCode, key, out value)) return true;
+            if (_overflow is { Count: > 0 } overflow)
             {
-                ref Entry entry = ref _entries[i];
-                if (entry.HashCode == hashCode && entry.Key.Equals(key))
+                for (int i = 0; i < overflow.Count; i++)
                 {
-                    value = entry.Value;
-                    return true;
+                    CuckooSlot slot = overflow[i];
+                    if (TryMatchSlot(in slot, hashCode, key, out value)) return true;
                 }
-                i = entry.Next;
+            }
+        }
+
+        value = default!;
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryMatchBucket(uint bucket, uint hashCode, TKey key, out TValue value)
+    {
+        int first = (int)bucket * SlotsPerBucket;
+        return TryMatchSlot(in _slots[first], hashCode, key, out value)
+            || TryMatchSlot(in _slots[first + 1], hashCode, key, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryMatchSlot(in CuckooSlot slot, uint hashCode, TKey key, out TValue value)
+    {
+        // Empty slots have HashCode == 0, which a genuine zero hash would match — check occupancy first.
+        if (slot.EntryIndex != 0 && slot.HashCode == hashCode)
+        {
+            ref Entry entry = ref _entries[slot.EntryIndex - 1];
+            if (entry.Key.Equals(key))
+            {
+                value = entry.Value;
+                return true;
             }
         }
 
@@ -61,12 +102,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int i = 0;
         foreach (KeyValuePair<TKey, TValue> kv in source)
         {
-            _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
+            _entries[i++] = new Entry { Key = kv.Key, Value = kv.Value };
         }
 
         Array.Sort(_entries, 0, count, new EntryKeyComparer(keyComparer));
         _count = count;
-        BuildBuckets();
+        BuildIndex();
     }
 
     /// <summary>
@@ -81,7 +122,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (sources.Length == 0)
         {
             _count = 0;
-            BuildBuckets();
+            BuildIndex();
             return;
         }
 
@@ -97,13 +138,14 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         }
 
         _count = count;
-        BuildBuckets();
+        BuildIndex();
     }
 
     public void NoResizeClear()
     {
         if (_count > 0) Array.Clear(_entries, 0, _count);
-        if (_bucketCount > 0) Array.Clear(_buckets, 0, _bucketCount);
+        if (_bucketCount > 0) Array.Clear(_slots, 0, _bucketCount * SlotsPerBucket);
+        _overflow?.Clear();
         _count = 0;
         _bucketCount = 0;
     }
@@ -115,11 +157,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             ArrayPool<Entry>.Shared.Return(_entries, clearArray: true);
             _entries = [];
         }
-        if (_buckets.Length > 0)
+        if (_slots.Length > 0)
         {
-            ArrayPool<int>.Shared.Return(_buckets);
-            _buckets = [];
+            ArrayPool<CuckooSlot>.Shared.Return(_slots);
+            _slots = [];
         }
+        _overflow = null;
         _count = 0;
         _bucketCount = 0;
     }
@@ -134,28 +177,88 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (old.Length > 0) ArrayPool<Entry>.Shared.Return(old, clearArray: true);
     }
 
-    private void BuildBuckets()
+    private void BuildIndex()
     {
-        int size = BucketSize(_count);
-        if (_buckets.Length < size)
+        int size = BucketCount(_count);
+        int maxSize = size << 2; // two doublings of headroom; beyond that only identical-hash pathology remains
+        while (true)
         {
-            int[] old = _buckets;
-            _buckets = ArrayPool<int>.Shared.Rent(size);
-            if (old.Length > 0) ArrayPool<int>.Shared.Return(old);
+            if (_slots.Length < size * SlotsPerBucket)
+            {
+                CuckooSlot[] old = _slots;
+                _slots = ArrayPool<CuckooSlot>.Shared.Rent(size * SlotsPerBucket);
+                if (old.Length > 0) ArrayPool<CuckooSlot>.Shared.Return(old);
+            }
+
+            _bucketCount = size;
+            _bucketMask = (uint)(size - 1);
+            Array.Clear(_slots, 0, size * SlotsPerBucket);
+            _overflow?.Clear();
+
+            // The final attempt (at the growth cap) spills homeless items to _overflow instead of failing.
+            if (TryFillIndex(spill: size >= maxSize)) return;
+            size <<= 1;
         }
+    }
 
-        _bucketCount = size;
-        _bucketMask = (uint)(size - 1);
-        Array.Clear(_buckets, 0, size);
-
-        // buckets store a 1-based entry index (0 == empty); Next is the 0-based previous chain head, -1 at the end.
+    private bool TryFillIndex(bool spill)
+    {
         for (int i = 0; i < _count; i++)
         {
-            ref Entry entry = ref _entries[i];
-            ref int bucket = ref _buckets[entry.HashCode & _bucketMask];
-            entry.Next = bucket - 1;
-            bucket = i + 1;
+            // HashedKey<T> caches its hash, so this is a field read for the real key types.
+            if (!TryInsert((uint)_entries[i].Key.GetHashCode(), i + 1, out CuckooSlot homeless))
+            {
+                if (!spill) return false;
+                (_overflow ??= []).Add(homeless);
+            }
         }
+        return true;
+    }
+
+    private bool TryInsert(uint hashCode, int entryIndex, out CuckooSlot homeless)
+    {
+        CuckooSlot item = new() { HashCode = hashCode, EntryIndex = entryIndex };
+        homeless = default;
+        uint bucket = hashCode & _bucketMask;
+        if (TryPlace(bucket, in item) || TryPlace(SecondBucket(hashCode), in item)) return true;
+
+        for (int kicks = 0; kicks < MaxKicks; kicks++)
+        {
+            ref CuckooSlot victim = ref _slots[(int)bucket * SlotsPerBucket + (kicks & 1)]; // alternate the victim slot
+            (item, victim) = (victim, item);
+            bucket = AltBucket(item.HashCode, bucket); // the stored hash locates the evictee's other bucket — entries untouched
+            if (TryPlace(bucket, in item)) return true;
+        }
+
+        homeless = item;
+        return false;
+    }
+
+    private bool TryPlace(uint bucket, in CuckooSlot item)
+    {
+        int first = (int)bucket * SlotsPerBucket;
+        ref CuckooSlot slot0 = ref _slots[first];
+        if (slot0.EntryIndex == 0)
+        {
+            slot0 = item;
+            return true;
+        }
+        ref CuckooSlot slot1 = ref _slots[first + 1];
+        if (slot1.EntryIndex == 0)
+        {
+            slot1 = item;
+            return true;
+        }
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private uint SecondBucket(uint hash) => (uint)((hash * 0x9E3779B97F4A7C15UL) >> 32) & _bucketMask;
+
+    private uint AltBucket(uint hash, uint bucket)
+    {
+        uint first = hash & _bucketMask;
+        return bucket == first ? SecondBucket(hash) : first;
     }
 
     public static SortedMergeDictionary<TKey, TValue> FromUnsorted(
@@ -176,12 +279,15 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return dictionary;
     }
 
-    // Target load factor: size buckets so at most ~70% are occupied, keeping chains short.
-    private const double MaxLoadFactor = 0.7;
+    private const int SlotsPerBucket = 2;
+    // At load <= 0.75 a displacement chain beyond 32 almost certainly means an irresolvable cycle;
+    // a false positive only costs one doubling.
+    private const int MaxKicks = 32;
 
+    // Load factor <= 0.75 over 2-slot buckets (the 2-slot cuckoo threshold is ~0.89).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BucketSize(int count) =>
-        count == 0 ? 1 : (int)BitOperations.RoundUpToPowerOf2((uint)(count / MaxLoadFactor) + 1);
+    private static int BucketCount(int count) =>
+        count == 0 ? 1 : (int)BitOperations.RoundUpToPowerOf2((uint)(count * 2 / 3) + 1);
 
     public Enumerator GetEnumerator() => new(this);
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() => GetEnumerator();
