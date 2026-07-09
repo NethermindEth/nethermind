@@ -178,11 +178,7 @@ namespace Nethermind.State
             _earlyAccountUpdatedHandler = (_, updatedAccount) => _earlyAccountUpdates.Enqueue(updatedAccount);
             writeBatch.OnAccountUpdated += _earlyAccountUpdatedHandler;
             _earlyWriteBatch = writeBatch;
-            _earlyStorageRootsTask = Task.Factory.StartNew(
-                () => _persistentStorageProvider.FlushToTreeExcept(writeBatch, exclude),
-                CancellationToken.None,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
+            _earlyStorageRootsTask = Task.Run(() => _persistentStorageProvider.FlushToTreeExcept(writeBatch, exclude));
         }
 
         private void AbortEarlyStorageRoots()
