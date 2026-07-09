@@ -292,6 +292,7 @@ public class RewardsStoreTests
         Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
 
+
     private static RewardsStore CreateStore(
         IDb db,
         IBlockTree? blockTree = null,

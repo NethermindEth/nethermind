@@ -100,6 +100,7 @@ internal sealed class RewardsStore(
         SaveEpochRewards(epochBlockHash, epochRewards);
     }
 
+
     public void SaveEpochRewards(Hash256 epochBlockHash, BlockReward[] rewards)
     {
         ArgumentNullException.ThrowIfNull(epochBlockHash);
@@ -170,6 +171,7 @@ internal sealed class RewardsStore(
         epochBlockHash.Bytes.CopyTo(key.AsSpan(1));
         return key;
     }
+
 
     private static byte[] SerializeEpochRewards(Dictionary<Address, UInt256> rewardsByAccount)
     {

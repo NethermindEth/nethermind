@@ -65,6 +65,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
+        // (populator) executions, which never commit. No-op for backends without trie warm-up.
+        _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
     }
 
     /// <summary>
@@ -553,11 +556,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
 
-            if (!storageCell.IsHash)
-            {
-                EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
-            }
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index, value);
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -574,7 +574,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.CaptureOriginalValue(storageCell, valueChange.After);
+            _provider.CaptureOriginalValue(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -583,9 +583,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+            return _backend.Get(storageCell.Index);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
