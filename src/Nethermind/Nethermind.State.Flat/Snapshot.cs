@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -61,9 +60,7 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
-    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => StorageNodes.Select(static kvp => kvp.Key.Key);
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
-    public IEnumerable<TreePath> StateNodeKeys => StateNodes.Select(static kvp => kvp.Key.Key);
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : _mutable!.Accounts.Count;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : _mutable!.Storages.Count;
     public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : _mutable!.StateNodes.Count;

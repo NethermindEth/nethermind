@@ -151,20 +151,27 @@ public class SnapshotCompactor(
             : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
+        try
+        {
+            using ArrayPoolListRef<Task> compactTask = new(4);
+            compactTask.Add(Task.Run(() => MergeInto(
+                content.SortedAccounts, snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
+            compactTask.Add(Task.Run(() => MergeInto(
+                content.SortedStorages, snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
+            compactTask.Add(Task.Run(() => MergeInto(
+                content.SortedStateNodes, snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
+            compactTask.Add(Task.Run(() => MergeInto(
+                content.SortedStorageNodes, snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
 
-        using ArrayPoolListRef<Task> compactTask = new(4);
-        compactTask.Add(Task.Run(() => MergeInto(
-            content.SortedAccounts, snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
-        compactTask.Add(Task.Run(() => MergeInto(
-            content.SortedStorages, snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
-        compactTask.Add(Task.Run(() => MergeInto(
-            content.SortedStateNodes, snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
-        compactTask.Add(Task.Run(() => MergeInto(
-            content.SortedStorageNodes, snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
+            content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
 
-        content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
-
-        Task.WaitAll(compactTask.AsSpan());
+            Task.WaitAll(compactTask.AsSpan());
+        }
+        catch
+        {
+            _resourcePool.ReturnSortedSnapshotContent(usage, content); // don't leak the pooled buffers on failure
+            throw;
+        }
 
         return new Snapshot(from, to, content, _resourcePool, usage);
     }

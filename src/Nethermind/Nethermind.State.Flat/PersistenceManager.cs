@@ -33,7 +33,6 @@ public class PersistenceManager(
     private readonly ulong _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly ulong _compactSize = configuration.CompactSize;
     private readonly ICompactionSchedule _schedule = compactionSchedule;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
@@ -287,49 +286,14 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Sorted content already enumerates nodes in key order; otherwise sort the keys first.
+            // Snapshots reaching persistence are always sorted content, which enumerates nodes in key order.
             long stateNodesSize = 0;
-            if (snapshot.IsSorted)
-            {
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
-                    stateNodesSize += WriteStateNode(batch, kvp.Key.Key, kvp.Value);
-            }
-            else
-            {
-                _trieNodesSortBuffer.Clear();
-                foreach (TreePath path in snapshot.StateNodeKeys)
-                {
-                    _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
-                }
-                _trieNodesSortBuffer.Sort();
-
-                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
-                {
-                    (_, TreePath path) = k;
-                    snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
-                    stateNodesSize += WriteStateNode(batch, path, node!);
-                }
-            }
+            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
+                stateNodesSize += WriteStateNode(batch, kvp.Key.Key, kvp.Value);
 
             long storageNodesSize = 0;
-            if (snapshot.IsSorted)
-            {
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
-                    storageNodesSize += WriteStorageNode(batch, kvp.Key.Key.Item1, kvp.Key.Key.Item2, kvp.Value);
-            }
-            else
-            {
-                _trieNodesSortBuffer.Clear();
-                _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
-                _trieNodesSortBuffer.Sort();
-
-                foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
-                {
-                    (Hash256 address, TreePath path) = k;
-                    snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
-                    storageNodesSize += WriteStorageNode(batch, address, path, node!);
-                }
-            }
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+                storageNodesSize += WriteStorageNode(batch, kvp.Key.Key.Item1, kvp.Key.Key.Item2, kvp.Value);
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
             Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));

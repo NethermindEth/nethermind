@@ -80,6 +80,13 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         IComparer<TKey> keyComparer,
         Func<int, TKey, bool>? keep = null)
     {
+        if (sources.Length == 0)
+        {
+            _count = 0;
+            BuildBuckets();
+            return;
+        }
+
         int total = 0;
         foreach (SortedMergeDictionary<TKey, TValue> source in sources) total += source._count;
         EnsureEntryCapacity(total);
