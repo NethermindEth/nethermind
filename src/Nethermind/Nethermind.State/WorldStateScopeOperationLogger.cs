@@ -30,6 +30,10 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
+        public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
+
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+
         public void Dispose()
         {
             innerScope.Dispose();
