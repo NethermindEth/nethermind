@@ -1752,7 +1752,7 @@ public partial class EthRpcModuleTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
 
         Block block = Build.A.Block.WithNumber(1)
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .WithTransactions(Build.A.Transaction.TestObject)
             .TestObject;
 
@@ -1772,7 +1772,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
 
-        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":{"difficulty":"0xf4240","extraData":"0x010203","gasLimit":"0x3d0900","gasUsed":"0x0","hash":"0xd0b838318d6d90b04addc0ba3600a2c21ce390f0f2eacc73eb88c37c23df20fb","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","miner":"0x0000000000000000000000000000000000000000","mixHash":"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2","nonce":"0x00000000000003e8","number":"0x1","parentHash":"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x221","stateRoot":"0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f","timestamp":"0xf4240","transactions":[{"nonce":"0x0","blockHash":"0xd0b838318d6d90b04addc0ba3600a2c21ce390f0f2eacc73eb88c37c23df20fb","blockNumber":"0x1","blockTimestamp":"0xf4240","transactionIndex":"0x0","from":"0x2d36e6c27c34ea22620e7b7c45de774599406cf3","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","v":"0x0","r":"0x0","s":"0x0","hash":null}],"transactionsRoot":"0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5","uncles":[]},"id":67}""")).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":{"difficulty":"0xf4240","extraData":"0x010203","gasLimit":"0x3d0900","gasUsed":"0x0","hash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","miner":"0x0000000000000000000000000000000000000000","mixHash":"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2","nonce":"0x00000000000003e8","number":"0x1","parentHash":"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x221","stateRoot":"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f","timestamp":"0xf4240","transactions":[{"nonce":"0x0","blockHash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","blockNumber":"0x1","blockTimestamp":"0xf4240","transactionIndex":"0x0","from":"0x2d36e6c27c34ea22620e7b7c45de774599406cf3","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","v":"0x0","r":"0x0","s":"0x0","hash":null}],"transactionsRoot":"0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5","uncles":[]},"id":67}""")).Using(JToken.EqualityComparer));
     }
 
     [TestCase(false)]
@@ -1786,7 +1786,7 @@ public partial class EthRpcModuleTests
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTimestamp(10)
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .TestObject;
 
         LogEntry[] entries = new[]
@@ -1827,11 +1827,11 @@ public partial class EthRpcModuleTests
         ulong blockNumber = 1;
         ulong timestamp = 10;
         Block genesis = Build.A.Block.Genesis
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .TestObject;
         Block previousBlock = genesis;
         Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock).WithTimestamp(timestamp)
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .TestObject;
 
         LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
@@ -1898,7 +1898,7 @@ public partial class EthRpcModuleTests
 
         ulong timestamp = 10;
         Block block = Build.A.Block.WithNumber(1).WithTimestamp(timestamp)
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .WithTransactions(tx)
             .TestObject;
 
@@ -2382,7 +2382,7 @@ public partial class EthRpcModuleTests
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
 
         Block block = Build.A.Block.WithNumber(1)
-            .WithStateRoot(new Hash256("0xe4a589578a2838164c89c02e38528d7865b132981a9793a8f0b443fcfe70728f"))
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
             .WithTransactions(new[] { Build.A.Transaction.TestObject })
             .WithWithdrawals(new[] { Build.A.Withdrawal.WithAmount(1_000).TestObject })
             .TestObject;
