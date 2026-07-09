@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -135,6 +136,58 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         finally
         {
             _scope.DecrementOutstandingWarmups();
+        }
+    }
+
+    // Called by trie warmer with a batch of slot jobs targeting this contract; one traversal
+    // shares the upper-trie descent that per-slot walks would repeat.
+    public bool WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId)
+    {
+        try
+        {
+            if (_scope.HintSequenceId != sequenceId || _scope._pausePrewarmer)
+            {
+                return false;
+            }
+
+            if (!_bundle.TryLeaseReadOnlyBundle())
+            {
+                return false;
+            }
+
+            try
+            {
+                using ArrayPoolList<ValueHash256> keys = new(indices.Length, indices.Length);
+                Span<ValueHash256> keySpan = keys.AsSpan();
+                for (int i = 0; i < indices.Length; i++)
+                {
+                    ValueHash256 key = ValueKeccak.Zero;
+                    StorageTree.ComputeKeyWithLookup(indices[i], ref key);
+                    keySpan[i] = key;
+                }
+
+                keySpan.Sort(static (a, b) => a.CompareTo(b));
+                // Duplicate slots would make the shared descent recurse past the key length.
+                int unique = 1;
+                for (int i = 1; i < keySpan.Length; i++)
+                {
+                    if (keySpan[i] != keySpan[unique - 1]) keySpan[unique++] = keySpan[i];
+                }
+
+                _warmupStorageTree.WarmUpPaths(keySpan[..unique]);
+                return true;
+            }
+            finally
+            {
+                _bundle.ReleaseReadOnlyBundleLease();
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < indices.Length; i++)
+            {
+                _scope.DecrementOutstandingWarmups();
+            }
         }
     }
 

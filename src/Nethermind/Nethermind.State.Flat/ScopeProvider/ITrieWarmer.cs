@@ -39,5 +39,22 @@ public interface ITrieWarmer
     public interface IStorageWarmer
     {
         bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+
+        /// <summary>
+        /// Warms up a batch of slots for this contract in one traversal.
+        /// </summary>
+        /// <remarks>
+        /// The default implementation falls back to per-slot warm-up; implementations that share
+        /// the upper-trie descent across slots should override.
+        /// </remarks>
+        bool WarmUpStorageTrieBatch(ReadOnlySpan<UInt256> indices, int sequenceId)
+        {
+            bool any = false;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                any |= WarmUpStorageTrie(indices[i], sequenceId);
+            }
+            return any;
+        }
     }
 }

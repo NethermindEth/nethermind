@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -24,6 +25,11 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     // Backlog depth past which extra workers cost less (in exec contention) than the cold
     // storage-merkle loads the un-warmed backlog would cause at commit.
     private const int BoostQueueDepth = 512;
+    // Jobs drained per worker pass when the backlog is deep; batching lets same-contract slot
+    // jobs share one traversal. Shallow queues drain one job at a time so a stalled cold read
+    // in one worker never holds other queued jobs hostage.
+    private const int JobBatchSize = 64;
+    private const int BatchDrainQueueDepth = JobBatchSize * 2;
 
     private readonly ILogger _logger;
 
@@ -122,13 +128,19 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void Execute(Processor processor)
     {
+        Job[] batch = ArrayPool<Job>.Shared.Rent(JobBatchSize);
+        UInt256[] indexBuffer = ArrayPool<UInt256>.Shared.Rent(JobBatchSize);
         try
         {
             while (true)
             {
-                while (TryDequeue(out Job job))
+                int drainLimit = PendingHint() >= BatchDrainQueueDepth ? JobBatchSize : 1;
+                int count = 0;
+                while (count < drainLimit && TryDequeue(out batch[count])) count++;
+                if (count > 0)
                 {
-                    HandleJob(in job);
+                    HandleJobs(batch.AsSpan(0, count), indexBuffer);
+                    continue;
                 }
 
                 processor.ClearScheduled();
@@ -146,7 +158,56 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         }
         finally
         {
+            ArrayPool<Job>.Shared.Return(batch, clearArray: true);
+            ArrayPool<UInt256>.Shared.Return(indexBuffer);
             OnProcessorStopped();
+        }
+    }
+
+    /// <summary>
+    /// Dispatches a drained batch, grouping slot jobs by (storage tree, sequence) so each group
+    /// warms in a single traversal instead of one full descent per slot.
+    /// </summary>
+    private static void HandleJobs(Span<Job> jobs, UInt256[] indexBuffer)
+    {
+        for (int i = 0; i < jobs.Length; i++)
+        {
+            object? target = jobs[i].scopeOrStorageTree;
+            if (target is null) continue; // consumed by an earlier group
+
+            if (target is ITrieWarmer.IAddressWarmer)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            int sequenceId = jobs[i].sequenceId;
+            int n = 0;
+            indexBuffer[n++] = jobs[i].index;
+            for (int j = i + 1; j < jobs.Length; j++)
+            {
+                if (ReferenceEquals(jobs[j].scopeOrStorageTree, target) && jobs[j].sequenceId == sequenceId)
+                {
+                    indexBuffer[n++] = jobs[j].index;
+                    jobs[j] = default;
+                }
+            }
+
+            if (n == 1)
+            {
+                HandleJob(in jobs[i]);
+                continue;
+            }
+
+            try
+            {
+                ((ITrieWarmer.IStorageWarmer)target).WarmUpStorageTrieBatch(indexBuffer.AsSpan(0, n), sequenceId);
+            }
+            // Same racy-teardown tolerance as HandleJob; the batch decrements its own counters.
+            catch (TrieNodeException) { }
+            catch (NodeHashMismatchException) { }
+            catch (ObjectDisposedException) { }
+            catch (NullReferenceException) when (IsDisposedJobTarget(in jobs[i])) { }
         }
     }
 
