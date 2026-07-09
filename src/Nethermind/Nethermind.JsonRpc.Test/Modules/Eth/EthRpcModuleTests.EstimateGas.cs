@@ -641,8 +641,7 @@ public partial class EthRpcModuleTests
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981Standard.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: standard wins with access list");
 
-        // EIP-7981: modest calldata on top of an access list — the standard cost still exceeds the
-        // calldata floor, so standard wins (floor-wins is covered by the data-heavy cases above).
+        // Modest calldata: standard still exceeds the floor (floor-wins covered by data-heavy cases).
         ulong eip7981StandardWithCalldata = GasCostOf.Transaction + Eip8038Constants.AccessListAddressCost
             + 100UL * GasCostOf.TxDataZero
             + 80UL * Eip7981Spec.GasCosts.TotalCostFloorPerToken;

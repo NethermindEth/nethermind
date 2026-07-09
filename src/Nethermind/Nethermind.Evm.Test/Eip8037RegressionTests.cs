@@ -117,8 +117,6 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [TestCase(true, TestName = "Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas_CREATE2")]
     public void Eip8037_nested_create_code_deposit_must_not_borrow_parent_regular_gas(bool create2)
     {
-        // Init code returns 256 bytes of zeros, whose code deposit (per byte: CodeDeposit regular +
-        // CodeDepositState state) far exceeds the gas the child frame receives under the 63/64 rule.
         byte[] initCode = Prepare.EvmCode
             .PushData(256)
             .PushData(0)
@@ -831,8 +829,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         // Under the repriced gas the PUSH0 run exhausts gas before the stack-overflow depth.
         Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
-        // The SSTORE's state gas spilled from gas_left and is burned by the halt, so the whole
-        // gas limit is consumed in the regular dimension.
+        // The SSTORE's spilled state gas is burned by the halt: full gas limit, all regular.
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
@@ -886,8 +883,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        // The inner CALL's NewAccountState spilled into gas_left and is burned by the top-level
-        // INVALID, so the sender pays the full gas limit in the regular dimension.
+        // The inner CALL's spilled NewAccountState is burned by the top-level INVALID: full gas limit.
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);

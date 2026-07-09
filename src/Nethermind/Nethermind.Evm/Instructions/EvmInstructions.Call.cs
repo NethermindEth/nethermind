@@ -141,7 +141,6 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
 
-        // Add extra gas cost if value is transferred.
         if (hasValueTransfer)
         {
             // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
@@ -336,7 +335,8 @@ public static partial class EvmInstructions
                     TOpCall.ExecutionType,
                     TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
                     in snapshot,
-                    ref stack);
+                    ref stack,
+                    newAccountCharged);
             }
 #endif
 
