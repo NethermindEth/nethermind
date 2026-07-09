@@ -144,6 +144,18 @@ public static class BlockErrorMessages
     public const string ConsolidationsContractFailed =
         "ConsolidationsFailed: Contract execution failed.";
 
+    public const string BuilderDepositsContractEmpty =
+        "BuilderDepositsEmpty: Contract is not deployed.";
+
+    public const string BuilderDepositsContractFailed =
+        "BuilderDepositsFailed: Contract execution failed.";
+
+    public const string BuilderExitsContractEmpty =
+        "BuilderExitsEmpty: Contract is not deployed.";
+
+    public const string BuilderExitsContractFailed =
+        "BuilderExitsFailed: Contract execution failed.";
+
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
 

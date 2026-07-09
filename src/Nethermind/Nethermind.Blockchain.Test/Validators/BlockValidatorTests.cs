@@ -263,8 +263,9 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    [TestCase(30_000ul, true)]
-    [TestCase(29_999ul, false)]
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
     public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
