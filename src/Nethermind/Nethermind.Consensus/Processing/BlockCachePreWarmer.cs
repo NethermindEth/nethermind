@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Collections.Pooled;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -54,9 +55,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // read by the reactive workers after they join that loop, so no synchronization on the set itself is needed.
     private WarmMarker? _warmMarker;
 
-    // Reused across sessions (cleared at each session start) instead of allocated per session — sessions are serialized
-    // and the reactive reader always finishes before the next session, so a single owner-attached set is safe.
-    private readonly HashSet<Hash256> _warmedTxHashes = [];
+    private readonly PooledSet<Hash256> _warmedTxHashes = new();
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -97,7 +96,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // A speculative mempool pass may still be writing to the shared caches; take exclusive ownership before touching them.
         CancelAndJoinSpeculative();
 
-        if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out IReadOnlySet<Hash256>? speculativelyWarmed))
+        if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
             // Handoff: a speculative pass already warmed these caches for this exact parent and fork. Keep the entries;
             // the reactive warm below skips senders already fully warmed and only fills the gap (e.g. builder txs).
@@ -119,7 +118,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>Warms the caches against <paramref name="parent"/>'s post-state on a background task; assumes the caches are already prepared (cleared or handed off).</summary>
-    private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, IReadOnlySet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
@@ -138,7 +137,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreWarmCachesParallel(blockState, delta, head, spec, parallelOptions, addressWarmer, token);
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, IReadOnlySet<Hash256>? speculativelyWarmed, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
         // Reset main-thread progress. Safe for the speculative caller too: a speculative pass never overlaps main
@@ -264,7 +263,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void ClearWarmMarker() => Volatile.Write(ref _warmMarker, null);
 
-    private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out IReadOnlySet<Hash256>? warmedTxHashes)
+    private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
         WarmMarker? marker = Volatile.Read(ref _warmMarker);
         // Fork identity via ReferenceEquals: ISpecProvider returns cached per-fork singletons, so the speculative pass
@@ -310,6 +309,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public void Dispose()
     {
         CancelAndJoinSpeculative();
+        _warmedTxHashes.Dispose();
         (_envPool as IDisposable)?.Dispose();
     }
 
@@ -483,7 +483,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
-    private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, IReadOnlySet<Hash256> warmed)
+    private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
     {
         foreach ((int _, Transaction tx) in group.AsSpan())
         {
@@ -704,8 +704,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, IReadOnlySet<Hash256>? SpeculativelyWarmed = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
 
     /// <summary>Handoff descriptor for a speculative session: the parent and fork it warmed, and the tx hashes it warmed (so the reactive pass can skip them).</summary>
-    private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, IReadOnlySet<Hash256> WarmedTxHashes);
+    private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
 }
