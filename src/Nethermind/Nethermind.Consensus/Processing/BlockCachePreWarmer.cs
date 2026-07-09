@@ -454,9 +454,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 if (_gasPriorityOrder)
                 {
-                    // Give the largest cold read sets a worker first: order groups by total gas descending.
+                    // Hybrid claim order: groups starting in the first txs keep block order (they race the
+                    // main thread — pure gas-descending starved them, tx0-19 miss rate 27→34%); the rest is
+                    // gas-sorted descending so monster transactions get a worker right after.
                     // Grouping (sequential same-sender warming) is unchanged — only the claim order across groups.
-                    groupArray.AsSpan().Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
+                    const int FrontTxCount = 20;
+                    Span<ArrayPoolList<(int Index, Transaction Tx)>> groups = groupArray.AsSpan();
+                    int front = 0;
+                    for (int i = 0; i < groups.Length; i++)
+                    {
+                        if (groups[i][0].Index < FrontTxCount)
+                        {
+                            (groups[front], groups[i]) = (groups[i], groups[front]);
+                            front++;
+                        }
+                    }
+
+                    groups[..front].Sort(static (a, b) => a[0].Index.CompareTo(b[0].Index));
+                    groups[front..].Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
                 }
 
                 // Parallel across different senders, sequential within the same sender
