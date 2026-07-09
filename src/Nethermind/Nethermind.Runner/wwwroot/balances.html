@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nethermind Balances</title>
+    <link rel="icon" href="favicon.webp" type="image/webp">
+    <style>
+        @font-face {
+            font-family: 'DM Sans';
+            font-style: normal;
+            font-weight: 100 1000;
+            font-display: swap;
+            src: url(fonts/dm-sans-latin.woff2) format('woff2');
+        }
+        @font-face {
+            font-family: 'DM Mono';
+            font-style: normal;
+            font-weight: 400;
+            font-display: swap;
+            src: url(fonts/dm-mono-latin.woff2) format('woff2');
+        }
+        @font-face {
+            font-family: 'Exo';
+            font-style: normal;
+            font-weight: 600;
+            font-display: swap;
+            src: url(fonts/exo-latin.woff2) format('woff2');
+        }
+
+        :root {
+            --border: #555;
+            --border-soft: #333;
+            --accent: #009CDD;
+            --muted: #8a8a8a;
+            --danger: #e35b5b;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: black;
+            color: white;
+            font-family: 'DM Sans', system-ui, sans-serif;
+            font-size: 14px;
+        }
+
+        body { padding: 16px; }
+
+        .number, input, button.mono {
+            font-family: 'DM Mono', ui-monospace, monospace;
+            font-size: 12px;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        header .brand {
+            font-family: 'Exo', system-ui, sans-serif;
+            font-weight: 600;
+            font-size: 18px;
+            letter-spacing: 0.04em;
+        }
+
+        header .brand span { color: var(--accent); }
+
+        header .net {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        header .net .number { color: white; }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        input {
+            background: #0a0a0a;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 7px 10px;
+            outline: none;
+            min-width: 0;
+        }
+
+        input:focus { border-color: var(--accent); }
+        input::placeholder { color: #666; }
+
+        button {
+            background: black;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 7px 14px;
+            font-family: 'DM Sans', system-ui, sans-serif;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        button:hover { border-color: var(--accent); color: var(--accent); }
+        button.link {
+            border: none;
+            padding: 2px 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+        button.link:hover { color: var(--accent); }
+        button.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+        .panel {
+            position: relative;
+            border: 1px solid var(--border);
+            padding: 34px 12px 12px 12px;
+            margin-top: 16px;
+        }
+
+        .panel > .title {
+            font-family: 'Exo', system-ui, sans-serif;
+            font-weight: 600;
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            border-bottom-right-radius: 8px;
+            padding: 4px 10px 4px 8px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: black;
+        }
+
+        #addAddress input { flex: 1 1 320px; }
+
+        #tokenForm {
+            display: none;
+            border-top: 1px solid var(--border-soft);
+            margin-top: 12px;
+            padding-top: 12px;
+        }
+
+        #tokenForm.open { display: flex; }
+        #tokenForm input.addr { flex: 2 1 300px; }
+        #tokenForm input.sm { flex: 1 1 80px; }
+
+        #tokens { margin-top: 12px; }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            padding: 3px 4px 3px 8px;
+            margin: 0 6px 6px 0;
+        }
+
+        .chip .x {
+            cursor: pointer;
+            color: var(--muted);
+            padding: 0 4px;
+        }
+
+        .chip .x:hover { color: var(--danger); }
+
+        #cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .card {
+            border: 1px solid var(--border);
+            padding: 10px 12px;
+        }
+
+        .card .head {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-soft);
+            padding-bottom: 8px;
+            margin-bottom: 4px;
+        }
+
+        .card .name {
+            font-family: 'Exo', system-ui, sans-serif;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .card .addr {
+            color: var(--muted);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .card .addr:hover { color: var(--accent); }
+
+        .card table { width: 100%; border-collapse: collapse; }
+        .card td { padding: 4px 0; }
+        .card td.bal { text-align: right; font-size: 13px; }
+        .card td.tick { color: var(--muted); width: 72px; }
+
+        #status {
+            min-height: 18px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        #status.error { color: var(--danger); }
+
+        .empty {
+            color: var(--muted);
+            padding: 24px 0;
+            text-align: center;
+        }
+
+        .spin { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">NETHERMIND <span>/ BALANCES</span></div>
+        <div class="net">network <span id="netName" class="number">…</span></div>
+        <div class="net">chain <span id="chainId" class="number">…</span></div>
+        <div class="net">head <span id="headBlock" class="number">…</span></div>
+    </header>
+
+    <div class="panel">
+        <div class="title">Watch</div>
+        <div class="row" id="addAddress">
+            <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
+            <button id="addAddrBtn">Pin address</button>
+            <button id="toggleTokenBtn">Track token…</button>
+        </div>
+        <div class="row" id="tokenForm">
+            <input id="tokAddr" class="number addr" placeholder="token contract 0x address" spellcheck="false" />
+            <input id="tokTicker" class="number sm" placeholder="ticker" spellcheck="false" />
+            <input id="tokDecimals" class="number sm" placeholder="decimals" inputmode="numeric" />
+            <input id="tokName" class="sm" placeholder="name (optional)" />
+            <button id="addTokBtn">Track</button>
+        </div>
+        <div id="tokens"></div>
+        <div id="status"></div>
+    </div>
+
+    <div id="cards"></div>
+
+    <script>
+        'use strict';
+
+        // ---------- keccak-256 (original 0x01 padding), BigInt lanes ----------
+        const KECCAK_RC = [
+            0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
+            0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
+            0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
+            0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
+            0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
+            0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n];
+        const KECCAK_RHO = [
+            0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
+        const M64 = (1n << 64n) - 1n;
+
+        function keccakF(s) {
+            const c = new Array(5), b = new Array(25);
+            for (let r = 0; r < 24; r++) {
+                for (let x = 0; x < 5; x++) c[x] = s[x] ^ s[x + 5] ^ s[x + 10] ^ s[x + 15] ^ s[x + 20];
+                for (let x = 0; x < 5; x++) {
+                    const t = c[(x + 4) % 5] ^ (((c[(x + 1) % 5] << 1n) | (c[(x + 1) % 5] >> 63n)) & M64);
+                    for (let y = 0; y < 25; y += 5) s[x + y] ^= t;
+                }
+                for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) {
+                    const i = x + 5 * y, n = BigInt(KECCAK_RHO[i]);
+                    b[y + 5 * ((2 * x + 3 * y) % 5)] = n === 0n ? s[i] : (((s[i] << n) | (s[i] >> (64n - n))) & M64);
+                }
+                for (let x = 0; x < 5; x++) for (let y = 0; y < 25; y += 5)
+                    s[x + y] = b[x + y] ^ (~b[(x + 1) % 5 + y] & M64 & b[(x + 2) % 5 + y]);
+                s[0] ^= KECCAK_RC[r];
+            }
+        }
+
+        function keccak256(bytes) {
+            const rate = 136, s = new Array(25).fill(0n);
+            const padded = new Uint8Array(Math.floor(bytes.length / rate) * rate + rate);
+            padded.set(bytes);
+            padded[bytes.length] |= 0x01;
+            padded[padded.length - 1] |= 0x80;
+            for (let off = 0; off < padded.length; off += rate) {
+                for (let i = 0; i < rate / 8; i++) {
+                    let lane = 0n;
+                    for (let j = 7; j >= 0; j--) lane = (lane << 8n) | BigInt(padded[off + i * 8 + j]);
+                    s[i] ^= lane;
+                }
+                keccakF(s);
+            }
+            const out = new Uint8Array(32);
+            for (let i = 0; i < 4; i++) {
+                let lane = s[i];
+                for (let j = 0; j < 8; j++) { out[i * 8 + j] = Number(lane & 0xffn); lane >>= 8n; }
+            }
+            return out;
+        }
+
+        const toHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        const utf8 = (s) => new TextEncoder().encode(s);
+
+        function namehash(name) {
+            let node = new Uint8Array(32);
+            for (const label of name.toLowerCase().split('.').reverse()) {
+                const combined = new Uint8Array(64);
+                combined.set(node);
+                combined.set(keccak256(utf8(label)), 32);
+                node = keccak256(combined);
+            }
+            return '0x' + toHex(node);
+        }
+
+        // EIP-55 checksum for display
+        function checksum(addr) {
+            const lower = addr.toLowerCase().replace('0x', '');
+            const hash = toHex(keccak256(utf8(lower)));
+            let out = '0x';
+            for (let i = 0; i < 40; i++) out += parseInt(hash[i], 16) >= 8 ? lower[i].toUpperCase() : lower[i];
+            return out;
+        }
+
+        // ---------- JSON-RPC (same origin — data comes only from this node) ----------
+        let rpcId = 1;
+
+        async function rpc(method, params) {
+            const res = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params })
+            });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error.message || 'RPC error');
+            return json.result;
+        }
+
+        async function rpcBatch(calls) {
+            if (calls.length === 0) return [];
+            const body = calls.map(([method, params]) => ({ jsonrpc: '2.0', id: rpcId++, method, params }));
+            const res = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const json = await res.json();
+            const byId = new Map(json.map((r) => [r.id, r]));
+            return body.map((req) => {
+                const r = byId.get(req.id);
+                return r && !r.error ? r.result : null;
+            });
+        }
+
+        // ---------- chains ----------
+        const CHAINS = {
+            1: { name: 'Ethereum', ticker: 'ETH', ens: true },
+            11155111: { name: 'Sepolia', ticker: 'ETH', ens: true },
+            17000: { name: 'Holesky', ticker: 'ETH', ens: true },
+            560048: { name: 'Hoodi', ticker: 'ETH', ens: true },
+            100: { name: 'Gnosis', ticker: 'xDAI', ens: false },
+            10200: { name: 'Chiado', ticker: 'xDAI', ens: false },
+        };
+        const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
+        const SEL_RESOLVER = '0x0178b8bf';   // resolver(bytes32)
+        const SEL_ADDR = '0x3b3b57de';       // addr(bytes32)
+        const SEL_BALANCE_OF = '0x70a08231'; // balanceOf(address)
+        const SEL_SYMBOL = '0x95d89b41';     // symbol()
+        const SEL_NAME = '0x06fdde03';       // name()
+        const SEL_DECIMALS = '0x313ce567';   // decimals()
+
+        let chain = { id: 0, name: '…', ticker: 'NATIVE', ens: false };
+
+        // ---------- persistence (per chain) ----------
+        const store = {
+            key: () => 'nethermind.balances.' + chain.id,
+            load() {
+                try {
+                    const raw = localStorage.getItem(this.key());
+                    const data = raw ? JSON.parse(raw) : {};
+                    return { addresses: data.addresses || [], tokens: data.tokens || [] };
+                } catch { return { addresses: [], tokens: [] }; }
+            },
+            save(data) { localStorage.setItem(this.key(), JSON.stringify(data)); }
+        };
+
+        let state = { addresses: [], tokens: [] };
+
+        // ---------- helpers ----------
+        const $ = (id) => document.getElementById(id);
+        const isAddress = (s) => /^0x[0-9a-fA-F]{40}$/.test(s);
+
+        function el(tag, cls, text) {
+            const e = document.createElement(tag);
+            if (cls) e.className = cls;
+            if (text !== undefined) e.textContent = text;
+            return e;
+        }
+
+        function setStatus(msg, isError) {
+            const s = $('status');
+            s.textContent = msg || '';
+            s.className = isError ? 'error' : '';
+        }
+
+        function shortAddr(addr) { return addr.slice(0, 8) + '…' + addr.slice(-6); }
+
+        function formatUnits(hexValue, decimals) {
+            if (hexValue === null) return null;
+            let value;
+            try { value = BigInt(hexValue); } catch { return null; }
+            const base = 10n ** BigInt(decimals);
+            const whole = value / base;
+            const frac = value % base;
+            let out = whole.toLocaleString('en-US');
+            if (decimals > 0 && frac > 0n) {
+                let fracStr = frac.toString().padStart(decimals, '0').slice(0, 5).replace(/0+$/, '');
+                if (fracStr === '' && whole === 0n) return '<0.00001';
+                if (fracStr !== '') out += '.' + fracStr;
+            }
+            return out;
+        }
+
+        function decodeAbiString(hexValue) {
+            if (!hexValue || hexValue === '0x' || hexValue.length < 130) return null;
+            try {
+                const data = hexValue.slice(2);
+                const len = Number(BigInt('0x' + data.slice(64, 128)));
+                const bytes = data.slice(128, 128 + len * 2);
+                return new TextDecoder().decode(new Uint8Array(bytes.match(/../g).map((h) => parseInt(h, 16)))) || null;
+            } catch { return null; }
+        }
+
+        const pad32 = (addr) => addr.toLowerCase().replace('0x', '').padStart(64, '0');
+
+        // ---------- ENS (forward resolution, simple case) ----------
+        async function resolveEns(name) {
+            const node = namehash(name);
+            const resolverRaw = await rpc('eth_call', [{ to: ENS_REGISTRY, data: SEL_RESOLVER + node.slice(2) }, 'latest']);
+            const resolver = resolverRaw && resolverRaw.length >= 66 ? '0x' + resolverRaw.slice(-40) : null;
+            if (!resolver || /^0x0{40}$/.test(resolver)) throw new Error(`ENS name '${name}' is not registered`);
+            const addrRaw = await rpc('eth_call', [{ to: resolver, data: SEL_ADDR + node.slice(2) }, 'latest']);
+            const addr = addrRaw && addrRaw.length >= 66 ? '0x' + addrRaw.slice(-40) : null;
+            if (!addr || /^0x0{40}$/.test(addr)) throw new Error(`ENS name '${name}' has no address record`);
+            return checksum(addr);
+        }
+
+        // ---------- rendering ----------
+        function renderTokens() {
+            const box = $('tokens');
+            box.replaceChildren();
+            for (const token of state.tokens) {
+                const chip = el('span', 'chip');
+                chip.append(el('span', 'number', token.ticker));
+                chip.title = `${token.name || token.ticker} · ${token.address} · ${token.decimals} decimals`;
+                const x = el('span', 'x', '×');
+                x.onclick = () => {
+                    state.tokens = state.tokens.filter((t) => t !== token);
+                    store.save(state);
+                    renderTokens();
+                    renderCards();
+                    refreshBalances();
+                };
+                chip.append(x);
+                box.append(chip);
+            }
+        }
+
+        function renderCards() {
+            const cards = $('cards');
+            cards.replaceChildren();
+            if (state.addresses.length === 0) {
+                cards.append(el('div', 'empty', 'No pinned addresses yet — add one above to start watching balances.'));
+                return;
+            }
+            for (const entry of state.addresses) {
+                const card = el('div', 'card');
+                card.dataset.address = entry.address;
+
+                const head = el('div', 'head');
+                if (entry.label) head.append(el('span', 'name', entry.label));
+                const addr = el('span', 'addr number', shortAddr(entry.address));
+                addr.title = entry.address + ' (click to copy)';
+                addr.onclick = () => {
+                    navigator.clipboard?.writeText(entry.address);
+                    setStatus('Copied ' + entry.address);
+                };
+                head.append(addr);
+                const unpin = el('button', 'link danger', 'unpin');
+                unpin.onclick = () => {
+                    state.addresses = state.addresses.filter((a) => a !== entry);
+                    store.save(state);
+                    renderCards();
+                };
+                head.append(unpin);
+                card.append(head);
+
+                const table = el('table');
+                const rows = [{ ticker: chain.ticker, key: 'native' }].concat(
+                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address })));
+                for (const row of rows) {
+                    const tr = el('tr');
+                    tr.append(el('td', 'tick number', row.ticker));
+                    const bal = el('td', 'bal number spin', '…');
+                    bal.dataset.key = row.key;
+                    tr.append(bal);
+                    table.append(tr);
+                }
+                card.append(table);
+                cards.append(card);
+            }
+        }
+
+        // ---------- balance refresh ----------
+        let refreshing = false;
+
+        async function refreshBalances() {
+            if (refreshing || state.addresses.length === 0) return;
+            refreshing = true;
+            try {
+                const calls = [];
+                for (const entry of state.addresses) {
+                    calls.push(['eth_getBalance', [entry.address, 'latest']]);
+                    for (const token of state.tokens) {
+                        calls.push(['eth_call', [{ to: token.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
+                    }
+                }
+                const results = await rpcBatch(calls);
+                let i = 0;
+                for (const entry of state.addresses) {
+                    const card = document.querySelector(`.card[data-address="${entry.address}"]`);
+                    const set = (key, text) => {
+                        const cell = card?.querySelector(`td[data-key="${key}"]`);
+                        if (cell) { cell.textContent = text ?? '—'; cell.classList.remove('spin'); }
+                    };
+                    set('native', formatUnits(results[i++], 18));
+                    for (const token of state.tokens) set(token.address, formatUnits(results[i++], token.decimals));
+                }
+            } catch (e) {
+                setStatus('Balance refresh failed: ' + e.message, true);
+            } finally {
+                refreshing = false;
+            }
+        }
+
+        // ---------- actions ----------
+        async function addAddress() {
+            const input = $('addrInput');
+            const value = input.value.trim();
+            if (!value) return;
+            try {
+                let address, label = null;
+                if (isAddress(value)) {
+                    address = checksum(value);
+                } else if (value.includes('.')) {
+                    if (!chain.ens) throw new Error('ENS is not available on ' + chain.name);
+                    setStatus(`Resolving ${value}…`);
+                    address = await resolveEns(value);
+                    label = value.toLowerCase();
+                } else {
+                    throw new Error('Enter a 0x address or an ENS name like name.eth');
+                }
+                if (state.addresses.some((a) => a.address === address)) throw new Error(address + ' is already pinned');
+                state.addresses.push({ address, label });
+                store.save(state);
+                input.value = '';
+                setStatus(label ? `${label} → ${address}` : 'Pinned ' + address);
+                renderCards();
+                refreshBalances();
+            } catch (e) {
+                setStatus(e.message, true);
+            }
+        }
+
+        async function prefillTokenMeta() {
+            const address = $('tokAddr').value.trim();
+            if (!isAddress(address)) return;
+            const [symbol, name, decimals] = await rpcBatch([
+                ['eth_call', [{ to: address, data: SEL_SYMBOL }, 'latest']],
+                ['eth_call', [{ to: address, data: SEL_NAME }, 'latest']],
+                ['eth_call', [{ to: address, data: SEL_DECIMALS }, 'latest']],
+            ]);
+            if (!$('tokTicker').value && symbol) $('tokTicker').value = decodeAbiString(symbol) || '';
+            if (!$('tokName').value && name) $('tokName').value = decodeAbiString(name) || '';
+            if (!$('tokDecimals').value && decimals && decimals !== '0x') {
+                try { $('tokDecimals').value = Number(BigInt(decimals)).toString(); } catch { }
+            }
+        }
+
+        function addToken() {
+            try {
+                const address = $('tokAddr').value.trim();
+                if (!isAddress(address)) throw new Error('Invalid token contract address');
+                const ticker = $('tokTicker').value.trim();
+                if (!ticker) throw new Error('Ticker is required');
+                const decimals = parseInt($('tokDecimals').value, 10);
+                if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) throw new Error('Decimals must be 0–77');
+                const checksummed = checksum(address);
+                if (state.tokens.some((t) => t.address.toLowerCase() === address.toLowerCase()))
+                    throw new Error(ticker + ' is already tracked');
+                state.tokens.push({ address: checksummed, ticker, decimals, name: $('tokName').value.trim() || null });
+                store.save(state);
+                for (const id of ['tokAddr', 'tokTicker', 'tokDecimals', 'tokName']) $(id).value = '';
+                setStatus('Tracking ' + ticker);
+                renderTokens();
+                renderCards();
+                refreshBalances();
+            } catch (e) {
+                setStatus(e.message, true);
+            }
+        }
+
+        // ---------- init + head polling ----------
+        let lastBlock = null;
+
+        async function pollHead() {
+            try {
+                const head = await rpc('eth_blockNumber', []);
+                $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
+                if (head !== lastBlock) {
+                    lastBlock = head;
+                    refreshBalances();
+                }
+            } catch (e) {
+                setStatus('Node unreachable: ' + e.message, true);
+            }
+        }
+
+        async function init() {
+            $('addAddrBtn').onclick = addAddress;
+            $('addrInput').onkeydown = (e) => { if (e.key === 'Enter') addAddress(); };
+            $('toggleTokenBtn').onclick = () => $('tokenForm').classList.toggle('open');
+            $('addTokBtn').onclick = addToken;
+            $('tokAddr').onchange = () => prefillTokenMeta().catch(() => { });
+
+            try {
+                const id = Number(BigInt(await rpc('eth_chainId', [])));
+                chain = CHAINS[id] ? { id, ...CHAINS[id] } : { id, name: 'chain ' + id, ticker: 'NATIVE', ens: false };
+                $('netName').textContent = chain.name;
+                $('chainId').textContent = chain.id;
+                if (!chain.ens) $('addrInput').placeholder = '0x address' + (chain.id === 100 || chain.id === 10200 ? ' (ENS unavailable on Gnosis)' : '');
+            } catch (e) {
+                setStatus('Cannot reach JSON-RPC on this endpoint: ' + e.message, true);
+                return;
+            }
+
+            state = store.load();
+            renderTokens();
+            renderCards();
+            pollHead();
+            setInterval(pollHead, 12000);
+        }
+
+        init();
+    </script>
+</body>
+</html>

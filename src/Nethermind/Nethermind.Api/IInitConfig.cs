@@ -18,6 +18,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to enable WebSocket service for the default JSON-RPC port on startup.", DefaultValue = "true")]
     bool WebSocketsEnabled { get; set; }
 
+    [ConfigItem(Description = "Whether to serve the balance viewer UI at the `/balances` path of the JSON-RPC HTTP endpoint.", DefaultValue = "true")]
+    bool BalanceViewerEnabled { get; set; }
+
     [ConfigItem(Description = "Whether to enable the node discovery. If disabled, Nethermind doesn't look for other nodes beyond the bootnodes specified.", DefaultValue = "true")]
     bool DiscoveryEnabled { get; set; }
 

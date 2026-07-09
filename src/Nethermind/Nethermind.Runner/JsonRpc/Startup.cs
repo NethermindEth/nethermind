@@ -207,8 +207,16 @@ public class Startup : IStartup
             .Select(url => $"*:{url.Port}")
             .ToArray();
 
+        ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
+
         app.UseEndpoints(endpoints =>
         {
+            if (initConfig.BalanceViewerEnabled)
+            {
+                IFileInfo balanceViewerPage = fileProvider.GetFileInfo("balances.html");
+                endpoints.MapGet("/balances", ctx => ServeBalanceViewerAsync(ctx, jsonRpcUrlCollection, balanceViewerPage));
+            }
+
             if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
             {
                 try
@@ -234,8 +242,6 @@ public class Startup : IStartup
 
         if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
-            ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
-
             app.UseWhen(
                 ctx => jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsModuleEnabled(ModuleType.Health),
                 builder =>
@@ -248,6 +254,21 @@ public class Startup : IStartup
 
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp);
+
+    /// <summary>Serves the embedded balance viewer page, except on authenticated (Engine API) ports.</summary>
+    internal static Task ServeBalanceViewerAsync(HttpContext ctx, IJsonRpcUrlCollection jsonRpcUrlCollection, IFileInfo page)
+    {
+        if (!page.Exists ||
+            !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) ||
+            url.IsAuthenticated)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return Task.CompletedTask;
+        }
+
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        return ctx.Response.SendFileAsync(page);
+    }
 
     internal static bool TryGetTrustedHttpJsonRpcUrl(
         HttpContext ctx,
