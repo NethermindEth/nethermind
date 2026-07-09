@@ -26,7 +26,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 {
     private const int IdlePassDelayMs = 100;
 
-    private readonly ITxSource _txSource;
+    private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockCachePreWarmer _preWarmer;
@@ -50,7 +50,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ILogManager logManager)
     {
         _preWarmer = preWarmer;
-        _txSource = txSourceFactory.Create();
+        _txSource = new Lazy<ITxSource>(txSourceFactory.Create, LazyThreadSafetyMode.PublicationOnly);
         _blockTree = blockTree;
         _specProvider = specProvider;
         _timestamper = timestamper;
@@ -133,7 +133,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
     {
-        Transaction[] delta = SelectDelta(_txSource.GetTransactions(parent, next.Header.GasLimit), warmedPerSender);
+        Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header.GasLimit), warmedPerSender);
         return delta.Length == 0 ? null : new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
     }
 
