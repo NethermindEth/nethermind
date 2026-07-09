@@ -95,8 +95,6 @@ namespace Nethermind.Consensus.AuRa
             internal LruCache<ValueHash256, ulong?> GasLimitCache { get; } = new(MaxCacheSize, "BlockGasLimit");
         }
 
-        // Only pre-merge AuRa blocks reach this check (PostMergeProcessBlock skips ValidateAuRa),
-        // and those can never carry a targetGasLimit, so the contract value stays authoritative.
         public bool IsGasLimitValid(BlockHeader parentHeader, in ulong gasLimit, out ulong? expectedGasLimit)
         {
             expectedGasLimit = GetGasLimitFromContract(parentHeader);
