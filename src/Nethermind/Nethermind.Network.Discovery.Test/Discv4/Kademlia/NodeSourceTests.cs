@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -13,11 +14,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
@@ -26,6 +30,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
     [TestFixture]
     public class NodeSourceTests
     {
+        private const uint CompatibleForkHash = 0x11111111;
+        private const uint IncompatibleForkHash = 0x22222222;
+
         private TestKademlia _kademlia = null!;
         private TestKademliaDiscovery _kademliaDiscovery = null!;
         private IKademliaAdapter _discv4Adapter = null!;
@@ -35,6 +42,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private ManualTimestamper _timestamper = null!;
         private DiscoveryConfig _discoveryConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
+        private IForkInfo _forkInfo = null!;
 
         [SetUp]
         public void Setup()
@@ -60,12 +68,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeSession = new(_nodeStats, _timestamper);
             _discv4Adapter.GetSession(Arg.Any<Node>()).Returns(_nodeSession);
 
+            _forkInfo = Substitute.For<IForkInfo>();
+            _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
+
             _nodeSource = new NodeSource(
                 _kademlia,
                 _kademliaDiscovery,
                 _discv4Adapter,
                 _discoveryConfig,
                 _kademliaConfig,
+                _forkInfo,
                 LimboLogs.Instance);
         }
 
@@ -173,6 +185,36 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _discv4Adapter.Received(1).Ping(
                 Arg.Is<Node>(n => n == node2),
                 Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_skip_nodes_with_incompatible_fork_id(CancellationToken token)
+        {
+            Node incompatibleNode = CreateNodeWithForkId(TestItem.PrivateKeys[0], "192.168.1.1", IncompatibleForkHash);
+            Node compatibleNode = CreateNodeWithForkId(TestItem.PrivateKeys[1], "192.168.1.2", CompatibleForkHash);
+            _nodeSession.OnPongReceived(incompatibleNode.Address);
+
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(incompatibleNode, compatibleNode);
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(compatibleNode));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_keep_nodes_when_fork_id_check_fails(CancellationToken token)
+        {
+            Node node = CreateNodeWithForkId(TestItem.PrivateKeys[0], "192.168.1.1", IncompatibleForkHash);
+            _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Throws(new InvalidOperationException("Fork info unavailable"));
+            _nodeSession.OnPongReceived(node.Address);
+
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node);
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(node));
         }
 
         [Test]
@@ -305,6 +347,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             publicKey[63] = (byte)index;
             return new Node(new PublicKey(publicKey), $"192.168.{index / 256}.{index % 256}", 30303);
         }
+
+        private static Node CreateNodeWithForkId(PrivateKey privateKey, string host, uint forkHash) =>
+            new(privateKey.PublicKey, host, 30303)
+            {
+                Enr = TestEnrBuilder.BuildSigned(
+                    privateKey,
+                    IPAddress.Parse(host),
+                    configureExtras: enr => enr.SetEntry(new EthEntry(new ForkId(forkHash, 0).HashBytes, 0)))
+            };
 
         private sealed class TestKademlia : IKademlia<PublicKey, Node>
         {

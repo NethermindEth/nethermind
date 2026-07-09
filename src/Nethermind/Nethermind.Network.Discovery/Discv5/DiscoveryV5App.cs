@@ -59,7 +59,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         {
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
-            Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.DiscoveryPort, true);
+            Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
             builder
                 .AddModule(new Discv5KademliaModule(currentNode, bootNodes))
                 .AddSingleton<DiscV5Services>();
@@ -160,7 +160,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return AddBootNode(bootNodes, seen, networkNode.Enr);
         }
 
-        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.DiscoveryPort);
+        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port, networkNode.DiscoveryPort);
         return AddBootNode(bootNodes, seen, node);
     }
 
@@ -195,7 +195,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
-        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.Address.Address, _allowNonRoutableEnrs))
+        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.DiscoveryAddress.Address, _allowNonRoutableEnrs))
         {
             node = enrNode;
             return true;
