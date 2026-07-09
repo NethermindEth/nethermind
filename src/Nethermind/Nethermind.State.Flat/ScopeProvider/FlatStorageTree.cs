@@ -144,7 +144,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 _tree,
                 onRootUpdated,
                 _address,
-                commit: true);
+                commit: false);
 
         return new StorageTreeBulkWriteBatch(
             storageTreeBulkWriteBatch,
