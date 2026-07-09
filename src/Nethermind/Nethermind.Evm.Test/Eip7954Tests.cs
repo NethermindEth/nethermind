@@ -52,8 +52,7 @@ public class Eip7954Tests : VirtualMachineTestsBase
     [Test]
     public void Eip8037_floor_gas_enforced_in_validate_gas()
     {
-        // One gas below the calldata floor but above the standard intrinsic, so this is a floor
-        // rejection; the floor is read from the intrinsic calculator to track repricings automatically.
+        // One gas below the calldata floor (still above the standard intrinsic): a floor rejection.
         byte[] calldata = new byte[100];
         for (int i = 0; i < calldata.Length; i++) calldata[i] = 0xFF;
 
