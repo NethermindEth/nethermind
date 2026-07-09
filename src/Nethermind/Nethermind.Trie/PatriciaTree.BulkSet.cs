@@ -230,6 +230,22 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
+            Span<TreePath> prefetchPaths = stackalloc TreePath[TrieNode.BranchesCount];
+            int prefetchCount = 0;
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            {
+                (_, int count, _, TreePath childPath, TrieNode? child, _) = jobs[i];
+                if (count > 0 && child is { NodeType: NodeType.Unknown })
+                {
+                    prefetchPaths[prefetchCount++] = childPath;
+                }
+            }
+
+            if (prefetchCount > 0)
+            {
+                TrieStore.PrefetchRlp(prefetchPaths[..prefetchCount]);
+            }
+
             Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (i, _, workerTraverseStack) =>
