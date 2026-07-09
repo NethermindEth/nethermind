@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -35,14 +34,18 @@ public class XdcExtendedEthModuleTests
     public async Task eth_getRewardByHash_returns_stored_epoch_rewards()
     {
         IRewardsStore rewardsStore = Substitute.For<IRewardsStore>();
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> payload = new()
+        XdcEpochRewards payload = new()
         {
-            ["rewards"] = new()
+            Rewards = new()
             {
                 [TestItem.AddressA.ToString()] = new() { [TestItem.AddressB.ToString()] = "1000" },
             },
+            Signers = new()
+            {
+                [TestItem.AddressA.ToString()] = new XdcRewardLog { Sign = 1, Reward = "1000" },
+            },
         };
-        rewardsStore.TryGetEpochRewards(TestItem.KeccakA, out Arg.Any<Dictionary<string, Dictionary<string, Dictionary<string, string>>>?>())
+        rewardsStore.TryGetEpochRewards(TestItem.KeccakA, out Arg.Any<XdcEpochRewards?>())
             .Returns(x =>
             {
                 x[1] = payload;
@@ -63,10 +66,10 @@ public class XdcExtendedEthModuleTests
             Substitute.For<IMasternodeVotingContract>(),
             rewardsStore);
 
-        ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>> result =
+        ResultWrapper<XdcEpochRewards> result =
             await module.eth_getRewardByHash(TestItem.KeccakA);
-        Assert.That(result.Data, Does.ContainKey("rewards"));
-        Assert.That(result.Data!["rewards"], Does.ContainKey(TestItem.AddressA.ToString()));
+        Assert.That(result.Data!.Rewards, Does.ContainKey(TestItem.AddressA.ToString()));
+        Assert.That(result.Data.Signers[TestItem.AddressA.ToString()].Sign, Is.EqualTo(1));
     }
 
     [Test]

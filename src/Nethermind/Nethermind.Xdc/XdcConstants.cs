@@ -13,6 +13,7 @@ internal static class XdcConstants
     public const string XDPoSSubnet = nameof(XDPoSSubnet);
 
     public const ulong EpochLength = 900UL; // Default number of blocks after which to checkpoint and reset the pending votes
+    public const ulong BlocksPerYear = 15_768_000UL;
 
     public const int ExtraVanity = 32; // Fixed number of extra-data prefix bytes reserved for signer vanity
     public const int ExtraSeal = 65;   // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -59,6 +60,9 @@ internal static class XdcConstants
     public const string RpcRewardSectionMasternode = "rewards";
     public const string RpcRewardSectionProtector = "rewardsProtector";
     public const string RpcRewardSectionObserver = "rewardsObserver";
+    public const string RpcSignerSectionMasternode = "signers";
+    public const string RpcSignerSectionProtector = "signersProtector";
+    public const string RpcSignerSectionObserver = "signersObserver";
 
     // Only sign recent head blocks.
     public const ulong MaxSignableBlockPeriods = 2;

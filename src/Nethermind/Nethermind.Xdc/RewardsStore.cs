@@ -58,7 +58,7 @@ internal sealed class RewardsStore(
         if (xdcHeader.Number == spec.SwitchBlock + 1)
             return;
 
-        if (xdcHeader.ProcessedRewards is null || xdcHeader.ProcessedRewards.Length == 0)
+        if (xdcHeader.ProcessedRewards is null)
         {
             if (_logger.IsDebug) _logger.Debug($"No rewards for epoch block #{xdcHeader.Number} hash=${xdcHeader.Hash}");
             return;
@@ -67,7 +67,7 @@ internal sealed class RewardsStore(
         Block block = e.Block;
         try
         {
-            SaveEpochRewards(xdcHeader.Hash, xdcHeader.ProcessedRewards);
+            SaveEpochRewards(xdcHeader.Hash, xdcHeader.ProcessedRewards.EpochRewards);
         }
         catch (Exception ex)
         {
@@ -75,13 +75,29 @@ internal sealed class RewardsStore(
         }
     }
 
-    public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
+    public void SaveEpochRewards(Hash256 epochBlockHash, XdcEpochRewards rewards)
     {
         ArgumentNullException.ThrowIfNull(epochBlockHash);
+        ArgumentNullException.ThrowIfNull(rewards);
 
         using IWriteBatch batch = _rewardsDb.StartWriteBatch();
         batch[BuildRpcEpochRewardsKey(epochBlockHash)] = JsonSerializer.SerializeToUtf8Bytes(rewards);
         batch[BuildEpochRewardsKey(epochBlockHash)] = SerializeEpochRewards(SumAccountRewards(rewards));
+    }
+
+    public void SaveEpochRewards(Hash256 epochBlockHash, Dictionary<string, Dictionary<string, Dictionary<string, string>>> rewards)
+    {
+        ArgumentNullException.ThrowIfNull(epochBlockHash);
+
+        XdcEpochRewards epochRewards = new();
+        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionMasternode, out Dictionary<string, Dictionary<string, string>>? masternodeRewards))
+            epochRewards.Rewards = masternodeRewards;
+        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionProtector, out Dictionary<string, Dictionary<string, string>>? protectorRewards))
+            epochRewards.RewardsProtector = protectorRewards;
+        if (rewards.TryGetValue(XdcConstants.RpcRewardSectionObserver, out Dictionary<string, Dictionary<string, string>>? observerRewards))
+            epochRewards.RewardsObserver = observerRewards;
+
+        SaveEpochRewards(epochBlockHash, epochRewards);
     }
 
     public void SaveEpochRewards(Hash256 epochBlockHash, BlockReward[] rewards)
@@ -104,7 +120,7 @@ internal sealed class RewardsStore(
         _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockHash))
         || _rewardsDb.KeyExists(BuildRpcEpochRewardsKey(epochBlockHash));
 
-    public bool TryGetEpochRewards(Hash256 epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
+    public bool TryGetEpochRewards(Hash256 epochBlockHash, out XdcEpochRewards? rewards)
     {
         byte[]? bytes = _rewardsDb.Get(BuildRpcEpochRewardsKey(epochBlockHash));
         if (bytes is null)
@@ -113,7 +129,7 @@ internal sealed class RewardsStore(
             return false;
         }
 
-        rewards = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(bytes);
+        rewards = JsonSerializer.Deserialize<XdcEpochRewards>(bytes);
         return rewards is not null;
     }
 
@@ -122,7 +138,7 @@ internal sealed class RewardsStore(
         byte[]? epochRewardsBytes = _rewardsDb.Get(BuildEpochRewardsKey(epochBlockHash));
         if (epochRewardsBytes is null)
         {
-            if (!TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? breakdown)
+            if (!TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? breakdown)
                 || breakdown is null)
             {
                 reward = UInt256.Zero;
@@ -196,50 +212,61 @@ internal sealed class RewardsStore(
         return rewardsByAccount;
     }
 
-    private static Dictionary<Address, UInt256> SumAccountRewards(
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> breakdown)
+    private static Dictionary<Address, UInt256> SumAccountRewards(XdcEpochRewards breakdown)
     {
         Dictionary<Address, UInt256> rewardsByAccount = [];
-        foreach (Dictionary<string, Dictionary<string, string>> section in breakdown.Values)
-        {
-            foreach (Dictionary<string, string> holdersBySigner in section.Values)
-            {
-                foreach ((string accountKey, string valueStr) in holdersBySigner)
-                {
-                    if (Address.TryParse(accountKey, out Address account)
-                        && UInt256.TryParse(valueStr, out UInt256 value))
-                    {
-                        if (!rewardsByAccount.TryAdd(account, value))
-                        {
-                            rewardsByAccount[account] += value;
-                        }
-                    }
-                }
-            }
-        }
+        SumAccountRewards(breakdown.Rewards, rewardsByAccount);
+        SumAccountRewards(breakdown.RewardsProtector, rewardsByAccount);
+        SumAccountRewards(breakdown.RewardsObserver, rewardsByAccount);
 
         return rewardsByAccount;
     }
 
+    private static void SumAccountRewards(
+        Dictionary<string, Dictionary<string, string>> section,
+        Dictionary<Address, UInt256> rewardsByAccount)
+    {
+        foreach (Dictionary<string, string> holdersBySigner in section.Values)
+        {
+            foreach ((string accountKey, string valueStr) in holdersBySigner)
+            {
+                if (Address.TryParse(accountKey, out Address account)
+                    && UInt256.TryParse(valueStr, out UInt256 value))
+                {
+                    if (!rewardsByAccount.TryAdd(account, value))
+                    {
+                        rewardsByAccount[account] += value;
+                    }
+                }
+            }
+        }
+    }
+
     private static UInt256 SumAccountReward(
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> breakdown,
+        XdcEpochRewards breakdown,
         Address account)
     {
         string accountKey = account.ToString();
         UInt256 total = UInt256.Zero;
-
-        foreach (Dictionary<string, Dictionary<string, string>> section in breakdown.Values)
-        {
-            foreach (Dictionary<string, string> holdersBySigner in section.Values)
-            {
-                if (holdersBySigner.TryGetValue(accountKey, out string? valueStr)
-                    && UInt256.TryParse(valueStr, out UInt256 value))
-                {
-                    total += value;
-                }
-            }
-        }
+        SumAccountReward(breakdown.Rewards, accountKey, ref total);
+        SumAccountReward(breakdown.RewardsProtector, accountKey, ref total);
+        SumAccountReward(breakdown.RewardsObserver, accountKey, ref total);
 
         return total;
+    }
+
+    private static void SumAccountReward(
+        Dictionary<string, Dictionary<string, string>> section,
+        string accountKey,
+        ref UInt256 total)
+    {
+        foreach (Dictionary<string, string> holdersBySigner in section.Values)
+        {
+            if (holdersBySigner.TryGetValue(accountKey, out string? valueStr)
+                && UInt256.TryParse(valueStr, out UInt256 value))
+            {
+                total += value;
+            }
+        }
     }
 }

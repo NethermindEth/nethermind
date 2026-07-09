@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -39,22 +38,22 @@ internal sealed class XdcExtendedEthModule(
         return Task.FromResult(ResultWrapper<Address>.Success(owner));
     }
 
-    public Task<ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>> eth_getRewardByHash(
+    public Task<ResultWrapper<XdcEpochRewards>> eth_getRewardByHash(
         Hash256 blockHash)
     {
         BlockHeader? header = blockFinder.FindHeader(blockHash);
         if (header is null)
         {
-            return Task.FromResult(ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>.Success([]));
+            return Task.FromResult(ResultWrapper<XdcEpochRewards>.Success(new XdcEpochRewards()));
         }
 
-        if (!rewardsStore.TryGetEpochRewards(header.Hash!, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? rewards)
+        if (!rewardsStore.TryGetEpochRewards(header.Hash!, out XdcEpochRewards? rewards)
             || rewards is null)
         {
-            rewards = [];
+            rewards = new XdcEpochRewards();
         }
 
-        return Task.FromResult(ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>.Success(rewards));
+        return Task.FromResult(ResultWrapper<XdcEpochRewards>.Success(rewards));
     }
 
     public Task<ResultWrapper<XdcTransactionAndReceiptProof?>> eth_getTransactionAndReceiptProof(Hash256 transactionHash)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -24,7 +23,7 @@ public interface IXdcExtendedEthRpcModule : IRpcModule
         Description = "Returns epoch reward distribution for the block identified by hash.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>> eth_getRewardByHash(
+    Task<ResultWrapper<XdcEpochRewards>> eth_getRewardByHash(
         Hash256 blockHash);
 
     [JsonRpcMethod(

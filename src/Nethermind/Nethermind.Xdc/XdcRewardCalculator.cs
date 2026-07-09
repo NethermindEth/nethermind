@@ -58,17 +58,19 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
         if (xdcHeader.ProcessedRewards is not null)
-            return xdcHeader.ProcessedRewards;
+            return xdcHeader.ProcessedRewards.BlockRewards;
 
         if (xdcHeader.Number == 0)
-            return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
+            return (xdcHeader.ProcessedRewards = XdcProcessedRewards.Empty).BlockRewards;
 
         // Rewards in XDC are calculated only if it's an epoch switch block
-        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
+        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader))
+            return (xdcHeader.ProcessedRewards = XdcProcessedRewards.Empty).BlockRewards;
 
         ulong number = xdcHeader.Number;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-        if (number == spec.SwitchBlock + 1) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
+        if (number == spec.SwitchBlock + 1)
+            return (xdcHeader.ProcessedRewards = XdcProcessedRewards.Empty).BlockRewards;
 
         Address foundationWalletAddr = spec.FoundationWallet;
         if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -76,30 +78,34 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         UInt256 totalFoundationWalletReward = UInt256.Zero;
         UInt256 totalMintedInEpoch = UInt256.Zero;
         List<BlockReward> rewards = [];
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> rpcRewards = [];
-        (Dictionary<Address, ulong> masternodeSigners, Dictionary<Address, ulong> protectorSigners, Dictionary<Address, ulong> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
+        XdcEpochRewards rpcRewards = new();
+        (Dictionary<Address, XdcRewardLog> masternodeSigners, Dictionary<Address, XdcRewardLog> protectorSigners, Dictionary<Address, XdcRewardLog> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
+        CopySigners(masternodeSigners, rpcRewards.Signers);
 
         if (!spec.IsTipUpgradeRewardEnabled)
         {
-            UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
+            UInt256 chainReward = ApplyRewardInflation((UInt256)spec.Reward * Unit.Ether, number);
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-            AddDistributedRewards(foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode);
+            AddDistributedRewards(foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.Rewards);
         }
         else
         {
+            CopySigners(protectorSigners, rpcRewards.SignersProtector);
+            CopySigners(observerSigners, rpcRewards.SignersObserver);
+
             Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
-                spec.MasternodeReward,
+                ApplyRewardInflation(spec.MasternodeReward, number),
                 masternodeSigners);
             Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
-                spec.ProtectorReward,
+                ApplyRewardInflation(spec.ProtectorReward, number),
                 protectorSigners);
             Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
-                spec.ObserverReward,
+                ApplyRewardInflation(spec.ObserverReward, number),
                 observerSigners);
 
-            AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionMasternode);
-            AddDistributedRewards(foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionProtector);
-            AddDistributedRewards(foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards, XdcConstants.RpcRewardSectionObserver);
+            AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.Rewards);
+            AddDistributedRewards(foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.RewardsProtector);
+            AddDistributedRewards(foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.RewardsObserver);
 
             _mintedRecordContract.UpdateAccounting(
                 _transactionProcessor,
@@ -112,21 +118,21 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
         BlockReward[] finalRewards = rewards.ToArray();
-        xdcHeader.ProcessedRewards = finalRewards;
+        xdcHeader.ProcessedRewards = new XdcProcessedRewards(finalRewards, rpcRewards);
         _rewardsStore.SaveEpochRewards(xdcHeader.Hash!, rpcRewards);
 
         return finalRewards;
     }
 
     private (
-        Dictionary<Address, ulong> MasternodeSigners,
-        Dictionary<Address, ulong> ProtectorSigners,
-        Dictionary<Address, ulong> ObserverSigners,
+        Dictionary<Address, XdcRewardLog> MasternodeSigners,
+        Dictionary<Address, XdcRewardLog> ProtectorSigners,
+        Dictionary<Address, XdcRewardLog> ObserverSigners,
         UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
     {
-        Dictionary<Address, ulong> masternodeSigners = [];
-        Dictionary<Address, ulong> protectorSigners = [];
-        Dictionary<Address, ulong> observerSigners = [];
+        Dictionary<Address, XdcRewardLog> masternodeSigners = [];
+        Dictionary<Address, XdcRewardLog> protectorSigners = [];
+        Dictionary<Address, XdcRewardLog> observerSigners = [];
         UInt256 burnedInOneEpoch = UInt256.Zero;
         ulong number = epochHeader.Number;
         if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
@@ -205,7 +211,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         // Only blocks at heights that are multiples of MergeSignRange are considered.
         // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
         ulong start = (startBlockNumber + mergeSignRange - 1) / mergeSignRange * mergeSignRange;
-        for (ulong i = start; i < endBlockNumber; i += mergeSignRange)
+        for (ulong i = start; i <= endBlockNumber; i += mergeSignRange)
         {
             if (!blockNumberToHash.TryGetValue(i, out Hash256 blockHash)) continue;
             if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address> addresses)) continue;
@@ -259,10 +265,12 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             .ToArray();
     }
 
-    private static void IncrementSignerCount(Dictionary<Address, ulong> signers, Address addr)
+    private static void IncrementSignerCount(Dictionary<Address, XdcRewardLog> signers, Address addr)
     {
-        if (!signers.TryAdd(addr, 1))
-            signers[addr] += 1;
+        if (signers.TryGetValue(addr, out XdcRewardLog? rewardLog))
+            rewardLog.Sign++;
+        else
+            signers[addr] = new XdcRewardLog { Sign = 1 };
     }
 
     private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
@@ -277,16 +285,17 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     }
 
     private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
-        Dictionary<Address, ulong> signers)
+        Dictionary<Address, XdcRewardLog> signers)
     {
         Dictionary<Address, UInt256> rewardSigners = [];
         ulong totalSigningCount = 0;
-        foreach (ulong signerCount in signers.Values)
-            totalSigningCount += signerCount;
+        foreach (XdcRewardLog signer in signers.Values)
+            totalSigningCount += signer.Sign;
 
-        foreach ((Address signer, ulong count) in signers)
+        foreach ((Address signer, XdcRewardLog rewardLog) in signers)
         {
-            UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);
+            UInt256 reward = CalculateProportionalReward(rewardLog.Sign, totalSigningCount, totalReward);
+            rewardLog.Reward = reward.ToString();
             rewardSigners.Add(signer, reward);
         }
         return rewardSigners;
@@ -294,14 +303,14 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
     private Dictionary<Address, UInt256> CalculateFixedRewardForSigners(
         UInt256 rewardPerSigner,
-        Dictionary<Address, ulong> signers)
+        Dictionary<Address, XdcRewardLog> signers)
     {
         Dictionary<Address, UInt256> rewardSigners = [];
-        if (rewardPerSigner == UInt256.Zero)
-            return rewardSigners;
-
-        foreach ((Address signer, ulong _) in signers)
+        foreach ((Address signer, XdcRewardLog rewardLog) in signers)
+        {
+            rewardLog.Reward = rewardPerSigner.ToString();
             rewardSigners[signer] = rewardPerSigner;
+        }
 
         return rewardSigners;
     }
@@ -360,8 +369,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         List<BlockReward> rewards,
         ref UInt256 totalFoundationWalletReward,
         ref UInt256 totalMintedInEpoch,
-        Dictionary<string, Dictionary<string, Dictionary<string, string>>> rpcRewards,
-        string rpcSectionKey)
+        Dictionary<string, Dictionary<string, string>> rpcRewards)
     {
         foreach ((Address signer, UInt256 reward) in rewardSigners)
         {
@@ -370,21 +378,34 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             totalMintedInEpoch += holderReward.Value + foundationWalletReward;
             rewards.Add(holderReward);
 
-            if (!rpcRewards.TryGetValue(rpcSectionKey, out Dictionary<string, Dictionary<string, string>>? signersMap))
-            {
-                signersMap = [];
-                rpcRewards[rpcSectionKey] = signersMap;
-            }
-
             string signerKey = signer.ToString();
-            if (!signersMap.TryGetValue(signerKey, out Dictionary<string, string>? holdersMap))
+            if (!rpcRewards.TryGetValue(signerKey, out Dictionary<string, string>? holdersMap))
             {
                 holdersMap = [];
-                signersMap[signerKey] = holdersMap;
+                rpcRewards[signerKey] = holdersMap;
             }
 
             holdersMap[holderReward.Address.ToString()] = holderReward.Value.ToString();
             holdersMap[foundationWalletAddr.ToString()] = foundationWalletReward.ToString();
         }
+    }
+
+    private static void CopySigners(Dictionary<Address, XdcRewardLog> source, Dictionary<string, XdcRewardLog> destination)
+    {
+        foreach ((Address signer, XdcRewardLog rewardLog) in source)
+        {
+            destination[signer.ToString()] = rewardLog;
+        }
+    }
+
+    private static UInt256 ApplyRewardInflation(UInt256 reward, ulong number)
+    {
+        if (XdcConstants.BlocksPerYear * 2 <= number && number < XdcConstants.BlocksPerYear * 5)
+            return reward / 2;
+
+        if (XdcConstants.BlocksPerYear * 5 <= number)
+            return reward / 4;
+
+        return reward;
     }
 }

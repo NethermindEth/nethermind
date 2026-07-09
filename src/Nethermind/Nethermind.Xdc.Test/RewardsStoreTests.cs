@@ -75,8 +75,8 @@ public class RewardsStoreTests
 
         store.SaveEpochRewards(epochBlockHash, payload);
 
-        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
-        Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
+        Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("1000"));
     }
 
     [Test]
@@ -151,8 +151,8 @@ public class RewardsStoreTests
         store.SaveEpochRewards(epochBlockHash, new Dictionary<string, Dictionary<string, Dictionary<string, string>>>());
 
         Assert.That(store.HasEpochRewards(epochBlockHash), Is.True);
-        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
-        Assert.That(loaded, Is.Empty);
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
+        Assert.That(loaded!.Rewards, Is.Empty);
         Assert.That(store.TryGetAccountReward(account, epochBlockHash, out _), Is.False);
     }
 
@@ -169,9 +169,15 @@ public class RewardsStoreTests
 
         const ulong epochBlockNumber = 900;
         Address account = Address.FromNumber(1);
-        BlockReward[] rewards = [new BlockReward(account, (UInt256)42)];
+        XdcEpochRewards rewards = new()
+        {
+            Rewards = new()
+            {
+                [Address.FromNumber(10).ToString()] = new() { [account.ToString()] = "42" },
+            },
+        };
         Block block = new(BuildCheckpointHeader(epochBlockNumber));
-        ((XdcBlockHeader)block.Header).ProcessedRewards = rewards;
+        ((XdcBlockHeader)block.Header).ProcessedRewards = new XdcProcessedRewards([new BlockReward(account, (UInt256)42)], rewards);
 
         blockTree.WasProcessed(epochBlockNumber, block.Hash!).Returns(true);
         blockTree.Head.Returns(block);
@@ -226,7 +232,14 @@ public class RewardsStoreTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
         Block block = new(BuildCheckpointHeader(900));
         Address account = Address.FromNumber(1);
-        ((XdcBlockHeader)block.Header).ProcessedRewards = [new BlockReward(account, (UInt256)42)];
+        XdcEpochRewards rewards = new()
+        {
+            Rewards = new()
+            {
+                [Address.FromNumber(10).ToString()] = new() { [account.ToString()] = "42" },
+            },
+        };
+        ((XdcBlockHeader)block.Header).ProcessedRewards = new XdcProcessedRewards([new BlockReward(account, (UInt256)42)], rewards);
 
         blockTree.WasProcessed(block.Number, block.Hash!).Returns(true);
         blockTree.Head.Returns((Block?)null);
@@ -275,8 +288,8 @@ public class RewardsStoreTests
         store.SaveEpochRewards(epochBlockHash, initialPayload);
         store.SaveEpochRewards(epochBlockHash, updatedPayload);
 
-        Assert.That(store.TryGetEpochRewards(epochBlockHash, out Dictionary<string, Dictionary<string, Dictionary<string, string>>>? loaded), Is.True);
-        Assert.That(loaded![XdcConstants.RpcRewardSectionMasternode][Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
+        Assert.That(store.TryGetEpochRewards(epochBlockHash, out XdcEpochRewards? loaded), Is.True);
+        Assert.That(loaded!.Rewards[Address.FromNumber(1).ToString()][Address.FromNumber(2).ToString()], Is.EqualTo("200"));
     }
 
     private static RewardsStore CreateStore(
