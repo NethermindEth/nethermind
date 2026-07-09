@@ -188,25 +188,6 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         return false;
     }
 
-    public bool TryReplaceSnapshot(in StateId stateId, Snapshot newSnapshot)
-    {
-        // Swap the entry, then drop the old registry reference; leased readers keep it alive until they release.
-        while (_snapshots.TryGetValue(stateId, out Snapshot? existing))
-        {
-            if (_snapshots.TryUpdate(stateId, newSnapshot, existing))
-            {
-                long delta = newSnapshot.EstimateMemory() - existing.EstimateMemory();
-                Metrics.SnapshotMemory += delta;
-                Metrics.TotalSnapshotMemory += delta;
-
-                existing.Dispose();
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
     {
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots);

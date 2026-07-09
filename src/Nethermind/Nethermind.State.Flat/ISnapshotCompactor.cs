@@ -9,7 +9,4 @@ public interface ISnapshotCompactor
     bool DoCompactSnapshot(in StateId stateId);
     SnapshotPooledList GetSnapshotsToCompact(Snapshot snapshot);
     Snapshot CompactSnapshotBundle(SnapshotPooledList snapshots);
-
-    /// <summary>Builds a new snapshot with the same state ids holding the sorted form of a mutable snapshot's content.</summary>
-    Snapshot ConvertToSorted(Snapshot source);
 }

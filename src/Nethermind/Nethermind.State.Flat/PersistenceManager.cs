@@ -286,7 +286,8 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Snapshots reaching persistence are always sorted content, which enumerates nodes in key order.
+            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
+            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
             long stateNodesSize = 0;
             foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
             {

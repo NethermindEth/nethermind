@@ -127,9 +127,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        // Convert the sealed base to sorted content so its mutable ConcurrentDictionary returns to the pool.
-        ConvertBaseToSorted(stateId);
-
         if (_snapshotCompactor.DoCompactSnapshot(stateId))
         {
             ClearReadOnlyBundleCache();
@@ -137,20 +134,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-    }
-
-    private void ConvertBaseToSorted(in StateId stateId)
-    {
-        if (!_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot)) return;
-
-        using Snapshot _ = snapshot;
-        if (snapshot.IsSorted) return;
-
-        Snapshot sorted = _snapshotCompactor.ConvertToSorted(snapshot);
-        if (!_snapshotRepository.TryReplaceSnapshot(stateId, sorted))
-        {
-            sorted.Dispose(); // removed concurrently; discard
-        }
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
