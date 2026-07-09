@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -121,10 +122,10 @@ public class SnapshotCompactor(
         int count = snapshots.Count;
 
         // A slot/node written before the highest snapshot index that clears its address is dropped by the merge
-        // rather than added then removed. Boundary maps stay null until a self-destruct is seen.
-        Dictionary<HashedKey<Address>, bool> selfDestructMerged = [];
-        Dictionary<Address, int>? slotClearBoundary = null;
-        Dictionary<Hash256, int>? nodeClearBoundary = null;
+        // rather than added then removed.
+        using PooledDictionary<HashedKey<Address>, bool> selfDestructMerged = new();
+        using PooledDictionary<Address, int> slotClearBoundary = new();
+        using PooledDictionary<Hash256, int> nodeClearBoundary = new();
         for (int i = 0; i < count; i++)
         {
             foreach ((HashedKey<Address> address, bool isNewAccount) in snapshots[i].SelfDestructedStorageAddresses)
@@ -137,18 +138,16 @@ public class SnapshotCompactor(
                 else
                 {
                     selfDestructMerged[address] = false;
-                    (slotClearBoundary ??= [])[address.Key] = i;
-                    (nodeClearBoundary ??= [])[address.Key.ToAccountPath.ToCommitment()] = i;
+                    slotClearBoundary[address.Key] = i;
+                    nodeClearBoundary[address.Key.ToAccountPath.ToCommitment()] = i;
                 }
             }
         }
 
-        Func<int, HashedKey<(Address, UInt256)>, bool>? slotKeep = slotClearBoundary is null
-            ? null
-            : (i, key) => !(slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
-        Func<int, HashedKey<(Hash256, TreePath)>, bool>? nodeKeep = nodeClearBoundary is null
-            ? null
-            : (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
+        Func<int, HashedKey<(Address, UInt256)>, bool> slotKeep =
+            (i, key) => !(slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
+        Func<int, HashedKey<(Hash256, TreePath)>, bool> nodeKeep =
+            (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
 
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
         try
