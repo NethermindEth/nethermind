@@ -34,8 +34,8 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "Whether block body writes are also deferred (only when `DeferredPersistence` is enabled). Off by default: a body is a processing input, not a regenerable output, so one lost on an unclean shutdown must be re-downloaded from peers.", DefaultValue = "false")]
     bool DeferBlockBodyPersistence { get; set; }
 
-    [ConfigItem(Description = "Maximum number of queued deferred write items before block processing backpressures (counts individual writes, not blocks - a block enqueues up to three). Bounds the pending-overlay memory.", DefaultValue = "8", HiddenFromDocs = true)]
-    int MaxDeferredBlocks { get; set; }
+    [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A block enqueues up to three writes (body, receipts, canonical index). Bounds the pending-overlay memory.", DefaultValue = "32", HiddenFromDocs = true)]
+    int MaxDeferredWrites { get; set; }
 
     [ConfigItem(Description =
         """

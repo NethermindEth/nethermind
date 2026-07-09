@@ -1098,7 +1098,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         // Make this block's deferred block-data durable before its state is written and the node storage
         // WAL is flushed below, so a crash cannot leave persisted state without it. See IStatePersistenceBarrier.
-        _persistenceBarrier.FlushBefore((long)commitSet.BlockNumber);
+        _persistenceBarrier.FlushBefore(commitSet.BlockNumber);
 
         INodeStorage.IWriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
         const int parallelBoundaryPathLength = 2;

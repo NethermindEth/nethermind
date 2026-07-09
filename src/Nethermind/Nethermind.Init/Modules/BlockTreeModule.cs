@@ -82,7 +82,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         ctx.ResolveKeyed<IDb>(DbNames.Blocks);
         ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
         ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
-        return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredBlocks, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
+        return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
 
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>

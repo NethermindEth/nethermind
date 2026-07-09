@@ -33,7 +33,7 @@ public interface IStatePersistenceBarrier
     /// then every registered flush, so all deferred block data is durable first.
     /// </summary>
     /// <param name="blockNumber">The block number whose state is about to be persisted (informational).</param>
-    void FlushBefore(long blockNumber);
+    void FlushBefore(ulong blockNumber);
 }
 
 /// <inheritdoc cref="IStatePersistenceBarrier"/>
@@ -58,7 +58,7 @@ public sealed class StatePersistenceBarrier : IStatePersistenceBarrier
         lock (_registrationLock) _flushes = Append(_flushes, flush);
     }
 
-    public void FlushBefore(long blockNumber)
+    public void FlushBefore(ulong blockNumber)
     {
         Action[] drains = _drains;
         for (int i = 0; i < drains.Length; i++) drains[i]();
@@ -89,5 +89,5 @@ public sealed class NullStatePersistenceBarrier : IStatePersistenceBarrier
 
     public void RegisterFlush(Action flush) { }
 
-    public void FlushBefore(long blockNumber) { }
+    public void FlushBefore(ulong blockNumber) { }
 }

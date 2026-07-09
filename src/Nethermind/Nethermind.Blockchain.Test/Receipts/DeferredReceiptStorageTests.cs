@@ -177,6 +177,31 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Transient_write_fault_recovers_on_drain()
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        int attempts = 0;
+        writer.Enqueue(() => { if (++attempts <= 2) throw new InvalidOperationException("transient"); });
+
+        writer.Pump(); // both in-loop attempts fail, so the write is retained and the writer faults
+        Assert.That(attempts, Is.EqualTo(2));
+
+        // The drain retries the retained write inline; the disk has recovered, so it lands and persist proceeds.
+        Assert.DoesNotThrow(() => writer.Drain());
+        Assert.That(attempts, Is.EqualTo(3), "retained write retried once more at drain, then succeeded");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Persistent_write_fault_aborts_drain()
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        writer.Enqueue(() => throw new InvalidOperationException("disk down"));
+        writer.Pump();
+
+        Assert.Throws<InvalidOperationException>(() => writer.Drain(), "a still-failing write must abort state persistence");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Live_writer_drains_on_dispose()
     {
         await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance);
@@ -196,7 +221,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // Consumer is not running, so only the barrier (via the writer's drain) makes it durable.
         Assert.That(DurableReceipts(block), Is.Empty, "not durable until the barrier flushes");
 
-        _barrier.FlushBefore((long)block.Number);
+        _barrier.FlushBefore(block.Number);
 
         DurableReceipts(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
     }
@@ -211,7 +236,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         Hash256 txHash = block.Transactions[0].Hash!;
         Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.Null, "tx-index not durable until the barrier flushes");
 
-        _barrier.FlushBefore((long)block.Number);
+        _barrier.FlushBefore(block.Number);
 
         Assert.That(CreateStorage(null).FindBlockHash(txHash), Is.EqualTo(block.Hash), "tx-index durable after the barrier flush");
     }

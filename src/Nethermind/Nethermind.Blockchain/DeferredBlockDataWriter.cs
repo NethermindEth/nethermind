@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -31,8 +33,9 @@ public interface IDeferredBlockDataWriter : IAsyncDisposable
     void Enqueue(Action work);
 
     /// <summary>
-    /// Blocks until every work item queued before this call has executed. The state persistence barrier
-    /// calls this before fsyncing, so a block's deferred writes are on disk before its state is persisted.
+    /// Blocks until every write queued before this call has durably executed, retrying inline any that
+    /// failed. Throws if a write is still failing, so the caller aborts the state persist rather than
+    /// letting state outlive lost block data. The barrier calls this before fsyncing state.
     /// </summary>
     void Drain();
 }
@@ -44,8 +47,14 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     private readonly Task? _consumer;
     private readonly bool _manualPump;
     private readonly ILogger _logger;
-    // Set before _faulted (whose volatile write publishes it) on a hard write failure; Drain rethrows it.
+    private readonly Lock _faultLock = new();
+    // Writes that failed twice, retained for an inline retry at the next Drain (their overlay entries stay
+    // pending), so a transient disk fault self-heals instead of wedging persistence. Guarded by _faultLock.
+    private List<Action>? _failedWrites;
+    // Set before _faulted (whose volatile write publishes them). _unrecoverable marks a dead consumer with
+    // no retained work to retry, so Drain always aborts rather than proceeding.
     private Exception? _faultException;
+    private volatile bool _unrecoverable;
     private volatile bool _faulted;
 
     /// <param name="enabled">When false the writer is a no-op passthrough that runs work inline.</param>
@@ -86,6 +95,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     public void Enqueue(Action work)
     {
+        ArgumentNullException.ThrowIfNull(work);
         if (_channel is null || _faulted)
         {
             work();
@@ -127,29 +137,62 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     public void Drain()
     {
         if (_channel is null) return;          // disabled: work ran inline, nothing is queued
-        if (_manualPump) { Pump(); ThrowIfFaulted(); return; }   // no background consumer (tests)
+        if (_manualPump) { Pump(); RecoverOrThrow(); return; }   // no background consumer (tests)
 
-        // Fence: block on a queued marker (all earlier writes ran) OR consumer termination, so a consumer
-        // that stops without reaching the marker aborts here instead of freezing this thread.
-        TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Enqueue(drained.SetResult);
-        Task.WhenAny(drained.Task, _consumer!).GetAwaiter().GetResult();
-
-        // Marker not reached: a write may be lost or the consumer died; abort the persist rather than fsync.
-        if (!drained.Task.IsCompleted)
+        if (!_faulted)
         {
-            ThrowIfFaulted();
-            throw new InvalidOperationException("Deferred writer consumer stopped before the drain completed.");
+            // Fence: a queued marker proves every earlier queued write has executed. Wait on the marker OR
+            // consumer termination, so a stopped consumer aborts here instead of freezing this thread.
+            TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Enqueue(drained.SetResult);
+            Task.WhenAny(drained.Task, _consumer!).GetAwaiter().GetResult();
+            if (drained.Task.IsCompleted && !_faulted) return;   // clean: all writes ran, none failed
         }
 
-        ThrowIfFaulted();
+        // A write failed hard: the fault completed the channel, so the consumer finishes attempting every
+        // buffered item (retaining failures) and exits. Wait for it, then retry the retained writes inline -
+        // their overlay entries are still pending, so a recovered disk lands them and persistence may proceed;
+        // a still-failing write aborts the persist rather than letting state outlive lost block data.
+        _consumer!.GetAwaiter().GetResult();
+        RecoverOrThrow();
     }
 
-    private void ThrowIfFaulted()
+    private void RecoverOrThrow()
     {
-        if (_faulted)
+        if (!_faulted) return;
+
+        if (_unrecoverable)
         {
-            throw new InvalidOperationException("Deferred block-data write failed; aborting state persistence.", _faultException);
+            throw new InvalidOperationException("Deferred writer consumer stopped unexpectedly; aborting state persistence.", _faultException);
+        }
+
+        lock (_faultLock)
+        {
+            if (_failedWrites is not { Count: > 0 }) return;   // no retained writes, or an earlier drain landed them
+
+            List<Action> retrying = _failedWrites;
+            _failedWrites = null;
+            List<Action>? stillFailing = null;
+            Exception? lastException = null;
+            foreach (Action work in retrying)
+            {
+                try
+                {
+                    work();
+                }
+                catch (Exception e)
+                {
+                    (stillFailing ??= []).Add(work);
+                    lastException = e;
+                }
+            }
+
+            if (stillFailing is not null)
+            {
+                _failedWrites = stillFailing;
+                _faultException = lastException;
+                throw new InvalidOperationException("Deferred block-data write still failing; aborting state persistence.", lastException);
+            }
         }
     }
 
@@ -184,18 +227,34 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             }
             catch (Exception secondException)
             {
-                // Hard failure: fault so future work runs inline (reads stay correct via the overlay) and
-                // Drain rethrows, blocking a state persist past the lost write.
-                Fault(secondException);
+                // Hard failure: retain the write for an inline retry at the next Drain and fall back inline
+                // for future work (reads stay correct via the overlay). Drain lands or rethrows it.
+                RetainFailure(work, secondException);
             }
         }
     }
 
+    // A queued write failed twice. Retain it for an inline retry at the next Drain and complete the channel
+    // so the consumer stops and all further work runs inline in producer order.
+    private void RetainFailure(Action work, Exception exception)
+    {
+        lock (_faultLock)
+        {
+            (_failedWrites ??= []).Add(work);
+        }
+        _faultException = exception;
+        _faulted = true; // volatile write publishes the retained write and flips Enqueue inline
+        _channel?.Writer.TryComplete();
+        if (_logger.IsError) _logger.Error("Deferred block-data write failed; retrying inline before each state persist.", exception);
+    }
+
+    // The consumer loop itself died (not a single write) - nothing to retry, so persistence must abort.
     private void Fault(Exception exception)
     {
         _faultException = exception;
+        _unrecoverable = true;
         _faulted = true; // volatile write publishes _faultException
-        if (_logger.IsError) _logger.Error("Deferred block-data write failed; falling back to synchronous persistence.", exception);
+        if (_logger.IsError) _logger.Error("Deferred block-data consumer stopped unexpectedly; falling back to synchronous persistence.", exception);
     }
 
     public async ValueTask DisposeAsync()

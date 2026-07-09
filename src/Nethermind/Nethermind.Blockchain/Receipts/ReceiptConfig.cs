@@ -14,6 +14,6 @@ public class ReceiptConfig : IReceiptConfig
     public ulong? TxLookupLimit { get; set; } = 2350000ul;
     public bool DeferredPersistence { get; set; } = true;
     public bool DeferBlockBodyPersistence { get; set; } = false;
-    public int MaxDeferredBlocks { get; set; } = 8;
+    public int MaxDeferredWrites { get; set; } = 32;
     public int MaxBlockDepth { get; set; } = 1000;
 }
