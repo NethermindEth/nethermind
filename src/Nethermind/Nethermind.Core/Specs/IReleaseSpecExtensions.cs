@@ -16,6 +16,7 @@ public static partial class IReleaseSpecExtensions
         public bool DepositsEnabled => spec.IsEip6110Enabled;
         public bool WithdrawalRequestsEnabled => spec.IsEip7002Enabled;
         public bool ConsolidationRequestsEnabled => spec.IsEip7251Enabled;
+        public bool BuilderRequestsEnabled => spec.IsEip8282Enabled;
         public bool LimitCodeSize => spec.IsEip170Enabled;
 
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
@@ -50,7 +51,7 @@ public static partial class IReleaseSpecExtensions
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
-        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
+        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
