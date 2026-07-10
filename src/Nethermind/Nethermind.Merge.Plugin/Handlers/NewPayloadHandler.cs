@@ -119,6 +119,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        long handleStartTimestamp = Stopwatch.GetTimestamp();
         // Overlap ecrecover with root computation, hash validation and block tree insertion;
         // the processing queue's RecoverSignatures then short-circuits on recovered senders.
         Task senderRecoveryTask = StartSenderRecovery(request);
@@ -130,6 +131,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        if (_logger.IsDebug)
+            _logger.Debug($"newPayload decode blk={block.Number} getBlock={Stopwatch.GetElapsedTime(handleStartTimestamp).TotalMilliseconds:F2}ms");
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)

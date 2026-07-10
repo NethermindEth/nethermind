@@ -92,6 +92,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
+        long deserializeStart = Stopwatch.GetTimestamp();
         JsonRpcErrorResponse? value = PrepareParameters(
             request,
             methodName,
@@ -99,6 +100,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             out object?[]? parameters,
             out int parameterCount,
             out bool returnParametersToPool);
+        if (_logger.IsDebug && methodName.StartsWith("engine_newPayload", StringComparison.Ordinal))
+            _logger.Debug($"newPayload deserialize blk method={methodName} deserialize={Stopwatch.GetElapsedTime(deserializeStart).TotalMilliseconds:F2}ms");
         if (value is not null)
         {
             return value;
