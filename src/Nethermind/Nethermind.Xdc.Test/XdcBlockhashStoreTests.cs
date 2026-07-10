@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -30,7 +31,7 @@ internal class XdcBlockhashStoreTests
         ReleaseSpec spec = Eip2935Spec;
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
         Assert.Multiple(() =>
@@ -49,7 +50,7 @@ internal class XdcBlockhashStoreTests
         ReleaseSpec spec = Eip2935Spec;
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
         Hash256? stored = store.GetBlockHashFromState(header, header.Number - 1, spec);
@@ -69,7 +70,7 @@ internal class XdcBlockhashStoreTests
         worldState.Commit(spec);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
         Assert.Multiple(() =>
@@ -93,7 +94,7 @@ internal class XdcBlockhashStoreTests
         worldState.Commit(spec);
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
 
         Assert.Throws<InvalidOperationException>(() => store.ApplyBlockhashStateChanges(header, spec));
     }
@@ -106,7 +107,7 @@ internal class XdcBlockhashStoreTests
         ReleaseSpec spec = Eip2935Spec;
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).TestObject;
 
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(genesis, spec);
 
         Assert.That(worldState.AccountExists(Eip2935Account), Is.False);
@@ -120,7 +121,7 @@ internal class XdcBlockhashStoreTests
         ReleaseSpec spec = new() { IsEip2935Enabled = false };
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
         Assert.That(worldState.AccountExists(Eip2935Account), Is.False);
@@ -135,7 +136,7 @@ internal class XdcBlockhashStoreTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(42).TestObject;
         header.ParentHash = null;
 
-        XdcBlockhashStore store = new(worldState);
+        XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
         Assert.That(worldState.AccountExists(Eip2935Account), Is.False);
