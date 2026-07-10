@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if !ZK_EVM
 using System;
 using System.Runtime.CompilerServices;
 
@@ -17,11 +16,12 @@ namespace Nethermind.Evm;
 /// thread. Fixed capacity means it never reallocates, so zero-copy call-input views into a parent frame's
 /// window stay valid for the child's whole execution; frames beyond the reserve spill (see EvmPooledMemory).
 /// </remarks>
-internal sealed class SharedEvmMemory(int reserveBytes = SharedEvmMemory.DefaultReserveBytes)
+internal sealed partial class SharedEvmMemory(int reserveBytes = SharedEvmMemory.DefaultReserveBytes)
 {
     /// <summary>
-    /// Default reserve size, in bytes. A single frame can't exceed a few MB at realistic block gas limits
-    /// (~4-5 MB at 45M gas), so this leaves ample headroom; deeper cumulative stacks spill. Backed by OS
+    /// Default reserve size, in bytes. EIP-7825 caps a transaction at 2^24 gas, which bounds a single
+    /// frame's memory at ~3 MB (<c>3w + w^2/512 = 2^24</c>); this reserve holds that plus a few shallow
+    /// live frames without spilling. Deeper cumulative stacks spill — correct, just slower. Backed by OS
     /// demand-zero pages, so untouched capacity costs address space, not physical RAM.
     /// </summary>
     internal const int DefaultReserveBytes = 8 * 1024 * 1024;
@@ -54,4 +54,3 @@ internal sealed class SharedEvmMemory(int reserveBytes = SharedEvmMemory.Default
         }
     }
 }
-#endif
