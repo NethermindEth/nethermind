@@ -190,10 +190,10 @@ jobs:
                     emit "$type" batchread    amsterdam '' false true  4 2
                     emit "$type" parallelfull amsterdam '' true  true  1 2
                   else
-                    emit "$type" sequential   full      '' false false 4 4
-                    emit "$type" parallel     amsterdam '' true  false 1 1
-                    emit "$type" batchread    amsterdam '' false true  4 1
-                    emit "$type" parallelfull amsterdam '' true  true  1 1
+                    emit "$type" sequential   full      '' false false 4 6
+                    emit "$type" parallel     amsterdam '' true  false 1 2
+                    emit "$type" batchread    amsterdam '' false true  4 2
+                    emit "$type" parallelfull amsterdam '' true  true  1 2
                   fi
                 fi
                 if run_flat; then
