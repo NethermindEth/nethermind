@@ -65,7 +65,12 @@
             font-weight: 600;
             font-size: 18px;
             letter-spacing: 0.04em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
+
+        header .brand img { height: 28px; width: 211px; }
 
         header .brand span { color: var(--accent); }
 
@@ -189,6 +194,15 @@
 
         .chip .x:hover { color: var(--danger); }
 
+        button.chip-add {
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            padding: 3px 10px;
+            margin: 0 6px 6px 0;
+            font-size: 13px;
+            line-height: 17px;
+        }
+
         #cards {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -255,7 +269,7 @@
 </head>
 <body>
     <header>
-        <div class="brand">NETHERMIND <span>/ BALANCES</span></div>
+        <div class="brand"><img src="nethermind.svg" alt="NETHERMIND" onerror="this.replaceWith('NETHERMIND')"><span>/ BALANCES</span></div>
         <div class="net">network <span id="netName" class="number">…</span></div>
         <div class="net">chain <span id="chainId" class="number">…</span></div>
         <div class="net">head <span id="headBlock" class="number">…</span></div>
@@ -270,8 +284,7 @@
         <div class="title">Watch</div>
         <div class="row" id="addAddress">
             <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
-            <button id="addAddrBtn">Pin address</button>
-            <button id="toggleTokenBtn">Track token…</button>
+            <button id="addAddrBtn" title="Pin address">+</button>
         </div>
         <div class="row" id="tokenForm">
             <input id="tokAddr" class="number addr" placeholder="token contract 0x address" spellcheck="false" />
@@ -579,10 +592,12 @@
             return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
         }
 
-        // value scaled by PRICE_SCALE (1e8) in the selected currency
+        const CURRENCY_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF ' };
+
+        // value scaled by PRICE_SCALE (1e8) in the selected currency, prefixed with its symbol
         function formatFiat(value8) {
             const cents = value8 / 10n ** (PRICE_DECIMALS - 2n);
-            return (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
+            return CURRENCY_SYMBOLS[currency] + (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
         }
 
         function setTotal(text) {
@@ -620,6 +635,10 @@
                 chip.append(x);
                 box.append(chip);
             }
+            const add = el('button', 'link chip-add', '+');
+            add.title = 'Track token';
+            add.onclick = () => $('tokenForm').classList.toggle('open');
+            box.append(add);
         }
 
         function renderCards() {
@@ -642,7 +661,8 @@
                     setStatus('Copied ' + entry.address);
                 };
                 head.append(addr);
-                const unpin = el('button', 'link danger', 'unpin');
+                const unpin = el('button', 'link danger', '−');
+                unpin.title = 'Unpin address';
                 unpin.onclick = () => {
                     state.addresses = state.addresses.filter((a) => a !== entry);
                     store.save(state);
@@ -679,7 +699,7 @@
         async function refreshBalances() {
             if (refreshing) return;
             if (state.addresses.length === 0) {
-                if (fiatEnabled()) setTotal('0.00 ' + currency);
+                if (fiatEnabled()) setTotal(CURRENCY_SYMBOLS[currency] + '0.00');
                 return;
             }
             refreshing = true;
@@ -735,13 +755,13 @@
                                 if (currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
                                 total += value8;
                                 anyPrice = true;
-                                fiatText = formatFiat(value8) + ' ' + currency;
+                                fiatText = formatFiat(value8);
                             }
                         }
                         fiatCell.textContent = fiatText;
                     }
                 }
-                if (fiat) setTotal(anyPrice ? formatFiat(total) + ' ' + currency : '—');
+                if (fiat) setTotal(anyPrice ? formatFiat(total) : '—');
             } catch (e) {
                 setStatus('Balance refresh failed: ' + e.message, true);
             } finally {
@@ -835,7 +855,6 @@
         async function init() {
             $('addAddrBtn').onclick = addAddress;
             $('addrInput').onkeydown = (e) => { if (e.key === 'Enter') addAddress(); };
-            $('toggleTokenBtn').onclick = () => $('tokenForm').classList.toggle('open');
             $('addTokBtn').onclick = addToken;
             $('tokAddr').onchange = () => prefillTokenMeta().catch(() => { });
 
