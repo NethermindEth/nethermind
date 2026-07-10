@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Nethermind Balances</title>
     <link rel="icon" href="favicon.webp" type="image/webp">
     <style>
@@ -193,7 +193,32 @@
             margin: 0 6px 6px 0;
         }
 
-        .chip .number { color: var(--c-ticker); }
+        .chip .number { color: var(--tcol, var(--c-ticker)); cursor: pointer; }
+        .chip .number:hover { color: var(--accent); }
+        .chip.nft { border-style: dashed; }
+        .chip .kind { color: var(--muted); font-size: 10px; }
+
+        .thumbs {
+            display: flex;
+            gap: 6px;
+            padding: 4px 0 6px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .thumbs img {
+            width: 48px;
+            height: 48px;
+            border: 1px solid var(--border-soft);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .thumbs img:hover { border-color: var(--accent); }
+
+        .thumbs .more { color: var(--muted); font-size: 11px; }
+        .thumbs .more.expand { cursor: pointer; }
+        .thumbs .more.expand:hover { color: var(--accent); }
 
         .chip .x {
             cursor: pointer;
@@ -257,7 +282,9 @@
         .card td { padding: 4px 0; }
         .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); }
         .card td.bal.spin { color: var(--muted); }
-        .card td.tick { color: var(--c-ticker); width: 72px; }
+        .card td.tick { color: var(--tcol, var(--c-ticker)); width: 72px; }
+        .card td.tick.copyable { cursor: pointer; }
+        .card td.tick.copyable:hover { color: var(--accent); }
         .card td.fiat { text-align: right; color: var(--c-fiat); width: 110px; font-size: 12px; }
         .card tr.cardTotal td { border-top: 1px solid var(--border-soft); }
         .card tr.cardTotal td.tick { color: var(--muted); }
@@ -301,6 +328,10 @@
             <button id="addAddrBtn" title="Pin address">+</button>
         </div>
         <div class="row" id="tokenForm">
+            <select id="tokKind" title="Asset type">
+                <option value="token">token</option>
+                <option value="nft">NFT</option>
+            </select>
             <input id="tokAddr" class="number addr" placeholder="token contract 0x address" spellcheck="false" />
             <input id="tokTicker" class="number sm" placeholder="ticker" spellcheck="false" />
             <input id="tokDecimals" class="number sm" placeholder="decimals" inputmode="numeric" />
@@ -429,10 +460,18 @@
         const PSEUDO_BTC = '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB';
         const DENOM = {
             USD: '0x0000000000000000000000000000000000000348',
+            AUD: '0x0000000000000000000000000000000000000024',
+            BRL: '0x00000000000000000000000000000000000003da',
+            CAD: '0x000000000000000000000000000000000000007c',
+            CHF: '0x00000000000000000000000000000000000002f4',
+            CNY: '0x000000000000000000000000000000000000009c',
             EUR: '0x00000000000000000000000000000000000003d2',
             GBP: '0x000000000000000000000000000000000000033a',
             JPY: '0x0000000000000000000000000000000000000188',
-            CHF: '0x00000000000000000000000000000000000002f4',
+            KRW: '0x000000000000000000000000000000000000019a',
+            NZD: '0x000000000000000000000000000000000000022a',
+            PHP: '0x0000000000000000000000000000000000000260',
+            SGD: '0x00000000000000000000000000000000000002be',
         };
 
         // Verified Chainlink aggregator addresses on Gnosis (no feed registry there).
@@ -446,9 +485,10 @@
             '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d': '0x678df3415fc31947dA4324eC63212874be5a82f8', // WXDAI → DAI/USD
         };
         const GNOSIS_FX = {
+            CHF: '0xFb00261Af80ADb1629D3869E377ae1EEC7bE659F',
             EUR: '0xab70BCB260073d036d1660201e9d5405F5829b7a',
             JPY: '0x2AfB993C670C01e9dA1550c58e8039C1D8b8A317',
-            CHF: '0xFb00261Af80ADb1629D3869E377ae1EEC7bE659F',
+            MXN: '0xe9cea51a7b1b9B32E057ff62762a2066dA933cD2',
         };
 
         const MAINNET_DEFAULT_TOKENS = [
@@ -475,7 +515,8 @@
                     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': PSEUDO_ETH, // WETH
                     '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': PSEUDO_BTC, // WBTC
                 },
-                currencies: ['USD', 'EUR', 'GBP', 'JPY', 'CHF'],
+                // ordered by global currency popularity (forex turnover)
+                currencies: ['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'KRW', 'SGD', 'NZD', 'BRL', 'PHP'],
                 defaults: MAINNET_DEFAULT_TOKENS,
             },
             11155111: { name: 'Sepolia', ticker: 'ETH', ens: true },
@@ -485,7 +526,7 @@
                 name: 'Gnosis', ticker: 'xDAI', ens: false,
                 feeds: GNOSIS_FEEDS,
                 fx: GNOSIS_FX,
-                currencies: ['USD', 'EUR', 'JPY', 'CHF'],
+                currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
             },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false },
@@ -499,6 +540,12 @@
         const SEL_DECIMALS = '0x313ce567';         // decimals()
         const SEL_LATEST_ROUND = '0xfeaf968c';     // latestRoundData()
         const SEL_LATEST_ROUND_REG = '0xbcfd032d'; // latestRoundData(address,address)
+        const SEL_FEED_DECIMALS_REG = '0x58e2d3a8'; // decimals(address,address)
+        const SEL_SUPPORTS_INTERFACE = '0x01ffc9a7'; // supportsInterface(bytes4)
+        const SEL_TOKEN_OF_OWNER = '0x2f745c59';   // tokenOfOwnerByIndex(address,uint256)
+        const SEL_TOKEN_URI = '0xc87b56dd';        // tokenURI(uint256)
+        const IFACE_ERC721_ENUMERABLE = '780e9d63';
+        const MAX_NFT_THUMBS = 4;
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -514,17 +561,17 @@
                     const raw = localStorage.getItem(this.key());
                     if (raw === null) {
                         // first visit on this chain — seed the popular tokens (still removable)
-                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })) };
+                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })), nfts: [] };
                     }
                     const data = JSON.parse(raw);
-                    return { addresses: data.addresses || [], tokens: data.tokens || [] };
-                } catch { return { addresses: [], tokens: [] }; }
+                    return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [] };
+                } catch { return { addresses: [], tokens: [], nfts: [] }; }
             },
             save(data) { localStorage.setItem(this.key(), JSON.stringify(data)); }
         };
 
         const CURRENCY_KEY = 'nethermind.balances.currency';
-        let state = { addresses: [], tokens: [] };
+        let state = { addresses: [], tokens: [], nfts: [] };
         let currency = 'USD';
 
         // ---------- helpers ----------
@@ -545,6 +592,26 @@
         }
 
         function shortAddr(addr) { return addr.slice(0, 8) + '…' + addr.slice(-6); }
+
+        // navigator.clipboard needs a secure context, which a plain-HTTP node is not —
+        // fall back to a hidden textarea + execCommand
+        function copyAddress(address) {
+            let ok = false;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(address);
+                ok = true;
+            } else {
+                const area = document.createElement('textarea');
+                area.value = address;
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.append(area);
+                area.select();
+                try { ok = document.execCommand('copy'); } catch { }
+                area.remove();
+            }
+            setStatus(ok ? 'Copied ' + address : 'Copy failed — ' + address, !ok);
+        }
 
         // each token gets a stable Dracula color derived from its ticker; cyan is
         // reserved for the native asset, WBTC is pinned to red, and the multiplier
@@ -616,16 +683,37 @@
             return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
         }
 
-        function fxCall() {
+        // FX feeds mostly use 8 decimals, but not all (e.g. PHP/USD is 18),
+        // so the rate is fetched together with its decimals and normalized
+        function fxCalls() {
             if (currency === 'USD') return null;
             if (chain.registry) {
-                return ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']];
+                return [
+                    ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
+                    ['eth_call', [{ to: chain.registry, data: SEL_FEED_DECIMALS_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
+                ];
             }
             const feed = chain.fx?.[currency];
-            return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
+            return feed ? [
+                ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']],
+                ['eth_call', [{ to: feed, data: SEL_DECIMALS }, 'latest']],
+            ] : null;
         }
 
-        const CURRENCY_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF ' };
+        function normalizeFxRate(answer, decimalsRaw) {
+            if (answer === null) return null;
+            let decimals = PRICE_DECIMALS;
+            try { if (decimalsRaw && decimalsRaw !== '0x') decimals = BigInt(decimalsRaw); } catch { }
+            const rate = decimals >= PRICE_DECIMALS
+                ? answer / 10n ** (decimals - PRICE_DECIMALS)
+                : answer * 10n ** (PRICE_DECIMALS - decimals);
+            return rate > 0n ? rate : null;
+        }
+
+        const CURRENCY_SYMBOLS = {
+            USD: '$', AUD: 'A$', BRL: 'R$', CAD: 'C$', CHF: 'CHF ', CNY: 'CN¥', EUR: '€',
+            GBP: '£', JPY: '¥', KRW: '₩', MXN: 'MX$', NZD: 'NZ$', PHP: '₱', SGD: 'S$',
+        };
 
         // value scaled by PRICE_SCALE (1e8) in the selected currency, prefixed with its symbol
         function formatFiat(value8) {
@@ -660,6 +748,126 @@
             setTotal(any ? formatFiat(grand) : (state.addresses.length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
         }
 
+        // ---------- NFTs (ERC-721, node-data only) ----------
+        // Counts come from balanceOf. When a collection is ERC721Enumerable, the first
+        // few token ids are enumerated and their tokenURI decoded; only fully on-chain
+        // metadata (data: URIs, e.g. Nouns or Loot) is rendered — external URIs are
+        // never fetched, so no request leaves the node.
+        const nftCache = new Map();       // `${address}|${collection}` -> { count, thumbs: [{src, title}] }
+        const enumerableCache = new Map(); // collection -> bool
+        const NFT_PAGE = 24;
+        let nftRefreshing = false;
+
+        function parseOnChainMetadata(uri) {
+            if (!uri || !uri.startsWith('data:application/json')) return null;
+            try {
+                const payload = uri.slice(uri.indexOf(',') + 1);
+                return JSON.parse(uri.includes(';base64') ? atob(payload) : decodeURIComponent(payload));
+            } catch { return null; }
+        }
+
+        // enumerates owned token ids [start, end) and decodes their on-chain metadata
+        async function fetchThumbRange(collection, owner, start, end) {
+            const idCalls = [];
+            for (let index = start; index < end; index++) {
+                idCalls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_OF_OWNER + pad32(owner) + pad32(index.toString(16)) }, 'latest']]);
+            }
+            const ids = (await rpcBatch(idCalls)).filter((id) => id !== null).map((id) => BigInt(id));
+            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_TOKEN_URI + pad32(id.toString(16)) }, 'latest']]));
+            const thumbs = [];
+            for (let index = 0; index < ids.length; index++) {
+                const metadata = parseOnChainMetadata(decodeAbiString(uris[index]));
+                const title = metadata?.name || collection.ticker + ' #' + ids[index];
+                // render only fully on-chain images; anything else stays a text label
+                const src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
+                thumbs.push({ src, title: src ? title : '#' + ids[index] });
+            }
+            return thumbs;
+        }
+
+        // browsers block navigating a new tab straight to a data: URI, so serve it as a blob
+        function openArt(dataUri) {
+            try {
+                const comma = dataUri.indexOf(',');
+                const header = dataUri.slice(5, comma);
+                const payload = dataUri.slice(comma + 1);
+                const bytes = header.endsWith(';base64')
+                    ? Uint8Array.from(atob(payload), (c) => c.charCodeAt(0))
+                    : utf8(decodeURIComponent(payload));
+                window.open(URL.createObjectURL(new Blob([bytes], { type: header.replace(';base64', '') })), '_blank');
+            } catch { setStatus('Could not open artwork', true); }
+        }
+
+        function fillThumbs(box, cached, owner, collection) {
+            box.replaceChildren();
+            if (!cached) return;
+            for (const thumb of cached.thumbs) {
+                if (thumb.src) {
+                    const img = el('img');
+                    img.src = thumb.src;
+                    img.title = thumb.title + ' (click to open)';
+                    img.onclick = () => openArt(thumb.src);
+                    box.append(img);
+                } else {
+                    box.append(el('span', 'more number', thumb.title));
+                }
+            }
+            const remaining = cached.count - cached.thumbs.length;
+            if (remaining > 0 && cached.thumbs.length > 0) {
+                const more = el('span', 'more expand', '+' + remaining + ' more');
+                more.title = 'Show more';
+                more.onclick = async () => {
+                    more.textContent = '…';
+                    more.onclick = null;
+                    try {
+                        const start = cached.thumbs.length;
+                        cached.thumbs.push(...await fetchThumbRange(collection, owner, start, Math.min(cached.count, start + NFT_PAGE)));
+                    } catch { /* keep what we have */ }
+                    fillThumbs(box, cached, owner, collection);
+                };
+                box.append(more);
+            }
+            if (cached.thumbs.length > MAX_NFT_THUMBS) {
+                const less = el('span', 'more expand', 'show less');
+                less.onclick = () => {
+                    cached.thumbs.length = MAX_NFT_THUMBS;
+                    fillThumbs(box, cached, owner, collection);
+                };
+                box.append(less);
+            }
+        }
+
+        async function refreshNftThumbs() {
+            if (nftRefreshing || state.nfts.length === 0) return;
+            nftRefreshing = true;
+            try {
+                for (const entry of state.addresses) {
+                    for (const collection of state.nfts) {
+                        const colKey = collection.address.toLowerCase();
+                        const key = entry.address + '|' + colKey;
+                        const countCached = cache.get(entry.address + '|nft:' + colKey);
+                        const count = countCached?.bal === null || countCached === undefined ? 0 : Number(countCached.bal.replace(/,/g, ''));
+                        const box = document.querySelector(`[data-thumbs="${entry.address}|${colKey}"]`);
+                        if (nftCache.get(key)?.count === count) continue;
+
+                        let thumbs = [];
+                        if (count > 0) {
+                            if (!enumerableCache.has(colKey)) {
+                                const supports = await rpc('eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + IFACE_ERC721_ENUMERABLE.padEnd(64, '0') }, 'latest']).catch(() => null);
+                                enumerableCache.set(colKey, supports !== null && BigInt(supports) === 1n);
+                            }
+                            if (enumerableCache.get(colKey)) {
+                                thumbs = await fetchThumbRange(collection, entry.address, 0, Math.min(count, MAX_NFT_THUMBS));
+                            }
+                        }
+                        nftCache.set(key, { count, thumbs });
+                        if (box) fillThumbs(box, nftCache.get(key), entry.address, collection);
+                    }
+                }
+            } catch { /* thumbnails are cosmetic — leave whatever is displayed */ }
+            finally { nftRefreshing = false; }
+        }
+
         // ---------- ENS (forward resolution, simple case) ----------
         async function resolveEns(name) {
             const node = namehash(name);
@@ -676,15 +884,17 @@
         function renderTokens() {
             const box = $('tokens');
             box.replaceChildren();
-            for (const token of state.tokens) {
-                const chip = el('span', 'chip');
-                const ticker = el('span', 'number', token.ticker);
-                ticker.style.color = tokenColor(token.ticker);
+            const addChip = (item, list, isNft) => {
+                const chip = el('span', isNft ? 'chip nft' : 'chip');
+                const ticker = el('span', 'number', item.ticker);
+                ticker.style.setProperty('--tcol', tokenColor(item.ticker));
+                ticker.onclick = () => copyAddress(item.address);
                 chip.append(ticker);
-                chip.title = `${token.name || token.ticker} · ${token.address} · ${token.decimals} decimals`;
+                if (isNft) chip.append(el('span', 'kind', 'nft'));
+                chip.title = `${item.name || item.ticker} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
-                    state.tokens = state.tokens.filter((t) => t !== token);
+                    state[list] = state[list].filter((t) => t !== item);
                     store.save(state);
                     renderTokens();
                     renderCards();
@@ -692,9 +902,11 @@
                 };
                 chip.append(x);
                 box.append(chip);
-            }
+            };
+            for (const token of state.tokens) addChip(token, 'tokens', false);
+            for (const collection of state.nfts) addChip(collection, 'nfts', true);
             const add = el('button', 'link chip-add', '+');
-            add.title = 'Track token';
+            add.title = 'Track token or NFT collection';
             add.onclick = () => $('tokenForm').classList.toggle('open');
             box.append(add);
         }
@@ -720,10 +932,7 @@
                 const addr = el('span', 'addr number', shortAddr(entry.address));
                 addr.style.setProperty('--acct', color);
                 addr.title = entry.address + ' (click to copy)';
-                addr.onclick = () => {
-                    navigator.clipboard?.writeText(entry.address);
-                    setStatus('Copied ' + entry.address);
-                };
+                addr.onclick = () => copyAddress(entry.address);
                 head.append(addr);
                 const unpin = el('button', 'link danger', '−');
                 unpin.title = 'Unpin address';
@@ -738,13 +947,18 @@
 
                 const table = el('table');
                 const rows = [{ ticker: chain.ticker, key: 'native' }].concat(
-                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase(), color: tokenColor(t.ticker) })));
+                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address })));
                 const showFiat = fiatEnabled();
                 for (const row of rows) {
                     const cached = cache.get(entry.address + '|' + row.key);
                     const tr = el('tr');
                     const tick = el('td', 'tick number', row.ticker);
-                    if (row.color) tick.style.color = row.color;
+                    if (row.color) tick.style.setProperty('--tcol', row.color);
+                    if (row.contract) {
+                        tick.classList.add('copyable');
+                        tick.title = row.contract + ' (click to copy)';
+                        tick.onclick = () => copyAddress(row.contract);
+                    }
                     tr.append(tick);
                     const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
                     bal.dataset.key = row.key;
@@ -755,6 +969,31 @@
                         tr.append(fiat);
                     }
                     table.append(tr);
+                }
+                for (const collection of state.nfts) {
+                    const colKey = collection.address.toLowerCase();
+                    const cached = cache.get(entry.address + '|nft:' + colKey);
+                    const tr = el('tr');
+                    const tick = el('td', 'tick number copyable', collection.ticker);
+                    tick.style.setProperty('--tcol', tokenColor(collection.ticker));
+                    tick.title = collection.address + ' (click to copy)';
+                    tick.onclick = () => copyAddress(collection.address);
+                    tr.append(tick);
+                    const count = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
+                    count.dataset.key = 'nft:' + colKey;
+                    tr.append(count);
+                    if (showFiat) tr.append(el('td', 'fiat'));
+                    table.append(tr);
+
+                    const thumbsTr = el('tr');
+                    const thumbsTd = el('td');
+                    thumbsTd.colSpan = showFiat ? 3 : 2;
+                    const thumbs = el('div', 'thumbs');
+                    thumbs.dataset.thumbs = entry.address + '|' + colKey;
+                    fillThumbs(thumbs, nftCache.get(entry.address + '|' + colKey), entry.address, collection);
+                    thumbsTd.append(thumbs);
+                    thumbsTr.append(thumbsTd);
+                    table.append(thumbsTr);
                 }
                 if (showFiat) {
                     const totalRow = el('tr', 'cardTotal');
@@ -782,8 +1021,9 @@
             refreshing = true;
             try {
                 const fiat = fiatEnabled();
-                const assets = [{ key: 'native', decimals: 18 }].concat(
-                    state.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })));
+                const assets = [{ key: 'native', decimals: 18 }]
+                    .concat(state.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
+                    .concat(state.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, contract: c.address, isNft: true })));
 
                 // one batched request: prices (+ FX) first, then all balances
                 const calls = [];
@@ -791,11 +1031,12 @@
                 let fxIndex = -1;
                 if (fiat) {
                     for (const asset of assets) {
+                        if (asset.isNft) continue;
                         const call = priceCall(asset.key);
                         if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
                     }
-                    const fx = fxCall();
-                    if (fx) { fxIndex = calls.length; calls.push(fx); }
+                    const fx = fxCalls();
+                    if (fx) { fxIndex = calls.length; calls.push(...fx); }
                 }
                 const balanceStart = calls.length;
                 for (const entry of state.addresses) {
@@ -803,13 +1044,18 @@
                     for (const token of state.tokens) {
                         calls.push(['eth_call', [{ to: token.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
                     }
+                    for (const collection of state.nfts) {
+                        calls.push(['eth_call', [{ to: collection.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
+                    }
                 }
                 const results = await rpcBatch(calls);
 
                 const prices = new Map();
                 for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
                 // FX feeds quote CCY/USD; token values are computed in USD then divided by it
-                const fxRate = currency === 'USD' ? PRICE_SCALE : (fxIndex >= 0 ? parseRoundAnswer(results[fxIndex]) : null);
+                const fxRate = currency === 'USD'
+                    ? PRICE_SCALE
+                    : (fxIndex >= 0 ? normalizeFxRate(parseRoundAnswer(results[fxIndex]), results[fxIndex + 1]) : null);
 
                 let i = balanceStart;
                 for (const entry of state.addresses) {
@@ -819,7 +1065,7 @@
                         const balText = formatUnits(raw, asset.decimals);
                         const price = prices.get(asset.key);
                         let value8 = null;
-                        if (fiat && balText !== null && price && fxRate) {
+                        if (fiat && !asset.isNft && balText !== null && price && fxRate) {
                             try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
                             if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
                         }
@@ -833,6 +1079,7 @@
                     }
                 }
                 recomputeTotals();
+                refreshNftThumbs();
             } catch (e) {
                 setStatus('Balance refresh failed: ' + e.message, true);
             } finally {
@@ -886,16 +1133,22 @@
 
         function addToken() {
             try {
+                const isNft = $('tokKind').value === 'nft';
                 const address = $('tokAddr').value.trim();
                 if (!isAddress(address)) throw new Error('Invalid token contract address');
                 const ticker = $('tokTicker').value.trim();
                 if (!ticker) throw new Error('Ticker is required');
-                const decimals = parseInt($('tokDecimals').value, 10);
-                if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) throw new Error('Decimals must be 0–77');
                 const checksummed = checksum(address);
-                if (state.tokens.some((t) => t.address.toLowerCase() === address.toLowerCase()))
+                if (state.tokens.concat(state.nfts).some((t) => t.address.toLowerCase() === address.toLowerCase()))
                     throw new Error(ticker + ' is already tracked');
-                state.tokens.push({ address: checksummed, ticker, decimals, name: $('tokName').value.trim() || null });
+                const name = $('tokName').value.trim() || null;
+                if (isNft) {
+                    state.nfts.push({ address: checksummed, ticker, name });
+                } else {
+                    const decimals = parseInt($('tokDecimals').value, 10);
+                    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) throw new Error('Decimals must be 0–77');
+                    state.tokens.push({ address: checksummed, ticker, decimals, name });
+                }
                 store.save(state);
                 for (const id of ['tokAddr', 'tokTicker', 'tokDecimals', 'tokName']) $(id).value = '';
                 setStatus('Tracking ' + ticker);
@@ -928,6 +1181,7 @@
             $('addrInput').onkeydown = (e) => { if (e.key === 'Enter') addAddress(); };
             $('addTokBtn').onclick = addToken;
             $('tokAddr').onchange = () => prefillTokenMeta().catch(() => { });
+            $('tokKind').onchange = () => { $('tokDecimals').style.display = $('tokKind').value === 'nft' ? 'none' : ''; };
 
             try {
                 const id = Number(BigInt(await rpc('eth_chainId', [])));
