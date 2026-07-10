@@ -28,12 +28,19 @@
             src: url(fonts/exo-latin.woff2) format('woff2');
         }
 
+        /* Dracula-inspired palette on the dashboard's black background */
         :root {
-            --border: #555;
-            --border-soft: #333;
-            --accent: #009CDD;
-            --muted: #8a8a8a;
-            --danger: #e35b5b;
+            --border: #6272a4;
+            --border-soft: #44475a;
+            --accent: #8be9fd;
+            --muted: #6272a4;
+            --danger: #ff5555;
+            --c-name: #ff79c6;   /* ENS / display names */
+            --c-addr: #bd93f9;   /* raw addresses */
+            --c-ticker: #8be9fd; /* native ticker (tokens get their own colors) */
+            --c-amount: #50fa7b; /* token amounts */
+            --c-fiat: #9aa5ce;   /* per-row fiat values */
+            --c-total: #ffb86c;  /* fiat totals */
         }
 
         html, body {
@@ -88,7 +95,7 @@
             gap: 8px;
         }
 
-        header .total .number { font-size: 15px; }
+        header .total .number { font-size: 15px; color: var(--c-total); }
 
         select {
             background: #0a0a0a;
@@ -186,6 +193,8 @@
             margin: 0 6px 6px 0;
         }
 
+        .chip .number { color: var(--c-ticker); }
+
         .chip .x {
             cursor: pointer;
             color: var(--muted);
@@ -227,13 +236,14 @@
         .card .name {
             font-family: 'Exo', system-ui, sans-serif;
             font-weight: 600;
+            color: var(--c-name);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
 
         .card .addr {
-            color: var(--muted);
+            color: var(--acct, var(--c-addr));
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -245,11 +255,13 @@
 
         .card table { width: 100%; border-collapse: collapse; }
         .card td { padding: 4px 0; }
-        .card td.bal { text-align: right; font-size: 13px; }
-        .card td.tick { color: var(--muted); width: 72px; }
-        .card td.fiat { text-align: right; color: var(--muted); width: 110px; font-size: 12px; }
+        .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); }
+        .card td.bal.spin { color: var(--muted); }
+        .card td.tick { color: var(--c-ticker); width: 72px; }
+        .card td.fiat { text-align: right; color: var(--c-fiat); width: 110px; font-size: 12px; }
         .card tr.cardTotal td { border-top: 1px solid var(--border-soft); }
-        .card tr.cardTotal td.fiat { color: white; }
+        .card tr.cardTotal td.tick { color: var(--muted); }
+        .card tr.cardTotal td.fiat { color: var(--c-total); }
 
         #status {
             min-height: 18px;
@@ -534,6 +546,25 @@
 
         function shortAddr(addr) { return addr.slice(0, 8) + '…' + addr.slice(-6); }
 
+        // each token gets a stable Dracula color derived from its ticker; cyan is
+        // reserved for the native asset, WBTC is pinned to red, and the multiplier
+        // is chosen so the default token sets all land on distinct colors
+        const TOKEN_COLORS = ['#ff79c6', '#bd93f9', '#ffb86c', '#69ff94', '#f1fa8c', '#a4ffff', '#ff92df'];
+
+        function tokenColor(ticker) {
+            if (ticker.toUpperCase() === 'WBTC') return '#ff5555';
+            let hash = 0;
+            for (const ch of ticker) hash = (hash * 4 + ch.codePointAt(0)) >>> 0;
+            return TOKEN_COLORS[hash % TOKEN_COLORS.length];
+        }
+
+        // accounts are color-coded too, so cards are easy to tell apart at a glance
+        function accountColor(address) {
+            let hash = 0;
+            for (const ch of address.toLowerCase()) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+            return TOKEN_COLORS[hash % TOKEN_COLORS.length];
+        }
+
         function formatUnits(hexValue, decimals) {
             if (hexValue === null) return null;
             let value;
@@ -647,7 +678,9 @@
             box.replaceChildren();
             for (const token of state.tokens) {
                 const chip = el('span', 'chip');
-                chip.append(el('span', 'number', token.ticker));
+                const ticker = el('span', 'number', token.ticker);
+                ticker.style.color = tokenColor(token.ticker);
+                chip.append(ticker);
                 chip.title = `${token.name || token.ticker} · ${token.address} · ${token.decimals} decimals`;
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
@@ -678,8 +711,14 @@
                 card.dataset.address = entry.address;
 
                 const head = el('div', 'head');
-                if (entry.label) head.append(el('span', 'name', entry.label));
+                const color = accountColor(entry.address);
+                if (entry.label) {
+                    const name = el('span', 'name', entry.label);
+                    name.style.color = color;
+                    head.append(name);
+                }
                 const addr = el('span', 'addr number', shortAddr(entry.address));
+                addr.style.setProperty('--acct', color);
                 addr.title = entry.address + ' (click to copy)';
                 addr.onclick = () => {
                     navigator.clipboard?.writeText(entry.address);
@@ -699,12 +738,14 @@
 
                 const table = el('table');
                 const rows = [{ ticker: chain.ticker, key: 'native' }].concat(
-                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase() })));
+                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase(), color: tokenColor(t.ticker) })));
                 const showFiat = fiatEnabled();
                 for (const row of rows) {
                     const cached = cache.get(entry.address + '|' + row.key);
                     const tr = el('tr');
-                    tr.append(el('td', 'tick number', row.ticker));
+                    const tick = el('td', 'tick number', row.ticker);
+                    if (row.color) tick.style.color = row.color;
+                    tr.append(tick);
                     const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
                     bal.dataset.key = row.key;
                     tr.append(bal);
