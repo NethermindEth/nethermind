@@ -32,6 +32,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _expiringQueueLimit;
     private readonly int _maxRetryRequests;
     private readonly int _maxPendingResourcesPerHandler;
+    private readonly int _maxPreferredRetryResourcesPerHandlerPerTick;
     private readonly TimeProvider _timeProvider;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: 512);
@@ -88,6 +89,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _expiringQueueLimit = expiringQueueLimit;
         _maxRetryRequests = maxRetryRequests;
         _maxPendingResourcesPerHandler = maxPendingResourcesPerHandler;
+        _maxPreferredRetryResourcesPerHandlerPerTick = Math.Max(
+            1,
+            MaxRetryResourcesPerTick / Math.Max(1, maxRetryRequests));
         _timeProvider = timeProvider;
         _mainLoopTask = Task.Run(async () =>
         {
@@ -123,8 +127,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                                         continue;
                                     }
 
+                                    BatchedHandlerPreference handlerPreference = new(
+                                        batchedRetryRequests,
+                                        _maxPreferredRetryResourcesPerHandlerPerTick);
                                     if (currentEntry.Handlers.TryTake(
                                         currentEntry.Generation,
+                                        ref handlerPreference,
                                         out IMessageHandler<TMessage>? retryHandler,
                                         out _))
                                     {
@@ -367,7 +375,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (retryHandler is IBatchMessageHandler<TMessage, TResourceId> batchRetryHandler)
         {
-            batchedRetryRequests ??= [];
+            batchedRetryRequests ??= new(ReferenceEqualityComparer.Instance);
 
             if (!batchedRetryRequests.TryGetValue(batchRetryHandler, out ArrayPoolList<TResourceId>? resourceIds))
             {
@@ -476,6 +484,26 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private struct HandlerSlotReleaser(RetryCache<TMessage, TResourceId> cache) : IHandlerBagProcessor<TMessage>
     {
         public void Process(IMessageHandler<TMessage> handler) => cache.ReleaseHandlerSlot(handler);
+    }
+
+    internal readonly struct BatchedHandlerPreference(
+        Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests,
+        int maxPreferredResourcesPerHandler)
+        : IHandlerBagPreference<TMessage>
+    {
+        public HandlerPreference GetPreference(IMessageHandler<TMessage> handler)
+        {
+            if (batchedRetryRequests is null
+                || handler is not IBatchMessageHandler<TMessage, TResourceId> batchHandler
+                || !batchedRetryRequests.TryGetValue(batchHandler, out ArrayPoolList<TResourceId>? resources))
+            {
+                return HandlerPreference.Neutral;
+            }
+
+            return resources.Count < maxPreferredResourcesPerHandler
+                ? HandlerPreference.Preferred
+                : HandlerPreference.Neutral;
+        }
     }
 
     private static void DisposeBatchedRetryRequests(Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests)
@@ -595,6 +623,20 @@ internal sealed class HandlerBag<TMessage>
     /// </summary>
     public bool TryTake(long generation, out IMessageHandler<TMessage>? handler, out bool hasMoreHandlers)
     {
+        NoHandlerPreference<TMessage> preference = default;
+        return TryTake(generation, ref preference, out handler, out hasMoreHandlers);
+    }
+
+    /// <summary>
+    /// Selects one pending retry handler, preferring handlers selected for related work.
+    /// </summary>
+    public bool TryTake<TPreference>(
+        long generation,
+        ref TPreference preference,
+        out IMessageHandler<TMessage>? handler,
+        out bool hasMoreHandlers)
+        where TPreference : struct, IHandlerBagPreference<TMessage>
+    {
         lock (_lock)
         {
             handler = null;
@@ -611,7 +653,35 @@ internal sealed class HandlerBag<TMessage>
                 return false;
             }
 
-            int index = _pendingCount == 1 ? 0 : Random.Shared.Next(_pendingCount);
+            int preferredIndex = -1;
+            int preferredCount = 0;
+            int neutralIndex = -1;
+            int neutralCount = 0;
+            for (int i = 0; i < _pendingCount; i++)
+            {
+                switch (preference.GetPreference(_handlers[i]))
+                {
+                    case HandlerPreference.Preferred:
+                        if (++preferredCount == 1 || Random.Shared.Next(preferredCount) == 0)
+                        {
+                            preferredIndex = i;
+                        }
+                        break;
+                    case HandlerPreference.Neutral:
+                        if (++neutralCount == 1 || Random.Shared.Next(neutralCount) == 0)
+                        {
+                            neutralIndex = i;
+                        }
+                        break;
+                }
+            }
+
+            int index = preferredIndex >= 0
+                ? preferredIndex
+                : neutralIndex >= 0
+                    ? neutralIndex
+                    : _pendingCount == 1 ? 0 : Random.Shared.Next(_pendingCount);
+
             handler = _handlers[index];
             _pendingCount--;
             (_handlers[index], _handlers[_pendingCount]) = (_handlers[_pendingCount], _handlers[index]);
@@ -646,6 +716,22 @@ internal enum HandlerBagAddResult
 internal interface IHandlerBagProcessor<TMessage>
 {
     void Process(IMessageHandler<TMessage> handler);
+}
+
+internal interface IHandlerBagPreference<TMessage>
+{
+    HandlerPreference GetPreference(IMessageHandler<TMessage> handler);
+}
+
+internal readonly struct NoHandlerPreference<TMessage> : IHandlerBagPreference<TMessage>
+{
+    public HandlerPreference GetPreference(IMessageHandler<TMessage> handler) => HandlerPreference.Neutral;
+}
+
+internal enum HandlerPreference
+{
+    Neutral,
+    Preferred
 }
 
 internal sealed class HandlerBagPolicy<TMessage> : IPooledObjectPolicy<HandlerBag<TMessage>>

@@ -93,7 +93,7 @@ public class RetryCacheTests
         }
     }
 
-    private sealed class BatchTestHandler : TestHandler, IBatchMessageHandler<ResourceRequestMessage, ResourceId>
+    private class BatchTestHandler : TestHandler, IBatchMessageHandler<ResourceRequestMessage, ResourceId>
     {
         private readonly Lock _lock = new();
         private readonly List<int> _batchResourceValues = [];
@@ -123,6 +123,12 @@ public class RetryCacheTests
                 }
             }
         }
+    }
+
+    private sealed class ValueEqualBatchTestHandler : BatchTestHandler
+    {
+        public override bool Equals(object obj) => obj is ValueEqualBatchTestHandler;
+        public override int GetHashCode() => 0;
     }
 
     private CancellationTokenSource _cancellationTokenSource;
@@ -223,6 +229,141 @@ public class RetryCacheTests
             Assert.That(batchRequest.HandleMessageCallCount, Is.Zero);
             Assert.That(request1.WasCalled, Is.False);
             Assert.That(request3.WasCalled, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Announced_OverlappingBatchHandlers_PrefersCurrentTickBatch()
+    {
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token);
+
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            BatchTestHandler sharedHandler = new();
+            BatchTestHandler otherHandler = new();
+
+            cache.Announced(1, new TestHandler());
+            cache.Announced(1, sharedHandler);
+            cache.Announced(2, new TestHandler());
+            cache.Announced(2, sharedHandler);
+            cache.Announced(2, otherHandler);
+
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+
+            Assert.That(() => sharedHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sharedHandler.BatchResourceValues, Is.EquivalentTo(new[] { 1, 2 }));
+                Assert.That(otherHandler.HandleMessagesCallCount, Is.Zero);
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [TestCase(63, true)]
+    [TestCase(64, false)]
+    public void BatchedHandlerPreference_AtFairShare_StopsPreferring(
+        int existingResources,
+        bool shouldPrefer)
+    {
+        BatchTestHandler sharedHandler = new();
+        using ArrayPoolList<ResourceId> resources = new(existingResources);
+        for (int resourceId = 0; resourceId < existingResources; resourceId++)
+        {
+            resources.Add(resourceId);
+        }
+
+        Dictionary<IBatchMessageHandler<ResourceRequestMessage, ResourceId>, ArrayPoolList<ResourceId>> batches =
+            new(ReferenceEqualityComparer.Instance) { [sharedHandler] = resources };
+        RetryCache<ResourceRequestMessage, ResourceId>.BatchedHandlerPreference preference = new(batches, 64);
+
+        HandlerPreference expectedPreference = shouldPrefer ? HandlerPreference.Preferred : HandlerPreference.Neutral;
+        Assert.That(preference.GetPreference(sharedHandler), Is.EqualTo(expectedPreference));
+    }
+
+    [Test]
+    public async Task Announced_PreferredBatchAtFairShareWithoutAlternate_StillMakesProgress()
+    {
+        const int resourceCount = 65;
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token);
+
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            BatchTestHandler sharedHandler = new();
+
+            for (int resourceId = 1; resourceId <= resourceCount; resourceId++)
+            {
+                cache.Announced(resourceId, new TestHandler());
+                cache.Announced(resourceId, sharedHandler);
+            }
+
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+
+            Assert.That(() => sharedHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+            Assert.That(sharedHandler.BatchResourceValues, Has.Length.EqualTo(resourceCount));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_ValueEqualBatchHandlers_GroupsByReference()
+    {
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token);
+
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            ValueEqualBatchTestHandler firstHandler = new();
+            ValueEqualBatchTestHandler secondHandler = new();
+
+            cache.Announced(1, new TestHandler());
+            cache.Announced(1, firstHandler);
+            cache.Announced(2, new TestHandler());
+            cache.Announced(2, secondHandler);
+
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+
+            Assert.That(
+                () => firstHandler.HandleMessagesCallCount + secondHandler.HandleMessagesCallCount,
+                Is.EqualTo(2).After(AssertTimeoutMs, 10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstHandler.BatchResourceValues, Is.EqualTo(new[] { 1 }));
+                Assert.That(secondHandler.BatchResourceValues, Is.EqualTo(new[] { 2 }));
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
         }
     }
 
