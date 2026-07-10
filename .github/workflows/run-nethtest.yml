@@ -25,12 +25,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: latest-bal
+        default: tests-glamsterdam-devnet@v6.1.1
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.4.1
+        default: tests-zkevm@v0.5.0
         type: string
       filter:
         description: Regex filter for test names
@@ -66,12 +66,12 @@ on:
       eest_version:
         description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
         required: false
-        default: latest-bal
+        default: tests-glamsterdam-devnet@v6.1.1
         type: string
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.4.1
+        default: tests-zkevm@v0.5.0
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -89,19 +89,16 @@ env:
   TERM: xterm
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
-  # Fixture source: the next-fork (BAL) releases of ethereum/execution-specs. They ship
-  # fixtures for all forks (Frontier..Amsterdam), so a separate execution-spec-tests
-  # "current spec" run adds no extra coverage. latest-bal resolves the newest BAL
-  # release per run so new upstream tests surface immediately; client-vs-spec drift
-  # then fails CI by design. Pass an exact tag (e.g. tests-bal@v7.2.0) to pin.
+  # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
+  # fixtures for all forks (Frontier..Amsterdam) with the devnet-6 Amsterdam semantics
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v6.1.1) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
-  EEST_VERSION: ${{ inputs.eest_version || 'latest-bal' }}
-  EEST_ARCHIVE: fixtures_bal.tar.gz
+  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v6.1.1' }}
+  EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
-  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.4.1: v0.5.0
-  # changed the expected witness roots and the client currently matches v0.4.1
-  # (dispatch with zkevm_version=latest-zkevm to test against newer releases).
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.4.1' }}
+  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.5.0, which this
+  # branch's witness roots match (dispatch with zkevm_version to test other releases).
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.5.0' }}
   # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
   # (throughput-oriented, collects lazily), which previously ballooned past the
   # runner limit on the full fixture set. Workstation GC keeps the heap tight,
@@ -628,6 +625,12 @@ jobs:
             echo ""
             echo "--- recent nethtest status ---"
             tail -30 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g' || true
+            echo ""
+            echo "--- managed thread stacks (deadlock diagnostics) ---"
+            if kill -0 "$NETHTEST_PID" 2>/dev/null; then
+              dotnet tool install --global dotnet-stack >/dev/null 2>&1 || true
+              "$HOME/.dotnet/tools/dotnet-stack" report -p "$NETHTEST_PID" 2>&1 | head -600 || true
+            fi
             echo "================================"
           }
 

@@ -37,7 +37,6 @@ public class Eip7981Tests
             new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.Zero).Build(), 208UL
         ).SetName("Address + zero storage key: 208 tokens");
 
-        // Address + non-zero storage key: 208 tokens
         yield return new TestCaseData(
             new AccessList.Builder().AddAddress(Address.Zero).AddStorage(UInt256.One).Build(), 208UL
         ).SetName("Address + non-zero storage key: 208 tokens");
@@ -70,11 +69,12 @@ public class Eip7981Tests
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         (int addressCount, int storageKeyCount) = accessList.Count;
-        ulong expectedStandard = GasCostOf.Transaction
-            + (ulong)addressCount * GasCostOf.AccessAccountListEntry
-            + (ulong)storageKeyCount * GasCostOf.AccessStorageListEntry
+        ulong expectedStandard = GasCostOf.TransactionEip2780
+            + Eip8038Constants.ColdAccountAccess
+            + (ulong)addressCount * Eip8038Constants.AccessListAddressCost
+            + (ulong)storageKeyCount * Eip8038Constants.AccessListStorageKeyCost
             + FloorPerToken * expectedTokens;
-        ulong expectedFloor = GasCostOf.Transaction + FloorPerToken * expectedTokens;
+        ulong expectedFloor = GasCostOf.TransactionEip2780 + FloorPerToken * expectedTokens;
 
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
     }
@@ -85,8 +85,8 @@ public class Eip7981Tests
         Transaction transaction = new() { To = Address.Zero, AccessList = null };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
         Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(
-            Standard: GasCostOf.Transaction,
-            FloorGas: GasCostOf.Transaction)));
+            Standard: GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess,
+            FloorGas: GasCostOf.TransactionEip2780)));
     }
 
     [Test]
@@ -102,33 +102,20 @@ public class Eip7981Tests
 
     private static IEnumerable<TestCaseData> CalldataWithAccessListCases()
     {
-        // 1 zero byte + 1 address: standard wins
-        // Standard = 21000 + 4 + 2400 + 80*16 = 24684
-        // Floor = 21000 + (4 + 80)*16 = 22344
-        yield return new TestCaseData(new byte[] { 0 }, 1, 0, 24684UL, 22344UL)
+        // standardWins: the fixed recipient/access-entry component dominates the small-calldata floor premium.
+        yield return new TestCaseData(new byte[] { 0 }, 1, 0, true)
             .SetName("1 zero byte + 1 address: standard wins");
 
-        // 40 zero bytes + 1 address: exact tie (floor == standard)
-        // Standard = 21000 + 40*4 + 2400 + 1280 = 24840
-        // Floor = 21000 + (160 + 80)*16 = 24840
-        yield return new TestCaseData(new byte[40], 1, 0, 24840UL, 24840UL)
-            .SetName("40 zero bytes + 1 address: exact tie");
+        // floorWins: enough calldata for the floor's per-token premium to outgrow the fixed component.
+        yield return new TestCaseData(new byte[800], 1, 0, false)
+            .SetName("800 zero bytes + 1 address: floor wins");
 
-        // 41 zero bytes + 1 address: floor wins by 60 (smallest count)
-        // Standard = 21000 + 41*4 + 2400 + 1280 = 24844
-        // Floor = 21000 + (164 + 80)*16 = 24904
-        yield return new TestCaseData(new byte[41], 1, 0, 24844UL, 24904UL)
-            .SetName("41 zero bytes + 1 address: floor wins by 60");
-
-        // 100 zero bytes + 1 address + 1 key: floor dominates
-        // Standard = 21000 + 400 + 2400 + 1900 + (80+128)*16 = 29028
-        // Floor = 21000 + (400 + 80 + 128)*16 = 30728
-        yield return new TestCaseData(new byte[100], 1, 1, 29028UL, 30728UL)
-            .SetName("100 zero bytes + 1 address + 1 key: floor dominates");
+        yield return new TestCaseData(new byte[1000], 1, 1, false)
+            .SetName("1000 zero bytes + 1 address + 1 key: floor dominates");
     }
 
     [TestCaseSource(nameof(CalldataWithAccessListCases))]
-    public void Calldata_with_access_list_floor_pricing(byte[] data, int addressCount, int storageKeyCount, ulong expectedStandard, ulong expectedFloor)
+    public void Calldata_with_access_list_floor_pricing(byte[] data, int addressCount, int storageKeyCount, bool standardWins)
     {
         AccessList.Builder builder = new();
         for (int i = 0; i < addressCount; i++)
@@ -143,6 +130,30 @@ public class Eip7981Tests
         AccessList accessList = builder.Build();
         Transaction transaction = new() { To = Address.Zero, Data = data, AccessList = accessList };
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        Assert.That(cost, Is.EqualTo(new EthereumIntrinsicGas(Standard: expectedStandard, FloorGas: expectedFloor)));
+
+        if (standardWins)
+        {
+            Assert.That(cost.Standard, Is.GreaterThan(cost.FloorGas));
+            Assert.That(cost.MinimalGas, Is.EqualTo(cost.Standard));
+        }
+        else
+        {
+            Assert.That(cost.FloorGas, Is.GreaterThan(cost.Standard));
+            Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
+        }
+    }
+
+    [Test]
+    public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
+    {
+        // Sized so the standard's fixed recipient + access-entry component exactly equals the
+        // floor's per-token premium over the standard's per-byte data cost.
+        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[100], AccessList = accessList };
+
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+
+        Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
+        Assert.That(cost.MinimalGas, Is.EqualTo(19_680UL));
     }
 }

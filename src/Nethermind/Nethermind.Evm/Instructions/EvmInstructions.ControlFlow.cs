@@ -247,7 +247,11 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        bool outOfGas = chargesNewAccount && !(TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
+        // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
+        // charge regular first so a regular-gas OOG does not spill state gas.
+        bool outOfGas = chargesNewAccount &&
+            !((!spec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
+              && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
 
@@ -261,9 +265,9 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Special handling when SELFDESTRUCT is limited to the same transaction.
-        // No ETH moves and no log is emitted for this no-op case.
-        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
+        // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
+        if (inheritor.Equals(executingAccount) && (spec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
