@@ -323,6 +323,86 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
     }
 
+    [TestCase(1024)]
+    [TestCase(64 * 1024)]
+    [TestCase(256 * 1024)]
+    public void Shared_sibling_frame_reuse_reads_zero(int size)
+    {
+        // A frame writes a dirty pattern into the shared buffer then returns without clearing; the next
+        // sibling frame occupies the same window and must still read zero everywhere it did not write.
+        SharedEvmMemory shared = new();
+        UInt256 zero = UInt256.Zero;
+
+        EvmPooledMemory a = new();
+        a.AttachShared(shared, 0);
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(a.TrySave(in zero, pattern), Is.True);
+        a.Dispose();
+
+        EvmPooledMemory c = new();
+        c.AttachShared(shared, 0);
+        UInt256 length = (UInt256)size;
+        Assert.That(c.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "sibling frame leaked stale data");
+        c.Dispose();
+    }
+
+    [Test]
+    public void Shared_nested_frame_grows_above_parent_and_leaves_it_intact()
+    {
+        SharedEvmMemory shared = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory parent = new();
+        parent.AttachShared(shared, 0);
+        Assert.That(parent.TrySaveWord(0, word), Is.True);
+        Span<byte> parentPattern = new byte[2048];
+        parentPattern.Fill(0xaa);
+        Assert.That(parent.TrySave((UInt256)64, parentPattern), Is.True);
+
+        // Child frame is anchored just past the parent's window.
+        EvmPooledMemory child = new();
+        child.AttachShared(shared, parent.FrameFrontier);
+        UInt256 childLength = (UInt256)4096;
+        Assert.That(child.TryLoadSpan(0, in childLength, out Span<byte> childData), Is.True);
+        Assert.That(childData.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "child window must read as zero");
+        Span<byte> childPattern = new byte[4096];
+        childPattern.Fill(0xbb);
+        Assert.That(child.TrySave(0, childPattern), Is.True);
+        child.Dispose();
+
+        // The parent's data below the child's window is untouched by the child's execution.
+        Assert.That(parent.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> parentFirst), Is.True);
+        Assert.That(parentFirst.ToArray(), Is.EqualTo(word));
+        Assert.That(parent.TryLoadSpan((UInt256)64, (UInt256)2048, out Span<byte> parentMid), Is.True);
+        Assert.That(parentMid.ToArray(), Is.EqualTo(parentPattern.ToArray()));
+        parent.Dispose();
+    }
+
+    [Test]
+    public void Shared_frame_exceeding_reserve_spills_and_reads_zero()
+    {
+        // A frame anchored near the end of the reserve grows past it and must transparently spill to a
+        // private buffer while still honouring the zero-initialisation invariant.
+        SharedEvmMemory shared = new();
+        EvmPooledMemory a = new();
+        a.AttachShared(shared, SharedEvmMemory.ReserveBytes - 512);
+
+        UInt256 length = (UInt256)4096;
+        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(4096));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "spilled frame must read as zero");
+
+        Span<byte> pattern = new byte[4096];
+        pattern.Fill(0x7f);
+        Assert.That(a.TrySave(0, pattern), Is.True);
+        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> readBack), Is.True);
+        Assert.That(readBack.ToArray(), Is.EqualTo(pattern.ToArray()), "spilled frame must preserve writes");
+        a.Dispose();
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {

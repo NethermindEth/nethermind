@@ -77,6 +77,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
+#if !ZK_EVM
+    // One growable buffer shared by every call frame of this VM instance. Each thread has its own VM
+    // (scoped DI), and a whole transaction runs synchronously on one thread, so no synchronisation needed.
+    private readonly SharedEvmMemory _sharedMemory = new();
+#endif
+
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
@@ -161,6 +167,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
+#if !ZK_EVM
+        // Top-level frame anchors the shared buffer at offset 0; nested frames stack above it.
+        _currentState.Memory.AttachShared(_sharedMemory, 0);
+#endif
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -741,10 +751,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected void PrepareNextCallFrame(in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Push the current execution state onto the state stack so it can be restored later.
-        _stateStack.Push(_currentState);
+        VmState<TGasPolicy> parent = _currentState;
+        _stateStack.Push(parent);
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+#if !ZK_EVM
+        // The child's memory window starts just past the (suspended) parent's window in the shared buffer.
+        _currentState.Memory.AttachShared(_sharedMemory, parent.Memory.FrameFrontier);
+#endif
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;
