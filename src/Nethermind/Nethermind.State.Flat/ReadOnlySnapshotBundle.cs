@@ -188,6 +188,70 @@ public sealed class ReadOnlySnapshotBundle(
         return slotResult;
     }
 
+    /// <summary>
+    /// Batched <see cref="GetSlot(int, HashedKey{ValueTuple{Address, UInt256}})"/>: walks the
+    /// in-memory tiers (with per-cell self-destruct short-circuits) per cell and resolves the
+    /// persistence-tier misses in one batched read.
+    /// </summary>
+    /// <remarks>Detailed per-read metrics are skipped on this path; the batch amortizes them away.</remarks>
+    public void GetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, ReadOnlySpan<int> selfDestructIdxs, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int count = cells.Length;
+        using ArrayPoolList<int> missIdxs = new(count);
+        using ArrayPoolList<(Address, UInt256)> missCells = new(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            (Address address, UInt256 index) = cells[i];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+            int selfDestructStateIdx = selfDestructIdxs[i];
+            bool resolved = false;
+            for (int s = snapshots.Count - 1; s >= 0; s--)
+            {
+                if (snapshots[s].TryGetStorage(key, out SlotValue? slotValue))
+                {
+                    results[i] = slotValue?.ToEvmBytes();
+                    resolved = true;
+                    break;
+                }
+
+                if (_persistedSnapshotCount + s <= selfDestructStateIdx)
+                {
+                    results[i] = null;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (!resolved && _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, 0, out byte[]? persistedSlot))
+            {
+                results[i] = persistedSlot;
+                resolved = true;
+            }
+
+            if (!resolved)
+            {
+                missIdxs.Add(i);
+                missCells.Add((address, index));
+            }
+        }
+
+        if (missIdxs.Count == 0) return;
+
+        using ArrayPoolSpan<SlotValue> missValues = new(missIdxs.Count);
+        using ArrayPoolSpan<bool> missFound = new(missIdxs.Count);
+        persistenceReader.TryGetSlots(missCells.AsSpan(), missValues[..missIdxs.Count], missFound[..missIdxs.Count]);
+        for (int j = 0; j < missIdxs.Count; j++)
+        {
+            // Mirrors the single-read path: the found flag is ignored and a default SlotValue
+            // yields the same bytes a missing slot does.
+            SlotValue value = missFound[j] ? missValues[j] : default;
+            results[missIdxs[j]] = value.ToEvmBytes();
+        }
+    }
+
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 

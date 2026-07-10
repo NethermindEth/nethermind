@@ -193,6 +193,76 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    /// <summary>
+    /// Batched <see cref="GetSlot"/>: walks the in-bundle tiers (with per-cell self-destruct
+    /// short-circuits) per cell and resolves the read-only-bundle misses in one batched read.
+    /// </summary>
+    public void GetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, ReadOnlySpan<int> selfDestructIdxs, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int count = cells.Length;
+        using ArrayPoolList<int> missIdxs = new(count);
+        using ArrayPoolList<(Address, UInt256)> missCells = new(count);
+        using ArrayPoolList<int> missSelfDestructIdxs = new(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            (Address address, UInt256 index) = cells[i];
+            HashedKey<(Address, UInt256)> key = new((address, index));
+            int selfDestructStateIdx = selfDestructIdxs[i];
+
+            if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+            {
+                results[i] = slotValue?.ToEvmBytes();
+                continue;
+            }
+
+            // Self-destructed at the point of the latest change
+            if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+            {
+                results[i] = null;
+                continue;
+            }
+
+            bool resolved = false;
+            int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+            for (int s = _snapshots.Count - 1; s >= 0; s--)
+            {
+                if (_snapshots[s].TryGetStorage(key, out slotValue))
+                {
+                    results[i] = slotValue?.ToEvmBytes();
+                    resolved = true;
+                    break;
+                }
+
+                if (s <= currentBundleSelfDestructIdx)
+                {
+                    // This is the snapshot with selfdestruct
+                    results[i] = null;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (!resolved)
+            {
+                missIdxs.Add(i);
+                missCells.Add((address, index));
+                missSelfDestructIdxs.Add(selfDestructStateIdx);
+            }
+        }
+
+        if (missIdxs.Count == 0) return;
+
+        using ArrayPoolSpan<byte[]?> missResults = new(missIdxs.Count);
+        _readOnlySnapshotBundle.GetSlots(missCells.AsSpan(), missSelfDestructIdxs.AsSpan(), missResults[..missIdxs.Count]);
+        for (int j = 0; j < missIdxs.Count; j++)
+        {
+            results[missIdxs[j]] = missResults[j];
+        }
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();
