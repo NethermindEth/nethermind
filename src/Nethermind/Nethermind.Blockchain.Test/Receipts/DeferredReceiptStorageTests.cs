@@ -275,7 +275,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Writer_fault_falls_back_to_inline_execution()
+    public async Task Writer_fault_recovers_inline_then_rearms_deferral()
     {
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         int attempts = 0;
@@ -290,8 +290,15 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(attempts, Is.EqualTo(3), "the retained write recovers before later work");
-            Assert.That(ranInline, Is.True, "after recovery, later work executes inline on the producer");
+            Assert.That(ranInline, Is.True, "the write that triggers recovery executes inline behind the backlog");
         }
+
+        bool ranDeferred = false;
+        writer.Enqueue(() => ranDeferred = true);
+        Assert.That(ranDeferred, Is.False, "successful recovery must re-arm deferred mode");
+
+        writer.Pump();
+        Assert.That(ranDeferred, Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -311,6 +318,12 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         writer.Enqueue(() => order.Add(3));
 
         Assert.That(order, Is.EqualTo(new[] { 1, 1, 1, 2, 3 }));
+
+        writer.Enqueue(() => order.Add(4));
+        Assert.That(order, Is.EqualTo(new[] { 1, 1, 1, 2, 3 }), "the re-armed writer must defer later writes");
+
+        writer.Pump();
+        Assert.That(order, Is.EqualTo(new[] { 1, 1, 1, 2, 3, 4 }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -326,6 +339,33 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // The drain retries the retained write inline; the disk has recovered, so it lands and persist proceeds.
         Assert.DoesNotThrow(() => writer.Drain());
         Assert.That(attempts, Is.EqualTo(3), "retained write retried once more at drain, then succeeded");
+
+        bool ranDeferred = false;
+        writer.Enqueue(() => ranDeferred = true);
+        Assert.That(ranDeferred, Is.False, "drain recovery must re-arm deferred mode");
+
+        writer.Pump();
+        Assert.That(ranDeferred, Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Live_writer_continues_after_transient_fault_recovery()
+    {
+        await using DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance);
+        int attempts = 0;
+        writer.Enqueue(() => { if (Interlocked.Increment(ref attempts) <= 2) throw new InvalidOperationException("transient"); });
+
+        writer.Drain();
+
+        int laterWrites = 0;
+        writer.Enqueue(() => Interlocked.Increment(ref laterWrites));
+        writer.Drain();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(3));
+            Assert.That(laterWrites, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

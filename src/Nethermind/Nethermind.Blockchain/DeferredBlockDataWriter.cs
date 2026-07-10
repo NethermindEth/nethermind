@@ -13,12 +13,13 @@ namespace Nethermind.Blockchain;
 
 /// <summary>
 /// Executes block-data persistence work (receipt writes, canonical tx-index writes, block-body
-/// writes) on a single background consumer so the engine API paths do not wait on RocksDB.
+/// writes, and block-access-list writes) on a single background consumer so the engine API paths
+/// do not wait on RocksDB.
 /// </summary>
 /// <remarks>
 /// Durability is deferred, not visibility: callers publish an in-memory overlay before enqueueing.
-/// The single FIFO queue is load-bearing - a block's body write must precede its receipts write
-/// (compact-receipt sender recovery reads the body database directly).
+/// FIFO ordering is load-bearing for canonical-index last-writer-wins semantics and the relative
+/// ordering of each block's data writes, including during fault recovery.
 /// </remarks>
 public interface IDeferredBlockDataWriter : IAsyncDisposable
 {
@@ -27,8 +28,8 @@ public interface IDeferredBlockDataWriter : IAsyncDisposable
 
     /// <summary>
     /// Queues <paramref name="work"/> for background execution, or runs it inline when deferral is
-    /// disabled or the writer has faulted. Blocks the calling thread when the bounded queue is full;
-    /// this backpressure intentionally degrades to synchronous behaviour rather than growing memory.
+    /// disabled. After a fault, replays retained work inline and re-arms background execution once
+    /// recovery succeeds. Blocks when the bounded queue is full rather than growing memory.
     /// </summary>
     void Enqueue(Action work);
 
@@ -63,19 +64,16 @@ internal static class DeferredBlockDataWriterExtensions
 /// <inheritdoc cref="IDeferredBlockDataWriter"/>
 public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 {
-    private readonly Channel<IDeferredWriteOperation>? _channel;
-    private readonly Task? _consumer;
+    private readonly int _capacity;
     private readonly bool _manualPump;
     private readonly ILogger _logger;
     private readonly Lock _faultLock = new();
-    // The failed write and every operation behind it are retained in publication order for synchronous
-    // recovery. Their overlay entries stay pending until that ordered replay succeeds. Guarded by _faultLock.
-    private Queue<IDeferredWriteOperation>? _retainedWrites;
-    // Set before _faulted (whose volatile write publishes them). _unrecoverable marks a dead consumer with
-    // no retained work to retry, so Drain always aborts rather than proceeding.
+    private volatile WriterGeneration? _generation;
+    // Published before completing a faulted generation. It retains that generation's failed write and
+    // unread backlog until ordered synchronous recovery succeeds and a fresh generation is published.
+    private volatile FaultState? _faultState;
     private Exception? _faultException;
     private volatile bool _unrecoverable;
-    private volatile bool _faulted;
 
     /// <param name="enabled">When false the writer is a no-op passthrough that runs work inline.</param>
     /// <param name="capacity">Maximum queued work items before producers backpressure. Note this
@@ -93,19 +91,11 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     {
         _logger = logManager.GetClassLogger<DeferredBlockDataWriter>();
         Enabled = enabled;
+        _capacity = Math.Max(1, capacity);
         _manualPump = !startConsumer;
         if (enabled)
         {
-            _channel = Channel.CreateBounded<IDeferredWriteOperation>(new BoundedChannelOptions(Math.Max(1, capacity))
-            {
-                SingleReader = true,
-                FullMode = BoundedChannelFullMode.Wait
-            });
-
-            if (startConsumer)
-            {
-                _consumer = Task.Run(RunAsync);
-            }
+            _generation = CreateGeneration();
 
             if (persistenceBarrier is { IsEnabled: true })
             {
@@ -116,7 +106,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     public bool Enabled { get; }
 
-    internal int QueuedCount => _channel?.Reader.Count ?? 0;
+    internal int QueuedCount => _generation?.Channel.Reader.Count ?? 0;
 
     public void Enqueue(Action work)
     {
@@ -126,63 +116,72 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     internal void Enqueue(IDeferredWriteOperation work)
     {
-        if (_channel is null)
+        if (!Enabled)
         {
             work.Execute();
             return;
         }
 
-        if (_faulted)
+        while (true)
         {
-            RunInlineAfterFault(work);
-            return;
-        }
+            ThrowIfUnrecoverable();
 
-        while (!_channel.Writer.TryWrite(work))
-        {
-            if (_faulted)
+            if (_faultState is { } faultState)
             {
-                RunInlineAfterFault(work);
-                return;
+                if (TryRecoverAndRearm(faultState, work)) return;
+                continue;
             }
 
-            if (_channel.Reader.Completion.IsCompleted)
+            WriterGeneration generation = _generation!;
+            if (TryEnqueue(generation, work)) return;
+
+            // A normally completed current generation means disposal raced this enqueue. Preserve the
+            // previous fallback behaviour; a retired faulted generation instead loops into its replacement.
+            if (ReferenceEquals(generation, _generation)
+                && _faultState is null
+                && generation.Channel.Reader.Completion.IsCompleted)
             {
                 work.Execute();
-                return;
-            }
-
-            // Backpressure: block the producer so a slow disk degrades to synchronous, not unbounded memory.
-            // Channel may return an incomplete IValueTaskSource-backed ValueTask, whose GetResult does not block.
-            if (!_channel.Writer.WaitToWriteAsync().AsTask().GetAwaiter().GetResult())
-            {
-                if (_faulted)
-                {
-                    RunInlineAfterFault(work);
-                }
-                else
-                {
-                    work.Execute();
-                }
                 return;
             }
         }
     }
 
-    private void RunInlineAfterFault(IDeferredWriteOperation work)
+    private bool TryEnqueue(WriterGeneration generation, IDeferredWriteOperation work)
     {
-        if (!_manualPump)
+        while (!generation.Channel.Writer.TryWrite(work))
         {
-            // The consumer captures the unread channel backlog before completing. Waiting here keeps later
-            // producer writes behind that backlog instead of inverting canonical-index last-writer-wins order.
-            _consumer!.GetAwaiter().GetResult();
+            if (_unrecoverable
+                || _faultState is not null
+                || !ReferenceEquals(generation, _generation)
+                || generation.Channel.Reader.Completion.IsCompleted)
+            {
+                return false;
+            }
+
+            // Backpressure: block the producer so a slow disk degrades to synchronous, not unbounded memory.
+            // Channel may return an incomplete IValueTaskSource-backed ValueTask, whose GetResult does not block.
+            if (!generation.Channel.Writer.WaitToWriteAsync().AsTask().GetAwaiter().GetResult()) return false;
         }
+
+        return true;
+    }
+
+    private bool TryRecoverAndRearm(FaultState observed, IDeferredWriteOperation? work = null)
+    {
+        // Producers may have observed an old fault while another producer re-armed the writer. Waiting on the
+        // fault-owned completion, rather than the mutable current consumer, cannot accidentally await its replacement.
+        observed.ConsumerStopped.Task.GetAwaiter().GetResult();
 
         lock (_faultLock)
         {
+            if (!ReferenceEquals(observed, _faultState)) return false;
+
             ThrowIfUnrecoverable();
-            (_retainedWrites ??= new()).Enqueue(work);
-            RecoverOrThrowUnderLock();
+            if (work is not null) observed.RetainedWrites.Enqueue(work);
+            RecoverOrThrowUnderLock(observed);
+            RearmUnderLock(observed);
+            return true;
         }
     }
 
@@ -195,11 +194,12 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
     internal void Pump()
     {
         if (!_manualPump) throw new InvalidOperationException("Pump is only usable when the consumer task is not running.");
-        while (_channel is not null && _channel.Reader.TryRead(out IDeferredWriteOperation? work))
+        WriterGeneration? generation = _generation;
+        while (generation is not null && generation.Channel.Reader.TryRead(out IDeferredWriteOperation? work))
         {
-            if (!Run(work))
+            if (!Run(generation, work))
             {
-                RetainBufferedWrites();
+                RetainBufferedWrites(_faultState!);
                 return;
             }
         }
@@ -207,41 +207,42 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
     public void Drain()
     {
-        if (_channel is null) return;          // disabled: work ran inline, nothing is queued
-        if (_manualPump) { Pump(); RecoverOrThrow(); return; }   // no background consumer (tests)
+        if (!Enabled) return; // disabled: work ran inline, nothing is queued
 
-        if (!_faulted)
+        if (_manualPump)
         {
-            // Fence: a queued marker proves every earlier queued write has executed. Wait on the marker OR
-            // consumer termination, so a stopped consumer aborts here instead of freezing this thread.
+            Pump();
+            while (_faultState is { } faultState)
+            {
+                if (TryRecoverAndRearm(faultState)) return;
+            }
+            return;
+        }
+
+        while (true)
+        {
+            ThrowIfUnrecoverable();
+            if (_faultState is { } faultState)
+            {
+                if (TryRecoverAndRearm(faultState)) return;
+                continue;
+            }
+
+            WriterGeneration generation = _generation!;
             TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            Enqueue(drained.SetResult);
-            Task.WhenAny(drained.Task, _consumer!).GetAwaiter().GetResult();
-            if (drained.Task.IsCompleted && !_faulted) return;   // clean: all writes ran, none failed
-        }
+            if (!TryEnqueue(generation, new ActionOperation(drained.SetResult))) continue;
 
-        // A write failed hard: the fault completed the channel, so the consumer retained the failed write and
-        // unread backlog in FIFO order. Wait for it, then replay that queue inline; a still-failing write aborts
-        // the persist rather than letting state outlive lost block data.
-        _consumer!.GetAwaiter().GetResult();
-        RecoverOrThrow();
-    }
-
-    private void RecoverOrThrow()
-    {
-        if (!_faulted) return;
-
-        ThrowIfUnrecoverable();
-
-        lock (_faultLock)
-        {
-            RecoverOrThrowUnderLock();
+            // A marker proves every earlier write in this generation executed. Consumer termination wins the
+            // race on a fault, in which case the loop recovers the retained marker with the rest of the backlog.
+            Task.WhenAny(drained.Task, generation.Consumer!).GetAwaiter().GetResult();
+            if (drained.Task.IsCompleted) return;
         }
     }
 
-    private void RecoverOrThrowUnderLock()
+    private void RecoverOrThrowUnderLock(FaultState faultState)
     {
-        while (_retainedWrites is { Count: > 0 } retained)
+        Queue<IDeferredWriteOperation> retained = faultState.RetainedWrites;
+        while (retained.Count > 0)
         {
             IDeferredWriteOperation work = retained.Peek();
             try
@@ -256,8 +257,18 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
             retained.Dequeue();
         }
+    }
 
-        _retainedWrites = null;
+    private void RearmUnderLock(FaultState recovered)
+    {
+        if (!ReferenceEquals(recovered, _faultState)) return;
+
+        // Publish the replacement before clearing the fault. A producer that observed the old fault either
+        // joins its ordered replay under _faultLock or retries against this fully initialized generation.
+        _generation = CreateGeneration();
+        _faultException = null;
+        _faultState = null;
+        if (_logger.IsInfo) _logger.Info("Deferred block-data writer recovered; background persistence resumed.");
     }
 
     private void ThrowIfUnrecoverable()
@@ -268,27 +279,42 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
         }
     }
 
-    private async Task RunAsync()
+    private WriterGeneration CreateGeneration()
+    {
+        Channel<IDeferredWriteOperation> channel = Channel.CreateBounded<IDeferredWriteOperation>(new BoundedChannelOptions(_capacity)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
+        WriterGeneration generation = new(channel);
+        if (!_manualPump)
+        {
+            generation.Consumer = Task.Run(() => RunAsync(generation));
+        }
+        return generation;
+    }
+
+    private async Task RunAsync(WriterGeneration generation)
     {
         try
         {
-            await foreach (IDeferredWriteOperation work in _channel!.Reader.ReadAllAsync().ConfigureAwait(false))
+            await foreach (IDeferredWriteOperation work in generation.Channel.Reader.ReadAllAsync().ConfigureAwait(false))
             {
-                if (!Run(work))
+                if (!Run(generation, work))
                 {
-                    RetainBufferedWrites();
+                    RetainBufferedWrites(_faultState!);
                     return;
                 }
             }
         }
         catch (Exception e)
         {
-            // Never exit silently: fault so Enqueue/Drain fall back inline instead of hanging on a lost marker.
-            Fault(e);
+            // Never exit silently: make producers and Drain fail rather than hanging on a lost marker.
+            Fault(generation, e);
         }
     }
 
-    private bool Run(IDeferredWriteOperation work)
+    private bool Run(WriterGeneration generation, IDeferredWriteOperation work)
     {
         try
         {
@@ -305,59 +331,80 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             }
             catch (Exception secondException)
             {
-                RetainFailure(work, secondException);
+                RetainFailure(generation, work, secondException);
                 return false;
             }
         }
     }
 
     // Stop at the first hard failure; executing later buffered writes first would invert canonical-index updates.
-    private void RetainFailure(IDeferredWriteOperation work, Exception exception)
+    private void RetainFailure(WriterGeneration generation, IDeferredWriteOperation work, Exception exception)
     {
         lock (_faultLock)
         {
-            (_retainedWrites ??= new()).Enqueue(work);
+            FaultState faultState = new(generation);
+            faultState.RetainedWrites.Enqueue(work);
+            _faultException = exception;
+            _faultState = faultState;
         }
-        _faultException = exception;
-        _faulted = true; // volatile write publishes the retained write and flips Enqueue inline
-        _channel?.Writer.TryComplete();
+        generation.Channel.Writer.TryComplete();
         if (_logger.IsError) _logger.Error("Deferred block-data write failed; preserving queued order for inline recovery.", exception);
     }
 
-    private void RetainBufferedWrites()
+    private void RetainBufferedWrites(FaultState faultState)
     {
-        lock (_faultLock)
+        try
         {
-            Queue<IDeferredWriteOperation> retained = _retainedWrites ??= new();
-            while (_channel!.Reader.TryRead(out IDeferredWriteOperation? work))
+            lock (_faultLock)
             {
-                retained.Enqueue(work);
+                while (faultState.Generation.Channel.Reader.TryRead(out IDeferredWriteOperation? work))
+                {
+                    faultState.RetainedWrites.Enqueue(work);
+                }
             }
+        }
+        finally
+        {
+            faultState.ConsumerStopped.TrySetResult();
         }
     }
 
     // The consumer loop itself died (not a single write) - nothing to retry, so persistence must abort.
-    private void Fault(Exception exception)
+    private void Fault(WriterGeneration generation, Exception exception)
     {
         _faultException = exception;
-        _unrecoverable = true;
-        _faulted = true; // volatile write publishes _faultException
-        if (_logger.IsError) _logger.Error("Deferred block-data consumer stopped unexpectedly; falling back to synchronous persistence.", exception);
+        _unrecoverable = true; // volatile write publishes _faultException
+        generation.Channel.Writer.TryComplete(exception);
+        if (_logger.IsError) _logger.Error("Deferred block-data consumer stopped unexpectedly; aborting persistence.", exception);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_channel is null) return;
+        WriterGeneration? generation = _generation;
+        if (generation is null) return;
 
-        _channel.Writer.TryComplete();
-        if (_consumer is not null)
+        generation.Channel.Writer.TryComplete();
+        if (generation.Consumer is not null)
         {
-            await _consumer.ConfigureAwait(false);
+            await generation.Consumer.ConfigureAwait(false);
         }
         else
         {
             Pump();
         }
+    }
+
+    private sealed class WriterGeneration(Channel<IDeferredWriteOperation> channel)
+    {
+        public Channel<IDeferredWriteOperation> Channel { get; } = channel;
+        public Task? Consumer { get; set; }
+    }
+
+    private sealed class FaultState(WriterGeneration generation)
+    {
+        public WriterGeneration Generation { get; } = generation;
+        public Queue<IDeferredWriteOperation> RetainedWrites { get; } = new();
+        public TaskCompletionSource ConsumerStopped { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private sealed class ActionOperation(Action action) : IDeferredWriteOperation
