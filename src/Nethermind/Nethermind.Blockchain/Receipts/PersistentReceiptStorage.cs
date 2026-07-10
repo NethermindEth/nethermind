@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -36,6 +37,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
@@ -91,7 +93,8 @@ namespace Nethermind.Blockchain.Receipts
             IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null,
             IDeferredBlockDataWriter? deferredWriter = null,
-            IStatePersistenceBarrier? persistenceBarrier = null)
+            IStatePersistenceBarrier? persistenceBarrier = null,
+            ILogManager? logManager = null)
         {
             _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
@@ -106,6 +109,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
+            _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PersistentReceiptStorage>();
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
 
@@ -194,9 +198,10 @@ namespace Nethermind.Blockchain.Receipts
             using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
             IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
             EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch);
-            if (hasOldBlock)
+            if (hasOldBlock && !TryRemoveBlockTx(ref oldBlock, transactionBatch))
             {
-                RemoveBlockTx(ref oldBlock, transactionBatch);
+                // RemoveBlockTx clears the shared batch on failure, so restore the durability-critical insert.
+                EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch);
             }
         }
 
@@ -207,7 +212,7 @@ namespace Nethermind.Blockchain.Receipts
             try
             {
                 using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-                RemoveBlockTx(ref oldBlock, writeBatch);
+                TryRemoveBlockTx(ref oldBlock, writeBatch);
             }
             finally
             {
@@ -223,7 +228,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
                 IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
-                RemoveBlockTx(ref oldBlock, transactionBatch);
+                TryRemoveBlockTx(ref oldBlock, transactionBatch);
             }
             finally
             {
@@ -243,11 +248,43 @@ namespace Nethermind.Blockchain.Receipts
             Hash256? oldBlockHash = _blockTree.FindBlockHash(oldBlockNumber);
             if (oldBlockHash is null) return false;
 
-            ReceiptRecoveryBlock? candidate = _blockStore.GetReceiptRecoveryBlock(oldBlockNumber, oldBlockHash);
+            ReceiptRecoveryBlock? candidate;
+            try
+            {
+                candidate = _blockStore.GetReceiptRecoveryBlock(oldBlockNumber, oldBlockHash);
+            }
+            catch (RlpException exception)
+            {
+                WarnMalformedTxIndexPrune(oldBlockNumber, exception);
+                return false;
+            }
+
             if (candidate is not { } block) return false;
 
             oldBlock = block;
             return true;
+        }
+
+        private bool TryRemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch)
+        {
+            try
+            {
+                RemoveBlockTx(ref block, writeBatch);
+                return true;
+            }
+            catch (RlpException exception)
+            {
+                WarnMalformedTxIndexPrune(block.Number, exception);
+                return false;
+            }
+        }
+
+        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpException exception)
+        {
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"Skipping transaction-index pruning for block {blockNumber} because its body RLP is malformed: {exception.Message}");
+            }
         }
 
         /// <summary>Mirrors the skip conditions of <see cref="EnsureCanonical(Block, ulong?)"/>.</summary>

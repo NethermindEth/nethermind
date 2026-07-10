@@ -96,7 +96,6 @@ public class BlockStore : IBlockStore, IClearableCache
         // Runs on the deferred-writer consumer: encode here, off the processing path.
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
         _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
-        block.EncodedTransactions = null;
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -177,7 +176,19 @@ public class BlockStore : IBlockStore, IClearableCache
         memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
-        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+        ReceiptRecoveryBlock? block;
+        try
+        {
+            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+        }
+        catch
+        {
+            ((IMemoryOwner<byte>)memoryOwner).Dispose();
+            throw;
+        }
+
+        if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
+        return block;
     }
 
     public void Cache(Block block)

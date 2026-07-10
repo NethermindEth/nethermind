@@ -143,7 +143,7 @@ public class DeferredBlockStoreTests
     }
 
     [Test]
-    public void Deferred_insert_with_pre_encoded_transactions_is_byte_identical_to_from_scratch()
+    public void Deferred_insert_with_pre_encoded_transactions_is_byte_identical_and_does_not_mutate_snapshot()
     {
         Transaction[] txs =
         [
@@ -156,12 +156,18 @@ public class DeferredBlockStoreTests
 
         // Mirror the newPayload path: the block arrives with pre-encoded transactions the snapshot must carry
         // through the deferred write without changing the persisted bytes.
-        block.EncodedTransactions = Array.ConvertAll(txs, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        byte[][] encodedTransactions = Array.ConvertAll(txs, static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+        block.EncodedTransactions = encodedTransactions;
 
         _store.InsertDeferred(block);
+        Block? pending = _store.Get(block.Number, block.Hash!);
         _writer.Pump();
 
-        Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(fromScratch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(fromScratch));
+            Assert.That(pending!.EncodedTransactions, Is.SameAs(encodedTransactions), "the shared snapshot must remain immutable");
+        }
     }
 
     [Test]

@@ -39,6 +39,8 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     private StatePersistenceBarrier _barrier = null!;
     private DeferredBlockDataWriter _writer = null!;
     private PersistentReceiptStorage _storage = null!;
+    private ILogManager _logManager = null!;
+    private InterfaceLogger _logger = null!;
 
     [SetUp]
     public void SetUp()
@@ -52,6 +54,11 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         _barrier = new StatePersistenceBarrier();
         _writer = DeferredWriteTestHelpers.ManualWriter(_barrier);
+        _logger = Substitute.For<InterfaceLogger>();
+        _logger.IsWarn.Returns(true);
+        ILogger logger = new(_logger);
+        _logManager = Substitute.For<ILogManager>();
+        _logManager.GetClassLogger<PersistentReceiptStorage>().Returns(logger);
         _storage = CreateStorage(_writer, _barrier);
     }
 
@@ -63,7 +70,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     private PersistentReceiptStorage CreateStorage(DeferredBlockDataWriter? writer, IStatePersistenceBarrier? barrier = null) =>
-        new(_receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder, writer, barrier)
+        new(_receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder, writer, barrier, _logManager)
         { MigratedBlockNumber = 0 };
 
     // Receipts as read by a fresh store over the same database - durable state independent of any overlay.
@@ -160,8 +167,8 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
 
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Malformed_prune_data_does_not_partially_commit_canonical_batch()
+    [TestCase(false), TestCase(true), MaxTime(Timeout.MaxTestTime)]
+    public void Malformed_prune_data_is_skipped_without_blocking_canonical_batch(bool throwsDuringLoad)
     {
         _receiptConfig.TxLookupLimit = 1;
         Transaction oldTransaction = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
@@ -173,8 +180,15 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         transactionDb.Set(oldTransaction.Hash!.Bytes, oldBlock.Hash!.BytesToArray());
         _blockTree.FindBestSuggestedHeader().Returns(newBlock.Header);
         _blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
-        _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(
-            new ReceiptRecoveryBlock(null, oldBlock.Header, new byte[] { 0x80 }, transactionCount: 1));
+        if (throwsDuringLoad)
+        {
+            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(_ => throw new RlpException("malformed block"));
+        }
+        else
+        {
+            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(
+                new ReceiptRecoveryBlock(null, oldBlock.Header, new byte[] { 0x80 }, transactionCount: 1));
+        }
 
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newBlock));
         _writer.Pump();
@@ -182,7 +196,9 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transactionDb[oldTransaction.Hash.Bytes], Is.EqualTo(oldBlock.Hash.BytesToArray()), "existing index preserved");
-            Assert.That(transactionDb[newTransaction.Hash!.Bytes], Is.Null, "new index not partially committed");
+            Assert.That(transactionDb[newTransaction.Hash!.Bytes], Is.Not.Null, "new index committed despite malformed prune data");
+            Assert.That(_receiptsDb.WriteBatchCount, Is.EqualTo(1), "canonical insert commits in one batch");
+            _logger.Received(1).Warn(Arg.Is<string>(message => message.Contains(oldBlock.Number.ToString())));
         }
     }
 
