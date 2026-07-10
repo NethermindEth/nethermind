@@ -29,18 +29,17 @@ public class SnapshotCompactor(
 
     public bool DoCompactSnapshot(in StateId stateId)
     {
-        if (_snapshotRepository.TryLeaseState(stateId, out Snapshot? snapshot))
+        if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
-            using Snapshot _ = snapshot; // dispose
+            using Snapshot _ = snapshot;
 
-            // Actually do the compaction
             long sw = Stopwatch.GetTimestamp();
             using SnapshotPooledList snapshots = GetSnapshotsToCompact(snapshot);
 
             if (snapshots.Count != 0)
             {
                 Snapshot compactedSnapshot = CompactSnapshotBundle(snapshots);
-                if (_snapshotRepository.TryAddCompactedSnapshot(compactedSnapshot))
+                if (_snapshotRepository.TryAdd(compactedSnapshot, SnapshotTier.InMemoryCompacted))
                 {
                     Metrics.CompactTime.Observe(Stopwatch.GetTimestamp() - sw);
 
@@ -67,17 +66,19 @@ public class SnapshotCompactor(
 
         if (!isFullCompaction)
         {
-            // Save memory by removing the compacted state from previous compaction.
+            // Save memory by removing the compacted state from previous compaction
             foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
             {
-                if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
+                if (_snapshotRepository.RemoveAndReleaseInMemoryKnownState(id, SnapshotTier.InMemoryCompacted))
                 {
                 }
             }
         }
 
+        // blockNumber < compactSize wraps startingBlockNumber below genesis; the assembly policy's
+        // signed-height comparison reads it back as the intended "below genesis" bound.
         ulong startingBlockNumber = blockNumber - compactSize;
-        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, (int)compactSize);
+        SnapshotPooledList snapshots = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(snapshot.To, startingBlockNumber, (int)compactSize);
 
         bool snapshotsOk = false;
         try

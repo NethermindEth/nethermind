@@ -31,6 +31,15 @@ public interface IWorldStateScopeProvider
         void UpdateRootHash();
 
         /// <summary>
+        /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
+        /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
+        /// </summary>
+        void HintWarmAccount(in ValueAddress address) { }
+
+        /// <inheritdoc cref="HintWarmAccount"/>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>
@@ -165,13 +174,6 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index, byte[]? value);
-
-        /// <summary>
-        /// Used by JS tracer. May not work on some database layout.
-        /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

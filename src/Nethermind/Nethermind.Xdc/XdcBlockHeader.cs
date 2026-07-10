@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -90,6 +91,8 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
+    internal BlockReward[]? ProcessedRewards { get; set; }
+
     public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
@@ -155,6 +158,7 @@ public class XdcBlockHeader(
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
     }
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
