@@ -185,6 +185,21 @@
 
         #tokens { margin-top: 12px; }
 
+        label.toggle {
+            margin-left: auto;
+            color: var(--muted);
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        label.toggle input { accent-color: var(--accent); cursor: pointer; }
+
+        body.hideZero tr.zero { display: none; }
+
         .chip {
             display: inline-flex;
             align-items: center;
@@ -328,6 +343,7 @@
         <div class="row" id="addAddress">
             <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
             <button id="addAddrBtn" title="Pin address">+</button>
+            <label class="toggle"><input type="checkbox" id="hideZero" /> hide zero balances</label>
         </div>
         <div class="row" id="tokenForm">
             <select id="tokKind" title="Asset type">
@@ -1069,6 +1085,7 @@
                 for (const row of rows) {
                     const cached = cache.get(entry.address + '|' + row.key);
                     const tr = el('tr');
+                    if (cached?.bal === '0') tr.classList.add('zero');
                     const tick = el('td', 'tick number', row.ticker);
                     if (row.color) tick.style.setProperty('--tcol', row.color);
                     if (row.contract) {
@@ -1091,6 +1108,7 @@
                     const colKey = collection.address.toLowerCase();
                     const cached = cache.get(entry.address + '|nft:' + colKey);
                     const tr = el('tr');
+                    if (cached?.bal === '0') tr.classList.add('zero');
                     const tick = el('td', 'tick number copyable', collection.ticker);
                     tick.style.setProperty('--tcol', tokenColor(collection.ticker));
                     tick.title = collection.address + ' (click to copy)';
@@ -1103,6 +1121,7 @@
                     table.append(tr);
 
                     const thumbsTr = el('tr');
+                    if (cached?.bal === '0') thumbsTr.classList.add('zero');
                     const thumbsTd = el('td');
                     thumbsTd.colSpan = showFiat ? 3 : 2;
                     const thumbs = el('div', 'thumbs');
@@ -1190,7 +1209,15 @@
                         cache.set(entry.address + '|' + asset.key, { bal: balText, fiat: fiatText, value8 });
 
                         const balCell = card?.querySelector(`td[data-key="${asset.key}"]`);
-                        if (balCell) { balCell.textContent = balText ?? '—'; balCell.classList.remove('spin'); }
+                        if (balCell) {
+                            balCell.textContent = balText ?? '—';
+                            balCell.classList.remove('spin');
+                            balCell.parentElement.classList.toggle('zero', balText === '0');
+                            if (asset.isNft) {
+                                const thumbsRow = card?.querySelector(`[data-thumbs="${entry.address}|${asset.key.slice(4)}"]`)?.closest('tr');
+                                thumbsRow?.classList.toggle('zero', balText === '0');
+                            }
+                        }
                         const fiatCell = card?.querySelector(`td[data-fiatkey="${asset.key}"]`);
                         if (fiatCell) fiatCell.textContent = fiatText;
                     }
@@ -1300,6 +1327,15 @@
             $('addTokBtn').onclick = addToken;
             $('tokAddr').onchange = () => prefillTokenMeta().catch(() => { });
             $('tokKind').onchange = () => { $('tokDecimals').style.display = $('tokKind').value === 'nft' ? 'none' : ''; };
+
+            const HIDE_ZERO_KEY = 'nethermind.balances.hidezero';
+            const hideZero = $('hideZero');
+            hideZero.checked = localStorage.getItem(HIDE_ZERO_KEY) === '1';
+            document.body.classList.toggle('hideZero', hideZero.checked);
+            hideZero.onchange = () => {
+                localStorage.setItem(HIDE_ZERO_KEY, hideZero.checked ? '1' : '0');
+                document.body.classList.toggle('hideZero', hideZero.checked);
+            };
 
             try {
                 const id = Number(BigInt(await rpc('eth_chainId', [])));
