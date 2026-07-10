@@ -27,25 +27,17 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IFullStateFinder _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
 
         public ulong FindBestFullState() => _fullStateFinder.FindBestFullState();
-        public ulong FindBestHeader() => Math.Max(
-            _blockTree.Head?.Number ?? 0UL,
-            _blockTree.BestSuggestedHeader?.Number ?? 0UL);
-        public ulong FindBestFullBlock() => Math.Max(
-            _blockTree.Head?.Number ?? 0UL,
-            Math.Min(
-                _blockTree.BestSuggestedHeader?.Number ?? 0UL,
-                _blockTree.BestSuggestedBody?.Number ?? 0UL)); // avoiding any potential concurrency issue
+        public ulong FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? _blockTree.Head?.Number ?? 0UL;
+        public ulong FindBestFullBlock()
+        {
+            ulong headNumber = _blockTree.Head?.Number ?? 0UL;
+            return Math.Min(
+                _blockTree.BestSuggestedHeader?.Number ?? headNumber,
+                _blockTree.BestSuggestedBody?.Number ?? headNumber); // header and body suggestions advance independently
+        }
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
         public ulong FindBestProcessedBlock() => _blockTree.Head?.Number ?? ulong.MaxValue;
-        public UInt256 ChainDifficulty
-        {
-            get
-            {
-                UInt256 headDifficulty = _blockTree.Head?.TotalDifficulty ?? UInt256.Zero;
-                UInt256 bestSuggestedBodyDifficulty = _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
-                return headDifficulty.CompareTo(bestSuggestedBodyDifficulty) > 0 ? headDifficulty : bestSuggestedBodyDifficulty;
-            }
-        }
+        public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? _blockTree.Head?.TotalDifficulty ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
         {

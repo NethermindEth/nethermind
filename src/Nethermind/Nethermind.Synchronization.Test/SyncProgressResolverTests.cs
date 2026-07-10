@@ -80,15 +80,21 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Chain_difficulty_uses_head_when_suggested_block_is_behind_head()
+        public void Suggested_pointers_behind_head_are_not_hidden()
         {
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
             Block head = Build.A.Block.WithNumber(5).WithTotalDifficulty((UInt256)10).TestObject;
-            Block suggested = Build.A.Block.WithNumber(0).WithTotalDifficulty(UInt256.One).TestObject;
+            Block suggested = Build.A.Block.WithNumber(4).WithTotalDifficulty(UInt256.One).TestObject;
             _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.Returns(suggested.Header);
             _blockTree.BestSuggestedBody.Returns(suggested);
 
-            Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(head.TotalDifficulty));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(suggested.TotalDifficulty));
+            }
         }
 
         [Test]
