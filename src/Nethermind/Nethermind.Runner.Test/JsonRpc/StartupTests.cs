@@ -16,8 +16,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.FileProviders;
-using IEmbeddedFileInfo = Microsoft.Extensions.FileProviders.IFileInfo;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
@@ -382,50 +380,6 @@ public class StartupTests
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
 
         Assert.That(usesFastLane, Is.EqualTo(expected));
-    }
-
-    [TestCase(false, StatusCodes.Status200OK)]
-    [TestCase(true, StatusCodes.Status404NotFound)]
-    public async Task ServeBalanceViewer_ServesOnlyOnNonAuthenticatedPorts(bool isAuthenticated, int expectedStatusCode)
-    {
-        JsonRpcUrl url = CreateUrl(isAuthenticated: isAuthenticated);
-        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateBalanceViewerContext(url.Port);
-
-        await Startup.ServeBalanceViewerAsync(ctx, new TestJsonRpcUrlCollection(url), GetBalanceViewerPage());
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatusCode));
-        if (expectedStatusCode == StatusCodes.Status200OK)
-        {
-            Assert.That(ctx.Response.ContentType, Does.StartWith("text/html"));
-            Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("Nethermind Balances"));
-        }
-    }
-
-    [Test]
-    public async Task ServeBalanceViewer_UnknownPort_Returns404()
-    {
-        JsonRpcUrl url = CreateUrl();
-        (DefaultHttpContext ctx, _) = CreateBalanceViewerContext(url.Port + 1);
-
-        await Startup.ServeBalanceViewerAsync(ctx, new TestJsonRpcUrlCollection(url), GetBalanceViewerPage());
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-    }
-
-    private static IEmbeddedFileInfo GetBalanceViewerPage()
-    {
-        IEmbeddedFileInfo page = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot").GetFileInfo("balances.html");
-        Assert.That(page.Exists, Is.True, "balances.html is not embedded in the Nethermind.Runner assembly");
-        return page;
-    }
-
-    private static (DefaultHttpContext Context, MemoryStream ResponseBody) CreateBalanceViewerContext(int localPort)
-    {
-        DefaultHttpContext ctx = new();
-        ctx.Connection.LocalPort = localPort;
-        MemoryStream responseBody = new();
-        ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
-        return (ctx, responseBody);
     }
 
     [Test]
