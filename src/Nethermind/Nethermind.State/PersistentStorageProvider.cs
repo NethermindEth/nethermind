@@ -29,6 +29,8 @@ namespace Nethermind.State;
 internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)
 {
+    private const int ParallelStorageRootThreshold = 3;
+
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
@@ -297,6 +299,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             (int writes, int skipped) = contractState.ProcessStorageChanges(
                 writeBatch.CreateStorageWriteBatch(kvp.Key, contractState.EstimatedChanges));
+
+            ReportMetrics(writes, skipped);
+        }
+    }
+
+    private void UpdateRootHashesSingleThread(
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+        ReadOnlySpan<AddressAsKey> keys)
+    {
+        foreach (AddressAsKey key in keys)
+        {
+            if (!_storages.TryGetValue(key, out PerContractState contractState))
+            {
+                Debug.Fail($"Storage root marked changed for {key} but no contract state is present");
+                continue;
+            }
+
+            (int writes, int skipped) = contractState.ProcessStorageChanges(
+                writeBatch.CreateStorageWriteBatch(key, contractState.EstimatedChanges));
 
             ReportMetrics(writes, skipped);
         }

@@ -16,7 +16,7 @@ internal sealed partial class PersistentStorageProvider
 {
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
-        if (_toUpdateRoots.Count >= 3)
+        if (_toUpdateRoots.Count >= ParallelStorageRootThreshold)
             UpdateRootHashesMultiThread(writeBatch);
         else
             UpdateRootHashesSingleThread(writeBatch);
@@ -79,6 +79,16 @@ internal sealed partial class PersistentStorageProvider
     }
 
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ArrayPoolList<AddressAsKey> keys)
+    {
+        if (keys.Count >= ParallelStorageRootThreshold)
+            UpdateRootHashesMultiThread(writeBatch, keys);
+        else
+            UpdateRootHashesSingleThread(writeBatch, keys.AsSpan());
+    }
+
+    private void UpdateRootHashesMultiThread(
+        IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
+        ArrayPoolList<AddressAsKey> keys)
     {
         using ArrayPoolList<(
             AddressAsKey Key, PerContractState ContractState,
