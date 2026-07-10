@@ -39,7 +39,7 @@
           {
             "MaxMasternodes": 25,
             "MaxProtectorNodes": 3,
-            "MaxObverserNodes": 2,
+            "MaxObserverNodes": 2,
             "SwitchRound": 27360000,
             "CertificateThreshold": 0.667,
             "TimeoutSyncThreshold": 3,
