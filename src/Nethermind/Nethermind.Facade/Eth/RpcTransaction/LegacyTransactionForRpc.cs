@@ -14,7 +14,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
+public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
 {
     public static TxType TxType => TxType.Legacy;
 

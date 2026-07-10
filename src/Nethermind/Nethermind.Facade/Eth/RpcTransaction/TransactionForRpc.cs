@@ -191,9 +191,7 @@ public abstract class TransactionForRpc
 
             Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
 
-            // Strip the LegacyTransactionForRpc-rooted converter so deserializing the exact
-            // LegacyTransactionForRpc concrete type doesn't dispatch back into it.
-            TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, LegacyTransactionJsonConverter.WithoutSelf(options));
+            TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
@@ -234,7 +232,7 @@ public abstract class TransactionForRpc
             return typeof(EIP1559TransactionForRpc);
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), LegacyTransactionJsonConverter.WithoutSelf(options));
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
 
         public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");

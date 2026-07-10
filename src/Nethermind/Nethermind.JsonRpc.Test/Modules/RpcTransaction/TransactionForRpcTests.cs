@@ -55,12 +55,12 @@ public class TransactionForRpcTests
     [TestCase("""{"type":"0x0","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
     [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
     [TestCase("""{"blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
-    public void Deserializes_polymorphically_when_declared_as_LegacyTransactionForRpc(string json, Type expectedType)
+    public void Deserializes_polymorphically_when_declared_as_SignableTransactionForRpc(string json, Type expectedType)
     {
-        LegacyTransactionForRpc tx = _serializer.Deserialize<LegacyTransactionForRpc>(json);
+        SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json);
 
         Assert.That(tx, Is.TypeOf(expectedType),
-            "input parameters declared as LegacyTransactionForRpc must still dispatch to the concrete tx type");
+            "input parameters declared as SignableTransactionForRpc must still dispatch to the concrete tx type");
     }
 
     [TestCaseSource(nameof(Transactions))]
