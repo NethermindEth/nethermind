@@ -28,7 +28,7 @@ internal class XdcBlockhashStoreTests
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         ReleaseSpec spec = Eip2935Spec;
-        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject; ;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
         XdcBlockhashStore store = new(worldState);
         store.ApplyBlockhashStateChanges(header, spec);
@@ -47,7 +47,7 @@ internal class XdcBlockhashStoreTests
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         ReleaseSpec spec = Eip2935Spec;
-        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject; ;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
         XdcBlockhashStore store = new(worldState);
         store.ApplyBlockhashStateChanges(header, spec);
@@ -68,7 +68,7 @@ internal class XdcBlockhashStoreTests
         worldState.InsertCode(Eip2935Account, ValueKeccak.Compute(Eip2935Constants.Code), Eip2935Constants.Code, spec);
         worldState.Commit(spec);
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject; ;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
         XdcBlockhashStore store = new(worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
@@ -92,7 +92,7 @@ internal class XdcBlockhashStoreTests
         worldState.InsertCode(Eip2935Account, ValueKeccak.Compute(wrongCode), wrongCode, spec);
         worldState.Commit(spec);
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject; ;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
         XdcBlockhashStore store = new(worldState);
 
         Assert.Throws<InvalidOperationException>(() => store.ApplyBlockhashStateChanges(header, spec));
@@ -118,7 +118,7 @@ internal class XdcBlockhashStoreTests
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         ReleaseSpec spec = new() { IsEip2935Enabled = false };
-        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject; ;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
 
         XdcBlockhashStore store = new(worldState);
         store.ApplyBlockhashStateChanges(header, spec);

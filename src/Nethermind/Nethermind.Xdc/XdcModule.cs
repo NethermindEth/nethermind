@@ -68,7 +68,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
-            .AddSingleton<IBlockhashStore, XdcBlockhashStore>()
+            .AddScoped<IBlockhashStore, XdcBlockhashStore>()
 
             // Sys contracts
             //TODO this might not be wired correctly
