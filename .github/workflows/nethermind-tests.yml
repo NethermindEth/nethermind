@@ -40,7 +40,6 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-          - windows-latest
         project:
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
@@ -92,7 +91,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
-        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
+        include: # macOS and windows-latest run only the OS-sensitive subset (I/O, networking, sockets); the full suite runs on Linux (x64 + arm64)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
@@ -110,6 +109,19 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
