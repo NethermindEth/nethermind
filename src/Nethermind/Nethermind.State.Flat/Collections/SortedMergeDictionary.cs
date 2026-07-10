@@ -54,7 +54,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return false;
     }
 
-    public void BuildFromUnsorted(IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, IComparer<TKey> keyComparer)
+    public void BuildFromUnsorted<TComparer>(IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, TComparer keyComparer)
+        where TComparer : IComparer<TKey>
     {
         int count = source.Count;
         EnsureEntryCapacity(count);
@@ -64,7 +65,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
         }
 
-        Array.Sort(_entries, 0, count, new EntryKeyComparer(keyComparer));
+        _entries.AsSpan(0, count).Sort(new EntryKeyComparer<TComparer>(keyComparer));
         _count = count;
         BuildBuckets();
     }
@@ -73,10 +74,15 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     /// Merges already-sorted inputs (ascending priority; the highest-index source wins on equal keys). When
     /// <paramref name="keep"/> is supplied, entries it rejects are dropped and keys with no survivor are omitted.
     /// </summary>
-    public void BuildFromMerge(
+    /// <remarks>
+    /// <typeparamref name="TComparer"/> is a type parameter rather than an <see cref="IComparer{T}"/> parameter so
+    /// that struct comparers are monomorphized: their Compare calls are devirtualized and inlined at every JIT tier.
+    /// </remarks>
+    public void BuildFromMerge<TComparer>(
         ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources,
-        IComparer<TKey> keyComparer,
+        TComparer keyComparer,
         Func<int, TKey, bool>? keep = null)
+        where TComparer : IComparer<TKey>
     {
         if (sources.Length == 0)
         {
@@ -89,7 +95,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         foreach (SortedMergeDictionary<TKey, TValue> source in sources) total += source._count;
         EnsureEntryCapacity(total);
 
-        LoserTree tree = new(sources, keyComparer);
+        LoserTree<TComparer> tree = new(sources, keyComparer);
         int count = 0;
         while (tree.TryNext(keep, out Entry chosen))
         {
@@ -158,18 +164,20 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         }
     }
 
-    public static SortedMergeDictionary<TKey, TValue> FromUnsorted(
-        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, IComparer<TKey> keyComparer)
+    public static SortedMergeDictionary<TKey, TValue> FromUnsorted<TComparer>(
+        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source, TComparer keyComparer)
+        where TComparer : IComparer<TKey>
     {
         SortedMergeDictionary<TKey, TValue> dictionary = new();
         dictionary.BuildFromUnsorted(source, keyComparer);
         return dictionary;
     }
 
-    public static SortedMergeDictionary<TKey, TValue> Merge(
+    public static SortedMergeDictionary<TKey, TValue> Merge<TComparer>(
         ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources,
-        IComparer<TKey> keyComparer,
+        TComparer keyComparer,
         Func<int, TKey, bool>? keep = null)
+        where TComparer : IComparer<TKey>
     {
         SortedMergeDictionary<TKey, TValue> dictionary = new();
         dictionary.BuildFromMerge(sources, keyComparer, keep);
@@ -207,7 +215,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public readonly void Dispose() { }
     }
 
-    private sealed class EntryKeyComparer(IComparer<TKey> keyComparer) : IComparer<Entry>
+    private readonly struct EntryKeyComparer<TComparer>(TComparer keyComparer) : IComparer<Entry>
+        where TComparer : IComparer<TKey>
     {
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
@@ -219,15 +228,15 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     /// than O(k). Leaf index <c>_k</c> is a sentinel: it seeds the tree (smaller than any real head) and marks
     /// exhausted runs (larger than any real head).
     /// </summary>
-    private ref struct LoserTree
+    private ref struct LoserTree<TComparer> where TComparer : IComparer<TKey>
     {
         private readonly ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> _sources;
-        private readonly IComparer<TKey> _keyComparer;
+        private readonly TComparer _keyComparer;
         private readonly int _k;
         private readonly int[] _tree;
         private readonly int[] _position;
 
-        public LoserTree(ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources, IComparer<TKey> keyComparer)
+        public LoserTree(ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources, TComparer keyComparer)
         {
             _sources = sources;
             _keyComparer = keyComparer;
