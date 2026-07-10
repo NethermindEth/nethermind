@@ -49,7 +49,7 @@ public class WorldStateBenchmarks
         // otherwise serve stale nulls cached during setup instead of exercising the state backend.
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(
-                new BlocksConfig { PreWarmStateOnBlockProcessing = false },
+                new BlocksConfig { PreWarming = PreWarmMode.None },
                 new FlatDbConfig { Enabled = true }))
             .Build();
 
