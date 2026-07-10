@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -113,12 +112,6 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // A fresh storage over the same database (no writer) proves durability.
         PersistentReceiptStorage reopened = CreateStorage(null);
         reopened.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
-
-        Span<byte> key = stackalloc byte[40];
-        block.Number.WriteBigEndian(key);
-        block.Hash!.Bytes.CopyTo(key[8..]);
-        TestMemDb receiptsDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
-        receiptsDb.KeyWasWrittenWithFlags(key.ToArray(), WriteFlags.LowPriority);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -138,7 +131,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Deferred_canonical_write_batches_insert_and_prune_with_low_priority()
+    public void Deferred_canonical_write_batches_insert_and_prune()
     {
         _receiptConfig.TxLookupLimit = 1;
         Transaction oldTransaction = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
@@ -165,8 +158,6 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
             Assert.That(_receiptsDb.WriteBatchCount, Is.EqualTo(1), "insert and prune share one RocksDB batch");
         }
 
-        transactionDb.KeyWasWrittenWithFlags(oldTransaction.Hash.BytesToArray(), WriteFlags.LowPriority);
-        transactionDb.KeyWasWrittenWithFlags(newTransaction.Hash!.BytesToArray(), WriteFlags.LowPriority);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

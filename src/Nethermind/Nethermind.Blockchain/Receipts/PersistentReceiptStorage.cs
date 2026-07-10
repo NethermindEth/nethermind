@@ -193,10 +193,10 @@ namespace Nethermind.Blockchain.Receipts
         {
             using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
             IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
-            EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch, WriteFlags.LowPriority);
+            EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch);
             if (hasOldBlock)
             {
-                RemoveBlockTx(ref oldBlock, transactionBatch, WriteFlags.LowPriority);
+                RemoveBlockTx(ref oldBlock, transactionBatch);
             }
         }
 
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Receipts
             try
             {
                 using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-                RemoveBlockTx(ref oldBlock, writeBatch, WriteFlags.None);
+                RemoveBlockTx(ref oldBlock, writeBatch);
             }
             finally
             {
@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
                 IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
-                RemoveBlockTx(ref oldBlock, transactionBatch, WriteFlags.LowPriority);
+                RemoveBlockTx(ref oldBlock, transactionBatch);
             }
             finally
             {
@@ -531,7 +531,7 @@ namespace Nethermind.Blockchain.Receipts
             using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(payload.Receipts, payload.Behaviors);
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.LowPriority);
+            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
         }
 
         [SkipLocalsInit]
@@ -638,26 +638,26 @@ namespace Nethermind.Blockchain.Receipts
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
-                writeBatch.Set(tx.Hash.Bytes, null, WriteFlags.None);
+                writeBatch[tx.Hash.Bytes] = null;
             }
         }
 
-        private static void RemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch, WriteFlags writeFlags)
+        private static void RemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch)
         {
             for (int i = 0; i < block.TransactionCount; i++)
             {
                 Hash256 txHash = block.GetNextTransactionHash();
-                writeBatch.Set(txHash.Bytes, null, writeFlags);
+                writeBatch[txHash.Bytes] = null;
             }
         }
 
         private void EnsureCanonical(Block block, ulong? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-            EnsureCanonical(block, lastBlockNumber, writeBatch, WriteFlags.None);
+            EnsureCanonical(block, lastBlockNumber, writeBatch);
         }
 
-        private void EnsureCanonical(Block block, ulong? lastBlockNumber, IWriteBatch writeBatch, WriteFlags writeFlags)
+        private void EnsureCanonical(Block block, ulong? lastBlockNumber, IWriteBatch writeBatch)
         {
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
@@ -669,7 +669,7 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch.Set(hash.Bytes, blockNumber, writeFlags);
+                    writeBatch[hash.Bytes] = blockNumber;
                 }
             }
             else
@@ -679,7 +679,7 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     tx.Hash ??= tx.CalculateHash();
                     Hash256 hash = tx.Hash;
-                    writeBatch.Set(hash.Bytes, blockHash, writeFlags);
+                    writeBatch[hash.Bytes] = blockHash;
                 }
             }
         }

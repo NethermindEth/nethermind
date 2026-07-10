@@ -107,10 +107,6 @@ public class DeferredBlockStoreTests
 
         Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
         Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
-
-        Span<byte> key = stackalloc byte[40];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash!, key);
-        _db.KeyWasWrittenWithFlags(key.ToArray(), WriteFlags.LowPriority);
     }
 
     [Test]
