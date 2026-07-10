@@ -44,7 +44,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
-        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
+        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
@@ -53,6 +53,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+        forkInfo.IsForkIdCompatible(new ForkId(0, 0)).Returns(true);
 
         ContainerBuilder builder = new();
         builder
@@ -64,8 +65,8 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
     int _discoveryPort = 0;
     private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
-    int _discoveryIp = 1;
-    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
+    int _ip = 1;
+    private int AssignIp() => Interlocked.Increment(ref _ip);
 
     [Test]
     [Category("Flaky"), Retry(3)]

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,7 +14,7 @@ namespace Nethermind.Specs.Test
     /// </summary>
     public class OverridableReleaseSpec(IReleaseSpec spec) : IReleaseSpec
     {
-        public string Name => "OverridableReleaseSpec";
+        public string Name => spec.Name;
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
@@ -115,8 +114,6 @@ namespace Nethermind.Specs.Test
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
-        Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
-        Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;

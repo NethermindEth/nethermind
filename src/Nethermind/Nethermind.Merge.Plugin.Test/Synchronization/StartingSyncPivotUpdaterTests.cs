@@ -9,6 +9,7 @@ using NSubstitute;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -87,6 +88,23 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private UnsafeStartingSyncPivotUpdater CreateUnsafeUpdater() =>
             new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
 
+        // Real BeaconSync over an empty block cache: the only finalized hash source is the block tree.
+        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync()
+        {
+            IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+            poSSwitcher.TransitionFinished.Returns(true);
+            BeaconSync beaconSync = new(
+                Substitute.For<IBeaconPivot>(),
+                _blockTree!,
+                _syncConfig!,
+                _blockCacheService!,
+                poSSwitcher,
+                LimboLogs.Instance);
+
+            return new StartingSyncPivotUpdater(
+                _blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, beaconSync, LimboLogs.Instance);
+        }
+
         [Test]
         public async Task TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
@@ -103,6 +121,57 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_falls_back_to_FinalizedHash_persisted_in_block_tree_when_no_FCU_received()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "pivot should be updated from the persisted finalized hash without any FCU");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_keeps_waiting_when_persisted_FinalizedHash_is_zero()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = ISyncConfig.InfiniteAttempts;
+            _blockTree!.ForkChoiceUpdated(Keccak.Zero, Keccak.Zero);
+
+            using CancellationTokenSource cts = new();
+            Task task = CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(cts.Token);
+            await Task.WhenAny(task, Task.Delay(200));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a zero finalized hash means no data, so no pivot should be set");
+            Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts),
+                "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_ignores_zero_cached_FinalizedHash_and_falls_back_to_block_tree()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+            _blockCacheService!.FinalizedHash = Keccak.Zero;
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
         }
 
         [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]

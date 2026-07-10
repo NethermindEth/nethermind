@@ -84,12 +84,12 @@ public partial class BlockAccessListManager
         }
 
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
-        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
+        _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
 
         static void CheckGasUsed(int index, Block block, ulong totalRegularGas, ulong totalStateGas)
         {
             // EIP-8037: block gasUsed = max(sum_regular, sum_state)
-            ulong effectiveGas = Math.Max(totalRegularGas, totalStateGas);
+            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");

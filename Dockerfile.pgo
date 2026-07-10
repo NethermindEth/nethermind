@@ -7,7 +7,7 @@
 # Also writes edge/block profiling data (.jit) via DOTNET_WritePGOData
 # which is trimmed by PgoTrim and consumed at runtime via DOTNET_ReadPGOData.
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.301-resolute@sha256:196f61c6262aa890f41dd654ff52d3b995187124a37778fb990ed0c31c26da44 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.301-resolute@sha256:fe81f048c2ff6cdbcc16ad4c1690c5a4f383edab8fdabdf02b3b782591b656c5 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -33,7 +33,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.9-resolute@sha256:0aa8645b7e7c83630bdb5ca096a91e2e4a356e9236ec1c01bb471a7410bb18a9
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.9-resolute@sha256:3bb57de5b6c3f5e2f349e9a65f142e4d0fd33c078491956cd9e3e07f4c660c6c
 
 WORKDIR /nethermind
 

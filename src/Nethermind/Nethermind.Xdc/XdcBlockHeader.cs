@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -90,10 +91,12 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    public virtual ValueHash256 CalculateHash()
+    internal BlockReward[]? ProcessedRewards { get; set; }
+
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this);
+        _headerDecoder.Encode(ref writer, this, behaviors);
         return writer.GetHash();
     }
 
@@ -117,6 +120,47 @@ public class XdcBlockHeader(
         };
     }
 
+    internal virtual XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined);
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
+
+    protected void CopyFieldsForProcessing(XdcBlockHeader header)
+    {
+        header.Bloom = Bloom.Empty;
+        header.Author = Author;
+        header.Hash = Hash;
+        header.MixHash = MixHash;
+        header.Nonce = Nonce;
+        header.TxRoot = TxRoot;
+        header.TotalDifficulty = TotalDifficulty;
+        header.ReceiptsRoot = ReceiptsRoot;
+        header.BaseFeePerGas = BaseFeePerGas;
+        header.WithdrawalsRoot = WithdrawalsRoot;
+        header.RequestsHash = RequestsHash;
+        header.IsPostMerge = IsPostMerge;
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        header.ExcessBlobGas = ExcessBlobGas;
+        header.BlobGasUsed = BlobGasUsed;
+        header.Validator = Validator;
+        header.Validators = Validators;
+        header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
+    }
+
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
         XdcBlockHeader x = new(
@@ -135,8 +179,6 @@ public class XdcBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,

@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Trie;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -22,8 +21,8 @@ public class PreBlockCaches
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
+    private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
 
@@ -40,8 +39,17 @@ public class PreBlockCaches
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
+
+    /// <summary>
+    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
+    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
+    /// </summary>
+    public IWorldStateScopeProvider.IScope? MainScope
+    {
+        get => _mainScope;
+        set => _mainScope = value;
+    }
 
     public CacheType ClearCaches()
     {

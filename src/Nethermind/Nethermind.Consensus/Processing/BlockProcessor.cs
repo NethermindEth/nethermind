@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
@@ -98,13 +100,18 @@ public partial class BlockProcessor(
             throw new InvalidBlockException(suggestedBlock, error);
         }
 
+        PostValidation(suggestedBlock, block, receipts, options);
+    }
+
+    protected virtual void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+    {
         // Block is valid, copy the execution artifacts back onto the suggested block.
         // Forward sync suggests blocks without BAL payloads, so the generated BAL needs to
         // follow the suggested block through main-chain updates and persistence.
-        suggestedBlock.AccountChanges = block.AccountChanges;
-        suggestedBlock.ExecutionRequests = block.ExecutionRequests;
-        suggestedBlock.GeneratedBlockAccessList = block.GeneratedBlockAccessList;
-        suggestedBlock.EncodedBlockAccessList = block.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
+        suggestedBlock.AccountChanges = processedBlock.AccountChanges;
+        suggestedBlock.ExecutionRequests = processedBlock.ExecutionRequests;
+        suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        suggestedBlock.EncodedBlockAccessList = processedBlock.EncodedBlockAccessList ?? suggestedBlock.EncodedBlockAccessList;
     }
 
     protected bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -142,14 +149,25 @@ public partial class BlockProcessor(
 
         CommitState(spec);
 
-        CalculateBlooms(receipts);
-
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        SetReceiptsRoot(header, receipts, spec, block);
+        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
+        if (ShouldCalculateReceiptsInBackground(receipts))
+        {
+            bloomsAndReceiptsRootTask = Task.Run(() =>
+            {
+                CalculateBlooms(receipts);
+                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
+            });
+        }
+        else
+        {
+            CalculateBlooms(receipts);
+            header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
+        }
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -160,7 +178,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        ReceiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 
         CommitStateAndStorageRoots(spec);
 
@@ -175,6 +193,11 @@ public partial class BlockProcessor(
         }
 
         _balManager.SetBlockAccessList(block);
+
+        if (bloomsAndReceiptsRootTask is not null)
+        {
+            (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+        }
 
         header.Hash = header.CalculateHash();
 
@@ -202,16 +225,54 @@ public partial class BlockProcessor(
         header.StateRoot = _stateProvider.StateRoot;
     }
 
-    private static void SetReceiptsRoot(BlockHeader header, TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts);
+
+    private static int CountLogs(TxReceipt[] receipts)
+    {
+        int count = 0;
+        foreach (TxReceipt? t in receipts)
+        {
+            count += t.Logs?.Length ?? 0;
+        }
+
+        return count;
+    }
+
+    private static Bloom AccumulateBlockBloom(TxReceipt[] receipts)
+    {
+        Bloom blockBloom = new();
+        foreach (TxReceipt? t in receipts)
+        {
+            blockBloom.Accumulate(t.Bloom!);
+        }
+
+        return blockBloom;
+    }
+
+    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
+
+        // Avoid parallel scheduling overhead for small receipt counts: ParallelUnbalancedWork queues
+        // ProcessorCount-1 ThreadPool items regardless of work size, which adds scheduling jitter and
+        // allocation overhead that exceeds the bloom computation cost for small blocks.
+        if (receipts.Length <= Environment.ProcessorCount)
+        {
+            foreach (TxReceipt? t in receipts)
+            {
+                t.CalculateBloom();
+            }
+
+            return;
+        }
+
         ParallelUnbalancedWork.For(
             0,
             receipts.Length,
@@ -291,37 +352,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
         BlockHeader bh = suggestedBlock.Header;
-        BlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.BlobGasUsed,
-            bh.ExcessBlobGas)
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            AuRaStep = bh.AuRaStep,
-            AuRaSignature = bh.AuRaSignature,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            SlotNumber = bh.SlotNumber,
-            // Carried for the verify-only fast path which doesn't recompute it.
-            BlockAccessListHash = bh.BlockAccessListHash
-        };
+        BlockHeader headerForProcessing = bh.CloneForProcessing();
 
         if (!ShouldComputeStateRoot(bh))
         {
