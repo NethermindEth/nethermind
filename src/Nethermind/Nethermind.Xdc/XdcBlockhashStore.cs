@@ -32,14 +32,10 @@ public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : 
             worldState.SetNonce(eip2935Account, 1);
             worldState.InsertCode(eip2935Account, CodeHash, Eip2935Constants.Code, spec);
         }
-        
+
         inner.ApplyBlockhashStateChanges(blockHeader, spec);
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec) => 
+    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec) =>
         inner.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
-
-    protected virtual void EnsureContract(BlockHeader blockHeader, IReleaseSpec spec)
-    {
-    }
 }
