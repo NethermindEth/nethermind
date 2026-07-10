@@ -32,6 +32,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _expiringQueueLimit;
     private readonly int _maxRetryRequests;
     private readonly int _maxPendingResourcesPerHandler;
+    private readonly TimeProvider _timeProvider;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: 512);
     private readonly ConcurrentDictionary<TResourceId, RetryRequestEntry> _retryRequests = new();
@@ -56,6 +57,27 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         int maxRetryRequests = DefaultMaxRetryRequests,
         CancellationToken token = default,
         int maxPendingResourcesPerHandler = DefaultMaxPendingResourcesPerHandler)
+        : this(
+            logManager,
+            TimeProvider.System,
+            timeoutMs,
+            requestingCacheSize,
+            expiringQueueLimit,
+            maxRetryRequests,
+            token,
+            maxPendingResourcesPerHandler)
+    {
+    }
+
+    internal RetryCache(
+        ILogManager logManager,
+        TimeProvider timeProvider,
+        int timeoutMs = DefaultTimeoutMs,
+        int requestingCacheSize = DefaultRequestingCacheSize,
+        int expiringQueueLimit = DefaultExpiringQueueLimit,
+        int maxRetryRequests = DefaultMaxRetryRequests,
+        CancellationToken token = default,
+        int maxPendingResourcesPerHandler = DefaultMaxPendingResourcesPerHandler)
     {
         _logger = logManager.GetClassLogger(typeof(RetryCache<,>));
 
@@ -66,9 +88,10 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _expiringQueueLimit = expiringQueueLimit;
         _maxRetryRequests = maxRetryRequests;
         _maxPendingResourcesPerHandler = maxPendingResourcesPerHandler;
+        _timeProvider = timeProvider;
         _mainLoopTask = Task.Run(async () =>
         {
-            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
 
             while (await timer.WaitForNextTickAsync(token))
             {
@@ -81,7 +104,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     while (!token.IsCancellationRequested
                         && queueEntriesProcessed < queueEntriesToProcess
                         && _expiringQueue.TryPeek(out (TResourceId ResourceId, RetryRequestEntry Entry, DateTimeOffset ExpiresAfter) item)
-                        && item.ExpiresAfter <= DateTimeOffset.UtcNow)
+                        && item.ExpiresAfter <= _timeProvider.GetUtcNow())
                     {
                         if (_expiringQueue.TryDequeue(out item))
                         {
@@ -262,7 +285,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     }
 
     private void Enqueue(TResourceId resourceId, RetryRequestEntry entry) =>
-        _expiringQueue.Enqueue((resourceId, entry, DateTimeOffset.UtcNow.AddMilliseconds(_timeoutMs)));
+        _expiringQueue.Enqueue((resourceId, entry, _timeProvider.GetUtcNow().AddMilliseconds(_timeoutMs)));
 
     public void Received(in TResourceId resourceId)
     {
