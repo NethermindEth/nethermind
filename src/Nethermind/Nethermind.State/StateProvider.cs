@@ -529,8 +529,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             ref readonly Change change = ref changes[stepsBack - i];
             if (trace is null && change!.ChangeType == ChangeType.JustCache)
             {
-                // Safe to skip without touching the head: JustCache is only ever pushed for an
-                // address with no prior change, so it is always the bottom of its chain.
+                // Safe to skip without touching the head: JustCache is always the bottom of its chain.
                 Debug.Assert(change.PrevIdx == -1);
                 continue;
             }

@@ -197,14 +197,13 @@ namespace Nethermind.State
         /// <param name="value">Value to set</param>
         private void PushUpdate(in StorageCell cell, byte[] value)
         {
-            // Overwrites the head in place and never removes+re-adds — ClearStorage relies on this
+            // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
             // to legally call Set while enumerating _intraBlockCache.
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             int prevIdx = exists ? head.CurrentIdx : -1;
 
-            // A head whose index is at or before the current transaction's start boundary belongs to an
-            // earlier transaction (or none), so this is the first write to the cell in the current tx and
-            // the value being overwritten is the transaction original. Otherwise carry the original forward.
+            // The first write to a cell in a tx (head at or before the tx boundary) captures the
+            // overwritten value as the tx original; later writes carry it forward.
             int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
             bool firstWriteThisTx = !exists || head.CurrentIdx <= currentSnapshot;
             int originalIdx = firstWriteThisTx ? prevIdx : head.OriginalIdx;
@@ -221,8 +220,7 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block.
-            // Set only overwrites values of existing keys (never removes or adds), which is what
-            // makes mutating the dictionary while enumerating it legal here.
+            // Set never adds or removes keys here, so enumerating while mutating is legal.
             foreach (KeyValuePair<StorageCell, HeadChange> cellByAddress in _intraBlockCache)
             {
                 if (cellByAddress.Key.Address == address)
@@ -245,10 +243,9 @@ namespace Nethermind.State
             public readonly int PrevIdx = prevIdx;
 
             /// <summary>
-            /// Index into <c>_changes</c> of the change holding this cell's value as of the current
-            /// transaction's start (its EIP-2200 "original"), or -1 when that original is the block-level
-            /// value in <c>_originalValues</c>. Carried forward on later same-transaction writes so
-            /// <see cref="PersistentStorageProvider.GetOriginal"/> resolves in O(1) without walking the chain.
+            /// Index into <c>_changes</c> of this cell's value at the transaction's start (its EIP-2200
+            /// "original"), or -1 when that is the block-level value in <c>_originalValues</c>. Carried
+            /// forward on later same-tx writes so <see cref="PersistentStorageProvider.GetOriginal"/> is O(1).
             /// </summary>
             public readonly int OriginalIdx = originalIdx;
 
@@ -256,9 +253,8 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Head of a cell's change chain: the index of its newest change with that change's value and
-        /// original-index inlined, so reads and <see cref="PersistentStorageProvider.GetOriginal"/>
-        /// resolve with a single dictionary lookup.
+        /// Head of a cell's change chain, with the newest value and original-index inlined so reads
+        /// and <see cref="PersistentStorageProvider.GetOriginal"/> resolve with a single lookup.
         /// </summary>
         protected readonly struct HeadChange(byte[] value, int currentIdx, int originalIdx)
         {

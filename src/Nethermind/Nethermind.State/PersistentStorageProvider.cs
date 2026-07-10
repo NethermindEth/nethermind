@@ -95,13 +95,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
             if (head.CurrentIdx <= currentSnapshot)
             {
-                // The newest change is from an earlier transaction, so the cell is untouched this
-                // transaction and its current value is the transaction original.
+                // Untouched this transaction — the current value is the tx original.
                 return head.Value;
             }
 
-            // The cell was written this transaction; OriginalIdx points at the value it held at the
-            // transaction's start (-1 means that was the block-level original in _originalValues).
+            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
             return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
