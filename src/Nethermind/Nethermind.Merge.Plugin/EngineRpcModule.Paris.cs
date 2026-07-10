@@ -96,7 +96,16 @@ public partial class EngineRpcModule : IEngineRpcModule
             try
             {
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
-                return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                long gcTimestamp = Stopwatch.GetTimestamp();
+                ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                if (_logger.IsDebug)
+                    _logger.Debug($"newPayload breakdown blk={executionPayload.BlockNumber} " +
+                        $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
+                        $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
+                        $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +
+                        $"handle={Stopwatch.GetElapsedTime(gcTimestamp).TotalMilliseconds:F2}ms " +
+                        $"total={Stopwatch.GetElapsedTime(entryTimestamp).TotalMilliseconds:F2}ms");
+                return result;
             }
             catch (BlockchainException exception)
             {
