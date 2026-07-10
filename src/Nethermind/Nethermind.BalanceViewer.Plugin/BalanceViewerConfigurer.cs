@@ -32,23 +32,27 @@ internal sealed class BalanceViewerStartupFilter : IStartupFilter
         };
 }
 
-/// <summary>Serves the embedded balance viewer page at the <c>/balances</c> path.</summary>
+/// <summary>Serves the embedded balance viewer page at the <c>/balances</c> path and its service worker.</summary>
 public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection)
 {
-    private static readonly PathString BalancesPath = new("/balances");
+    private static readonly ManifestEmbeddedFileProvider FileProvider =
+        new(typeof(BalanceViewerMiddleware).Assembly, "wwwroot");
 
-    private readonly IFileInfo _page =
-        new ManifestEmbeddedFileProvider(typeof(BalanceViewerMiddleware).Assembly, "wwwroot").GetFileInfo("balances.html");
+    private static readonly Dictionary<PathString, (IFileInfo File, string ContentType)> Routes = new()
+    {
+        [new PathString("/balances")] = (FileProvider.GetFileInfo("balances.html"), "text/html; charset=utf-8"),
+        [new PathString("/balances-sw.js")] = (FileProvider.GetFileInfo("balances-sw.js"), "text/javascript; charset=utf-8"),
+    };
 
     public Task InvokeAsync(HttpContext context)
     {
-        if (!HttpMethods.IsGet(context.Request.Method) || context.Request.Path != BalancesPath)
+        if (!HttpMethods.IsGet(context.Request.Method) || !Routes.TryGetValue(context.Request.Path, out (IFileInfo File, string ContentType) route))
         {
             return next(context);
         }
 
         // Not served on authenticated (Engine API) ports.
-        if (!_page.Exists ||
+        if (!route.File.Exists ||
             !jsonRpcUrlCollection.TryGetValue(context.Connection.LocalPort, out JsonRpcUrl? url) ||
             url.IsAuthenticated)
         {
@@ -56,7 +60,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
-        context.Response.ContentType = "text/html; charset=utf-8";
-        return context.Response.SendFileAsync(_page);
+        context.Response.ContentType = route.ContentType;
+        return context.Response.SendFileAsync(route.File);
     }
 }

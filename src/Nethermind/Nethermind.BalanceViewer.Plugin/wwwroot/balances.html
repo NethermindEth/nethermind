@@ -147,6 +147,8 @@
         }
         button.link:hover { color: var(--accent); }
         button.danger:hover { border-color: var(--danger); color: var(--danger); }
+        button.bell { filter: grayscale(1) opacity(0.45); font-size: 13px; }
+        button.bell.on { filter: none; }
 
         .panel {
             position: relative;
@@ -561,17 +563,17 @@
                     const raw = localStorage.getItem(this.key());
                     if (raw === null) {
                         // first visit on this chain — seed the popular tokens (still removable)
-                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })), nfts: [] };
+                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [] };
                     }
                     const data = JSON.parse(raw);
-                    return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [] };
-                } catch { return { addresses: [], tokens: [], nfts: [] }; }
+                    return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [], watched: data.watched || [] };
+                } catch { return { addresses: [], tokens: [], nfts: [], watched: [] }; }
             },
             save(data) { localStorage.setItem(this.key(), JSON.stringify(data)); }
         };
 
         const CURRENCY_KEY = 'nethermind.balances.currency';
-        let state = { addresses: [], tokens: [], nfts: [] };
+        let state = { addresses: [], tokens: [], nfts: [], watched: [] };
         let currency = 'USD';
 
         // ---------- helpers ----------
@@ -868,6 +870,117 @@
             finally { nftRefreshing = false; }
         }
 
+        // ---------- notifications (activity derived from node data only) ----------
+        // A bell on each card watches the address: new blocks are scanned for its
+        // transactions and ERC-20 Transfer logs, and events (sent/received, swaps,
+        // contract interactions) surface as system notifications via the service
+        // worker. No push service is involved — data never leaves the node.
+        const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        const MAX_BLOCKS_PER_POLL = 4;
+        let lastScannedBlock = null;
+        let scanning = false;
+
+        const isWatched = (address) => state.watched.includes(address.toLowerCase());
+
+        async function toggleWatch(entry, bell) {
+            const key = entry.address.toLowerCase();
+            if (isWatched(key)) {
+                state.watched = state.watched.filter((w) => w !== key);
+                store.save(state);
+                bell.classList.remove('on');
+                setStatus('Notifications off for ' + (entry.label || shortAddr(entry.address)));
+                return;
+            }
+            if ('Notification' in window && Notification.permission !== 'granted') {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') setStatus('Notifications not permitted by the browser — activity will only show here', true);
+            }
+            try { await navigator.serviceWorker?.register('balances-sw.js'); } catch { }
+            state.watched.push(key);
+            store.save(state);
+            bell.classList.add('on');
+            setStatus('Watching ' + (entry.label || shortAddr(entry.address)) + ' for activity');
+        }
+
+        async function notify(title, body) {
+            setStatus('🔔 ' + title + ': ' + body);
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            try {
+                const registration = await navigator.serviceWorker?.getRegistration();
+                if (registration) registration.showNotification(title, { body, icon: 'favicon.webp' });
+                else new Notification(title, { body });
+            } catch { }
+        }
+
+        function displayName(address) {
+            const entry = state.addresses.find((a) => a.address.toLowerCase() === address);
+            return entry?.label || shortAddr(entry?.address || address);
+        }
+
+        function tokenAmount(log) {
+            const token = state.tokens.find((t) => t.address.toLowerCase() === log.address.toLowerCase());
+            let amount = null;
+            try { amount = BigInt(log.data); } catch { }
+            if (token && amount !== null) return formatUnits('0x' + amount.toString(16), token.decimals) + ' ' + token.ticker;
+            return 'tokens of ' + shortAddr(checksum(log.address));
+        }
+
+        async function scanForActivity(headHex) {
+            if (scanning || state.watched.length === 0) { lastScannedBlock = BigInt(headHex); return; }
+            const head = BigInt(headHex);
+            if (lastScannedBlock === null) { lastScannedBlock = head; return; }
+            if (head <= lastScannedBlock) return;
+            scanning = true;
+            try {
+                const from = head - lastScannedBlock > BigInt(MAX_BLOCKS_PER_POLL) ? head - BigInt(MAX_BLOCKS_PER_POLL) + 1n : lastScannedBlock + 1n;
+                const range = { fromBlock: '0x' + from.toString(16), toBlock: headHex };
+                const watchedTopics = state.watched.map((w) => '0x' + pad32(w));
+                const blockCalls = [];
+                for (let n = from; n <= head; n++) blockCalls.push(['eth_getBlockByNumber', ['0x' + n.toString(16), true]]);
+                const results = await rpcBatch(blockCalls.concat([
+                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, watchedTopics] }]],
+                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, watchedTopics] }]],
+                ]));
+                lastScannedBlock = head;
+
+                // facts per (watched address | tx hash) so one tx yields one notification
+                const facts = new Map();
+                const addFact = (watched, txHash, kind, text) => {
+                    const key = watched + '|' + txHash;
+                    if (!facts.has(key)) facts.set(key, { out: null, in: null, other: [] });
+                    const f = facts.get(key);
+                    if (kind === 'out' && f.out === null) f.out = text;
+                    else if (kind === 'in' && f.in === null) f.in = text;
+                    else if (kind === 'other') f.other.push(text);
+                };
+
+                for (let b = 0; b < blockCalls.length; b++) {
+                    for (const tx of results[b]?.transactions ?? []) {
+                        const txFrom = tx.from?.toLowerCase(), txTo = tx.to?.toLowerCase();
+                        const value = (() => { try { return BigInt(tx.value); } catch { return 0n; } })();
+                        if (txFrom && isWatched(txFrom)) {
+                            if (value > 0n) addFact(txFrom, tx.hash, 'out', formatUnits(tx.value, 18) + ' ' + chain.ticker);
+                            if (tx.input && tx.input !== '0x' && txTo) addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)));
+                        }
+                        if (txTo && isWatched(txTo) && value > 0n) addFact(txTo, tx.hash, 'in', formatUnits(tx.value, 18) + ' ' + chain.ticker);
+                    }
+                }
+                for (const log of results[blockCalls.length] ?? []) addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'out', tokenAmount(log));
+                for (const log of results[blockCalls.length + 1] ?? []) addFact('0x' + log.topics[2].slice(-40), log.transactionHash, 'in', tokenAmount(log));
+
+                for (const [key, f] of facts) {
+                    const watched = key.slice(0, 42);
+                    if (!isWatched(watched)) continue;
+                    const who = displayName(watched);
+                    if (f.out && f.in) notify(who, `swapped ${f.out} for ${f.in}`);
+                    else if (f.out) notify(who, 'sent ' + f.out);
+                    else if (f.in) notify(who, 'received ' + f.in);
+                    else if (f.other.length) notify(who, f.other[0]);
+                }
+            } catch { /* activity scan is best-effort; next poll retries from the new head */ }
+            finally { scanning = false; }
+        }
+
         // ---------- ENS (forward resolution, simple case) ----------
         async function resolveEns(name) {
             const node = namehash(name);
@@ -934,6 +1047,10 @@
                 addr.title = entry.address + ' (click to copy)';
                 addr.onclick = () => copyAddress(entry.address);
                 head.append(addr);
+                const bell = el('button', isWatched(entry.address) ? 'link bell on' : 'link bell', '🔔');
+                bell.title = 'Notify on activity (sent/received, swaps, contract calls)';
+                bell.onclick = () => toggleWatch(entry, bell);
+                head.append(bell);
                 const unpin = el('button', 'link danger', '−');
                 unpin.title = 'Unpin address';
                 unpin.onclick = () => {
@@ -1170,6 +1287,7 @@
                 if (head !== lastBlock) {
                     lastBlock = head;
                     refreshBalances();
+                    scanForActivity(head);
                 }
             } catch (e) {
                 setStatus('Node unreachable: ' + e.message, true);

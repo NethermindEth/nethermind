@@ -37,6 +37,18 @@ public class BalanceViewerMiddlewareTests
     }
 
     [Test]
+    public async Task Serves_ServiceWorkerScript()
+    {
+        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: "/balances-sw.js");
+
+        await CreateMiddleware().InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.StartWith("text/javascript"));
+        Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("notificationclick"));
+    }
+
+    [Test]
     public async Task UnknownPort_Returns404()
     {
         (DefaultHttpContext ctx, _) = CreateContext(Port + 1);
