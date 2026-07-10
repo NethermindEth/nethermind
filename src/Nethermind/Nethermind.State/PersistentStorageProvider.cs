@@ -140,9 +140,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             trace = [];
         }
 
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         for (int i = 0; i <= currentPosition; i++)
         {
-            Change change = _changes[currentPosition - i];
+            ref readonly Change change = ref changes[currentPosition - i];
             if (_committedThisRound.Contains(change!.StorageCell))
             {
                 continue;

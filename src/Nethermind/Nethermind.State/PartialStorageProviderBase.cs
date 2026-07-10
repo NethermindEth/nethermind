@@ -77,10 +77,11 @@ namespace Nethermind.State
                 return;
             }
 
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i < currentPosition - snapshot; i++)
             {
                 int position = currentPosition - i;
-                Change change = _changes[position];
+                ref readonly Change change = ref changes[position];
                 ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
                 if (Unsafe.IsNullRef(ref head))
                 {
@@ -94,7 +95,7 @@ namespace Nethermind.State
 
                 if (change.PrevIdx != -1)
                 {
-                    Change previous = _changes[change.PrevIdx];
+                    ref readonly Change previous = ref changes[change.PrevIdx];
                     head = new HeadChange(previous.Value, change.PrevIdx, previous.OriginalIdx);
                 }
                 else if (change.ChangeType == ChangeType.JustCache)
@@ -108,9 +109,10 @@ namespace Nethermind.State
                 }
             }
 
+            ReadOnlySpan<Change> keptInCache = CollectionsMarshal.AsSpan(_keptInCache);
             CollectionsMarshal.SetCount(_changes, snapshot + 1);
             currentPosition = _changes.Count - 1;
-            foreach (Change kept in _keptInCache)
+            foreach (ref readonly Change kept in keptInCache)
             {
                 currentPosition++;
                 _changes.Add(kept);
