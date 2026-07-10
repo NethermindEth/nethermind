@@ -77,10 +77,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
-#if !ZK_EVM
-    // One buffer shared by every call frame of this VM; safe unsynchronised as a tx runs on a single thread.
-    private readonly SharedEvmMemory _sharedMemory = new();
-#endif
+    // Bind a frame's memory window to the shared buffer. Implemented in the std build; the ZK build
+    // excludes VirtualMachine.std.cs, so these calls elide to nothing (classic partial methods).
+    partial void AttachTopLevelMemory(VmState<TGasPolicy> state);
+    partial void AttachChildMemory(VmState<TGasPolicy> parent, VmState<TGasPolicy> child);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
@@ -166,10 +166,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
-#if !ZK_EVM
-        // Top-level frame anchors the shared buffer at offset 0; nested frames stack above it.
-        _currentState.Memory.AttachShared(_sharedMemory, 0);
-#endif
+        AttachTopLevelMemory(_currentState);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -755,10 +752,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
-#if !ZK_EVM
-        // The child's memory window starts just past the (suspended) parent's window in the shared buffer.
-        _currentState.Memory.AttachShared(_sharedMemory, parent.Memory.FrameFrontier);
-#endif
+        // Anchor the child's memory window just past the (suspended) parent's window (std build only).
+        AttachChildMemory(parent, _currentState);
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;

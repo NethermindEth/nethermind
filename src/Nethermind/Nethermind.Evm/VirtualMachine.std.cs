@@ -59,4 +59,12 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+
+    // One buffer shared by every call frame of this VM; safe unsynchronised as a tx runs on a single thread.
+    private readonly SharedEvmMemory _sharedMemory = new();
+
+    partial void AttachTopLevelMemory(VmState<TGasPolicy> state) => state.Memory.AttachShared(_sharedMemory, 0);
+
+    partial void AttachChildMemory(VmState<TGasPolicy> parent, VmState<TGasPolicy> child)
+        => child.Memory.AttachShared(_sharedMemory, parent.Memory.FrameFrontier);
 }

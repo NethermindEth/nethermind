@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if ZK_EVM
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -11,6 +10,36 @@ namespace Nethermind.Evm;
 
 public partial struct EvmPooledMemory
 {
+    private void ClearForTracing(ulong size)
+    {
+        if (_memory is null || size <= _lastZeroedSize)
+        {
+            return;
+        }
+
+        int frameOld = (int)_lastZeroedSize;
+        int frameNew = (int)Math.Min(size, (ulong)(_memory.Length - _offset));
+        if (frameNew <= frameOld)
+        {
+            return;
+        }
+
+        Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
+        _lastZeroedSize = (ulong)frameNew;
+    }
+
+    public void Dispose()
+    {
+        byte[]? memory = _memory;
+        if (memory is null)
+        {
+            return;
+        }
+
+        _memory = null;
+        ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+    }
+
     private const int MaxCachedArrayLength = 1 << 16;
     private const int CleanCacheSlots = 16;
 
@@ -82,4 +111,3 @@ public partial struct EvmPooledMemory
         _lastZeroedSize = (ulong)_memory.Length;
     }
 }
-#endif

@@ -328,7 +328,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(256 * 1024)]
     public void Shared_sibling_frame_reuse_reads_zero(int size)
     {
-        SharedEvmMemory shared = new();
+        SharedEvmMemory shared = new(512 * 1024);
         UInt256 zero = UInt256.Zero;
 
         EvmPooledMemory a = new();
@@ -350,7 +350,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void Shared_nested_frame_grows_above_parent_and_leaves_it_intact()
     {
-        SharedEvmMemory shared = new();
+        SharedEvmMemory shared = new(64 * 1024);
         byte[] word = TestItem.KeccakA.BytesToArray();
 
         EvmPooledMemory parent = new();
@@ -381,16 +381,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void Shared_frame_exceeding_reserve_spills_and_reads_zero()
     {
-        SharedEvmMemory shared = new();
+        SharedEvmMemory shared = new(4096); // tiny reserve so growth spills to a private buffer
         EvmPooledMemory a = new();
-        a.AttachShared(shared, SharedEvmMemory.ReserveBytes - 512);
+        a.AttachShared(shared, 0);
 
-        UInt256 length = (UInt256)4096;
-        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> data), Is.True);
-        Assert.That(data.Length, Is.EqualTo(4096));
+        UInt256 length = (UInt256)8192;
+        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> data), Is.True); // grows past reserve → spill
+        Assert.That(data.Length, Is.EqualTo(8192));
         Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "spilled frame must read as zero");
 
-        Span<byte> pattern = new byte[4096];
+        Span<byte> pattern = new byte[8192];
         pattern.Fill(0x7f);
         Assert.That(a.TrySave(0, pattern), Is.True);
         Assert.That(a.TryLoadSpan(0, in length, out Span<byte> readBack), Is.True);
@@ -403,7 +403,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         // Inspect past Size (tracing) must not mark [Size, _) as clean: a child anchors at Size, writes
         // there, and the parent must still read zero once it later grows into that band.
-        SharedEvmMemory shared = new();
+        SharedEvmMemory shared = new(64 * 1024);
         byte[] word = TestItem.KeccakA.BytesToArray();
 
         EvmPooledMemory parent = new();

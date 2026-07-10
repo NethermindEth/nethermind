@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if !ZK_EVM
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
@@ -10,6 +9,62 @@ namespace Nethermind.Evm;
 
 public partial struct EvmPooledMemory
 {
+    /// <summary>Binds this frame's memory to the VM's shared buffer at <paramref name="baseOffset"/>.</summary>
+    internal void AttachShared(SharedEvmMemory shared, int baseOffset)
+    {
+        _shared = shared;
+        _base = baseOffset;
+        _offset = baseOffset;
+    }
+
+    /// <summary>Where a child frame's window starts; a spilled frame occupies no shared space.</summary>
+    internal int FrameFrontier => _spilled ? _base : _base + (int)Size;
+
+    private void ClearForTracing(ulong size)
+    {
+        if (_memory is null || size <= _lastZeroedSize)
+        {
+            return;
+        }
+
+        int frameOld = (int)_lastZeroedSize;
+        int frameNew = (int)Math.Min(size, (ulong)(_memory.Length - _offset));
+        if (frameNew <= frameOld)
+        {
+            return;
+        }
+
+        if (_shared is not null && !_spilled)
+        {
+            _shared.Zero(_base, frameOld, frameNew);
+            // Children anchor at _base + Size; recording a tracing over-clear beyond Size as clean would
+            // make the parent skip re-zeroing a later sibling's writes there. Keep _lastZeroedSize <= Size.
+            _lastZeroedSize = Math.Min((ulong)frameNew, Size);
+        }
+        else
+        {
+            Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
+            _lastZeroedSize = (ulong)frameNew;
+        }
+    }
+
+    public void Dispose()
+    {
+        byte[]? memory = _memory;
+        if (memory is null)
+        {
+            return;
+        }
+
+        _memory = null;
+        // The shared buffer belongs to the VM and is never returned — its window is reused by the next
+        // sibling frame, whose growth re-zeroes stale bytes. Only a private/spilled buffer goes back.
+        if (_shared is null || _spilled)
+        {
+            ReturnLarge(memory);
+        }
+    }
+
     private const int MaxSharedArrayLength = 1 << 20;
     // Above this, buffers fall back to plain allocation (not pooled), as before this change.
     private const int MaxLargePooledArrayLength = 1 << 22;
@@ -32,7 +87,7 @@ public partial struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        // Unattached (unit tests) or already spilled → grow a private pooled array by realloc-and-copy.
+        // Unattached (bare construction) or already spilled → grow a private pooled array by realloc-copy.
         if (_shared is null || _spilled)
         {
             RentPrivate();
@@ -94,4 +149,3 @@ public partial struct EvmPooledMemory
         return array;
     }
 }
-#endif

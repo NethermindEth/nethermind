@@ -26,20 +26,11 @@ public partial struct EvmPooledMemory
     public ulong Size { get; private set; }
 
 #if !ZK_EVM
+    // Shared-buffer binding. A struct's instance fields must all live in one partial declaration (CS0282),
+    // so they stay here under #if; the methods that use them are in EvmPooledMemory.std.cs.
     private SharedEvmMemory? _shared;
     private int _base;
     private bool _spilled;
-
-    /// <summary>Binds this frame's memory to the VM's shared buffer at <paramref name="baseOffset"/>.</summary>
-    internal void AttachShared(SharedEvmMemory shared, int baseOffset)
-    {
-        _shared = shared;
-        _base = baseOffset;
-        _offset = baseOffset;
-    }
-
-    /// <summary>Where a child frame's window starts; a spilled frame occupies no shared space.</summary>
-    internal int FrameFrontier => _spilled ? _base : _base + (int)Size;
 #endif
 
     // Apply _offset in one place so no access forgets it. AggressiveInlining keeps the hot MSTORE/MLOAD
@@ -292,34 +283,6 @@ public partial struct EvmPooledMemory
         return FrameMemory((int)location, (int)length);
     }
 
-    private void ClearForTracing(ulong size)
-    {
-        if (_memory is null || size <= _lastZeroedSize)
-        {
-            return;
-        }
-
-        int frameOld = (int)_lastZeroedSize;
-        int frameNew = (int)Math.Min(size, (ulong)(_memory.Length - _offset));
-        if (frameNew <= frameOld)
-        {
-            return;
-        }
-#if !ZK_EVM
-        // Clear only the dirtied part via the shared zeroer so the pristine tail is left untouched.
-        if (_shared is not null && !_spilled)
-        {
-            _shared.Zero(_base, frameOld, frameNew);
-            // Children anchor at _base + Size; recording a tracing over-clear beyond Size as clean would
-            // make the parent skip re-zeroing a later sibling's writes there. Keep _lastZeroedSize <= Size.
-            _lastZeroedSize = Math.Min((ulong)frameNew, Size);
-            return;
-        }
-#endif
-        Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
-        _lastZeroedSize = (ulong)frameNew;
-    }
-
     public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
     {
         if (length == 0)
@@ -446,27 +409,6 @@ public partial struct EvmPooledMemory
 
         int len = (int)Math.Min(size, (ulong)(_memory.Length - _offset));
         return new(size, FrameMemory(0, len));
-    }
-
-    public void Dispose()
-    {
-        byte[]? memory = _memory;
-        if (memory is null)
-        {
-            return;
-        }
-
-        _memory = null;
-#if ZK_EVM
-        ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
-#else
-        // The shared buffer belongs to the VM and is never returned — its window is reused by the next
-        // sibling frame, whose growth re-zeroes stale bytes. Only a private/spilled buffer goes back.
-        if (_shared is null || _spilled)
-        {
-            ReturnLarge(memory);
-        }
-#endif
     }
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
