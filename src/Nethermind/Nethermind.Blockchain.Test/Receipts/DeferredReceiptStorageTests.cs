@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -277,15 +278,39 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     public async Task Writer_fault_falls_back_to_inline_execution()
     {
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
-        int failures = 0;
-        writer.Enqueue(() => { failures++; throw new InvalidOperationException("boom"); });
+        int attempts = 0;
+        writer.Enqueue(() => { if (++attempts <= 2) throw new InvalidOperationException("transient"); });
 
         writer.Pump();
-        Assert.That(failures, Is.EqualTo(2), "failing item is retried once");
+        Assert.That(attempts, Is.EqualTo(2), "failing item is retried once by the consumer");
 
         bool ranInline = false;
         writer.Enqueue(() => ranInline = true);
-        Assert.That(ranInline, Is.True, "after a fault, work executes inline on the producer");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(3), "the retained write recovers before later work");
+            Assert.That(ranInline, Is.True, "after recovery, later work executes inline on the producer");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Writer_fault_preserves_fifo_order_for_buffered_and_later_writes()
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        int firstAttempts = 0;
+        List<int> order = [];
+        writer.Enqueue(() =>
+        {
+            order.Add(1);
+            if (++firstAttempts <= 2) throw new InvalidOperationException("transient");
+        });
+        writer.Enqueue(() => order.Add(2));
+
+        writer.Pump();
+        writer.Enqueue(() => order.Add(3));
+
+        Assert.That(order, Is.EqualTo(new[] { 1, 1, 1, 2, 3 }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

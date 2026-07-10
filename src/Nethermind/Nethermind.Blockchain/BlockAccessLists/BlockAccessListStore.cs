@@ -77,8 +77,8 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         Hash256 blockHash = block.Hash ?? throw new ArgumentException("Block hash is required to persist a block access list.", nameof(block));
 
-        // Retain the immutable encoded bytes and free the live BAL (as InsertFromBlock does); only the DB write
-        // defers. Clearing the block property does not affect the array retained by the overlay.
+        // Reuse the block's owned encoding. The fallback must also be owned because the overlay and its
+        // non-owning read views can outlive this call, so a pool-rented buffer could be returned too early.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
             : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;

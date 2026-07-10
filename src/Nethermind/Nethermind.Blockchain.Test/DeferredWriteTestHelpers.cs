@@ -19,5 +19,5 @@ internal static class DeferredWriteTestHelpers
 
     /// <summary>A disabled writer: <c>Enqueue</c> runs work inline, so inserts are synchronous.</summary>
     public static DeferredBlockDataWriter DisabledWriter() =>
-        new(enabled: false, capacity: Capacity, LimboLogs.Instance, startConsumer: false);
+        new(enabled: false, capacity: Capacity, LimboLogs.Instance, persistenceBarrier: null, startConsumer: false);
 }

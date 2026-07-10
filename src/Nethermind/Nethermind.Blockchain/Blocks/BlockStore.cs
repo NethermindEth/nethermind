@@ -176,19 +176,16 @@ public class BlockStore : IBlockStore, IClearableCache
         memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
-        ReceiptRecoveryBlock? block;
+        ReceiptRecoveryBlock? block = null;
         try
         {
             block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+            return block;
         }
-        catch
+        finally
         {
-            ((IMemoryOwner<byte>)memoryOwner).Dispose();
-            throw;
+            if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
         }
-
-        if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
-        return block;
     }
 
     public void Cache(Block block)
