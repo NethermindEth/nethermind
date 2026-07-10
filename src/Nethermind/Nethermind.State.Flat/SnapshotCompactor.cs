@@ -154,15 +154,15 @@ public class SnapshotCompactor(
         {
             using ArrayPoolListRef<Task> compactTask = new(4);
             compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedAccounts, snapshots, SnapshotKeyComparers.Address, static m => m.SortedAccounts, static c => c.Accounts, null)));
+                content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts, null)));
             compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorages, snapshots, SnapshotKeyComparers.Storage, static m => m.SortedStorages, static c => c.Storages, slotKeep)));
+                content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages, slotKeep)));
             compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStateNodes, snapshots, SnapshotKeyComparers.StateNode, static m => m.SortedStateNodes, static c => c.StateNodes, null)));
+                content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes, null)));
             compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorageNodes, snapshots, SnapshotKeyComparers.StorageNode, static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
+                content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
 
-            content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, SnapshotKeyComparers.Address);
+            content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
 
             Task.WaitAll(compactTask.AsSpan());
         }
@@ -175,13 +175,15 @@ public class SnapshotCompactor(
         return new Snapshot(from, to, content, _resourcePool, usage);
     }
 
-    private static void MergeInto<TKey, TValue>(
+    private static void MergeInto<TKey, TValue, TComparer>(
         SortedMergeDictionary<TKey, TValue> target,
         SnapshotPooledList snapshots,
-        IComparer<TKey> comparer,
+        TComparer comparer,
         Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
         Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
-        Func<int, TKey, bool>? keep) where TKey : IEquatable<TKey>
+        Func<int, TKey, bool>? keep)
+        where TKey : IEquatable<TKey>
+        where TComparer : IComparer<TKey>
     {
         int count = snapshots.Count;
         SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
