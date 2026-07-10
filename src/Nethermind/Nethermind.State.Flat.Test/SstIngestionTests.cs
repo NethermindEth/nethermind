@@ -70,6 +70,41 @@ public class SstIngestionTests
     }
 
     [Test]
+    public void Ingest_duplicate_and_delete_across_chunk_boundary_last_write_wins()
+    {
+        IDb accountDb = _db.GetColumnDb(FlatDbColumns.Account);
+        byte[] overwrittenKey = ValueKeccak.Compute("overwritten"u8).ToByteArray();
+        byte[] deletedKey = ValueKeccak.Compute("deleted"u8).ToByteArray();
+        byte[] dedupedKey = ValueKeccak.Compute("deduped"u8).ToByteArray();
+
+        using (IWriteBatch batch = ((ISstIngestible)accountDb).StartSstIngestBatch())
+        {
+            batch.Set(overwrittenKey, [0x01]);
+            batch.Set(deletedKey, [0x0d]);
+            batch.Set(dedupedKey, [0x0a]);
+            batch.Set(dedupedKey, [0x0b]);
+
+            // Push past the chunk threshold so a mid-batch flush ingests the writes above,
+            // then write conflicting values that land in the next chunk's file.
+            byte[] filler = new byte[64 * 1024];
+            Span<byte> key = stackalloc byte[32];
+            for (int i = 0; i < 2100; i++)
+            {
+                BitConverter.TryWriteBytes(key, i);
+                key[8] = 0xff;
+                batch.Set(key, filler);
+            }
+
+            batch.Set(overwrittenKey, [0x02]);
+            batch.Set(deletedKey, null);
+        }
+
+        Assert.That(accountDb.Get(overwrittenKey), Is.EqualTo(new byte[] { 0x02 }));
+        Assert.That(accountDb.Get(deletedKey), Is.Null);
+        Assert.That(accountDb.Get(dedupedKey), Is.EqualTo(new byte[] { 0x0b }));
+    }
+
+    [Test]
     public void Ingest_round_trips_and_advances_pointer()
     {
         StateId s1 = State(1, 1);
