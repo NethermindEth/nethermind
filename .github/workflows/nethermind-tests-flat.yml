@@ -15,6 +15,9 @@ env:
   TERM: xterm
   TEST_USE_FLAT: 1
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}

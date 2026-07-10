@@ -18,6 +18,9 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
