@@ -25,6 +25,10 @@ internal static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
+    // Streams whose retained arrays exceed this are not kept (the frame falls back to the metered loop), bounding
+    // per-entry memory so decode-hostile contracts can't amplify a cached stream to many times the code size.
+    public const int MaxStreamRetainedBytes = 64 * 1024;
+
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the
     // stream engaged. [ThreadStatic] so each thread bumps its own slot with a plain write: no atomic and
     // no cross-core cache-line bouncing on the hot RunStream entry. Tests run single-threaded, so they
