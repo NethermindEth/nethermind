@@ -248,6 +248,8 @@
         .card td.bal { text-align: right; font-size: 13px; }
         .card td.tick { color: var(--muted); width: 72px; }
         .card td.fiat { text-align: right; color: var(--muted); width: 110px; font-size: 12px; }
+        .card tr.cardTotal td { border-top: 1px solid var(--border-soft); }
+        .card tr.cardTotal td.fiat { color: white; }
 
         #status {
             min-height: 18px;
@@ -604,6 +606,29 @@
             $('totalFiat').textContent = text;
         }
 
+        // last fetched values per `${address}|${assetKey}`, so re-rendering
+        // (e.g. after unpinning) never blanks cells while waiting for a refetch
+        const cache = new Map();
+        const assetKeys = () => ['native'].concat(state.tokens.map((t) => t.address.toLowerCase()));
+
+        function recomputeTotals() {
+            if (!fiatEnabled()) return;
+            let grand = 0n;
+            let any = false;
+            for (const entry of state.addresses) {
+                let cardTotal = 0n;
+                let cardAny = false;
+                for (const key of assetKeys()) {
+                    const cached = cache.get(entry.address + '|' + key);
+                    if (cached?.value8 !== null && cached?.value8 !== undefined) { cardTotal += cached.value8; cardAny = true; }
+                }
+                const cell = document.querySelector(`td[data-cardtotal="${entry.address}"]`);
+                if (cell) cell.textContent = cardAny ? formatFiat(cardTotal) : '—';
+                if (cardAny) { grand += cardTotal; any = true; }
+            }
+            setTotal(any ? formatFiat(grand) : (state.addresses.length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
+        }
+
         // ---------- ENS (forward resolution, simple case) ----------
         async function resolveEns(name) {
             const node = namehash(name);
@@ -630,7 +655,7 @@
                     store.save(state);
                     renderTokens();
                     renderCards();
-                    refreshBalances();
+                    recomputeTotals();
                 };
                 chip.append(x);
                 box.append(chip);
@@ -667,6 +692,7 @@
                     state.addresses = state.addresses.filter((a) => a !== entry);
                     store.save(state);
                     renderCards();
+                    recomputeTotals();
                 };
                 head.append(unpin);
                 card.append(head);
@@ -676,17 +702,27 @@
                     state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase() })));
                 const showFiat = fiatEnabled();
                 for (const row of rows) {
+                    const cached = cache.get(entry.address + '|' + row.key);
                     const tr = el('tr');
                     tr.append(el('td', 'tick number', row.ticker));
-                    const bal = el('td', 'bal number spin', '…');
+                    const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
                     bal.dataset.key = row.key;
                     tr.append(bal);
                     if (showFiat) {
-                        const fiat = el('td', 'fiat number', '');
+                        const fiat = el('td', 'fiat number', cached ? cached.fiat : '');
                         fiat.dataset.fiatkey = row.key;
                         tr.append(fiat);
                     }
                     table.append(tr);
+                }
+                if (showFiat) {
+                    const totalRow = el('tr', 'cardTotal');
+                    totalRow.append(el('td', 'tick', 'total ≈'));
+                    totalRow.append(el('td'));
+                    const totalCell = el('td', 'fiat number', '');
+                    totalCell.dataset.cardtotal = entry.address;
+                    totalRow.append(totalCell);
+                    table.append(totalRow);
                 }
                 card.append(table);
                 cards.append(card);
@@ -699,7 +735,7 @@
         async function refreshBalances() {
             if (refreshing) return;
             if (state.addresses.length === 0) {
-                if (fiatEnabled()) setTotal(CURRENCY_SYMBOLS[currency] + '0.00');
+                recomputeTotals();
                 return;
             }
             refreshing = true;
@@ -734,34 +770,28 @@
                 // FX feeds quote CCY/USD; token values are computed in USD then divided by it
                 const fxRate = currency === 'USD' ? PRICE_SCALE : (fxIndex >= 0 ? parseRoundAnswer(results[fxIndex]) : null);
 
-                let total = 0n;
-                let anyPrice = false;
                 let i = balanceStart;
                 for (const entry of state.addresses) {
                     const card = document.querySelector(`.card[data-address="${entry.address}"]`);
                     for (const asset of assets) {
                         const raw = results[i++];
-                        const balCell = card?.querySelector(`td[data-key="${asset.key}"]`);
-                        const fiatCell = card?.querySelector(`td[data-fiatkey="${asset.key}"]`);
                         const balText = formatUnits(raw, asset.decimals);
-                        if (balCell) { balCell.textContent = balText ?? '—'; balCell.classList.remove('spin'); }
-                        if (!fiatCell) continue;
                         const price = prices.get(asset.key);
-                        let fiatText = '';
-                        if (balText !== null && price && fxRate) {
-                            let value8;
+                        let value8 = null;
+                        if (fiat && balText !== null && price && fxRate) {
                             try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
-                            if (value8 !== null) {
-                                if (currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
-                                total += value8;
-                                anyPrice = true;
-                                fiatText = formatFiat(value8);
-                            }
+                            if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
                         }
-                        fiatCell.textContent = fiatText;
+                        const fiatText = value8 !== null ? formatFiat(value8) : '';
+                        cache.set(entry.address + '|' + asset.key, { bal: balText, fiat: fiatText, value8 });
+
+                        const balCell = card?.querySelector(`td[data-key="${asset.key}"]`);
+                        if (balCell) { balCell.textContent = balText ?? '—'; balCell.classList.remove('spin'); }
+                        const fiatCell = card?.querySelector(`td[data-fiatkey="${asset.key}"]`);
+                        if (fiatCell) fiatCell.textContent = fiatText;
                     }
                 }
-                if (fiat) setTotal(anyPrice ? formatFiat(total) : '—');
+                recomputeTotals();
             } catch (e) {
                 setStatus('Balance refresh failed: ' + e.message, true);
             } finally {
