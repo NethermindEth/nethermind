@@ -89,7 +89,6 @@
         header .net .number { color: white; }
 
         header .total {
-            margin-left: auto;
             display: none;
             align-items: baseline;
             gap: 8px;
@@ -185,20 +184,18 @@
 
         #tokens { margin-top: 12px; }
 
-        label.toggle {
+        body.hideZero tr.zero { display: none; }
+
+        button.zero-toggle {
             margin-left: auto;
+            border: 1px solid var(--border);
+            padding: 4px 9px;
             color: var(--muted);
-            font-size: 12px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            user-select: none;
+            font-family: 'DM Mono', ui-monospace, monospace;
+            font-size: 13px;
         }
 
-        label.toggle input { accent-color: var(--accent); cursor: pointer; }
-
-        body.hideZero tr.zero { display: none; }
+        button.zero-toggle.on { color: var(--accent); border-color: var(--accent); }
 
         .chip {
             display: inline-flex;
@@ -331,6 +328,7 @@
         <div class="net">network <span id="netName" class="number">…</span></div>
         <div class="net">chain <span id="chainId" class="number">…</span></div>
         <div class="net">head <span id="headBlock" class="number">…</span></div>
+        <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
         <div class="total" id="totalBox">
             <span class="net">total ≈</span>
             <span id="totalFiat" class="number">…</span>
@@ -343,7 +341,6 @@
         <div class="row" id="addAddress">
             <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
             <button id="addAddrBtn" title="Pin address">+</button>
-            <label class="toggle"><input type="checkbox" id="hideZero" /> hide zero balances</label>
         </div>
         <div class="row" id="tokenForm">
             <select id="tokKind" title="Asset type">
@@ -1330,11 +1327,15 @@
 
             const HIDE_ZERO_KEY = 'nethermind.balances.hidezero';
             const hideZero = $('hideZero');
-            hideZero.checked = localStorage.getItem(HIDE_ZERO_KEY) === '1';
-            document.body.classList.toggle('hideZero', hideZero.checked);
-            hideZero.onchange = () => {
-                localStorage.setItem(HIDE_ZERO_KEY, hideZero.checked ? '1' : '0');
-                document.body.classList.toggle('hideZero', hideZero.checked);
+            const applyHideZero = (on) => {
+                hideZero.classList.toggle('on', on);
+                document.body.classList.toggle('hideZero', on);
+            };
+            applyHideZero(localStorage.getItem(HIDE_ZERO_KEY) === '1');
+            hideZero.onclick = () => {
+                const on = !hideZero.classList.contains('on');
+                localStorage.setItem(HIDE_ZERO_KEY, on ? '1' : '0');
+                applyHideZero(on);
             };
 
             try {
