@@ -78,8 +78,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
 #if !ZK_EVM
-    // One growable buffer shared by every call frame of this VM instance. Each thread has its own VM
-    // (scoped DI), and a whole transaction runs synchronously on one thread, so no synchronisation needed.
+    // One buffer shared by every call frame of this VM; safe unsynchronised as a tx runs on a single thread.
     private readonly SharedEvmMemory _sharedMemory = new();
 #endif
 

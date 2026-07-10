@@ -328,8 +328,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(256 * 1024)]
     public void Shared_sibling_frame_reuse_reads_zero(int size)
     {
-        // A frame writes a dirty pattern into the shared buffer then returns without clearing; the next
-        // sibling frame occupies the same window and must still read zero everywhere it did not write.
         SharedEvmMemory shared = new();
         UInt256 zero = UInt256.Zero;
 
@@ -362,7 +360,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         parentPattern.Fill(0xaa);
         Assert.That(parent.TrySave((UInt256)64, parentPattern), Is.True);
 
-        // Child frame is anchored just past the parent's window.
         EvmPooledMemory child = new();
         child.AttachShared(shared, parent.FrameFrontier);
         UInt256 childLength = (UInt256)4096;
@@ -373,7 +370,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(child.TrySave(0, childPattern), Is.True);
         child.Dispose();
 
-        // The parent's data below the child's window is untouched by the child's execution.
+        // Parent's window below the child is untouched.
         Assert.That(parent.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> parentFirst), Is.True);
         Assert.That(parentFirst.ToArray(), Is.EqualTo(word));
         Assert.That(parent.TryLoadSpan((UInt256)64, (UInt256)2048, out Span<byte> parentMid), Is.True);
@@ -384,8 +381,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void Shared_frame_exceeding_reserve_spills_and_reads_zero()
     {
-        // A frame anchored near the end of the reserve grows past it and must transparently spill to a
-        // private buffer while still honouring the zero-initialisation invariant.
         SharedEvmMemory shared = new();
         EvmPooledMemory a = new();
         a.AttachShared(shared, SharedEvmMemory.ReserveBytes - 512);

@@ -2,19 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
@@ -23,23 +21,16 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
-    // Base index into _memory where this frame's window starts. Always zero for the ZK arena path and for
-    // an unattached or spilled private buffer; equal to the shared-buffer base otherwise.
+    // Start of this frame's window inside _memory; nonzero only for a shared-buffer frame.
     private int _offset;
     public ulong Size { get; private set; }
 
 #if !ZK_EVM
-    // Per-VirtualMachine shared buffer this frame draws from (null when unattached, e.g. in unit tests).
     private SharedEvmMemory? _shared;
-    // This frame's base offset inside the shared buffer; anchors child frames' windows (see FrameFrontier).
     private int _base;
-    // Set once the frame outgrew the fixed reserve and fell back to a private pooled array.
     private bool _spilled;
 
-    /// <summary>
-    /// Binds this (freshly reset) frame's memory to the VirtualMachine's shared buffer at
-    /// <paramref name="baseOffset"/>. The backing buffer is only touched lazily on first growth.
-    /// </summary>
+    /// <summary>Binds this frame's memory to the VM's shared buffer at <paramref name="baseOffset"/>.</summary>
     internal void AttachShared(SharedEvmMemory shared, int baseOffset)
     {
         _shared = shared;
@@ -47,16 +38,12 @@ public struct EvmPooledMemory
         _offset = baseOffset;
     }
 
-    /// <summary>
-    /// Absolute offset in the shared buffer where a child frame's window should start. A spilled frame
-    /// occupies no shared space, so its children reuse its base.
-    /// </summary>
+    /// <summary>Where a child frame's window starts; a spilled frame occupies no shared space.</summary>
     internal int FrameFrontier => _spilled ? _base : _base + (int)Size;
 #endif
 
-    // The frame's memory lives at [_offset, _offset + Size) inside _memory. These helpers apply the base
-    // in one place so no access can forget it (a missed offset would be a consensus fault), while keeping
-    // the single-add, bounds-check-free codegen the hot MSTORE/MLOAD paths rely on.
+    // Apply _offset in one place so no access forgets it. AggressiveInlining keeps the hot MSTORE/MLOAD
+    // paths at a single add with no bounds check; AsSpan/AsMemory build stack structs, they don't allocate.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly ref byte FrameRef(int offset)
         => ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), _offset + offset);
@@ -319,8 +306,8 @@ public struct EvmPooledMemory
             return;
         }
 #if !ZK_EVM
-        // In the shared buffer, [frameOld, frameNew) may still hold a sibling frame's bytes; clear only
-        // the dirtied part via the shared zeroer so the pristine tail is left untouched.
+        // The window may still hold a sibling frame's bytes; clear only the dirtied part via the shared
+        // zeroer so the pristine tail is left untouched.
         if (_shared is not null && !_spilled)
         {
             _shared.Zero(_base, frameOld, frameNew);
@@ -475,9 +462,8 @@ public struct EvmPooledMemory
 #if ZK_EVM
         ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
 #else
-        // A private (unattached or spilled) buffer is pooled here; the shared buffer belongs to the
-        // VirtualMachine and is never returned — its window is simply reused by the next sibling frame,
-        // whose growth re-zeroes any stale bytes on demand (see SharedEvmMemory). No per-frame clear.
+        // The shared buffer belongs to the VM and is never returned — its window is reused by the next
+        // sibling frame, whose growth re-zeroes stale bytes. Only a private/spilled buffer goes back.
         if (_shared is null || _spilled)
         {
             ReturnLarge(memory);
@@ -526,167 +512,6 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
-
-#if ZK_EVM
-    private const int MaxCachedArrayLength = 1 << 16;
-    private const int CleanCacheSlots = 16;
-
-    [ThreadStatic] private static byte[]?[]? _cleanArrays;
-    [ThreadStatic] private static int _cleanArrayCount;
-
-    private static byte[] RentClean(int minLength)
-    {
-        byte[]?[]? cache = _cleanArrays;
-        int cleanArrayCount = _cleanArrayCount - 1;
-        for (int i = cleanArrayCount; i >= 0; i--)
-        {
-            byte[] candidate = cache![i]!;
-            if (candidate.Length >= minLength)
-            {
-                _cleanArrayCount = cleanArrayCount;
-                cache[i] = cache[cleanArrayCount];
-                cache[cleanArrayCount] = null;
-                return candidate;
-            }
-        }
-
-        if (minLength > MaxCachedArrayLength)
-        {
-            byte[] pooled = RentLarge(minLength);
-            Array.Clear(pooled);
-            return pooled;
-        }
-
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
-    }
-
-    private static void ReturnClean(byte[] array, int dirtyLength)
-    {
-        if (array.Length > MaxCachedArrayLength)
-        {
-            ReturnLarge(array);
-            return;
-        }
-
-        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
-        if (_cleanArrayCount < CleanCacheSlots)
-        {
-            Array.Clear(array, 0, dirtyLength);
-            cache[_cleanArrayCount++] = array;
-        }
-    }
-
-    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
-
-    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
-#else
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
-        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-
-    private static byte[] RentLarge(int minLength)
-        => minLength > MaxSharedArrayLength
-            ? _largeArrayPool.Rent(minLength)
-            : SafeArrayPool<byte>.Shared.Rent(minLength);
-
-    private static void ReturnLarge(byte[] array)
-    {
-        if (array.Length > MaxSharedArrayLength)
-            _largeArrayPool.Return(array);
-        else
-            SafeArrayPool<byte>.Shared.Return(array);
-    }
-#endif
-
-#if ZK_EVM
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
-    {
-        if (_memory is null)
-        {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
-        }
-        else if (Size > (ulong)_memory.LongLength)
-        {
-            byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
-            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
-        }
-
-        _offset = 0; // the ZK arena buffer is per-frame, so the window always starts at index 0
-        _lastZeroedSize = (ulong)_memory.Length;
-    }
-#else
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
-    {
-        // Unattached (unit tests) or already spilled → grow a private pooled array by realloc-and-copy.
-        if (_shared is null || _spilled)
-        {
-            RentPrivate();
-            return;
-        }
-
-        byte[] buffer = _shared.Buffer;
-        // The frame window is [_base, _base + Size); spill to a private array if it can't fit the reserve.
-        if ((ulong)_base + Size > (ulong)buffer.Length)
-        {
-            SpillToPrivate();
-            return;
-        }
-
-        _memory = buffer; // _offset == _base, set in AttachShared
-        _shared.Zero(_base, (int)_lastZeroedSize, (int)Size);
-        _lastZeroedSize = Size;
-    }
-
-    // Grows a private (unattached or spilled) buffer, keeping it fully zero-initialised.
-    private void RentPrivate()
-    {
-        if (_memory is null)
-        {
-            _memory = RentLargeCleared((int)Math.Max((uint)Size, MinRentSize));
-        }
-        else if (Size > (ulong)_memory.LongLength)
-        {
-            byte[] beforeResize = _memory;
-            _memory = RentLargeCleared(TruncateToInt32(Size));
-            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnLarge(beforeResize);
-        }
-
-        _offset = 0;
-        _lastZeroedSize = (ulong)_memory.Length;
-    }
-
-    // The frame outgrew the fixed reserve: move it to a private pooled array, preserving the bytes it has
-    // already written in the shared window. Rare — needs adversarially deep or large per-thread memory.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void SpillToPrivate()
-    {
-        byte[] priv = RentLargeCleared(TruncateToInt32(Size));
-        int copyLen = (int)Math.Min(_lastZeroedSize, Size);
-        if (_memory is not null && copyLen > 0)
-        {
-            Array.Copy(_memory, _base, priv, 0, copyLen);
-        }
-
-        _memory = priv;
-        _offset = 0;
-        _spilled = true;
-        _lastZeroedSize = (ulong)priv.Length;
-    }
-
-    private static byte[] RentLargeCleared(int minLength)
-    {
-        byte[] array = RentLarge(minLength);
-        Array.Clear(array);
-        return array;
-    }
-#endif
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
     // direct ulong->int narrowing (treats it as a signed truncation and keeps the operation
