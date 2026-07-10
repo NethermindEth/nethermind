@@ -235,7 +235,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x01");
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
         HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
         Assert.That(result, Is.EqualTo(expected));
     }
@@ -244,7 +244,7 @@ public class JsonRpcServiceTests
     public void Value_type_result_failure_without_error_data_does_not_emit_default_data()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Fail("out of gas", ErrorCodes.ExecutionError));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Fail("out of gas", ErrorCodes.ExecutionError));
 
         ResultWrapper<HexBytes> response = AssertWrapperResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
 
@@ -433,7 +433,7 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         HexBytes expected = ToHexBytes("0x");
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(_ => ResultWrapper<HexBytes>.Success(expected));
 
         HexBytes result = RpcTest.AssertSuccess<HexBytes>(TestRequest(ethRpcModule, "eth_call", parameters));
         Assert.That(result, Is.EqualTo(expected));
@@ -445,7 +445,7 @@ public class JsonRpcServiceTests
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule
             .eth_call(
-                Arg.Any<TransactionForRpc>(),
+                Arg.Any<SignableTransactionForRpc>(),
                 Arg.Any<BlockParameter?>(),
                 Arg.Any<Dictionary<Address, AccountOverride>?>(),
                 Arg.Any<BlockOverride?>())
