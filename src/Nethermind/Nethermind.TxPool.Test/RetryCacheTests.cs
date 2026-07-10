@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -34,6 +33,42 @@ public class RetryCacheTests
     {
         public ResourceId Resource { get; init; }
         public static ResourceRequestMessage New(ResourceId resourceId) => new() { Resource = resourceId };
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private sealed class Timer : System.Threading.ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => default;
+        }
+
+        private static readonly Timer _timer = new();
+        private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TimerCallback _timerCallback;
+        private object _timerState;
+        private long _elapsedTicks;
+
+        public Task TimerCreated => _timerCreated.Task;
+
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(Volatile.Read(ref _elapsedTicks));
+
+        public override System.Threading.ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period)
+        {
+            _timerCallback = callback;
+            _timerState = state;
+            _timerCreated.TrySetResult();
+            return _timer;
+        }
+
+        public void Elapse(TimeSpan elapsed) => Interlocked.Add(ref _elapsedTicks, elapsed.Ticks);
+
+        public void Advance(TimeSpan elapsed)
+        {
+            Elapse(elapsed);
+            _timerCallback(_timerState);
+        }
     }
 
     public interface ITestHandler : IMessageHandler<ResourceRequestMessage>;
@@ -224,17 +259,43 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void Clear_cache_after_timeout()
+    public async Task Clear_cache_after_timeout()
     {
-        Parallel.For(0, 100, (i) =>
-        {
-            Parallel.For(0, 100, (j) =>
-            {
-                _cache.Announced(i, new TestHandler());
-            });
-        });
+        using CancellationTokenSource cancellationTokenSource = new();
+        ManualTimeProvider timeProvider = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token);
 
-        Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 100));
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            TestHandler[] handlers = new TestHandler[100];
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                handlers[i] = new TestHandler();
+            }
+
+            Parallel.For(0, 100, resourceId =>
+                Parallel.For(0, handlers.Length, handlerIndex => cache.Announced(resourceId, handlers[handlerIndex])));
+
+            for (int retry = 1; retry <= 4; retry++)
+            {
+                timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+                Assert.That(() => GetTotalCalls(handlers), Is.EqualTo(retry * 100).After(AssertTimeoutMs, 10));
+            }
+
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+
+            Assert.That(() => cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
     }
 
     [Test]
@@ -317,26 +378,7 @@ public class RetryCacheTests
     public async Task Received_ThenReannounced_IgnoresPreviousExpiry()
     {
         const int timeoutMs = 1500;
-        long elapsedTicks = 0;
-        DateTimeOffset start = DateTimeOffset.UnixEpoch;
-        TimerCallback timerCallback = null;
-        object timerState = null;
-        TaskCompletionSource timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        TimeProvider timeProvider = Substitute.For<TimeProvider>();
-        System.Threading.ITimer timer = Substitute.For<System.Threading.ITimer>();
-        timeProvider.GetUtcNow().Returns(_ => start.AddTicks(Volatile.Read(ref elapsedTicks)));
-        timeProvider.CreateTimer(
-            Arg.Any<TimerCallback>(),
-            Arg.Any<object>(),
-            Arg.Any<TimeSpan>(),
-            Arg.Any<TimeSpan>()).Returns(callInfo =>
-            {
-                timerCallback = callInfo.ArgAt<TimerCallback>(0);
-                timerState = callInfo.ArgAt<object>(1);
-                timerCreated.TrySetResult();
-                return timer;
-            });
-
+        ManualTimeProvider timeProvider = new();
         using CancellationTokenSource cancellationTokenSource = new();
         RetryCache<ResourceRequestMessage, ResourceId> cache = new(
             TestLogManager.Instance,
@@ -346,23 +388,21 @@ public class RetryCacheTests
 
         try
         {
-            await timerCreated.Task.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
             cache.Announced(1, new TestHandler());
-            Interlocked.Add(ref elapsedTicks, TimeSpan.FromMilliseconds(timeoutMs / 2).Ticks);
+            timeProvider.Elapse(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             cache.Received(1);
             TestHandler retryHandler = new();
             cache.Announced(1, new TestHandler());
             cache.Announced(1, retryHandler);
 
-            Interlocked.Add(ref elapsedTicks, TimeSpan.FromMilliseconds(timeoutMs / 2).Ticks);
-            timerCallback(timerState);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             Assert.That(() => cache.ResourcesInRetryQueue, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             Assert.That(retryHandler.WasCalled, Is.False);
 
-            Interlocked.Add(ref elapsedTicks, TimeSpan.FromMilliseconds(timeoutMs / 2).Ticks);
-            timerCallback(timerState);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         }
@@ -641,6 +681,17 @@ public class RetryCacheTests
         }
 
         return handlers;
+    }
+
+    private static int GetTotalCalls(TestHandler[] handlers)
+    {
+        int total = 0;
+        for (int i = 0; i < handlers.Length; i++)
+        {
+            total += handlers[i].HandleMessageCallCount;
+        }
+
+        return total;
     }
 
     private readonly struct NoopHandlerBagProcessor : IHandlerBagProcessor<ResourceRequestMessage>
