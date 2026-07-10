@@ -67,7 +67,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
-    private InstructionStream? _stream;
     private int _streamHits;
 
     private const int StreamBuildIdle = 0;
@@ -80,25 +79,19 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
-    /// Returns the built stream, or <c>null</c> until ready: past <see cref="StreamInterpreter.BuildThreshold"/>
-    /// the build is scheduled once on the thread pool and callers keep getting <c>null</c> until it publishes,
-    /// so no call blocks. Lock-free via two CASes (schedule, publish).
+    /// Returns the built stream from the shared cache, or <c>null</c> until ready: past
+    /// <see cref="StreamInterpreter.BuildThreshold"/> the build is scheduled once on the thread pool and callers keep
+    /// getting <c>null</c> until it publishes, so no call blocks. The stream is held only by the shared cache (not on
+    /// this instance), so retained stream memory is bounded by that cache alone, not by the CodeInfo cache size.
     /// </summary>
     internal InstructionStream? GetOrBuildStream()
     {
-        InstructionStream? stream = Volatile.Read(ref _stream);
-        if (stream is not null)
-            return stream;
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
             return null;
+        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+            return cached;
         if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
             return null;
-
-        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
-        {
-            Volatile.Write(ref _stream, cached);
-            return cached;
-        }
 
         if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
             ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
@@ -109,11 +102,9 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     private void BuildStream()
     {
         InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
-        if (stream is not null && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
+        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
         {
-            if (CodeHash != default)
-                InstructionStreamCache.Set(CodeHash, stream);
-            Interlocked.CompareExchange(ref _stream, stream, null);
+            InstructionStreamCache.Set(CodeHash, stream);
         }
         else
         {
