@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -69,9 +70,19 @@ public struct ReceiptRecoveryBlock
     /// </remarks>
     public Hash256 GetNextTransactionHash()
     {
+        if (_currentTransactionIndex >= TransactionCount)
+        {
+            ThrowNoTransactionRemaining();
+        }
+
         if (_transactions is not null)
         {
             return _transactions[_currentTransactionIndex++].Hash!;
+        }
+
+        if ((uint)_currentTransactionPosition >= (uint)_transactionData.Length)
+        {
+            RlpHelpers.ThrowRlpDataTruncated();
         }
 
         RlpReader decoderContext = new(_transactionData)
@@ -79,19 +90,63 @@ public struct ReceiptRecoveryBlock
             Position = _currentTransactionPosition
         };
 
-        ReadOnlySpan<byte> encodedTransaction = decoderContext.PeekNextItem();
-        ReadOnlySpan<byte> hashInput = encodedTransaction;
-        if (!decoderContext.IsSequenceNext())
+        bool isLegacy = decoderContext.IsSequenceNext();
+        (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
+        int bytesRemaining = decoderContext.Length - decoderContext.Position;
+        if (prefixLength > bytesRemaining || contentLength > bytesRemaining - prefixLength)
         {
-            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
-            hashInput = prefixLength == 0
-                ? encodedTransaction
-                : encodedTransaction.Slice(prefixLength, contentLength);
+            RlpHelpers.ThrowRlpDataTruncated();
         }
 
-        _currentTransactionPosition += encodedTransaction.Length;
-        return Keccak.Compute(hashInput);
+        int encodedLength = prefixLength + contentLength;
+        ReadOnlySpan<byte> encodedTransaction = decoderContext.Peek(encodedLength);
+        ReadOnlySpan<byte> hashInput;
+        if (isLegacy)
+        {
+            if (contentLength == 0)
+            {
+                ThrowEmptyLegacyTransaction();
+            }
+
+            hashInput = encodedTransaction;
+        }
+        else
+        {
+            if (contentLength < 2)
+            {
+                ThrowIncompleteTypedTransaction();
+            }
+
+            byte transactionType = encodedTransaction[prefixLength];
+            if (transactionType is (byte)TxType.Legacy || transactionType > Transaction.MaxTxType)
+            {
+                ThrowInvalidTypedTransactionType(transactionType);
+            }
+
+            hashInput = encodedTransaction.Slice(prefixLength, contentLength);
+        }
+
+        Hash256 hash = Keccak.Compute(hashInput);
+        _currentTransactionPosition += encodedLength;
+        _currentTransactionIndex++;
+        return hash;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNoTransactionRemaining()
+        => throw new RlpException("No transaction remains in the receipt recovery block.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyLegacyTransaction()
+        => throw new RlpException("An empty RLP list is not a valid legacy transaction.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIncompleteTypedTransaction()
+        => throw new RlpException("A typed transaction envelope must contain a type and payload.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidTypedTransactionType(byte transactionType)
+        => throw new RlpException($"Invalid typed transaction type {transactionType}.");
 
     public readonly Hash256? Hash => Header.Hash; // do not add setter here
     public readonly ulong Number => Header.Number; // do not add setter here

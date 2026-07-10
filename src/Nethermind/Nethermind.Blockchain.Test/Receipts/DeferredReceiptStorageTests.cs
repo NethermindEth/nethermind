@@ -161,6 +161,32 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Malformed_prune_data_does_not_partially_commit_canonical_batch()
+    {
+        _receiptConfig.TxLookupLimit = 1;
+        Transaction oldTransaction = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        Block oldBlock = Build.A.Block.WithNumber(1).WithTransactions(oldTransaction).TestObject;
+        Transaction newTransaction = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
+        Block newBlock = Build.A.Block.WithNumber(2).WithTransactions(newTransaction).TestObject;
+
+        TestMemDb transactionDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        transactionDb.Set(oldTransaction.Hash!.Bytes, oldBlock.Hash!.BytesToArray());
+        _blockTree.FindBestSuggestedHeader().Returns(newBlock.Header);
+        _blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
+        _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(
+            new ReceiptRecoveryBlock(null, oldBlock.Header, new byte[] { 0x80 }, transactionCount: 1));
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newBlock));
+        _writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionDb[oldTransaction.Hash.Bytes], Is.EqualTo(oldBlock.Hash.BytesToArray()), "existing index preserved");
+            Assert.That(transactionDb[newTransaction.Hash!.Bytes], Is.Null, "new index not partially committed");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Pending_index_scan_resolves_each_tx_to_its_own_block()
     {
         Block blockA = Build.A.Block

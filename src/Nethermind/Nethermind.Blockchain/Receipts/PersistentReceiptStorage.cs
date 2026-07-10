@@ -644,10 +644,18 @@ namespace Nethermind.Blockchain.Receipts
 
         private static void RemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch)
         {
-            for (int i = 0; i < block.TransactionCount; i++)
+            try
             {
-                Hash256 txHash = block.GetNextTransactionHash();
-                writeBatch[txHash.Bytes] = null;
+                for (int i = 0; i < block.TransactionCount; i++)
+                {
+                    Hash256 txHash = block.GetNextTransactionHash();
+                    writeBatch[txHash.Bytes] = null;
+                }
+            }
+            catch
+            {
+                writeBatch.Clear();
+                throw;
             }
         }
 

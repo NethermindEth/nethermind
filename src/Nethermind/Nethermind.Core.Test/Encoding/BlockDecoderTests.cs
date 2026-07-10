@@ -230,11 +230,40 @@ public class BlockDecoderTests
             {
                 Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
             }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
         }
         finally
         {
             recovery.Dispose();
         }
+    }
+
+    public static byte[][] MalformedRecoveryTransactions =
+    [
+        [],
+        [0xc0],
+        [0x80],
+        [0x01],
+        [0x81, 0x01],
+        [0x82, 0x00, 0xc0],
+        [0x82, 0x80, 0xc0],
+        [0x82, 0x01],
+        [0xc2, 0x80],
+        [0xb8, 0x38],
+        [0xb8, 0x01, 0x01],
+    ];
+
+    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    {
+        ReceiptRecoveryBlock recovery = new(
+            null,
+            Build.A.BlockHeader.TestObject,
+            transactionData,
+            transactionCount: 1);
+
+        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
     }
 
     [Test]
