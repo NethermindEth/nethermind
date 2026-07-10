@@ -23,7 +23,7 @@ public static class Eip2935Constants
     public static readonly ulong RingBufferSize = 8191;
 
     /// <summary>
-    /// The bytecode of history contract.
-    /// /// </summary>
+    /// The deployed bytecode of the EIP-2935 history-storage contract.
+    /// </summary>
     public static readonly byte[] Code = Bytes.FromHexString("3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");
 }

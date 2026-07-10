@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
-// SPDX-License-Identifier:LGPL-3.0-only
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain.Blocks;
@@ -34,5 +34,4 @@ public class XdcBlockhashStore(IWorldState worldState) : BlockhashStore(worldSta
 
         base.ApplyBlockhashStateChanges(blockHeader, spec);
     }
-
 }
