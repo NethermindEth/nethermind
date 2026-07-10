@@ -285,7 +285,10 @@ public static class PersistedSnapshotMerger
         Bound newestTable = new(0, newest.Length);
 
         // Metadata keys (column 0xFF) are emitted in ascending name order so the streaming builder's
-        // strict-ascending invariant holds: from_block < from_hash < noderefs < to_block < to_hash < version.
+        // strict-ascending invariant holds: from_block < from_hash < noderefs < to_block < to_hash.
+        // The sources' blob_range (which sorts before from_block) is intentionally not carried over:
+        // it describes a base snapshot's own contiguous trie-RLP run, and a merged snapshot references
+        // blobs via its ref-id records instead (BlobRange.None).
         AddMetadataField<TWriter, TReader, TPin>(ref table, in oldest, oldestTable, PersistedSnapshotTags.MetadataFromBlockKey);
         AddMetadataField<TWriter, TReader, TPin>(ref table, in oldest, oldestTable, PersistedSnapshotTags.MetadataFromHashKey);
 

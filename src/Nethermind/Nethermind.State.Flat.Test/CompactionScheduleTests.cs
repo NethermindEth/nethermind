@@ -45,6 +45,23 @@ public class CompactionScheduleTests
         Assert.That(after, Is.EqualTo(before));
     }
 
+    // Regression: a PersistedSnapshotMaxCompactSize below CompactSize caps GetPersistedSnapshotCompactSize
+    // under both boundary predicates (== / > CompactSize), so no persisted-snapshot boundary is ever
+    // detected; a non-power-of-2 value misclassifies boundaries and an int-overflowing value breaks the
+    // compactor's int casts. The constructor must reject all three.
+    [TestCase(32ul, 1024ul * 1024, true)]
+    [TestCase(1ul, 2ul, true)]
+    [TestCase(32ul, 32ul, true)]
+    [TestCase(32ul, 16ul, false)]
+    [TestCase(32ul, 48ul, false)]
+    [TestCase(32ul, 2147483648ul, false)]
+    public void Constructor_ValidatesPersistedSnapshotMaxCompactSize(ulong compactSize, ulong maxCompactSize, bool valid)
+    {
+        FlatDbConfig config = new() { CompactSize = compactSize, PersistedSnapshotMaxCompactSize = maxCompactSize };
+        Assert.That(() => new CompactionSchedule(new MemDb(), config, LimboLogs.Instance),
+            valid ? Throws.Nothing : Throws.InstanceOf<ArgumentException>());
+    }
+
     [Test]
     public void Constructor_ConfiguredOffset_UsedWithoutTouchingDb()
     {

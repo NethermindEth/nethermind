@@ -818,7 +818,7 @@ public class PersistedSnapshotCompactorTests
     /// offset it produced a span of <c>(blockNumber mod alignment)</c> instead of
     /// <c>alignment</c>.
     ///
-    /// Test geometry: offset=3, CompactSize=64, maxCompactSize=32. At block 45,
+    /// Test geometry: offset=3, CompactSize=64, maxCompactSize=64. At block 45,
     /// <c>(45 + 3) &amp; -(45 + 3) = 48 &amp; -48 = 16</c>, so alignment=16 fires.
     /// Window must be <c>(29, 45]</c> (span 16), not the buggy <c>(32, 45]</c> (span 13).
     /// </summary>
@@ -828,7 +828,7 @@ public class PersistedSnapshotCompactorTests
         using FlatTestContainer tier = new(
             arenaFileSizeBytes: 256 * 1024,
             blobFileSizeBytes: 4 * 1024 * 1024,
-            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 64, PersistedSnapshotMaxCompactSize = 32 }, 3)));
+            configure: b => b.AddSingleton<ICompactionSchedule>(ScheduleHelper.CreateWithOffset(new FlatDbConfig { CompactSize = 64, PersistedSnapshotMaxCompactSize = 64 }, 3)));
         SnapshotRepository repo = tier.Repository;
         PersistedSnapshotCompactor compactor = tier.Compactor;
 
