@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -51,6 +52,57 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// exposes the raw span for span-only call sites.
     /// </summary>
     public ReadOnlyAccountChangesView AccountChanges => new(_orderedAccounts);
+
+    private static readonly Dictionary<ValueHash256, (uint Index, byte[] Code)> s_noCodeChanges = [];
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
+
+    /// <summary>
+    /// Code blobs declared in this BAL keyed by code hash, each with the earliest declaring tx
+    /// index. <c>null</c> when no account declares a code change.
+    /// </summary>
+    /// <remarks>
+    /// Built lazily on first access and cached — the BAL is immutable and every pooled tx
+    /// processor binds the same instance per block, so caching here avoids an O(accounts) walk
+    /// per transaction. Concurrent first callers may build the map more than once; the built
+    /// maps are identical and one wins the publish.
+    /// </remarks>
+    [JsonIgnore]
+    public Dictionary<ValueHash256, (uint Index, byte[] Code)>? CodeChangesByHash
+    {
+        get
+        {
+            Dictionary<ValueHash256, (uint Index, byte[] Code)>? built = Volatile.Read(ref _codeChangesByHash);
+            if (built is null)
+            {
+                built = BuildCodeChangesByHash() ?? s_noCodeChanges;
+                built = Interlocked.CompareExchange(ref _codeChangesByHash, built, null) ?? built;
+            }
+            return ReferenceEquals(built, s_noCodeChanges) ? null : built;
+        }
+    }
+
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
+    {
+        // The dictionary is only allocated when at least one account declares a code change,
+        // so most blocks (which rarely contain deployments) skip the allocation.
+        Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
+        foreach (ReadOnlyAccountChanges accountChanges in _orderedAccounts)
+        {
+            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
+            if (codeChanges.Length == 0) continue;
+            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+            foreach (CodeChange codeChange in codeChanges)
+            {
+                if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
+                    || codeChange.Index < existing.Index)
+                {
+                    codeChangesByHash[codeChange.CodeHash] = (codeChange.Index, codeChange.Code);
+                }
+            }
+        }
+
+        return codeChangesByHash;
+    }
 
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 

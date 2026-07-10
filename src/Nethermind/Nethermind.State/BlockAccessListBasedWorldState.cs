@@ -37,14 +37,17 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
     // _codeChangesByHash is monotonic across the block (a code blob deployed at any tx is
-    // queryable at any later tx), so it is built once per block in Setup and not rebuilt here.
+    // queryable at any later tx); TryGetCodeByHash filters by Index < _blockAccessIndex at
+    // lookup time so future-tx code stays invisible.
     public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
     public void Setup(Block suggestedBlock)
     {
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = BuildCodeChangesByHash();
+        // Setup runs on every tx-processor rent (per tx); the map is built once per block and
+        // cached on the immutable BAL instance shared by all pooled processors.
+        _codeChangesByHash = _suggestedBlockAccessList?.CodeChangesByHash;
         _transientStorageProvider.Reset();
     }
 
@@ -337,36 +340,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             return true;
         }
         return false;
-    }
-
-    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
-    {
-        if (_suggestedBlockAccessList is null)
-        {
-            return null;
-        }
-
-        // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
-        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible. The
-        // dictionary itself is only allocated when at least one account declares a code change,
-        // so most blocks (which rarely contain deployments) skip the per-block allocation.
-        Dictionary<ValueHash256, (uint Index, byte[] Code)>? codeChangesByHash = null;
-        foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
-        {
-            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChanges;
-            if (codeChanges.Length == 0) continue;
-            codeChangesByHash ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
-            foreach (CodeChange codeChange in codeChanges)
-            {
-                if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
-                    || codeChange.Index < existing.Index)
-                {
-                    codeChangesByHash[codeChange.CodeHash] = (codeChange.Index, codeChange.Code);
-                }
-            }
-        }
-
-        return codeChangesByHash;
     }
 
     private static bool TryGetDeclaredSlotChanges(ReadOnlyAccountChanges accountChanges, UInt256 slot, out ReadOnlySlotChanges? slotChanges)
