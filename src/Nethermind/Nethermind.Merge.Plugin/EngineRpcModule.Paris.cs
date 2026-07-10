@@ -67,6 +67,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
+        long entryTimestamp = Stopwatch.GetTimestamp();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
 
@@ -86,15 +87,25 @@ public partial class EngineRpcModule : IEngineRpcModule
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
 
+        long preLockTimestamp = Stopwatch.GetTimestamp();
         if (await _locker.WaitAsync(_timeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
                 Task<IDisposable> regionTask = _gcKeeper.TryStartNoGCRegionAsync();
+                long gcTimestamp = Stopwatch.GetTimestamp();
                 try
                 {
-                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    if (_logger.IsDebug)
+                        _logger.Debug($"newPayload breakdown blk={executionPayload.BlockNumber} " +
+                            $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
+                            $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
+                            $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +
+                            $"handle={Stopwatch.GetElapsedTime(gcTimestamp).TotalMilliseconds:F2}ms " +
+                            $"total={Stopwatch.GetElapsedTime(entryTimestamp).TotalMilliseconds:F2}ms");
+                    return result;
                 }
                 finally
                 {
