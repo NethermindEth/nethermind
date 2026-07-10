@@ -158,6 +158,8 @@ public partial class BlockProcessor(
         if (spec.Eip7251ContractAddress is not null) lateStorageWriters.Add(spec.Eip7251ContractAddress);
         _stateProvider.BeginEarlyStorageRoots(lateStorageWriters);
 
+        CalculateBlooms(receipts);
+
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
