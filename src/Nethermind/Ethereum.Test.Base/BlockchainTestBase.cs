@@ -129,7 +129,7 @@ public abstract class BlockchainTestBase
         configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
-        blocksConfig.PreWarmStateOnBlockProcessing = false;
+        blocksConfig.PreWarming = PreWarmMode.None;
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;

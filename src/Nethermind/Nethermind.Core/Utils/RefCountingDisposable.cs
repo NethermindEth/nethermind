@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -9,15 +12,17 @@ namespace Nethermind.Core.Utils;
 /// <summary>
 /// Provides a component that can be disposed multiple times and runs <see cref="CleanUp"/> only on the last dispose.
 /// </summary>
+/// <remarks>
+/// The lease counter lives in a <see cref="CacheLinePaddedLong"/> so concurrent atomic updates do not
+/// suffer false sharing with neighbouring fields. See <see cref="SmallRefCountingDisposable"/> for a
+/// variant that stores the counter inline for types that exist in large numbers. The lease algorithm
+/// itself is shared through <see cref="RefCountingLease"/>.
+/// </remarks>
 public abstract class RefCountingDisposable : IDisposable
 {
-    private const int Single = 1;
-    private const int NoAccessors = 0;
-    private const int Disposing = -1;
-
     protected CacheLinePaddedLong _leases;
 
-    protected RefCountingDisposable(int initialCount = Single) => _leases.Value = initialCount;
+    protected RefCountingDisposable(int initialCount = RefCountingLease.Single) => _leases.Value = initialCount;
 
     public void AcquireLease()
     {
@@ -31,95 +36,20 @@ public abstract class RefCountingDisposable : IDisposable
         static void ThrowCouldNotAcquire() => throw new InvalidOperationException("The lease cannot be acquired");
     }
 
-    protected bool TryAcquireLease()
-    {
-        // Volatile read for starting value
-        long current = Volatile.Read(ref _leases.Value);
-        if (current == Disposing)
-        {
-            // Already disposed
-            return false;
-        }
-
-        while (true)
-        {
-            long prev = Interlocked.CompareExchange(ref _leases.Value, current + Single, current);
-            if (prev == current)
-            {
-                // Successfully acquired
-                return true;
-            }
-            if (prev == Disposing)
-            {
-                // Already disposed
-                return false;
-            }
-
-            // Try again with new starting value
-            current = prev;
-            // Add PAUSE instruction to reduce shared core contention
-            Thread.SpinWait(1);
-        }
-    }
+    protected bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases.Value);
 
     /// <summary>
     /// Disposes it once, decreasing the lease count by 1.
     /// </summary>
-    public void Dispose() => ReleaseLeaseOnce();
-
-    private void ReleaseLeaseOnce()
+    public void Dispose()
     {
-        // Volatile read for starting value
-        long current = Volatile.Read(ref _leases.Value);
-
-        while (true)
+        if (RefCountingLease.ReleaseOnce(ref _leases.Value))
         {
-            // Re-validate on every iteration (the initial read and each failed-CAS retry). A failed CAS
-            // hands back the observed value, which a concurrent release can have already driven to
-            // NoAccessors — or to Disposing — inside the teardown window. Decrementing from there would
-            // write Disposing(-1) via the subtract below, spuriously and bypassing the dedicated
-            // NoAccessors -> Disposing CAS, leaving the genuine last-releaser's CleanUp unrun. Mirrors
-            // SmallRefCountingDisposable.ReleaseLeaseOnce.
-            if (current <= NoAccessors)
-            {
-                // Mismatched Acquire/Release
-                ThrowOverDisposed();
-            }
-
-            long prev = Interlocked.CompareExchange(ref _leases.Value, current - Single, current);
-            if (prev != current)
-            {
-                current = prev;
-                // Add PAUSE instruction to reduce shared core contention
-                Thread.SpinWait(1);
-                continue;
-            }
-            if (prev == Single)
-            {
-                // Last use, try to dispose underlying
-                break;
-            }
-
-            // Successfully released (prev > Single here, guaranteed > NoAccessors by the check above)
-            return;
-        }
-
-        if (Interlocked.CompareExchange(ref _leases.Value, Disposing, NoAccessors) == NoAccessors)
-        {
-            // set to disposed by this Release
             CleanUp();
         }
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowOverDisposed() => throw new ObjectDisposedException("The lease has already been disposed");
     }
 
     protected abstract void CleanUp();
 
-    public override string ToString()
-    {
-        long leases = Volatile.Read(ref _leases.Value);
-        return leases == Disposing ? "Disposed" : $"Leases: {leases}";
-    }
+    public override string ToString() => RefCountingLease.Describe(Volatile.Read(ref _leases.Value));
 }
