@@ -95,7 +95,7 @@ public class BlockStore : IBlockStore, IClearableCache
     {
         // Runs on the deferred-writer consumer: encode here, off the processing path.
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
-        _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
+        _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.LowPriority);
         block.EncodedTransactions = null;
     }
 

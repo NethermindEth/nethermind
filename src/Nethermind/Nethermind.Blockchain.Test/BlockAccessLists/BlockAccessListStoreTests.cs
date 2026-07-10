@@ -136,6 +136,8 @@ public class BlockAccessListStoreTests
         writer.Pump();
 
         Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        db.KeyWasWrittenWithFlags(key, WriteFlags.LowPriority);
     }
 
     [Test]

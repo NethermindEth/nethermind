@@ -201,6 +201,43 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Receipt_recovery_hashes_encoded_legacy_and_typed_transactions_without_decoding()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(transactions)
+            .WithWithdrawals(2)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithMixHash(Keccak.EmptyTreeHash)
+            .TestObject;
+
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(block).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [Test]
     public void Get_length_null()
     {
         BlockDecoder decoder = new();

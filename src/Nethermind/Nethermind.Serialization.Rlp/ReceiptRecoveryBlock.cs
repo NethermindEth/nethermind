@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -60,6 +61,37 @@ public struct ReceiptRecoveryBlock
         _currentTransactionPosition = decoderContext.Position;
 
         return _txBuffer;
+    }
+
+    /// <summary>Returns the hash of the next transaction without decoding its fields.</summary>
+    /// <remarks>
+    /// Legacy transactions hash their complete RLP list, while typed transactions hash the contents
+    /// of the enclosing RLP string. The database-backed path hashes those slices directly.
+    /// </remarks>
+    public Hash256 GetNextTransactionHash()
+    {
+        if (_transactions is not null)
+        {
+            return _transactions[_currentTransactionIndex++].Hash!;
+        }
+
+        RlpReader decoderContext = new(_transactionData)
+        {
+            Position = _currentTransactionPosition
+        };
+
+        ReadOnlySpan<byte> encodedTransaction = decoderContext.PeekNextItem();
+        ReadOnlySpan<byte> hashInput = encodedTransaction;
+        if (!decoderContext.IsSequenceNext())
+        {
+            (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
+            hashInput = prefixLength == 0
+                ? encodedTransaction
+                : encodedTransaction.Slice(prefixLength, contentLength);
+        }
+
+        _currentTransactionPosition += encodedTransaction.Length;
+        return Keccak.Compute(hashInput);
     }
 
     public readonly Hash256? Hash => Header.Hash; // do not add setter here

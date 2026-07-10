@@ -37,7 +37,7 @@ public class BlockAccessListStore : IBlockAccessListStore
 
         if (deferBal && deferredWriter is { Enabled: true })
         {
-            _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, (number, hash, rlp) => Insert(number, hash, rlp));
+            _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, WriteDeferred);
             (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _balDb.Flush(onlyWal: true));
         }
     }
@@ -53,18 +53,21 @@ public class BlockAccessListStore : IBlockAccessListStore
 
     [SkipLocalsInit]
     public void Insert(ulong blockNumber, Hash256 blockHash, byte[] encodedBal)
-    {
-        Span<byte> key = stackalloc byte[KeyLength];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        _balDb.PutSpan(key, encodedBal);
-    }
+        => InsertEncoded(blockNumber, blockHash, encodedBal, WriteFlags.None);
 
     [SkipLocalsInit]
     public void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> encodedBal)
+        => InsertEncoded(blockNumber, blockHash, encodedBal, WriteFlags.None);
+
+    private void WriteDeferred(ulong blockNumber, Hash256 blockHash, byte[] encodedBal)
+        => InsertEncoded(blockNumber, blockHash, encodedBal, WriteFlags.LowPriority);
+
+    [SkipLocalsInit]
+    private void InsertEncoded(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> encodedBal, WriteFlags writeFlags)
     {
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        _balDb.PutSpan(key, encodedBal);
+        _balDb.PutSpan(key, encodedBal, writeFlags);
     }
 
     public void InsertFromBlockDeferred(Block block)

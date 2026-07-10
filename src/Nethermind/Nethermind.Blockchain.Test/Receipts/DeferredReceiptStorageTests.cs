@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -112,6 +113,12 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         // A fresh storage over the same database (no writer) proves durability.
         PersistentReceiptStorage reopened = CreateStorage(null);
         reopened.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
+
+        Span<byte> key = stackalloc byte[40];
+        block.Number.WriteBigEndian(key);
+        block.Hash!.Bytes.CopyTo(key[8..]);
+        TestMemDb receiptsDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+        receiptsDb.KeyWasWrittenWithFlags(key.ToArray(), WriteFlags.LowPriority);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -128,6 +135,38 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _writer.Pump();
 
         Assert.That(_storage.FindBlockHash(txHash), Is.EqualTo(block.Hash), "database index should serve after flush");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deferred_canonical_write_batches_insert_and_prune_with_low_priority()
+    {
+        _receiptConfig.TxLookupLimit = 1;
+        Transaction oldTransaction = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        Block oldBlock = Build.A.Block.WithNumber(1).WithTransactions(oldTransaction).TestObject;
+        Transaction newTransaction = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
+        Block newBlock = Build.A.Block.WithNumber(2).WithTransactions(newTransaction).TestObject;
+
+        TestMemDb transactionDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+        transactionDb.Set(oldTransaction.Hash!.Bytes, oldBlock.Hash!.BytesToArray());
+        _blockTree.FindBestSuggestedHeader().Returns(newBlock.Header);
+        _blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
+        _blockTree.FindBlockHash(newBlock.Number).Returns(newBlock.Hash);
+        _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(new ReceiptRecoveryBlock(oldBlock));
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newBlock));
+        Assert.That(_storage.FindBlockHash(newTransaction.Hash!), Is.EqualTo(newBlock.Hash), "pending index before batch commit");
+
+        _writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionDb[oldTransaction.Hash.Bytes], Is.Null, "expired index removed");
+            Assert.That(_storage.FindBlockHash(newTransaction.Hash!), Is.EqualTo(newBlock.Hash), "new index committed");
+            Assert.That(_receiptsDb.WriteBatchCount, Is.EqualTo(1), "insert and prune share one RocksDB batch");
+        }
+
+        transactionDb.KeyWasWrittenWithFlags(oldTransaction.Hash.BytesToArray(), WriteFlags.LowPriority);
+        transactionDb.KeyWasWrittenWithFlags(newTransaction.Hash!.BytesToArray(), WriteFlags.LowPriority);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
