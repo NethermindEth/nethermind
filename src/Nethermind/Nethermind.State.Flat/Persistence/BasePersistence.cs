@@ -281,6 +281,17 @@ public static class BasePersistence
                 rlps[i] = size == 0 ? null : buffer[..size].ToArray();
             }
         }
+
+        /// <summary>Batched <see cref="TryGetStorage"/> over hashed (address, slot) pairs.</summary>
+        public void TryGetStorages(ReadOnlySpan<(ValueHash256 AddressHash, ValueHash256 SlotHash)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            for (int i = 0; i < cells.Length; i++)
+            {
+                SlotValue value = default;
+                found[i] = TryGetStorage(in cells[i].AddressHash, in cells[i].SlotHash, ref value);
+                values[i] = value;
+            }
+        }
     }
 
     public interface IHashedFlatWriteBatch
@@ -317,6 +328,17 @@ public static class BasePersistence
             for (int i = 0; i < addresses.Length; i++)
             {
                 results[i] = GetAccount(addresses[i]);
+            }
+        }
+
+        /// <summary>Batched <see cref="TryGetSlot"/> over (address, slot) cells.</summary>
+        public void TryGetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            for (int i = 0; i < cells.Length; i++)
+            {
+                SlotValue value = default;
+                found[i] = TryGetSlot(cells[i].Address, in cells[i].Slot, ref value);
+                values[i] = value;
             }
         }
     }
@@ -450,6 +472,20 @@ public static class BasePersistence
             }
         }
 
+        public void TryGetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            int count = cells.Length;
+            using ArrayPoolSpan<(ValueHash256 AddressHash, ValueHash256 SlotHash)> hashed = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                ValueHash256 slotHash = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(cells[i].Slot, ref slotHash);
+                hashed[i] = (cells[i].Address.ToAccountPath, slotHash);
+            }
+
+            _flatReader.TryGetStorages(hashed[..count], values, found);
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
@@ -501,6 +537,9 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public void TryGetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, Span<SlotValue> values, Span<bool> found) =>
+            _flatReader.TryGetSlots(cells, values, found);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

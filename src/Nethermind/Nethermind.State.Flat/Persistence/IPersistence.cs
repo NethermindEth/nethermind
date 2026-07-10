@@ -41,6 +41,18 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+
+        /// <summary>Batched <see cref="TryGetSlot"/>: <paramref name="found"/>[i]/<paramref name="values"/>[i] mirror the single-read out parameters for <paramref name="cells"/>[i].</summary>
+        /// <remarks>Default loops <see cref="TryGetSlot"/>; readers backed by batched stores override to amortize per-read overhead.</remarks>
+        void TryGetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            for (int i = 0; i < cells.Length; i++)
+            {
+                SlotValue value = default;
+                found[i] = TryGetSlot(cells[i].Address, in cells[i].Slot, ref value);
+                values[i] = value;
+            }
+        }
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);

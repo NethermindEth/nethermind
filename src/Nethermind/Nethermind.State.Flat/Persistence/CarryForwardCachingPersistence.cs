@@ -208,6 +208,41 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public void TryGetSlots(ReadOnlySpan<(Address Address, UInt256 Slot)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            bool current = parent.IsCurrent(generation);
+            int count = cells.Length;
+            using ArrayPoolList<int> missIdxs = new(count);
+            using ArrayPoolList<(Address, UInt256)> missCells = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                if (current && parent._slots.TryGetValue(cells[i], out CachedSlot cached))
+                {
+                    values[i] = cached.Found ? cached.Value : default;
+                    found[i] = cached.Found;
+                }
+                else
+                {
+                    missIdxs.Add(i);
+                    missCells.Add(cells[i]);
+                }
+            }
+
+            if (missIdxs.Count == 0) return;
+
+            using ArrayPoolSpan<SlotValue> missValues = new(missIdxs.Count);
+            using ArrayPoolSpan<bool> missFound = new(missIdxs.Count);
+            inner.TryGetSlots(missCells.AsSpan(), missValues[..missIdxs.Count], missFound[..missIdxs.Count]);
+
+            for (int j = 0; j < missIdxs.Count; j++)
+            {
+                int i = missIdxs[j];
+                values[i] = missValues[j];
+                found[i] = missFound[j];
+                if (current) parent.TryCacheSlot(missCells[j], new CachedSlot(missFound[j], missFound[j] ? missValues[j] : default), generation);
+            }
+        }
+
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);

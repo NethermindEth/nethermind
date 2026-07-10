@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -111,14 +112,49 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
+            DecodeSlotValue(buffer[..resultSize], rlpWrapSlots, ref outValue);
+            return true;
+        }
+
+        public void TryGetStorages(ReadOnlySpan<(ValueHash256 AddressHash, ValueHash256 SlotHash)> cells, Span<SlotValue> values, Span<bool> found)
+        {
+            byte[][] keys = new byte[cells.Length][];
+            for (int i = 0; i < cells.Length; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, cells[i].AddressHash, cells[i].SlotHash);
+                keys[i] = key;
+            }
+
+            using ArrayPoolSpan<byte[]?> raw = new(cells.Length);
+            storage.MultiGet(keys, raw[..cells.Length]);
+
+            for (int i = 0; i < cells.Length; i++)
+            {
+                if (raw[i] is { Length: > 0 } value)
+                {
+                    SlotValue slotValue = default;
+                    DecodeSlotValue(value, rlpWrapSlots, ref slotValue);
+                    values[i] = slotValue;
+                    found[i] = true;
+                }
+                else
+                {
+                    values[i] = default;
+                    found[i] = false;
+                }
+            }
+        }
+
+        private static void DecodeSlotValue(ReadOnlySpan<byte> value, bool rlpWrapSlots, ref SlotValue outValue)
+        {
             if (rlpWrapSlots)
             {
                 RlpReader ctx = new(value);
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
+            // The single-read path fills a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
             // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
             // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
             int len = value.Length;
@@ -144,8 +180,6 @@ public static class BaseFlatPersistence
                     ref MemoryMarshal.GetReference(value),
                     (uint)len);
             }
-
-            return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
