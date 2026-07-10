@@ -17,7 +17,7 @@ internal sealed partial class PersistentStorageProvider
 {
     private static ParallelOptions EarlyStorageRootParallelOptions { get; } = new()
     {
-        MaxDegreeOfParallelism = Math.Min(RuntimeInformation.ProcessorCount, 4)
+        MaxDegreeOfParallelism = Math.Min(RuntimeInformation.ProcessorCount, 2)
     };
 
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
