@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -14,6 +15,11 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
+    private static ParallelOptions EarlyStorageRootParallelOptions { get; } = new()
+    {
+        MaxDegreeOfParallelism = Math.Min(RuntimeInformation.ProcessorCount, 4)
+    };
+
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count >= ParallelStorageRootThreshold)
@@ -113,7 +119,7 @@ internal sealed partial class PersistentStorageProvider
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            EarlyStorageRootParallelOptions,
             (storages, writes: 0, skips: 0),
             static (i, state) =>
             {
