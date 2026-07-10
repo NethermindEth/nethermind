@@ -157,10 +157,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
+    // Addresses whose account leaf the current block's BAL declares as changing (balance, nonce,
+    // code, or storage). Trie warming exists solely for the hash phase, which touches only dirty
+    // leaves — so when the BAL names the dirty set up front, warming paths of read-only accounts
+    // is pure wasted I/O competing with the reads execution actually needs. Null = no BAL (no
+    // filtering, pre-BAL behavior).
+    private HashSet<AddressAsKey>? _balDirtyAddresses;
+
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
+        HashSet<AddressAsKey>? balDirty = Volatile.Read(ref _balDirtyAddresses);
+        if ((balDirty is null || balDirty.Contains(address))
+            && _snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
@@ -174,6 +183,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+
+        HashSet<AddressAsKey> balDirty = [];
+        foreach (ReadOnlyAccountChanges ac in accountChanges.AsSpan())
+        {
+            if (IsAccountLeafDirty(ac)) balDirty.Add(ac.Address);
+        }
+        Volatile.Write(ref _balDirtyAddresses, balDirty);
 
         CancelHintBal();
 
@@ -208,7 +224,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    // Warm the account's trie path only when its leaf will change: the hash phase
+                    // never touches read-only leaves, so warming them just burns device IOPS.
+                    if (IsAccountLeafDirty(ac)
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -274,6 +293,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // Sized so one batch amortizes RocksDB MultiGet overhead without starving worker balance.
     private const int AccountPumpChunkSize = 256;
+
+    /// <summary>Whether the BAL declares this account's trie leaf as changing within the block (self-destructs surface as balance changes).</summary>
+    private static bool IsAccountLeafDirty(ReadOnlyAccountChanges ac) =>
+        ac.BalanceChanges.Length > 0 || ac.NonceChanges.Length > 0 || ac.CodeChanges.Length > 0 || ac.StorageChanges.Length > 0;
 
     /// <summary>
     /// Drains the BAL's account-value reads on the dedicated warm-read pool in batched chunks,
