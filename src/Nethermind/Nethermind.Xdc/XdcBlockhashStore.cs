@@ -10,30 +10,36 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Xdc;
 
-public class XdcBlockhashStore(IWorldState worldState) : BlockhashStore(worldState)
+public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : IBlockhashStore
 {
-    private static readonly ValueHash256 CodeHash = ValueKeccak.Compute(Eip2935Constants.Code);
+    private static readonly ValueHash256 CodeHash =
+        ValueKeccak.Compute(Eip2935Constants.Code);
 
-    private readonly IWorldState _worldState = worldState;
-
-    public override void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
         Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
-        ValueHash256 actualCodeHash = _worldState.GetCodeHash(eip2935Account);
+        ValueHash256 actualCodeHash = worldState.GetCodeHash(eip2935Account);
         bool hasCode = actualCodeHash != Keccak.OfAnEmptyString.ValueHash256;
         if (hasCode && actualCodeHash != CodeHash)
             throw new InvalidOperationException($"EIP-2935 contract code mismatch at {eip2935Account}.");
 
         if (!hasCode)
         {
-            _worldState.CreateAccountIfNotExists(eip2935Account, 0);
-            _worldState.SetNonce(eip2935Account, 1);
-            _worldState.InsertCode(eip2935Account, CodeHash, Eip2935Constants.Code, spec);
+            worldState.CreateAccountIfNotExists(eip2935Account, 0);
+            worldState.SetNonce(eip2935Account, 1);
+            worldState.InsertCode(eip2935Account, CodeHash, Eip2935Constants.Code, spec);
         }
+        
+        inner.ApplyBlockhashStateChanges(blockHeader, spec);
+    }
 
-        base.ApplyBlockhashStateChanges(blockHeader, spec);
+    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec) => 
+        inner.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
+
+    protected virtual void EnsureContract(BlockHeader blockHeader, IReleaseSpec spec)
+    {
     }
 }

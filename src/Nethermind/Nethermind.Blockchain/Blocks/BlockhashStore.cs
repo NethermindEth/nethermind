@@ -18,7 +18,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public virtual void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
 
