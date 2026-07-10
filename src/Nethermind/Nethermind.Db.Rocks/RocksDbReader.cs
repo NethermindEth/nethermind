@@ -90,6 +90,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
     }
 
+    public void MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+    {
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+        _mainDb.MultiGetWithColumnFamily(keys.ToArray(), values, _columnFamily, readOptions);
+    }
+
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);

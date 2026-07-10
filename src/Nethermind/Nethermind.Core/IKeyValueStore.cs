@@ -58,6 +58,23 @@ namespace Nethermind.Core
             }
         }
 
+        /// <summary>
+        /// Batched point lookup: <paramref name="values"/>[i] receives the value for
+        /// <paramref name="keys"/>[i], or <c>null</c> when absent.
+        /// </summary>
+        /// <remarks>
+        /// The default implementation loops <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/>;
+        /// stores with a native batched read (e.g. RocksDB MultiGet) override it to amortize
+        /// per-lookup overhead on large read sets.
+        /// </remarks>
+        void MultiGet(ReadOnlySpan<byte[]> keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            for (int i = 0; i < keys.Length; i++)
+            {
+                values[i] = Get(keys[i], flags);
+            }
+        }
+
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);

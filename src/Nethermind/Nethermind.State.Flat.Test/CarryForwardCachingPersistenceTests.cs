@@ -46,6 +46,33 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public void GetAccounts_MatchesIndividualReads_AndServesCachedEntries()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+
+        // Warm one address into the cache, then batch-read a cached + uncached mix.
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccount(TestItem.AddressA);
+
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        Account?[] batched = new Account?[addresses.Length];
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader()) reader.GetAccounts(addresses, batched);
+
+        Account?[] individual = new Account?[addresses.Length];
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+        {
+            for (int i = 0; i < addresses.Length; i++) individual[i] = reader.GetAccount(addresses[i]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batched, Is.EqualTo(individual), "batched results must match per-address reads");
+            // Warm-up (1) + two batch misses; the individual pass is then fully cached.
+            Assert.That(inner.AccountReads, Is.EqualTo(3), "cached address must not reach the inner reader again");
+        }
+    }
+
+    [Test]
     public void GetAccount_WhenCapacityExceeded_EvictsAllThenReCaches()
     {
         FakePersistence inner = new();

@@ -28,6 +28,16 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
+        /// <summary>Batched <see cref="GetAccount"/>: <paramref name="results"/>[i] receives the account for <paramref name="addresses"/>[i], or <c>null</c> when absent.</summary>
+        /// <remarks>Default loops <see cref="GetAccount"/>; readers backed by batched stores override to amortize per-read overhead.</remarks>
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                results[i] = GetAccount(addresses[i]);
+            }
+        }
+
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);

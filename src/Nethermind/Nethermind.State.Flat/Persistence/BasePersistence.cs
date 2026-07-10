@@ -269,6 +269,18 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
+
+        /// <summary>Batched <see cref="GetAccount"/>: <paramref name="rlps"/>[i] receives the account RLP for <paramref name="addressHashes"/>[i], or <c>null</c> when absent.</summary>
+        /// <remarks>Default loops <see cref="GetAccount"/>; stores with a native batched read override to amortize per-lookup overhead.</remarks>
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addressHashes, Span<byte[]?> rlps)
+        {
+            Span<byte> buffer = stackalloc byte[256];
+            for (int i = 0; i < addressHashes.Length; i++)
+            {
+                int size = GetAccount(in addressHashes[i], buffer);
+                rlps[i] = size == 0 ? null : buffer[..size].ToArray();
+            }
+        }
     }
 
     public interface IHashedFlatWriteBatch
@@ -298,6 +310,15 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
+
+        /// <summary>Batched <see cref="GetAccount(Address)"/>: <paramref name="results"/>[i] receives the account for <paramref name="addresses"/>[i], or <c>null</c> when absent.</summary>
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                results[i] = GetAccount(addresses[i]);
+            }
+        }
     }
 
     public interface IFlatWriteBatch
@@ -402,6 +423,33 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            int count = addresses.Length;
+            using ArrayPoolSpan<ValueHash256> hashes = new(count);
+            using ArrayPoolSpan<byte[]?> rlps = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                hashes[i] = addresses[i].ToAccountPath;
+                rlps[i] = null;
+            }
+
+            _flatReader.GetAccounts(hashes[..count], rlps[..count]);
+
+            for (int i = 0; i < count; i++)
+            {
+                if (rlps[i] is { } rlp && rlp.Length > 0)
+                {
+                    RlpReader ctx = new(rlp);
+                    results[i] = _accountDecoder.Decode(ref ctx);
+                }
+                else
+                {
+                    results[i] = null;
+                }
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
@@ -447,6 +495,9 @@ public static class BasePersistence
 
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results) =>
+            _flatReader.GetAccounts(addresses, results);
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
