@@ -19,7 +19,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
-    // A block body is a re-execution input, so a lost body cannot be regenerated; deferral is opt-in. Null when off.
+    // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
     // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
     // on header/txs/uncles/withdrawals, none mutated after processing, so encoding defers to the consumer.
     private readonly DeferredWriteOverlay<Block>? _pending;
@@ -31,13 +31,12 @@ public class BlockStore : IBlockStore, IClearableCache
         [KeyFilter(DbNames.Blocks)] IDb blockDb,
         IHeaderDecoder? headerDecoder = null,
         IDeferredBlockDataWriter? deferredWriter = null,
-        bool deferBodies = false,
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
         _blockDb = blockDb;
         _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
-        if (deferBodies && deferredWriter is { Enabled: true })
+        if (deferredWriter is { Enabled: true })
         {
             _pending = new DeferredWriteOverlay<Block>(deferredWriter, WriteBlock);
             (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _blockDb.Flush(onlyWal: true));

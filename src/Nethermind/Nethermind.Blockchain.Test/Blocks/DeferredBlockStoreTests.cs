@@ -26,7 +26,7 @@ public class DeferredBlockStoreTests
     public void SetUp()
     {
         _writer = DeferredWriteTestHelpers.ManualWriter(_barrier);
-        _store = new BlockStore(_db, null, _writer, deferBodies: true, persistenceBarrier: _barrier);
+        _store = new BlockStore(_db, null, _writer, persistenceBarrier: _barrier);
     }
 
     [TearDown]
@@ -174,7 +174,7 @@ public class DeferredBlockStoreTests
     public async Task Disabled_writer_inserts_synchronously()
     {
         await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
-        BlockStore store = new(_db, null, disabled, deferBodies: true);
+        BlockStore store = new(_db, null, disabled);
 
         Block block = BlockNumbered(1);
         store.InsertDeferred(block);

@@ -22,20 +22,19 @@ public class BlockAccessListStore : IBlockAccessListStore
 
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
-    // Like a block body, a lost BAL cannot be regenerated, so deferral is opt-in and coupled to body deferral. Null when off.
+    // Like a block body, a lost BAL cannot be regenerated, so the barrier must make it durable before state. Null when off.
     private readonly DeferredWriteOverlay<byte[]>? _pending;
 
     public BlockAccessListStore(
         [KeyFilter(DbNames.BlockAccessLists)] IDb balDb,
         BlockAccessListDecoder? decoder = null,
         IDeferredBlockDataWriter? deferredWriter = null,
-        bool deferBal = false,
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
         _balDb = balDb;
         _balDecoder = decoder ?? new();
 
-        if (deferBal && deferredWriter is { Enabled: true })
+        if (deferredWriter is { Enabled: true })
         {
             _pending = new DeferredWriteOverlay<byte[]>(deferredWriter, (number, hash, rlp) => Insert(number, hash, rlp));
             (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _balDb.Flush(onlyWal: true));

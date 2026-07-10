@@ -118,7 +118,7 @@ public class BlockAccessListStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
-        BlockAccessListStore store = new(db, null, writer, deferBal: true);
+        BlockAccessListStore store = new(db, null, writer);
 
         byte[] bal = [0xc1, 0x80];
         Block block = BlockWithBal(5, bal);
@@ -143,7 +143,7 @@ public class BlockAccessListStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
-        BlockAccessListStore store = new(db, null, writer, deferBal: true);
+        BlockAccessListStore store = new(db, null, writer);
 
         Block block = BlockWithBal(5, [0xc1, 0x01]);
         store.InsertFromBlockDeferred(block);
@@ -165,7 +165,7 @@ public class BlockAccessListStoreTests
         TestMemDb db = new();
         StatePersistenceBarrier barrier = new();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
-        BlockAccessListStore store = new(db, null, writer, deferBal: true, persistenceBarrier: barrier);
+        BlockAccessListStore store = new(db, null, writer, persistenceBarrier: barrier);
 
         byte[] balA = [0xc1, 0x01];
         byte[] balB = [0xc1, 0x02];
@@ -188,7 +188,7 @@ public class BlockAccessListStoreTests
     {
         TestMemDb db = new();
         await using DeferredBlockDataWriter disabled = DeferredWriteTestHelpers.DisabledWriter();
-        BlockAccessListStore store = new(db, null, disabled, deferBal: true);
+        BlockAccessListStore store = new(db, null, disabled);
 
         byte[] bal = [0xc1, 0x80];
         Block block = BlockWithBal(1, bal);

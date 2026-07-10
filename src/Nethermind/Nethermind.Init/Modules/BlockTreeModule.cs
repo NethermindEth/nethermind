@@ -86,11 +86,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     }
 
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
-        new BlockStore(blocksDb, deferredWriter: deferredWriter, deferBodies: receiptConfig.DeferredPersistence && receiptConfig.DeferBlockBodyPersistence, persistenceBarrier: persistenceBarrier);
+        new BlockStore(blocksDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
     private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
         new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
-        new BlockAccessListStore(balDb, deferredWriter: deferredWriter, deferBal: receiptConfig.DeferredPersistence && receiptConfig.DeferBlockBodyPersistence, persistenceBarrier: persistenceBarrier);
+        new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 }

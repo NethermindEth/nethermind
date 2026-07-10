@@ -28,11 +28,8 @@ public interface IReceiptConfig : IConfig
     [ConfigItem(Description = "The number of recent blocks to maintain transaction index for. `0` to never remove indices, `18446744073709551615` to never index.", DefaultValue = "2350000")]
     ulong? TxLookupLimit { get; set; }
 
-    [ConfigItem(Description = "Whether receipt and canonical transaction-index writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are served from an in-memory overlay until flushed, and a state-persistence barrier makes a block's data durable before its state, so an unclean shutdown never leaves persisted state without it.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether receipt, canonical transaction-index, block-body, and block-access-list writes are persisted by a background writer instead of synchronously on the block-processing and engine API paths. Reads are served from an in-memory overlay until flushed, and a state-persistence barrier makes a block's data durable before its state, so an unclean shutdown never leaves persisted state without it.", DefaultValue = "true")]
     bool DeferredPersistence { get; set; }
-
-    [ConfigItem(Description = "Whether block body and block-access-list writes are also deferred (only when `DeferredPersistence` is enabled). A body/BAL is a processing input rather than a regenerable output; the state-persistence barrier keeps it durable before its block's state is persisted, and a not-yet-persisted one lost on an unclean shutdown is re-downloaded from peers.", DefaultValue = "true")]
-    bool DeferBlockBodyPersistence { get; set; }
 
     [ConfigItem(Description = "Maximum number of queued deferred block-data writes before block processing backpressures to synchronous. A BAL-enabled block can enqueue up to five writes (body, suggested BAL, receipts, generated BAL, canonical index), although superseded pending writes are coalesced. Bounds the pending-overlay memory.", DefaultValue = "128", HiddenFromDocs = true)]
     int MaxDeferredWrites { get; set; }
