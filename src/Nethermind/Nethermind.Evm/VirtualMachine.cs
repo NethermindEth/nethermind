@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -687,18 +688,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             // Restored state gas paid by an ancestor frame stays spendable here; the
             // state-gas-used reduction must propagate upward separately.
-            TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
-            vmState.StateGasRefundPending += pendingRefund;
+            long trackedSpillRefund = TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
             vmState.StateGasRefundAdvanced += pendingRefund;
+            vmState.StateGasSpillRefundAdvanced += trackedSpillRefund;
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IncorporateChildStateGasRefunds(VmState<TGasPolicy> childState)
     {
-        if (childState.StateGasRefundPending > 0)
+        if (childState.StateGasRefundAdvanced > 0)
         {
-            long pendingRefund = childState.StateGasRefundPending;
+            long pendingRefund = childState.StateGasRefundAdvanced;
             long unappliedRefund = TGasPolicy.DiscardStateGas(
                 ref _currentState.Gas,
                 pendingRefund,
@@ -707,25 +708,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
             if (unappliedRefund > 0)
             {
-                _currentState.StateGasRefundPending += unappliedRefund;
                 _currentState.StateGasRefundAdvanced += unappliedRefund;
+                // Conservative bound: the child's spill-marks attributable to the still-revocable
+                // (unapplied) portion cannot be attributed exactly without the reference model.
+                _currentState.StateGasSpillRefundAdvanced += Math.Min(childState.StateGasSpillRefundAdvanced, unappliedRefund);
             }
 
-            childState.StateGasRefundPending = 0;
             childState.StateGasRefundAdvanced = 0;
+            childState.StateGasSpillRefundAdvanced = 0;
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void RemoveAdvancedStateGasRefund(VmState<TGasPolicy> vmState, ref TGasPolicy gas)
     {
+        Debug.Assert(vmState.StateGasSpillRefundAdvanced <= vmState.StateGasRefundAdvanced,
+            "Spill-marked portion of an advanced refund exceeds the advance.");
         if (vmState.StateGasRefundAdvanced > 0)
         {
-            TGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, vmState.StateGasRefundAdvanced);
+            TGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, vmState.StateGasRefundAdvanced, vmState.StateGasSpillRefundAdvanced);
             vmState.StateGasRefundAdvanced = 0;
+            vmState.StateGasSpillRefundAdvanced = 0;
         }
-
-        vmState.StateGasRefundPending = 0;
     }
 
     /// <summary>

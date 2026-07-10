@@ -213,8 +213,46 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         bool consumed = EthereumGasPolicy.ConsumeStateGas(ref gas, 70);
 
-        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
-            Is.EqualTo((false, 10L, 50L, 0L, 0L)));
+        Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill, EthereumGasPolicy.IsOutOfGas(in gas)),
+            Is.EqualTo((false, 10UL, 50L, 0L, 0L, true)));
+    }
+
+    [Test]
+    public void Revoking_advanced_refund_restores_net_spill_reservoir_and_spill_tracking()
+    {
+        // A net-spill (negative) reservoir, as left by RestoreChildStateGas after nested spills.
+        EthereumGasPolicy gas = new() { Value = 400, StateReservoir = -300, StateGasUsed = 0, StateGasSpill = 300, StateGasSpillRefunded = 0 };
+
+        long tracked = EthereumGasPolicy.AddStateGasRefundToReservoir(ref gas, 200, trackSpillRefund: true);
+        Assert.That((tracked, gas.StateReservoir, gas.StateGasSpillRefunded), Is.EqualTo((200L, -100L, 200L)));
+
+        EthereumGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, 200, tracked);
+
+        Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpillRefunded), Is.EqualTo((-300L, 0L, 0L)));
+    }
+
+    [Test]
+    public void Revoking_consumed_advanced_refund_deducts_usage_without_fabricating_spill_debt()
+    {
+        EthereumGasPolicy gas = new() { Value = 400, StateReservoir = 0, StateGasUsed = 100 };
+
+        long tracked = EthereumGasPolicy.AddStateGasRefundToReservoir(ref gas, 200, trackSpillRefund: true);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 200), Is.True);
+
+        EthereumGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, 200, tracked);
+
+        Assert.That((gas.StateReservoir, gas.StateGasUsed), Is.EqualTo((0L, 100L)));
+    }
+
+    [Test]
+    public void Intrinsic_regular_gas_above_the_tx_cap_saturates_into_the_reservoir()
+    {
+        EthereumGasPolicy intrinsic = new() { Value = Eip7825Constants.DefaultTxGasLimitCap + 1, StateReservoir = 0 };
+
+        EthereumGasPolicy gas = EthereumGasPolicy.CreateAvailableFromIntrinsic(
+            Eip7825Constants.DefaultTxGasLimitCap + 2, in intrinsic, Amsterdam.Instance);
+
+        Assert.That((gas.Value, gas.StateReservoir), Is.EqualTo((0UL, 1L)));
     }
 
     [Test]
@@ -332,7 +370,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Machine.ExecuteTransaction<OffFlag>(vmState, TestState, NullTxTracer.Instance);
 
-        Assert.That((vmState.Gas.StateGasUsed, vmState.Gas.StateReservoir, vmState.StateGasRefundPending),
+        Assert.That((vmState.Gas.StateGasUsed, vmState.Gas.StateReservoir, vmState.StateGasRefundAdvanced),
             Is.EqualTo((0L, GasCostOf.CreateState, 0L)));
     }
 

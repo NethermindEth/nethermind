@@ -33,10 +33,12 @@ public class VmState<TGasPolicy> : IDisposable
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateGasUsed;
-    public long StateGasRefundPending;
     // State-gas refund already made spendable in this frame while its accounting correction
     // still has to reach the ancestor frame that originally paid the state gas.
     public long StateGasRefundAdvanced;
+    // Portion of StateGasRefundAdvanced counted into StateGasSpillRefunded; un-marked exactly
+    // on revocation (invariant: <= StateGasRefundAdvanced).
+    public long StateGasSpillRefundAdvanced;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -154,12 +156,12 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
-        Debug.Assert(StateGasRefundPending == 0, "Pooled VmState returned with uncleared StateGasRefundPending.");
         Debug.Assert(StateGasRefundAdvanced == 0, "Pooled VmState returned with uncleared StateGasRefundAdvanced.");
+        Debug.Assert(StateGasSpillRefundAdvanced == 0, "Pooled VmState returned with uncleared StateGasSpillRefundAdvanced.");
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
-        StateGasRefundPending = 0;
         StateGasRefundAdvanced = 0;
+        StateGasSpillRefundAdvanced = 0;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -228,8 +230,8 @@ public class VmState<TGasPolicy> : IDisposable
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
         _snapshot = default;
-        StateGasRefundPending = 0;
         StateGasRefundAdvanced = 0;
+        StateGasSpillRefundAdvanced = 0;
 
         _statePool.Enqueue(this);
 

@@ -73,6 +73,22 @@ namespace Nethermind.Evm.TransactionProcessing
     public abstract class TransactionProcessorBase
     {
         internal static bool ForceSimpleTransferDisabled;
+
+        private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
+        {
+            // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
+            // so the order-preserving journaled clear is required; the O(1) mark needs a commit after.
+            if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
+            else worldState.ClearStorage(toBeDestroyed);
+            worldState.DeleteAccount(toBeDestroyed);
+
+            // EIP-8246: preserve any remaining balance as a fresh nonce-0, code-less account;
+            // an empty account stays deleted via EIP-161.
+            if (removeSelfdestructBurn && !balance.IsZero)
+            {
+                worldState.CreateAccount(toBeDestroyed, balance);
+            }
+        }
     }
 
     public abstract class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
@@ -380,16 +396,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
-                    if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
-                    else worldState.ClearStorage(toBeDestroyed);
-                    worldState.DeleteAccount(toBeDestroyed);
-
-                    // EIP-8246: preserve any remaining balance as a fresh nonce-0,
-                    // code-less account; an empty account stays deleted via EIP-161.
-                    if (removeSelfdestructBurn && !balance.IsZero)
-                    {
-                        worldState.CreateAccount(toBeDestroyed, balance);
-                    }
+                    DestroyAccount(worldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
                 }
             }
 
@@ -1386,19 +1393,7 @@ namespace Nethermind.Evm.TransactionProcessing
                                 substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
                             }
 
-                            // Build-up rounds (!commit) span the whole block: later txs may
-                            // redeploy this address, so the order-preserving journaled clear
-                            // is required; the O(1) mark is only valid when a commit follows.
-                            if (commit) WorldState.MarkStorageDestroyed(toBeDestroyed);
-                            else WorldState.ClearStorage(toBeDestroyed);
-                            WorldState.DeleteAccount(toBeDestroyed);
-
-                            // EIP-8246: preserve any remaining balance as a fresh nonce-0,
-                            // code-less account; an empty account stays deleted via EIP-161.
-                            if (removeSelfdestructBurn && !balance.IsZero)
-                            {
-                                WorldState.CreateAccount(toBeDestroyed, balance);
-                            }
+                            DestroyAccount(WorldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
 
                             if (tracingRefunds)
                             {

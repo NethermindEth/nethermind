@@ -228,12 +228,20 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
 
+    /// <summary>Credits a speculative state-gas refund to the frame's reservoir.</summary>
+    /// <returns>The spill-refund amount marked, to be passed back verbatim as
+    /// <c>trackedSpillRefund</c> when the advance is revoked.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
+    static virtual long AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund)
+    {
         TSelf.UpdateGasUp(ref gas, (ulong)amount);
+        return 0;
+    }
 
+    /// <summary>Revokes a speculative refund credited by <see cref="AddStateGasRefundToReservoir"/>.</summary>
+    /// <param name="trackedSpillRefund">The value returned by the matching add; unmarks the spill refund exactly.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
+    static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount, long trackedSpillRefund) { }
 
     // EIP-8037 top-level halt: snap state-gas back to (R0, intrinsicStateUsed, 0); the
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
