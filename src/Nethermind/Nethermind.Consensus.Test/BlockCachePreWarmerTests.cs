@@ -434,7 +434,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
         preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
-        preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
+        preBlockCaches.StorageCache.Set(in warmedCell, StorageWord.FromStorageBytes([0x24]));
 
         AddressAsKey missedAddress = TestItem.AddressB;
         StorageCell missedCell = new(TestItem.AddressB, 10);
@@ -457,8 +457,8 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True);
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
-        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
-        Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out EvmWord populatedStorage), Is.True);
+        Assert.That(new UInt256(StorageWord.AsSpan(in populatedStorage), isBigEndian: true), Is.EqualTo((UInt256)0x99));
     }
 
     [TestCase(false, true, false, TestName = "PreWarmCaches_NoSpeculativePass_Clears")]

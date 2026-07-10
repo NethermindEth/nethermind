@@ -11,13 +11,20 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Make storing slot value smaller than a byte[].
 /// </summary>
+/// <remarks>Wraps a full 32-byte word verbatim (both are big-endian <c>Vector256&lt;byte&gt;</c>).</remarks>
 [StructLayout(LayoutKind.Sequential, Pack = 32, Size = 32)]
-public readonly struct SlotValue
+public readonly struct SlotValue(in EvmWord word)
 {
-    public readonly Vector256<byte> _bytes; // Use Vector256 as the internal storage field
+    public readonly Vector256<byte> _bytes = word; // Use Vector256 as the internal storage field
     public Span<byte> AsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
     public ReadOnlySpan<byte> AsReadOnlySpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
     public const int ByteCount = 32;
+
+    /// <summary>The value as the <c>EvmWord</c> the storage layer carries. Zero-cost — same underlying representation.</summary>
+    public EvmWord AsWord => _bytes;
+
+    /// <summary>True when the slot holds zero.</summary>
+    public bool IsZero => _bytes == default;
 
     private static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", "data");
 

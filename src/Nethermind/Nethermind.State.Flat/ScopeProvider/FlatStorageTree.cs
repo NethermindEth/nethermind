@@ -65,31 +65,28 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal bool IsDisposed => _scope.IsDisposed;
 
-    public byte[] Get(in UInt256 index)
+    public EvmWord Get(in UInt256 index)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        SlotValue? value = _bundle.GetSlotValue(_address, index, _selfDestructKnownStateIdx);
+        EvmWord word = value?.AsWord ?? default;
 
         if (_config.VerifyWithTrie)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            EvmWord treeValue = _tree.GetWord(index);
+            if (treeValue != word)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {StorageWord.ToStorageBytes(in treeValue, out _).ToHexString()} vs Flat: {StorageWord.ToStorageBytes(in word, out _).ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
 
-        return value!;
+        return word;
     }
 
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
+    public void HintSet(in UInt256 index, in EvmWord value) => WarmUpSlot(index);
 
     private void WarmUpSlot(UInt256 index)
     {
@@ -138,7 +135,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in EvmWord value) => _bundle.SetChangedSlot(_address, slot, in value);
 
     public void SelfDestruct()
     {
@@ -168,10 +165,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in EvmWord value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
-            storageTree.Set(index, value);
+            storageTreeBulkWriteBatch.Set(in index, in value);
+            storageTree.Set(index, in value);
         }
 
         public void Clear()

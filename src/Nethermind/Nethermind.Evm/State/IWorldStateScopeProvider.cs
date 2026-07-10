@@ -115,8 +115,8 @@ public interface IWorldStateScopeProvider
         /// Called when a storage slot has been read for the given cell.
         /// </summary>
         /// <param name="storageCell">The storage cell (address + slot index).</param>
-        /// <param name="value">The storage value bytes.</param>
-        void OnStorageRead(in StorageCell storageCell, byte[] value);
+        /// <param name="value">The storage value as a full 32-byte word.</param>
+        void OnStorageRead(in StorageCell storageCell, in EvmWord value);
 
         /// <summary>
         /// Returns whether the BAL reader should still fetch the given account.
@@ -167,13 +167,13 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        EvmWord Get(in UInt256 index);
 
         /// <summary>
         /// Hint that a slot is being written. Backends may use this to start asynchronous
         /// trie warm-up for the slot path.
         /// </summary>
-        void HintSet(in UInt256 index, byte[]? value);
+        void HintSet(in UInt256 index, in EvmWord value);
     }
 
     public interface IWorldStateWriteBatch : IDisposable
@@ -200,7 +200,7 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        void Set(in UInt256 index, in EvmWord value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

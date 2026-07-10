@@ -306,8 +306,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         StorageCell cell = new(address, in slot);
         if (!sink.StillNeeded(in cell)) return;
-        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
+        SlotValue? raw = _snapshotBundle.GetSlotValue(address, in slot, selfDestructIdx);
+        sink.OnStorageRead(in cell, raw?.AsWord ?? default);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

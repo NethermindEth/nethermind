@@ -32,6 +32,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private uint _blockAccessIndex = 0;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
+    private EvmWord _transientScratch;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -318,10 +319,13 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     }
 
     public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => _transientStorageProvider.Get(in storageCell);
+    {
+        _transientScratch = _transientStorageProvider.Get(in storageCell);
+        return StorageWord.ToStorageBytes(in _transientScratch, out _);
+    }
 
     public override void SetTransientState(in StorageCell storageCell, byte[] newValue)
-        => _transientStorageProvider.Set(in storageCell, newValue);
+        => _transientStorageProvider.Set(in storageCell, StorageWord.FromStorageBytes(newValue));
 
     public override void ResetTransient()
         => _transientStorageProvider.Reset();

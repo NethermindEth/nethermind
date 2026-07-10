@@ -180,7 +180,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify slot shadowed by Layer 2 snapshot (newerSlotValue)
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(newerSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToStorageBytes(), Is.EqualTo(newerSlotValue));
     }
 
     [Test]
@@ -207,7 +207,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
 
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(persistedSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToStorageBytes(), Is.EqualTo(persistedSlotValue));
     }
 
     [Test]
@@ -242,7 +242,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+        Assert.That(storageTree.Get(slotIndex).ToStorageBytes(), Is.EqualTo(writtenSlotValue));
     }
 
     [Test]
@@ -309,7 +309,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot should be blocked by selfdestruct
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slotIndex).ToStorageBytes(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -336,10 +336,10 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
         // slot1 should return zero (blocked by selfdestruct)
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slot1).ToStorageBytes(), Is.EqualTo(StorageTree.ZeroBytes));
 
         // slot2 should return the value (written after selfdestruct)
-        Assert.That(storageTree.Get(slot2), Is.EqualTo(slot2AfterValue));
+        Assert.That(storageTree.Get(slot2).ToStorageBytes(), Is.EqualTo(slot2AfterValue));
     }
 
     #endregion
@@ -648,7 +648,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify both are blocked
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
+        Assert.That(storageTree.Get(slot).ToStorageBytes(), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     [Test]
@@ -693,7 +693,7 @@ public class FlatWorldStateScopeProviderTests
         // Before the fix: would fail because DoTryFindStorageNodeExternal exited early
         // After the fix: properly falls through and finds storage in ReadOnlySnapshots
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr1);
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(value1));
+        Assert.That(storageTree.Get(slot1).ToStorageBytes(), Is.EqualTo(value1));
     }
 
     [Test]
@@ -752,9 +752,9 @@ public class FlatWorldStateScopeProviderTests
         // - slotAtSelfDestruct should be found (set in same commit as self-destruct)
         // - slotAfter should be found (added after self-destruct)
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
-        Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
-        Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+        Assert.That(storageTree.Get(slotBefore).ToStorageBytes(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        Assert.That(storageTree.Get(slotAtSelfDestruct).ToStorageBytes(), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
+        Assert.That(storageTree.Get(slotAfter).ToStorageBytes(), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
     }
 
     [Test]
@@ -807,11 +807,11 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
 
         // Slots written after self-destruct in local snapshots should be visible
-        Assert.That(storageTree.Get(slotAfter1), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
-        Assert.That(storageTree.Get(slotAfter2), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
+        Assert.That(storageTree.Get(slotAfter1).ToStorageBytes(), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
+        Assert.That(storageTree.Get(slotAfter2).ToStorageBytes(), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        Assert.That(storageTree.Get(slotBefore).ToStorageBytes(), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
     }
 
     #endregion
@@ -904,13 +904,13 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
 
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1, default);
 
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1, default);
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 

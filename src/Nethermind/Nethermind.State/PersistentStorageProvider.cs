@@ -39,7 +39,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly Dictionary<StorageCell, EvmWord> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
@@ -62,10 +62,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope scope) => _currentScope = scope;
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in EvmWord newValue)
     {
         _metrics.IncrementStorageWrites();
-        base.Set(in storageCell, newValue);
+        base.Set(in storageCell, in newValue);
         // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
         // (populator) executions, which never commit. No-op for backends without trie warm-up.
         _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
@@ -75,47 +75,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// Get the current value at the specified location
     /// </summary>
     /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at location</returns>
-    protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-        TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+    /// <returns>Value at location, zero-padded to 32 bytes.</returns>
+    protected override EvmWord GetCurrentValue(in StorageCell storageCell) =>
+        TryGetCachedValue(storageCell, out EvmWord value) ? value : LoadFromTree(storageCell);
 
     /// <inheritdoc cref="IWorldState.SLoad"/>
-    /// <remarks>
-    /// Reads the backing store directly instead of going through <see cref="PartialStorageProviderBase.Get"/>, so
-    /// that widening is the only step between the stored value and the caller. A backend holding fixed-width words
-    /// can drop that step too.
-    /// </remarks>
-    public EvmWord SLoad(in StorageCell storageCell) =>
-        StorageWord.FromStorageBytes(TryGetCachedValue(storageCell, out byte[]? cached) ? cached! : LoadFromTree(storageCell));
+    public EvmWord SLoad(in StorageCell storageCell) => GetCurrentValue(in storageCell);
 
     /// <inheritdoc cref="IWorldState.SStore"/>
     public SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
     {
-        ReadOnlySpan<byte> newBytes = StorageWord.ToStorageBytes(in newValue, out bool newIsZero);
-        ReadOnlySpan<byte> currentValue = Get(in storageCell);
-        bool currentIsZero = currentValue.IsZero();
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newBytes);
+        EvmWord currentValue = GetCurrentValue(in storageCell);
+        bool currentIsZero = currentValue == default;
+        bool newSameAsCurrent = newValue == currentValue;
 
         SStoreState state = currentIsZero ? SStoreState.CurrentIsZero : SStoreState.None;
         if (newSameAsCurrent) return state | SStoreState.NewSameAsCurrent;
 
-        ReadOnlySpan<byte> originalValue = GetOriginal(in storageCell);
-        if (originalValue.IsZero()) state |= SStoreState.OriginalIsZero;
-        if (Bytes.AreEqual(originalValue, currentValue)) state |= SStoreState.CurrentSameAsOriginal;
-        if (Bytes.AreEqual(originalValue, newBytes)) state |= SStoreState.NewSameAsOriginal;
+        EvmWord originalValue = GetOriginalWord(in storageCell);
+        if (originalValue == default) state |= SStoreState.OriginalIsZero;
+        if (originalValue == currentValue) state |= SStoreState.CurrentSameAsOriginal;
+        if (originalValue == newValue) state |= SStoreState.NewSameAsOriginal;
 
-        Set(in storageCell, newIsZero ? VirtualMachineStatics.BytesZero : newBytes.ToArray());
+        Set(in storageCell, in newValue);
         return state;
     }
 
     /// <summary>
-    /// Return the original persistent storage value from the storage cell
+    /// Return the original persistent storage value from the storage cell as a full 32-byte word.
     /// </summary>
-    /// <param name="storageCell"></param>
-    /// <returns></returns>
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public EvmWord GetOriginalWord(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
+        if (!_originalValues.TryGetValue(storageCell, out EvmWord value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -191,7 +182,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 {
                     if (isTracing)
                     {
-                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                        trace![change.StorageCell] = new StorageChangeTrace(default);
                     }
 
                     continue;
@@ -199,11 +190,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
+                    _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {StorageWord.ToStorageBytes(in change.Value, out _).ToHexString(true)}");
                 }
 
-                if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                    initialValue.AsSpan().SequenceEqual(change.Value))
+                if (_originalValues.TryGetValue(change.StorageCell, out EvmWord initialValue) &&
+                    initialValue == change.Value)
                 {
                     // no need to update the tree if the value is the same
                 }
@@ -246,7 +237,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (isTracing)
         {
-            foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
+            foreach ((StorageCell cell, EvmWord originalValue) in _originalValues)
             {
                 if (trace!.TryGetValue(cell, out StorageChangeTrace changeTrace))
                 {
@@ -350,18 +341,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
+    private EvmWord LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
     /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
     /// no side effects). Only the first-loaded value is captured here, backing
-    /// <see cref="GetOriginal"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
+    /// <see cref="GetOriginalWord"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
     /// </summary>
-    private void CaptureOriginalValue(in StorageCell cell, byte[] value)
+    private void CaptureOriginalValue(in StorageCell cell, in EvmWord value)
     {
-        ref byte[]? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
+        ref EvmWord slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
         if (!exists)
         {
             slot = value;
@@ -372,12 +363,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         foreach ((StorageCell address, StorageChangeTrace change) in trace)
         {
-            byte[] before = change.Before;
-            byte[] after = change.After;
-
-            if (!Bytes.AreEqual(before, after))
+            if (change.Before != change.After)
             {
-                tracer.ReportStorageChange(address, before, after);
+                tracer.ReportStorageChange(address, StorageWord.ToStorageBytes(in change.Before, out _).ToArray(), StorageWord.ToStorageBytes(in change.After, out _).ToArray());
             }
         }
     }
@@ -425,11 +413,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public override void ClearStorage(Address address)
     {
-        foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
+        foreach (KeyValuePair<StorageCell, EvmWord> readCell in _originalValues)
         {
             if (readCell.Key.Address == address)
             {
-                Set(readCell.Key, StorageTree.ZeroBytes);
+                Set(readCell.Key, default);
             }
         }
 
@@ -573,7 +561,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Pool.Return(this);
         }
 
-        public void SaveChange(StorageCell storageCell, byte[] value)
+        public void SaveChange(StorageCell storageCell, in EvmWord value)
         {
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
@@ -587,15 +575,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             EnsureStorageTree();
-            _backend.HintSet(storageCell.Index, value);
+            _backend.HintSet(storageCell.Index, in value);
         }
 
-        public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        public EvmWord LoadFromTree(in StorageCell storageCell)
         {
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
-                byte[] value = LoadFromTreeStorage(storageCell);
+                EvmWord value = LoadFromTreeStorage(storageCell);
 
                 valueChange = new(value, value);
             }
@@ -608,7 +596,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return valueChange.After;
         }
 
-        private byte[] LoadFromTreeStorage(StorageCell storageCell)
+        private EvmWord LoadFromTreeStorage(StorageCell storageCell)
         {
             _provider._metrics.IncrementStorageTreeReads();
 
@@ -641,10 +629,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
-                byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
+                EvmWord after = kvp.Value.After;
+                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
                 {
-                    if (after.IsZero())
+                    if (after == default)
                     {
                         deferredDeletes.Add(kvp);
                     }
@@ -652,7 +640,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                     {
                         // Safe while enumerating: this only overwrites the existing key, never adds or removes.
                         BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, after);
+                        storageWriteBatch.Set(kvp.Key, in after);
 
                         writes++;
                     }
@@ -665,9 +653,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
             {
-                byte[] after = kvp.Value.After;
+                EvmWord after = kvp.Value.After;
                 BlockChange[kvp.Key] = new(after, after);
-                storageWriteBatch.Set(kvp.Key, after);
+                storageWriteBatch.Set(kvp.Key, in after);
 
                 writes++;
             }
@@ -720,24 +708,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private readonly struct StorageChangeTrace
     {
-        public static readonly StorageChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
+        public static readonly StorageChangeTrace _zeroBytes = default;
         public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
 
-        public StorageChangeTrace(byte[]? before, byte[]? after)
+        public StorageChangeTrace(in EvmWord before, in EvmWord after)
         {
-            After = after ?? StorageTree.ZeroBytes;
-            Before = before ?? StorageTree.ZeroBytes;
+            After = after;
+            Before = before;
         }
 
-        public StorageChangeTrace(byte[]? after)
+        public StorageChangeTrace(in EvmWord after)
         {
-            After = after ?? StorageTree.ZeroBytes;
-            Before = StorageTree.ZeroBytes;
+            After = after;
+            Before = default;
             IsInitialValue = true;
         }
 
-        public readonly byte[] Before;
-        public readonly byte[] After;
+        public readonly EvmWord Before;
+        public readonly EvmWord After;
         public readonly bool IsInitialValue;
     }
 }

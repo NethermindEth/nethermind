@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
@@ -73,6 +74,29 @@ public class SeqlockCacheTests
         {
             Assert.That(found, Is.True);
             Assert.That(value, Is.SameAs(expected));
+        }
+    }
+
+    // A 32-byte struct value is the seqlock's raison d'être: it is copied inline (no heap box) and read under
+    // the version guard. This exercises the value-type path enabled by relaxing the class constraint.
+    [Test]
+    public void Struct_value_stored_inline_round_trips_and_overwrites()
+    {
+        SeqlockCache<StorageCell, Vector256<byte>> cache = new();
+        StorageCell key = CreateKey(1);
+        Vector256<byte> first = Vector256.Create(CreateValue(1));
+        Vector256<byte> second = Vector256.Create(CreateValue(2));
+
+        Assert.That(cache.TryGetValue(in key, out Vector256<byte> _), Is.False);
+
+        cache.Set(in key, first);
+        cache.Set(in key, second);
+        bool found = cache.TryGetValue(in key, out Vector256<byte> value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value, Is.EqualTo(second));
         }
     }
 

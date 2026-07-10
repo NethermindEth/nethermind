@@ -94,6 +94,13 @@ namespace Nethermind.State
             return new BulkSetEntry(in key, encodedValue);
         }
 
+        public static BulkSetEntry CreateBulkSetEntry(in ValueHash256 key, in EvmWord value)
+        {
+            ReadOnlySpan<byte> stripped = StorageWord.ToStorageBytes(in value, out bool isZero);
+            byte[] encodedValue = isZero ? [] : Rlp.Encode(stripped).Bytes;
+            return new BulkSetEntry(in key, encodedValue);
+        }
+
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
@@ -138,7 +145,33 @@ namespace Nethermind.State
 
         public byte[] Get(in UInt256 index) => Get(index, null);
 
-        public void HintSet(in UInt256 index, byte[]? value)
+        /// <summary>Reads a slot as a full 32-byte word, widening the minimal-length RLP leaf. Empty leaf → zero.</summary>
+        [SkipLocalsInit]
+        public EvmWord GetWord(in UInt256 index, Hash256? storageRoot = null)
+        {
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            {
+                return GetWordByKey(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), storageRoot);
+            }
+
+            ComputeKey(index, out ValueHash256 key);
+            return GetWordByKey(in key, storageRoot);
+        }
+
+        private EvmWord GetWordByKey(in ValueHash256 key, Hash256? rootHash)
+        {
+            ReadOnlySpan<byte> value = Get(key.Bytes, rootHash);
+            if (value.IsEmpty) return default;
+
+            RlpReader rlp = new(value);
+            return StorageWord.FromStorageBytes(rlp.DecodeByteArraySpan());
+        }
+
+        EvmWord IWorldStateScopeProvider.IStorageTree.Get(in UInt256 index) => GetWord(in index);
+
+        void IWorldStateScopeProvider.IStorageTree.HintSet(in UInt256 index, in EvmWord value)
         {
         }
 
@@ -165,6 +198,37 @@ namespace Nethermind.State
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true) => SetInternal(in key, value, rlpEncode);
+
+        /// <summary>Writes a slot from a full 32-byte word, storing the minimal-length RLP leaf. Zero → empty leaf (deletion).</summary>
+        [SkipLocalsInit]
+        public void SetWord(in UInt256 index, in EvmWord value)
+        {
+            ValueHash256[] lookup = Lookup;
+            ulong u0 = index.u0;
+            if (index.IsUint64 && u0 < (uint)lookup.Length)
+            {
+                SetWordInternal(in Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(lookup), (nuint)u0), in value);
+            }
+            else
+            {
+                ComputeKey(index, out ValueHash256 key);
+                SetWordInternal(in key, in value);
+            }
+        }
+
+        private void SetWordInternal(in ValueHash256 hash, in EvmWord value)
+        {
+            ReadOnlySpan<byte> rawKey = hash.Bytes;
+            ReadOnlySpan<byte> stripped = StorageWord.ToStorageBytes(in value, out bool isZero);
+            if (isZero)
+            {
+                Set(rawKey, []);
+            }
+            else
+            {
+                Set(rawKey, Rlp.Encode(stripped));
+            }
+        }
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {

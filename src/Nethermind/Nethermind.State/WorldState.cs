@@ -33,6 +33,13 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        // Backing storage for the minimal-length spans returned by the legacy Get/GetOriginal/GetTransientState
+        // surface: they narrow the word-native providers, and the returned span aliases these fields, so each
+        // stays valid only until the next call on this instance (the documented contract). Separate fields let a
+        // Get and a GetOriginal span be live at once.
+        private EvmWord _getScratch;
+        private EvmWord _originalScratch;
+        private EvmWord _transientScratch;
         // Per-scope counter accumulator shared with the providers and scope; folded into the global
         // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.
         private readonly LocalMetrics _localMetrics = new();
@@ -103,12 +110,14 @@ namespace Nethermind.State
         public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            _originalScratch = _persistentStorageProvider.GetOriginalWord(in storageCell);
+            return StorageWord.ToStorageBytes(in _originalScratch, out _);
         }
         public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.Get(storageCell);
+            _getScratch = _persistentStorageProvider.Get(in storageCell);
+            return StorageWord.ToStorageBytes(in _getScratch, out _);
         }
 
         /// <inheritdoc cref="IWorldState.SLoad"/>
@@ -127,17 +136,18 @@ namespace Nethermind.State
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();
-            _persistentStorageProvider.Set(storageCell, newValue);
+            _persistentStorageProvider.Set(in storageCell, StorageWord.FromStorageBytes(newValue));
         }
         public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             DebugGuardInScope();
-            return _transientStorageProvider.Get(storageCell);
+            _transientScratch = _transientStorageProvider.Get(in storageCell);
+            return StorageWord.ToStorageBytes(in _transientScratch, out _);
         }
         public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();
-            _transientStorageProvider.Set(storageCell, newValue);
+            _transientStorageProvider.Set(in storageCell, StorageWord.FromStorageBytes(newValue));
         }
         public void Reset(bool resetBlockChanges = true)
         {

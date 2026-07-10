@@ -65,7 +65,7 @@ public class PrewarmerScopeProvider(
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
-        private readonly SeqlockCache<StorageCell, byte[]> storageCache = preBlockCaches.StorageCache;
+        private readonly SeqlockCache<StorageCell, EvmWord> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
         private readonly LocalMetrics _metrics = metrics;
@@ -179,7 +179,7 @@ public class PrewarmerScopeProvider(
 
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,
-            SeqlockCache<StorageCell, byte[]> storageCache
+            SeqlockCache<StorageCell, EvmWord> storageCache
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
         {
             public void OnAccountRead(Address address, Account? account)
@@ -188,7 +188,7 @@ public class PrewarmerScopeProvider(
                 stateCache.Set(in key, account);
             }
 
-            public void OnStorageRead(in StorageCell storageCell, byte[] value)
+            public void OnStorageRead(in StorageCell storageCell, in EvmWord value)
                 => storageCache.Set(in storageCell, value);
 
             public bool StillNeeded(Address address, out Account? account)
@@ -206,13 +206,13 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        SeqlockCache<StorageCell, EvmWord> preBlockCache,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
+        private readonly SeqlockCache<StorageCell, EvmWord> preBlockCache = preBlockCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -222,11 +222,11 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
-        public byte[] Get(in UInt256 index)
+        public EvmWord Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            if (preBlockCache.TryGetValue(in storageCell, out EvmWord value))
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
@@ -241,9 +241,9 @@ public class PrewarmerScopeProvider(
             return value;
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
+        public void HintSet(in UInt256 index, in EvmWord value) => baseStorageTree.HintSet(in index, in value);
 
-        private byte[] LoadFromTreeStorage(in StorageCell storageCell)
+        private EvmWord LoadFromTreeStorage(in StorageCell storageCell)
         {
             _metrics.IncrementStorageTreeReads();
 

@@ -83,9 +83,12 @@ public sealed class ReadOnlySnapshotBundle(
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, (address, index));
+        GetSlotValue(selfDestructStateIdx, (address, index))?.ToEvmBytes();
 
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
+    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key) =>
+        GetSlotValue(selfDestructStateIdx, key)?.ToEvmBytes();
+
+    public SlotValue? GetSlotValue(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {
         GuardDispose();
 
@@ -94,9 +97,8 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return slotValue;
             }
 
             if (i <= selfDestructStateIdx)
@@ -108,12 +110,11 @@ public sealed class ReadOnlySnapshotBundle(
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        byte[]? value = outSlotValue.ToEvmBytes();
+        bool found = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
 
         if (recordDetailedMetrics)
         {
-            if (value is null || value.IsZero())
+            if (!found || outSlotValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -123,7 +124,9 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        return value;
+        // Persistence reaching this point means the slot is not shadowed/self-destructed: a miss is a real
+        // zero (outSlotValue stays default), distinct from the null the self-destruct branches above return.
+        return outSlotValue;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

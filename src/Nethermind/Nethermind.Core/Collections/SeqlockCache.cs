@@ -40,8 +40,9 @@ namespace Nethermind.Core.Collections;
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
 public sealed class SeqlockCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
-    where TValue : class?
 {
+    // The seqlock read protocol copies the whole value between two version reads and retries on a torn read,
+    // so a multi-word struct value (e.g. a 32-byte EvmWord) is stored safely inline without a heap box.
     /// <summary>
     /// Default number of set-index bits: 16384 sets × 2 ways = 32768 total entries.
     /// </summary>
@@ -327,7 +328,8 @@ public sealed class SeqlockCache<TKey, TValue>
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
             {
-                if (ReferenceEquals(v0, value)) return; // fast-path: same key+value, no-op
+                // Reference-identity no-op fast path; only meaningful for reference values, JIT-folded away for structs.
+                if (default(TValue) is null && ReferenceEquals(v0, value)) return;
                 WriteEntry(ref e0, h0_2, in key, value, tagToStore);
                 return;
             }
@@ -347,7 +349,8 @@ public sealed class SeqlockCache<TKey, TValue>
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))
             {
-                if (ReferenceEquals(v1, value)) return; // fast-path: same key+value, no-op
+                // Reference-identity no-op fast path; only meaningful for reference values, JIT-folded away for structs.
+                if (default(TValue) is null && ReferenceEquals(v1, value)) return;
                 WriteEntry(ref e1, h1_2, in key, value, tagToStore);
                 return;
             }

@@ -97,7 +97,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageSet.Set(1, [1, 2, 3]);
+                storageSet.Set(1, new byte[] { 1, 2, 3 });
             }
 
             scope.Commit(1);
@@ -110,7 +110,7 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            Assert.That(storage.Get(1), Is.EqualTo([1, 2, 3]));
+            Assert.That(storage.Get(1).ToStorageBytes(), Is.EqualTo([1, 2, 3]));
         }
     }
 
@@ -148,7 +148,7 @@ public class ScopeProviderTests(bool useFlat)
         using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
         using (IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1))
         {
-            storageSet.Set(1, [1, 2, 3]);
+            storageSet.Set(1, new byte[] { 1, 2, 3 });
         }
 
         writeBatch.Set(TestItem.AddressA, null);
@@ -170,12 +170,12 @@ public class ScopeProviderTests(bool useFlat)
 
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 2))
                 {
-                    storageA.Set(1, [10, 20]);
-                    storageA.Set(2, [30, 40]);
+                    storageA.Set(1, new byte[] { 10, 20 });
+                    storageA.Set(2, new byte[] { 30, 40 });
                 }
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1);
-                storageB.Set(5, [50, 60]);
+                storageB.Set(5, new byte[] { 50, 60 });
             }
 
             scope.Commit(1);
@@ -214,13 +214,13 @@ public class ScopeProviderTests(bool useFlat)
                 StorageCell cellB5 = new(TestItem.AddressB, 5);
 
                 Assert.That(sink.Storage.ContainsKey(cellA1), Is.True);
-                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1)));
+                Assert.That(sink.Storage[cellA1], Is.EqualTo(storageTreeA.Get(1).ToStorageBytes()));
 
                 Assert.That(sink.Storage.ContainsKey(cellA2), Is.True);
-                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2)));
+                Assert.That(sink.Storage[cellA2], Is.EqualTo(storageTreeA.Get(2).ToStorageBytes()));
 
                 Assert.That(sink.Storage.ContainsKey(cellB5), Is.True);
-                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5)));
+                Assert.That(sink.Storage[cellB5], Is.EqualTo(storageTreeB.Get(5).ToStorageBytes()));
             }
         }
     }
@@ -241,7 +241,7 @@ public class ScopeProviderTests(bool useFlat)
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
                 for (int i = 1; i <= slotCount; i++)
                 {
-                    storageA.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                    storageA.Set((UInt256)i, new byte[] { (byte)i, (byte)(i >> 8) });
                 }
             }
 
@@ -266,7 +266,7 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 1; i <= slotCount; i++)
             {
                 StorageCell cell = new(TestItem.AddressA, (UInt256)i);
-                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i)), $"slot {i}");
+                Assert.That(sink.Storage[cell], Is.EqualTo(storageTreeA.Get((UInt256)i).ToStorageBytes()), $"slot {i}");
             }
         }
     }
@@ -285,7 +285,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
 
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new byte[] { 10, 20 });
             }
 
             scope.Commit(1);
@@ -317,7 +317,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new byte[] { 10, 20 });
             }
 
             scope.Commit(1);
@@ -451,7 +451,7 @@ public class ScopeProviderTests(bool useFlat)
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
                 writeBatch.Set(TestItem.AddressB, new Account(200, 200));
                 using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-                storageA.Set(1, [10, 20]);
+                storageA.Set(1, new byte[] { 10, 20 });
             }
 
             scope.Commit(1);
@@ -494,8 +494,8 @@ public class ScopeProviderTests(bool useFlat)
                 Accounts[address] = account;
         }
 
-        public void OnStorageRead(in StorageCell storageCell, byte[] value)
-            => Storage[storageCell] = value;
+        public void OnStorageRead(in StorageCell storageCell, in EvmWord value)
+            => Storage[storageCell] = StorageWord.ToStorageBytes(in value, out _).ToArray();
     }
 #nullable disable
 }

@@ -9,16 +9,21 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Evm.State;
 
 /// <summary>
-/// Converts the fixed-width word an SSTORE pops off the stack into the minimal-length big-endian encoding
-/// that <see cref="IWorldState.Get"/>, <see cref="IWorldState.GetOriginal"/> and <see cref="IWorldState.Set"/> use.
+/// Conversions between the fixed-width <c>EvmWord</c> that carries storage values in memory and the
+/// minimal-length big-endian encoding used at the trie/RLP boundary and on the legacy
+/// <see cref="IWorldState.Get"/>/<see cref="IWorldState.Set"/> surface.
 /// </summary>
 public static class StorageWord
 {
+    /// <summary>Returns the full 32-byte big-endian view of <paramref name="word"/>. The span aliases <paramref name="word"/>.</summary>
+    public static ReadOnlySpan<byte> AsSpan(in EvmWord word) =>
+        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in word), 1));
+
     /// <summary>Returns the storage encoding of <paramref name="word"/>: leading zeros stripped, or <c>[0]</c> when zero.</summary>
     /// <remarks>The returned span aliases <paramref name="word"/> unless it is zero.</remarks>
     public static ReadOnlySpan<byte> ToStorageBytes(in EvmWord word, out bool isZero)
     {
-        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in word), 1));
+        ReadOnlySpan<byte> bytes = AsSpan(in word);
         isZero = bytes.IsZero();
         return isZero ? VirtualMachineStatics.BytesZero : bytes.WithoutLeadingZeros();
     }

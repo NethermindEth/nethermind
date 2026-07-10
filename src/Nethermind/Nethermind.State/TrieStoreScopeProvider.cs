@@ -183,7 +183,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                                 }
                                 StorageCell cell = new(address, in slot);
                                 if (!sink.StillNeeded(in cell)) continue;
-                                sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                                sink.OnStorageRead(in cell, storageTree.GetWord(in slot));
                             }
                         }
                         catch (MissingTrieNodeException) { }
@@ -332,17 +332,17 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         private ValueHash256 _keyBuff = new();
 
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in EvmWord value)
         {
             _wasSetCalled = true;
             if (_bulkWrite is null)
             {
-                storageTree.Set(index, value);
+                storageTree.SetWord(index, in value);
             }
             else
             {
                 StorageTree.ComputeKeyWithLookup(index, ref _keyBuff);
-                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, value));
+                _bulkWrite.Add(StorageTree.CreateBulkSetEntry(_keyBuff, in value));
             }
         }
 

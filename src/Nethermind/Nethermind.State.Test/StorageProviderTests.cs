@@ -480,7 +480,7 @@ public class StorageProviderTests(bool useFlat)
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, StorageWord.FromStorageBytes([1, 2, 3]));
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
         provider.ClearStorage(TestItem.AddressA);
@@ -783,7 +783,7 @@ public class StorageProviderTests(bool useFlat)
         PreBlockCaches preBlockCaches = new();
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
-        preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
+        preBlockCaches.StorageCache.Set(accessedStorageCell, StorageWord.FromStorageBytes([1, 2, 3]));
 
         WorldState provider = BuildStorageProvider(ctx);
         Assert.That(provider.Get(accessedStorageCell).ToArray(), Is.EqualTo([1, 2, 3]));
@@ -1076,10 +1076,10 @@ public class StorageProviderTests(bool useFlat)
         {
             public void Dispose() => baseStorageBatch?.Dispose();
 
-            public void Set(in UInt256 index, byte[] value)
+            public void Set(in UInt256 index, in EvmWord value)
             {
-                baseStorageBatch.Set(in index, value);
-                writtenData.Slots[new StorageCell(address, index)] = value;
+                baseStorageBatch.Set(in index, in value);
+                writtenData.Slots[new StorageCell(address, index)] = StorageWord.ToStorageBytes(in value, out _).ToArray();
             }
 
             public void Clear()

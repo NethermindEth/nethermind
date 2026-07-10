@@ -27,18 +27,18 @@ namespace Nethermind.State
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
         /// <summary>
-        /// Get the storage value at the specified storage cell
+        /// Get the storage value at the specified storage cell as a full 32-byte word.
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell) => GetCurrentValue(in storageCell);
+        /// <returns>Value at cell, zero-padded to 32 bytes.</returns>
+        public EvmWord Get(in StorageCell storageCell) => GetCurrentValue(in storageCell);
 
         /// <summary>
-        /// Set the provided value to storage at the specified storage cell
+        /// Set the provided value to storage at the specified storage cell.
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <param name="newValue">Value to store</param>
-        public virtual void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
+        /// <param name="newValue">Value to store as a full 32-byte word.</param>
+        public virtual void Set(in StorageCell storageCell, in EvmWord newValue) => PushUpdate(in storageCell, in newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -173,7 +173,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out EvmWord value)
         {
             // If the cache is completely empty (no writes or reads yet this transaction),
             // skip hashing the 52-byte cell — TryGetValue would miss anyway.
@@ -181,12 +181,12 @@ namespace Nethermind.State
             {
                 int lastChangeIndex = stack.Peek();
                 {
-                    bytes = _changes[lastChangeIndex].Value;
+                    value = _changes[lastChangeIndex].Value;
                     return true;
                 }
             }
 
-            bytes = null;
+            value = default;
             return false;
         }
 
@@ -194,19 +194,19 @@ namespace Nethermind.State
         /// Get the current value at the specified location
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        /// <returns>Value at location, zero-padded to 32 bytes.</returns>
+        protected abstract EvmWord GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, in EvmWord value)
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(in cell, value, ChangeType.Update));
+            _changes.Add(new Change(in cell, in value, ChangeType.Update));
         }
 
         /// <summary>
@@ -236,7 +236,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    Set(cellByAddress.Key, StorageTree.ZeroBytes);
+                    Set(cellByAddress.Key, default);
                 }
             }
         }
@@ -244,10 +244,10 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
+        protected readonly struct Change(in StorageCell storageCell, in EvmWord value, ChangeType changeType)
         {
             public readonly StorageCell StorageCell = storageCell;
-            public readonly byte[] Value = value;
+            public readonly EvmWord Value = value;
             public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;

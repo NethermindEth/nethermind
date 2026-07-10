@@ -18,8 +18,8 @@ namespace Nethermind.State
         /// Get the storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
-        /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : StorageTree.ZeroBytes;
+        /// <returns>Value at cell, zero-padded to 32 bytes.</returns>
+        protected override EvmWord GetCurrentValue(in StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out EvmWord value) ? value : default;
     }
 }
