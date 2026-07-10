@@ -19,28 +19,17 @@ public readonly struct SlotValue
     public ReadOnlySpan<byte> AsReadOnlySpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
     public const int ByteCount = 32;
 
-    public SlotValue(ReadOnlySpan<byte> data)
-    {
-        if (data.Length > 32)
-        {
-            ThrowInvalidLength();
-        }
-
-        if (data.Length == 32)
-        {
-            _bytes = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(data));
-        }
-        else
-        {
-            _bytes = Vector256<byte>.Zero;
-            data.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _bytes, 1)));
-        }
-    }
-
     private static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", "data");
 
-    public static SlotValue? FromBytes(byte[]? data) => data == null ? null : new SlotValue(data);
-
+    /// <summary>
+    /// Builds a slot value from big-endian bytes, right-aligning shorter input by padding leading zeros.
+    /// </summary>
+    /// <remarks>
+    /// The only way to construct a non-zero value: slot values are big-endian 32-byte words, so a shorter
+    /// buffer must be padded at the front. A left-aligning overload would silently scale the value by a
+    /// power of 256.
+    /// </remarks>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="data"/> exceeds 32 bytes.</exception>
     public static SlotValue FromSpanWithoutLeadingZero(ReadOnlySpan<byte> data)
     {
         switch (data.Length)

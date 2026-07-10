@@ -103,8 +103,8 @@ public class SnapshotCompactorTests
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
         Hash256 storageNodeHash1 = Keccak.Zero;
         Hash256 storageNodeHash2 = Keccak.Zero;
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        SlotValue slotValue1 = SlotValue.FromSpanWithoutLeadingZero([100]);
+        SlotValue slotValue2 = SlotValue.FromSpanWithoutLeadingZero([200]);
 
         // Add accounts
         snapshot.Content.Accounts[address1] = new Account(1, 100);
@@ -158,8 +158,8 @@ public class SnapshotCompactorTests
         TreePath statePath2 = TreePath.FromHexString("ef01");
         TreePath storageNodePath1 = TreePath.FromHexString("1234");
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        SlotValue slotValue1 = SlotValue.FromSpanWithoutLeadingZero([100]);
+        SlotValue slotValue2 = SlotValue.FromSpanWithoutLeadingZero([200]);
 
         // First snapshot
         StateId from0 = new(0, Keccak.Zero);
@@ -203,8 +203,8 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new(1);
         TreePath statePath = TreePath.FromHexString("abcd");
         TreePath storageNodePath = TreePath.FromHexString("1234");
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        SlotValue slotValue1 = SlotValue.FromSpanWithoutLeadingZero([100]);
+        SlotValue slotValue2 = SlotValue.FromSpanWithoutLeadingZero([200]);
 
         // First snapshot with initial values
         StateId from0 = new(0, Keccak.Zero);
@@ -251,7 +251,7 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new(1);
         TreePath storagePath = TreePath.FromHexString("1234");
         Hash256 storageHash = Keccak.Zero;
-        SlotValue slotValue = new(new byte[32]);
+        SlotValue slotValue = SlotValue.FromSpanWithoutLeadingZero(new byte[32]);
 
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, Keccak.Zero);
