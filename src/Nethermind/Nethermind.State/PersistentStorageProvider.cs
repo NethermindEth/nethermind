@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -77,6 +78,26 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns>Value at location</returns>
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
         TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+
+    /// <inheritdoc cref="IWorldState.SStore"/>
+    public SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+    {
+        ReadOnlySpan<byte> newBytes = StorageWord.ToStorageBytes(in newValue, out bool newIsZero);
+        ReadOnlySpan<byte> currentValue = Get(in storageCell);
+        bool currentIsZero = currentValue.IsZero();
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newBytes);
+
+        SStoreState state = currentIsZero ? SStoreState.CurrentIsZero : SStoreState.None;
+        if (newSameAsCurrent) return state | SStoreState.NewSameAsCurrent;
+
+        ReadOnlySpan<byte> originalValue = GetOriginal(in storageCell);
+        if (originalValue.IsZero()) state |= SStoreState.OriginalIsZero;
+        if (Bytes.AreEqual(originalValue, currentValue)) state |= SStoreState.CurrentSameAsOriginal;
+        if (Bytes.AreEqual(originalValue, newBytes)) state |= SStoreState.NewSameAsOriginal;
+
+        Set(in storageCell, newIsZero ? VirtualMachineStatics.BytesZero : newBytes.ToArray());
+        return state;
+    }
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell

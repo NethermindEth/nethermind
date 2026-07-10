@@ -126,6 +126,29 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void Set(in StorageCell storageCell, byte[] newValue) { }
 
+    /// <inheritdoc cref="IWorldState.SStore"/>
+    /// <remarks>
+    /// Reports the comparisons without writing: this state replays a block access list, so <see cref="Set"/> is
+    /// a no-op and delegating to the wrapped state would mutate it.
+    /// </remarks>
+    public override SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+    {
+        ReadOnlySpan<byte> newBytes = StorageWord.ToStorageBytes(in newValue, out bool newIsZero);
+        ReadOnlySpan<byte> currentValue = Get(in storageCell);
+        bool currentIsZero = currentValue.IsZero();
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newBytes);
+
+        SStoreState state = currentIsZero ? SStoreState.CurrentIsZero : SStoreState.None;
+        if (newSameAsCurrent) return state | SStoreState.NewSameAsCurrent;
+
+        ReadOnlySpan<byte> originalValue = GetOriginal(in storageCell);
+        if (originalValue.IsZero()) state |= SStoreState.OriginalIsZero;
+        if (Bytes.AreEqual(originalValue, currentValue)) state |= SStoreState.CurrentSameAsOriginal;
+        if (Bytes.AreEqual(originalValue, newBytes)) state |= SStoreState.NewSameAsOriginal;
+
+        return state;
+    }
+
     public override ref readonly UInt256 GetBalance(Address address)
     {
         (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);

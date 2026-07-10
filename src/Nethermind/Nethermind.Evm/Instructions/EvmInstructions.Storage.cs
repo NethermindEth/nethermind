@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -475,12 +476,9 @@ public static partial class EvmInstructions
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
-        if (!stack.PopWord256(out Span<byte> bytesSpan)) goto StackUnderflow;
-        ReadOnlySpan<byte> bytes = bytesSpan;
+        if (!stack.PopEvmWord(out EvmWord newValue)) goto StackUnderflow;
 
-        // Determine if the new value is effectively zero and normalize non-zero values by stripping leading zeros.
-        bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
+        bool newIsZero = newValue == default;
 
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
@@ -489,12 +487,17 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
-        // Retrieve the current value from persistent storage.
-        ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
-        bool currentIsZero = currentValue.IsZero();
+        // SStore performs the write, and Get's span dies on the next IWorldState call, so the tracer's
+        // pre-write value has to be copied out first.
+        byte[]? tracedCurrentValue = vm.TxTracer.IsTracingOpLevelStorage
+            ? vm.WorldState.Get(in storageCell).ToArray()
+            : null;
 
-        // Determine whether the new value is identical to the current stored value.
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        // Apply the store and learn how the new value relates to the current and original ones.
+        SStoreState storeState = vm.WorldState.SStore(in storageCell, in newValue);
+
+        bool newSameAsCurrent = storeState.HasFlag(SStoreState.NewSameAsCurrent);
+        bool currentIsZero = storeState.HasFlag(SStoreState.CurrentIsZero);
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = (long)gasCosts.SClearRefund;
@@ -506,10 +509,8 @@ public static partial class EvmInstructions
         }
         else
         {
-            // Retrieve the original storage value to determine if this is a reversal.
-            ReadOnlySpan<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
-            bool originalIsZero = originalValue.IsZero();
-            bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+            bool originalIsZero = storeState.HasFlag(SStoreState.OriginalIsZero);
+            bool currentSameAsOriginal = storeState.HasFlag(SStoreState.CurrentSameAsOriginal);
 
             if (currentSameAsOriginal)
             {
@@ -555,7 +556,7 @@ public static partial class EvmInstructions
                 }
 
                 // If the new value reverts to the original, grant a reversal refund.
-                bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                bool newSameAsOriginal = storeState.HasFlag(SStoreState.NewSameAsOriginal);
                 if (newSameAsOriginal)
                 {
                     long refundFromReversal = (long)gasCosts.RefundFromReversal(originalIsZero);
@@ -573,25 +574,25 @@ public static partial class EvmInstructions
             }
         }
 
-        // Only update storage if the new value differs from the current value.
-        if (!newSameAsCurrent)
+        if (!newSameAsCurrent && newIsZero)
         {
-            vm.WorldState.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
-            if (newIsZero)
+            vm.MetricsCounters.IncrementStorageDeleted();
+        }
+
+        // Only the tracers want the value in its minimal-length storage encoding; SStore took the raw word.
+        if (TTracingInst.IsActive || vm.TxTracer.IsTracingOpLevelStorage)
+        {
+            ReadOnlySpan<byte> bytes = StorageWord.ToStorageBytes(in newValue, out _);
+
+            if (TTracingInst.IsActive)
             {
-                vm.MetricsCounters.IncrementStorageDeleted();
+                TraceSstore(vm, newIsZero, in storageCell, bytes);
             }
-        }
 
-        // Report storage changes for tracing if enabled.
-        if (TTracingInst.IsActive)
-        {
-            TraceSstore(vm, newIsZero, in storageCell, bytes);
-        }
-
-        if (vm.TxTracer.IsTracingOpLevelStorage)
-        {
-            vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            if (vm.TxTracer.IsTracingOpLevelStorage)
+            {
+                vm.TxTracer.SetOperationStorage(storageCell.Address, result, bytes, tracedCurrentValue);
+            }
         }
 
         return EvmExceptionType.None;

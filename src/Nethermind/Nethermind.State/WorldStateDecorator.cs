@@ -72,6 +72,15 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
         => State.Set(in storageCell, newValue);
 
+    /// <inheritdoc cref="IWorldState.SStore"/>
+    /// <remarks>
+    /// The store runs entirely inside <see cref="State"/>, so a derived class that hooks <see cref="Get"/>,
+    /// <see cref="GetOriginal"/> or <see cref="Set"/> to record accesses must override this too — those hooks
+    /// are not reached from here.
+    /// </remarks>
+    public virtual SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+        => State.SStore(in storageCell, in newValue);
+
     public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         => State.GetTransientState(in storageCell);
 

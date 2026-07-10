@@ -248,6 +248,12 @@ public class WitnessGeneratingWorldState(
         base.Set(in storageCell, newValue);
     }
 
+    public override SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+    {
+        RecordSlot(storageCell);
+        return base.SStore(in storageCell, in newValue);
+    }
+
     public override void ClearStorage(Address address)
     {
         RecordEmptySlots(address);

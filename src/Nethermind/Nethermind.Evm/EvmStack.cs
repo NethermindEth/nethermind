@@ -2143,6 +2143,24 @@ public ref struct EvmStack
         return true;
     }
 
+    /// <summary>Pops the top of the stack as a big-endian 32-byte word, copied out of the stack slot.</summary>
+    /// <remarks>
+    /// Unlike <see cref="PopWord256"/> the result does not alias the stack, so it stays valid across pushes.
+    /// No byte swap is performed: both the stack slot and <c>EvmWord</c> are big-endian.
+    /// </remarks>
+    public bool PopEvmWord(out EvmWord word)
+    {
+        int head = Head - 1;
+        if (head < 0)
+        {
+            word = default;
+            return false;
+        }
+        Head = head;
+        word = Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref _stack, (nint)((uint)head * WordSize)));
+        return true;
+    }
+
     public int PopByte()
     {
         int head = Head;

@@ -117,6 +117,27 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         base.Set(storageCell, newValue);
     }
 
+    /// <inheritdoc cref="IWorldState.SStore"/>
+    /// <remarks>
+    /// The wrapped state performs the read and the write, so the read-recording and the change-recording that
+    /// <see cref="Get"/> and <see cref="Set"/> normally contribute are done here instead.
+    /// </remarks>
+    public override SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+    {
+        // Records the read; copied because the span dies on the next call into the wrapped state.
+        byte[] oldValue = Get(in storageCell).ToArray();
+
+        SStoreState state = base.SStore(in storageCell, in newValue);
+
+        if (!state.HasFlag(SStoreState.NewSameAsCurrent))
+        {
+            ReadOnlySpan<byte> newBytes = StorageWord.ToStorageBytes(in newValue, out _);
+            _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newBytes, true));
+        }
+
+        return state;
+    }
+
     public override ref readonly UInt256 GetBalance(Address address)
     {
         AccountChangesAtIndex? accountChanges = RecordReadAndGetChanges(address);

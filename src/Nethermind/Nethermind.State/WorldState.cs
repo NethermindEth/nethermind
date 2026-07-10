@@ -110,6 +110,13 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
+
+        /// <inheritdoc cref="IWorldState.SStore"/>
+        public SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.SStore(in storageCell, in newValue);
+        }
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();

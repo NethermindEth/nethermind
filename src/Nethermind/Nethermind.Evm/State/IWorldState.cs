@@ -56,6 +56,31 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Set(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>
+    /// Applies an SSTORE to <paramref name="storageCell"/> and reports the comparisons that net gas
+    /// metering needs, without exposing the stored values.
+    /// </summary>
+    /// <remarks>
+    /// The cell is written only when <paramref name="newValue"/> differs from the current value (EIP-2200).
+    /// The write precedes the caller's gas accounting, so an out-of-gas SSTORE mutates state before failing;
+    /// this is safe because the write is journaled and the frame's snapshot restore undoes it, along with the
+    /// block-access-list entry it produces.
+    /// <para>
+    /// The original value is read only when the store is not a no-op, so that witness and access-list tracing
+    /// observe the same accesses as a hand-rolled Get/GetOriginal/Set sequence.
+    /// </para>
+    /// <para>
+    /// <see cref="WorldStateExtensions.ApplySStore"/> is the reference implementation, expressed in terms of
+    /// <see cref="Get"/>, <see cref="GetOriginal"/> and <see cref="Set"/>. Backends that store slots as
+    /// fixed-width words may instead compare without materializing the minimal-length encoding those
+    /// primitives require.
+    /// </para>
+    /// </remarks>
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="newValue">The 32-byte big-endian word to store.</param>
+    /// <returns>The comparisons between the original, current and new values.</returns>
+    SStoreState SStore(in StorageCell storageCell, in EvmWord newValue);
+
+    /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
