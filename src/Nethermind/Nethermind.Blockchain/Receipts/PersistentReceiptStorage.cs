@@ -53,23 +53,26 @@ namespace Nethermind.Blockchain.Receipts
         // cleared by the write. A tx lookup scans these lazily, so processing pays nothing per transaction, and
         // this also doubles as the cancellation ledger - RemoveReceipts clears a block's entry so the write skips.
         private readonly ConcurrentDictionary<ValueHash256, PendingCanonicalEntry> _pendingCanonical = new();
+        private long _nextCanonicalSequence;
 
         private sealed class PendingCanonicalEntry(
             PersistentReceiptStorage owner,
             Block block,
             ulong lastBlockNumber,
-            PendingTxIndexValue txIndexValue) : IDeferredWriteOperation
+            PendingTxIndexValue txIndexValue,
+            long publicationSequence) : IDeferredWriteOperation
         {
             public Block Block { get; } = block;
             public ulong LastBlockNumber { get; } = lastBlockNumber;
             public PendingTxIndexValue TxIndexValue { get; } = txIndexValue;
+            public long PublicationSequence { get; } = publicationSequence;
 
             public void Execute() => owner.PersistDeferredCanonical(this);
         }
 
         private sealed class PruneTxIndexOperation(PersistentReceiptStorage owner, Block block) : IDeferredWriteOperation
         {
-            public void Execute() => owner.PersistDeferredPrune(block);
+            public void Execute() => owner.PruneOldTxIndex(block);
         }
 
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
@@ -155,7 +158,12 @@ namespace Nethermind.Blockchain.Receipts
 
                 // Publish the block-level entry and enqueue BEFORE the event, so a state persist that observes
                 // the block always drains this. FIFO order keeps a reorg remap and the prune correct.
-                PendingCanonicalEntry canonical = new(this, block, lastBlockNumber, pending);
+                PendingCanonicalEntry canonical = new(
+                    this,
+                    block,
+                    lastBlockNumber,
+                    pending,
+                    Interlocked.Increment(ref _nextCanonicalSequence));
                 _pendingCanonical[block.Hash!.ValueHash256] = canonical;
                 _deferredWriter.Enqueue(canonical);
             }
@@ -206,21 +214,6 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         private void PruneOldTxIndex(Block newMain)
-        {
-            if (!TryGetOldTxIndexBlock(newMain, out ReceiptRecoveryBlock oldBlock)) return;
-
-            try
-            {
-                using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-                TryRemoveBlockTx(ref oldBlock, writeBatch);
-            }
-            finally
-            {
-                oldBlock.Dispose();
-            }
-        }
-
-        private void PersistDeferredPrune(Block newMain)
         {
             if (!TryGetOldTxIndexBlock(newMain, out ReceiptRecoveryBlock oldBlock)) return;
 
@@ -313,8 +306,8 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>
         /// Lazily scans the block-level pending overlay for a transaction, so the per-tx cost moves off the
-        /// processing path onto the rare tx-hash lookup. On a tie the highest block number wins, matching the
-        /// FIFO last-writer-wins of the durable index; a same-height reorg is left to the durable write to settle.
+        /// processing path onto the rare tx-hash lookup. The highest block number wins, then the latest
+        /// publication at the same height, matching FIFO last-writer-wins of the durable index.
         /// </summary>
         private bool TryFindPendingBlockHash(Hash256 txHash, out Hash256? blockHash)
         {
@@ -322,7 +315,10 @@ namespace Nethermind.Blockchain.Receipts
             foreach (KeyValuePair<ValueHash256, PendingCanonicalEntry> kvp in _pendingCanonical)
             {
                 PendingCanonicalEntry entry = kvp.Value;
-                if (best is not null && entry.Block.Number <= best.Block.Number) continue;
+                if (best is not null
+                    && (entry.Block.Number < best.Block.Number
+                        || (entry.Block.Number == best.Block.Number
+                            && entry.PublicationSequence <= best.PublicationSequence))) continue;
 
                 foreach (Transaction tx in entry.Block.Transactions)
                 {

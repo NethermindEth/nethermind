@@ -79,9 +79,12 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     // disposal drains the writer (flushing queued writes) before it closes those DBs.
     private IDeferredBlockDataWriter CreateDeferredWriter(IComponentContext ctx)
     {
-        ctx.ResolveKeyed<IDb>(DbNames.Blocks);
-        ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
-        ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
+        if (receiptConfig.DeferredPersistence)
+        {
+            ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+            ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
+            ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
+        }
         return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
 

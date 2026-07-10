@@ -244,6 +244,34 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Noncompact_same_height_pending_reorg_prefers_latest_canonical_publication()
+    {
+        _receiptConfig.CompactTxIndex = false;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block oldBlock = Build.A.Block
+            .WithNumber(10)
+            .WithParentHash(TestItem.KeccakA)
+            .WithTransactions(transaction)
+            .TestObject;
+        Block newBlock = Build.A.Block
+            .WithNumber(10)
+            .WithParentHash(TestItem.KeccakB)
+            .WithTransactions(transaction)
+            .TestObject;
+        _blockTree.FindBestSuggestedHeader().Returns(newBlock.Header);
+        _blockTree.FindBlockHash(newBlock.Number).Returns(newBlock.Hash);
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(oldBlock));
+        _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newBlock));
+
+        Assert.That(_storage.FindBlockHash(transaction.Hash!), Is.EqualTo(newBlock.Hash), "latest pending publication");
+
+        _writer.Pump();
+
+        Assert.That(_storage.FindBlockHash(transaction.Hash!), Is.EqualTo(newBlock.Hash), "durable FIFO last writer");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Removed_receipts_are_not_resurrected_by_queued_writes()
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
