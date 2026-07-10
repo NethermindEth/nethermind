@@ -40,7 +40,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
-    private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
     /// Reset the storage state
@@ -49,7 +48,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         base.Reset();
         _originalValues.Clear();
-        _committedThisRound.Clear();
         _destroyedThisRound.Clear();
         if (resetBlockChanges)
         {
@@ -145,16 +143,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         for (int i = 0; i <= currentPosition; i++)
         {
             Change change = _changes[currentPosition - i];
-            if (_committedThisRound.Contains(change!.StorageCell))
+            // Only the newest change per cell is committed; anything below the head of its
+            // chain was superseded, and the head was already handled earlier in the walk.
+            if (_intraBlockCache[change!.StorageCell].CurrentIdx != currentPosition - i)
             {
                 continue;
-            }
-
-            _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
-            if (forAssertion != currentPosition - i)
-            {
-                throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
             }
 
             if (change.ChangeType == ChangeType.Update)
@@ -235,7 +228,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         base.CommitCore(tracer);
         _originalValues.Clear();
-        _committedThisRound.Clear();
         _destroyedThisRound.Clear();
 
         if (isTracing)

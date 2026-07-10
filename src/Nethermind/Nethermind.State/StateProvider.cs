@@ -33,7 +33,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     // Address -> index of its newest change in _changes; older changes reachable via Change.PrevIdx.
     private readonly Dictionary<AddressAsKey, int> _intraTxCache = [];
-    private readonly HashSet<AddressAsKey> _committedThisRound = [];
     private readonly HashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
     // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
@@ -535,7 +534,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            if (_committedThisRound.Contains(change!.Address))
+            // Only the newest change per address is committed; anything below the head of its
+            // chain was superseded, and the head was already handled earlier in the walk.
+            if (_intraTxCache[change!.Address] != stepsBack - i)
             {
                 if (change.ChangeType == ChangeType.JustCache)
                 {
@@ -552,14 +553,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 _nullAccountReads.Add(change.Address);
                 continue;
             }
-
-            int forAssertion = _intraTxCache[change.Address];
-            if (forAssertion != stepsBack - i)
-            {
-                ThrowUnexpectedPosition(stepsBack, i, forAssertion);
-            }
-
-            _committedThisRound.Add(change.Address);
 
             switch (change.ChangeType)
             {
@@ -633,7 +626,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         InvalidateFrontCache();
         _changes.Clear();
-        _committedThisRound.Clear();
         _nullAccountReads.Clear();
         _intraTxCache.Clear();
 
@@ -707,10 +699,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)
-            => throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
     }
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -881,7 +869,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _codeBatch?.Clear();
         }
         _intraTxCache.Clear();
-        _committedThisRound.Clear();
         _nullAccountReads.Clear();
         InvalidateFrontCache();
         _changes.Clear();
