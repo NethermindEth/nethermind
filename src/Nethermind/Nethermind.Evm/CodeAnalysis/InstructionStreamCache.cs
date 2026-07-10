@@ -10,10 +10,8 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// Caches built <see cref="InstructionStream"/>s separately from the CodeInfo cache, so a stream
 /// survives CodeInfo eviction. Keyed by code hash alone is safe: the precharged op set is fork-invariant,
 /// so a stream is valid for any fork &gt;= Shanghai (the only context it runs in). Cleared with the code
-/// cache on a fork/state change.
-/// Memory: holds up to <see cref="MemoryAllowance.InstructionStreamCacheSize"/> streams, each retaining
-/// Ops/BlockGas/Constants/ConstantBytes/PcToEntry. Per-entry footprint is far larger than a CodeInfo entry, so
-/// this cache is bounded separately (and smaller) than the CodeInfo cache.
+/// cache on a fork/state change. Bounded to <see cref="MemoryAllowance.InstructionStreamCacheSize"/> entries,
+/// separately from the CodeInfo cache (per-entry footprint is far larger).
 /// </summary>
 internal static class InstructionStreamCache
 {

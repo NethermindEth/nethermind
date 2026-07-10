@@ -25,8 +25,7 @@ internal static class StreamInterpreter
     // Executions before a CodeInfo's stream is built; keeps the one-time build off cold code. Minimum 1.
     public static int BuildThreshold = 4;
 
-    // Streams whose retained arrays exceed this are not kept (the frame falls back to the metered loop), bounding
-    // per-entry memory. 256 KiB covers the analyzed stream of any EIP-170 contract, so normal contracts keep streaming.
+    // Streams over this size aren't retained (fall back to the metered loop); 256 KiB covers any EIP-170 contract.
     public const int MaxStreamRetainedBytes = 256 * 1024;
 
     // Per-thread diagnostic counter of stream frames executed, read by differential tests to assert the

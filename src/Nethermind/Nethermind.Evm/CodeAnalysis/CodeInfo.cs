@@ -79,10 +79,8 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public ValueHash256 CodeHash { get; set; }
 
     /// <summary>
-    /// Returns the built stream from the shared cache, or <c>null</c> until ready: past
-    /// <see cref="StreamInterpreter.BuildThreshold"/> the build is scheduled once on the thread pool and callers keep
-    /// getting <c>null</c> until it publishes, so no call blocks. The stream is held only by the shared cache (not on
-    /// this instance), so retained stream memory is bounded by that cache alone, not by the CodeInfo cache size.
+    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
+    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
     /// </summary>
     internal InstructionStream? GetOrBuildStream()
     {
