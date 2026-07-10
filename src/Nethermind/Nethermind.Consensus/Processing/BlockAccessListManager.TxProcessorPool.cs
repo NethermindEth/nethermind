@@ -150,7 +150,16 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader();
+
+            // Reuse the processor's held lease when it was built against this block's parent
+            // header; rebuild only on the first rent after a block change. Header identity is
+            // reference-based — Setup creates a fresh parent-state header per block.
+            ParentReaderLease? parentReader = processor.HeldParentReader;
+            if (parentReader is null || !ReferenceEquals(parentReader.ParentHeader, _parentStateHeader))
+            {
+                processor.ClearParentReader();
+                parentReader = RentParentReader();
+            }
 
             try
             {
@@ -188,7 +197,8 @@ public partial class BlockAccessListManager
 
             _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
             processor.WorldState.SetGeneratingBlockAccessList(null);
-            processor.ClearParentReader();
+            // Detach only: the lease stays on the processor for reuse by this block's next tx.
+            processor.DetachParentReader();
             _inUse[idx] = null;
             ReturnProcessor(processor);
         }
@@ -224,7 +234,13 @@ public partial class BlockAccessListManager
 
         public void Rollback() { }
 
-        public void Dispose() => (_parentReaderEnvPool as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            // Leases persist on processors for per-block reuse; release them before the env pool.
+            while (_processors.TryDequeue(out TxProcessorWithWorldState? p)) p.ClearParentReader();
+            foreach (TxProcessorWithWorldState? p in _inUse) p?.ClearParentReader();
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
+        }
 
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
@@ -247,6 +263,8 @@ public partial class BlockAccessListManager
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
                 Interlocked.Decrement(ref _processorCount);
+                // Dropped processors never rent again; release the held lease back to its pool.
+                p.ClearParentReader();
                 return;
             }
             _processors.Enqueue(p);
@@ -264,7 +282,7 @@ public partial class BlockAccessListManager
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
             try
             {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader), _parentStateHeader);
             }
             catch
             {
@@ -399,9 +417,13 @@ public partial class BlockAccessListManager
             TxProcessorAdapter = new(TxProcessor);
         }
 
+        /// <summary>Lease currently held by this processor, if any; valid for <see cref="ParentReaderLease.ParentHeader"/>'s block.</summary>
+        public ParentReaderLease? HeldParentReader => _parentReader;
+
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
         {
-            if (_parentReader is not null) ThrowParentReaderStillAttached();
+            // Re-installing the processor's own held lease is the per-block reuse path.
+            if (_parentReader is not null && !ReferenceEquals(_parentReader, parentReader)) ThrowParentReaderStillAttached();
 
             _parentReader = parentReader;
             WorldState.Clear();
@@ -415,6 +437,9 @@ public partial class BlockAccessListManager
                 _balWorldState.Setup(block);
             }
         }
+
+        /// <summary>Detaches the lease from the BAL world state but keeps it held for reuse within the block.</summary>
+        public void DetachParentReader() => _balWorldState?.ClearParentReader();
 
         public void ClearParentReader()
         {
@@ -434,15 +459,20 @@ public partial class BlockAccessListManager
 
     // RAII wrapper around a borrowed read-only tx-processing env: holds the pooled source
     // plus the scope built against the parent state root, and returns the source to its
-    // pool when disposed. Used by parallel workers so each tx gets its own snapshot reader
-    // without contending on the mutable state provider.
+    // pool when disposed. Parallel workers read parent state through it without contending
+    // on the mutable state provider; each pooled processor keeps its lease for the whole
+    // block (parent state is constant per block) instead of rebuilding the scope per tx.
     private sealed class ParentReaderLease(
         IReadOnlyTxProcessorSource source,
         ObjectPool<IReadOnlyTxProcessorSource> envPool,
-        IReadOnlyTxProcessingScope scope) : IDisposable
+        IReadOnlyTxProcessingScope scope,
+        BlockHeader parentHeader) : IDisposable
     {
         private IReadOnlyTxProcessorSource? _source = source;
         private IReadOnlyTxProcessingScope? _scope = scope;
+
+        /// <summary>Parent-state header the scope was built against; identifies the block the lease is valid for.</summary>
+        public BlockHeader ParentHeader { get; } = parentHeader;
 
         public IWorldState WorldState => _scope?.WorldState ?? ThrowDisposed();
 
