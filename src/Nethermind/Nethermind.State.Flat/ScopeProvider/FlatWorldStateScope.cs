@@ -188,10 +188,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Account?[]? accounts = sink is null ? null : new Account?[accountCount];
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
+            // Sink account reads go through the dedicated warm-read pool: block execution keeps
+            // the shared thread pool saturated while this warmup races it, which starved inline
+            // account reads exactly like it starved sink slot reads before the slot pump.
+            WarmReadPool? pool = sink is not null && _warmReadPool is not null ? _warmReadPool.Value : null;
+
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
-                // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
+                if (pool is not null)
+                    PumpSinkAccountReads(pool, accountChanges, accounts!, selfDestructIdxs!, sink!, token);
+
+                // Phase 1: trie warmup (+ GetAccount + sink.OnAccountRead when no pump ran).
+                // Sink slot reads are deferred to phase 2 so one huge account doesn't
+                // bottleneck a single worker.
                 Parallel.For(0, accountCount, parallelOptions, (i) =>
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
@@ -206,12 +215,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account;
+                    if (pool is not null)
+                    {
+                        account = accounts![i];
+                    }
+                    else
+                    {
+                        account = sink is null && storageChangeCount == 0
+                            ? null
+                            : _snapshotBundle.GetAccount(address);
 
-                    if (sink is not null && sink.StillNeeded(address, out _))
-                        sink.OnAccountRead(address, account);
+                        if (sink is not null && sink.StillNeeded(address, out _))
+                            sink.OnAccountRead(address, account);
+                    }
 
                     if (account is null) return;
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
@@ -238,7 +255,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         }
                     }
 
-                    if (accounts is not null)
+                    if (pool is null && accounts is not null)
                     {
                         accounts[i] = account;
                         selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
@@ -252,6 +269,33 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 accountChanges.Dispose();
             }
+        }, token);
+    }
+
+    /// <summary>
+    /// Drains the BAL's account-value reads on the dedicated warm-read pool, publishing each
+    /// result to <paramref name="sink"/> and recording it for the later phases.
+    /// </summary>
+    private void PumpSinkAccountReads(
+        WarmReadPool pool,
+        ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
+        Account?[] accounts,
+        int[] selfDestructIdxs,
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink,
+        CancellationToken token)
+    {
+        int count = accountChanges.Count;
+        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, count / 64));
+
+        pool.Run(count, workers, i =>
+        {
+            if (_pausePrewarmer) return;
+            Address address = accountChanges[i].Address;
+            Account? account = _snapshotBundle.GetAccount(address);
+            if (sink.StillNeeded(address, out _))
+                sink.OnAccountRead(address, account);
+            accounts[i] = account;
+            selfDestructIdxs[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
         }, token);
     }
 
