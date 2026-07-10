@@ -79,6 +79,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
         TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
+    /// <inheritdoc cref="IWorldState.SLoad"/>
+    /// <remarks>
+    /// Reads the backing store directly instead of going through <see cref="PartialStorageProviderBase.Get"/>, so
+    /// that widening is the only step between the stored value and the caller. A backend holding fixed-width words
+    /// can drop that step too.
+    /// </remarks>
+    public EvmWord SLoad(in StorageCell storageCell) =>
+        StorageWord.FromStorageBytes(TryGetCachedValue(storageCell, out byte[]? cached) ? cached! : LoadFromTree(storageCell));
+
     /// <inheritdoc cref="IWorldState.SStore"/>
     public SStoreState SStore(in StorageCell storageCell, in EvmWord newValue)
     {

@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -70,6 +71,65 @@ public class SStoreTests
 
             byte[] expectedStored = newValue == 0 ? [0] : [newValue];
             Assert.That(state.Get(in Cell).ToArray(), Is.EqualTo(expectedStored));
+        }
+    }
+
+    /// <summary>SLoad must widen the stored minimal-length value back to the word the EVM stack holds.</summary>
+    [TestCase("", TestName = "SLoad_of_unset_slot_is_zero")]
+    [TestCase("01", TestName = "SLoad_pads_single_byte")]
+    [TestCase("0102", TestName = "SLoad_pads_two_bytes")]
+    [TestCase("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", TestName = "SLoad_full_width")]
+    public void SLoad_returns_zero_padded_word(string storedHex)
+    {
+        byte[] stored = Bytes.FromHexString(storedHex);
+
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(Address, 1);
+        if (stored.Length != 0) state.Set(in Cell, stored);
+        state.Commit(Frontier.Instance);
+
+        byte[] expected = new byte[32];
+        stored.CopyTo(expected.AsSpan(32 - stored.Length));
+
+        EvmWord loaded = state.SLoad(in Cell);
+        Assert.That(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref loaded, 1)).ToArray(), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// SLoad reads the backing store directly rather than through Get, but must still capture the original
+    /// value: a later SStore reads it (EIP-2200), and would otherwise throw or misreport the reversal.
+    /// </summary>
+    [Test]
+    public void SLoad_captures_original_for_a_later_SStore()
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(Address, 1);
+        state.Set(in Cell, [5]);
+        state.Commit(Frontier.Instance);
+        state.TakeSnapshot(newTransactionStart: true);
+
+        // The only read of the slot this transaction, so SStore's GetOriginal depends on it.
+        Assert.That(state.SLoad(in Cell), Is.EqualTo(Word(5)));
+
+        // 5 -> 9 is the first write: current still equals the captured original.
+        Assert.That(state.SStore(in Cell, Word(9)), Is.EqualTo(SStoreState.CurrentSameAsOriginal));
+        // 9 -> 5 reverts to the original SLoad observed.
+        Assert.That(state.SStore(in Cell, Word(5)), Is.EqualTo(SStoreState.NewSameAsOriginal));
+    }
+
+    /// <summary>SStore then SLoad must observe the value just written, through the same word representation.</summary>
+    [TestCase(0, TestName = "SLoad_after_SStore_zero")]
+    [TestCase(1, TestName = "SLoad_after_SStore_one")]
+    [TestCase(255, TestName = "SLoad_after_SStore_max_byte")]
+    public void SLoad_observes_preceding_SStore(byte newValue)
+    {
+        (IWorldState state, IDisposable scope) = StateWith(original: 3, current: 3);
+        using (scope)
+        {
+            state.SStore(in Cell, Word(newValue));
+            Assert.That(state.SLoad(in Cell), Is.EqualTo(Word(newValue)));
         }
     }
 

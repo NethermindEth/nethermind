@@ -22,6 +22,22 @@ public static class StorageWord
         isZero = bytes.IsZero();
         return isZero ? VirtualMachineStatics.BytesZero : bytes.WithoutLeadingZeros();
     }
+
+    /// <summary>Widens a minimal-length big-endian storage value back into a full word, padding leading zeros.</summary>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="bytes"/> exceeds 32 bytes.</exception>
+    public static EvmWord FromStorageBytes(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length > EvmWordSize) ThrowValueTooLong(bytes.Length);
+
+        EvmWord word = default;
+        bytes.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1))[(EvmWordSize - bytes.Length)..]);
+        return word;
+    }
+
+    private const int EvmWordSize = 32;
+
+    private static void ThrowValueTooLong(int length) =>
+        throw new ArgumentException($"Storage value cannot exceed {EvmWordSize} bytes, was {length}", "bytes");
 }
 
 /// <summary>

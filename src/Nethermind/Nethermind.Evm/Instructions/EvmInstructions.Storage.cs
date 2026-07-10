@@ -651,16 +651,23 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the persistent storage value and push it onto the stack.
-        ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
-        EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(value);
+        EvmWord value = vm.WorldState.SLoad(in storageCell);
 
-        // Log the storage load operation if tracing is enabled.
-        if (vm.TxTracer.IsTracingOpLevelStorage)
+        // Tracers record the value in its minimal-length storage encoding, so keep them on the span-based push.
+        if (TTracingInst.IsActive || vm.TxTracer.IsTracingOpLevelStorage)
         {
-            vm.TxTracer.LoadOperationStorage(executingAccount, result, value);
+            ReadOnlySpan<byte> bytes = StorageWord.ToStorageBytes(in value, out _);
+            EvmExceptionType tracedPushResult = stack.PushBytes<TTracingInst>(bytes);
+
+            if (vm.TxTracer.IsTracingOpLevelStorage)
+            {
+                vm.TxTracer.LoadOperationStorage(executingAccount, result, bytes);
+            }
+
+            return tracedPushResult;
         }
 
-        return pushResult;
+        return stack.PushEvmWord(in value);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;

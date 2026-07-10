@@ -49,6 +49,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
+    /// Reads the persistent storage value at <paramref name="storageCell"/> as a full 32-byte big-endian word.
+    /// </summary>
+    /// <remarks>
+    /// The SLOAD counterpart to <see cref="SStore"/>: it returns the value in the form the EVM stack holds it,
+    /// so neither side handles the minimal-length encoding <see cref="Get"/> exposes. Unlike <see cref="Get"/>
+    /// the result does not alias backend storage, so it stays valid across later calls.
+    /// </remarks>
+    /// <param name="storageCell">Storage location.</param>
+    /// <returns>Value at cell, zero-padded to 32 bytes.</returns>
+    EvmWord SLoad(in StorageCell storageCell);
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

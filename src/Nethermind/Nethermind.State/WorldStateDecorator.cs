@@ -69,6 +69,15 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
         => State.Get(in storageCell);
 
+    /// <inheritdoc cref="IWorldState.SLoad"/>
+    /// <remarks>
+    /// Reads through this decorator's <see cref="Get"/> rather than forwarding to <see cref="State"/>: a derived
+    /// class may serve the value from elsewhere or record the access, and forwarding would bypass both. There is
+    /// nothing else for a decorator to hook here, so overriding this is normally unnecessary.
+    /// </remarks>
+    public virtual EvmWord SLoad(in StorageCell storageCell)
+        => StorageWord.FromStorageBytes(Get(in storageCell));
+
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
         => State.Set(in storageCell, newValue);
 

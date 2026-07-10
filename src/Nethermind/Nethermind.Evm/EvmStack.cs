@@ -122,6 +122,22 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
+    /// <summary>Pushes a full 32-byte big-endian word, without the length dispatch <see cref="PushBytes{TTracingInst}(ReadOnlySpan{byte})"/> performs.</summary>
+    /// <remarks>
+    /// Does not report the push to the tracer: callers on an instruction-tracing path must use
+    /// <see cref="PushBytes{TTracingInst}(ReadOnlySpan{byte})"/>, whose span is recorded verbatim.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType PushEvmWord(in EvmWord value)
+    {
+        ref byte dst = ref PushBytesRef();
+        if (Unsafe.IsNullRef(ref dst)) return EvmExceptionType.StackOverflow;
+
+        Unsafe.WriteUnaligned(ref dst, value);
+        return EvmExceptionType.None;
+    }
+
     [SkipLocalsInit]
     private static void PushBytesPartial(ref byte dst, ref byte src, nuint length)
     {
