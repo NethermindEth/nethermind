@@ -11,13 +11,13 @@ namespace Nethermind.Evm.CodeAnalysis;
 /// survives CodeInfo eviction. Keyed by code hash alone is safe: the precharged op set is fork-invariant,
 /// so a stream is valid for any fork &gt;= Shanghai (the only context it runs in). Cleared with the code
 /// cache on a fork/state change.
-/// Memory: holds up to <see cref="MemoryAllowance.CodeCacheSize"/> streams, each retaining
-/// Ops/BlockGas/Constants/ConstantBytes/PcToEntry. Under heavy RPC this can retain a full code-cache
-/// worth of stream arrays in addition to the CodeInfo cache — revisit the bound if footprint matters.
+/// Memory: holds up to <see cref="MemoryAllowance.InstructionStreamCacheSize"/> streams, each retaining
+/// Ops/BlockGas/Constants/ConstantBytes/PcToEntry. Per-entry footprint is far larger than a CodeInfo entry, so
+/// this cache is bounded separately (and smaller) than the CodeInfo cache.
 /// </summary>
 internal static class InstructionStreamCache
 {
-    private static readonly AssociativeCache<ValueHash256, InstructionStream> _cache = new(MemoryAllowance.CodeCacheSize);
+    private static readonly AssociativeCache<ValueHash256, InstructionStream> _cache = new(MemoryAllowance.InstructionStreamCacheSize);
 
     public static bool TryGet(in ValueHash256 codeHash, out InstructionStream? stream) => _cache.TryGet(in codeHash, out stream);
 
