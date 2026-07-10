@@ -16,6 +16,7 @@ public class FlatDbConfig : IFlatDbConfig
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
+    public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
     public ulong MaxReorgDepth { get; set; } = 256;
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
