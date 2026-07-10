@@ -306,19 +306,17 @@ public partial struct EvmPooledMemory
             return;
         }
 #if !ZK_EVM
-        // The window may still hold a sibling frame's bytes; clear only the dirtied part via the shared
-        // zeroer so the pristine tail is left untouched.
+        // Clear only the dirtied part via the shared zeroer so the pristine tail is left untouched.
         if (_shared is not null && !_spilled)
         {
             _shared.Zero(_base, frameOld, frameNew);
+            // Children anchor at _base + Size; recording a tracing over-clear beyond Size as clean would
+            // make the parent skip re-zeroing a later sibling's writes there. Keep _lastZeroedSize <= Size.
+            _lastZeroedSize = Math.Min((ulong)frameNew, Size);
+            return;
         }
-        else
-        {
-            Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
-        }
-#else
-        Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
 #endif
+        Array.Clear(_memory, _offset + frameOld, frameNew - frameOld);
         _lastZeroedSize = (ulong)frameNew;
     }
 

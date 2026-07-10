@@ -399,6 +399,31 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void Shared_tracing_read_beyond_size_does_not_leak_child_bytes()
+    {
+        // Inspect past Size (tracing) must not mark [Size, _) as clean: a child anchors at Size, writes
+        // there, and the parent must still read zero once it later grows into that band.
+        SharedEvmMemory shared = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory parent = new();
+        parent.AttachShared(shared, 0);
+        Assert.That(parent.TrySaveWord((UInt256)EvmPooledMemory.WordSize, word), Is.True); // Size = 64
+        parent.Inspect((UInt256)48, (UInt256)EvmPooledMemory.WordSize); // tracing read spanning [48, 80)
+
+        EvmPooledMemory child = new();
+        child.AttachShared(shared, parent.FrameFrontier);
+        Span<byte> dirty = new byte[EvmPooledMemory.WordSize];
+        dirty.Fill(0xff);
+        Assert.That(child.TrySave(0, dirty), Is.True); // writes [64, 96)
+        child.Dispose();
+
+        Assert.That(parent.TryLoadSpan((UInt256)64, (UInt256)EvmPooledMemory.WordSize, out Span<byte> read), Is.True);
+        Assert.That(read.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "parent read the child's stale bytes");
+        parent.Dispose();
+    }
+
+    [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
         EvmPooledMemory memory = new();
