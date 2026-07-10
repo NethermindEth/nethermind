@@ -38,6 +38,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public Account? GetAccount(Address address) =>
         _innerReader.GetAccount(address);
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results) =>
+        _innerReader.GetAccounts(addresses, results);
+
     public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 

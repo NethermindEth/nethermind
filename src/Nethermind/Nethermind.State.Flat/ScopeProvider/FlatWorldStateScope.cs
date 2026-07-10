@@ -272,9 +272,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }, token);
     }
 
+    // Sized so one batch amortizes RocksDB MultiGet overhead without starving worker balance.
+    private const int AccountPumpChunkSize = 256;
+
     /// <summary>
-    /// Drains the BAL's account-value reads on the dedicated warm-read pool, publishing each
-    /// result to <paramref name="sink"/> and recording it for the later phases.
+    /// Drains the BAL's account-value reads on the dedicated warm-read pool in batched chunks,
+    /// publishing each result to <paramref name="sink"/> and recording it for the later phases.
     /// </summary>
     private void PumpSinkAccountReads(
         WarmReadPool pool,
@@ -285,17 +288,35 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancellationToken token)
     {
         int count = accountChanges.Count;
-        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, count / 64));
+        int chunkCount = (count + AccountPumpChunkSize - 1) / AccountPumpChunkSize;
+        int workers = Math.Min(pool.MaxConcurrency, chunkCount);
 
-        pool.Run(count, workers, i =>
+        pool.Run(chunkCount, workers, c =>
         {
             if (_pausePrewarmer) return;
-            Address address = accountChanges[i].Address;
-            Account? account = _snapshotBundle.GetAccount(address);
-            if (sink.StillNeeded(address, out _))
-                sink.OnAccountRead(address, account);
-            accounts[i] = account;
-            selfDestructIdxs[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+            int start = c * AccountPumpChunkSize;
+            int length = Math.Min(AccountPumpChunkSize, count - start);
+
+            using ArrayPoolSpan<Address> addresses = new(length);
+            using ArrayPoolSpan<Account?> read = new(length);
+            for (int k = 0; k < length; k++)
+            {
+                addresses[k] = accountChanges[start + k].Address;
+                read[k] = null;
+            }
+
+            _snapshotBundle.GetAccounts(addresses[..length], read[..length]);
+
+            for (int k = 0; k < length; k++)
+            {
+                int i = start + k;
+                Address address = addresses[k];
+                Account? account = read[k];
+                if (sink.StillNeeded(address, out _))
+                    sink.OnAccountRead(address, account);
+                accounts[i] = account;
+                selfDestructIdxs[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+            }
         }, token);
     }
 

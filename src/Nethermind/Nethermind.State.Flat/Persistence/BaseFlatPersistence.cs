@@ -91,6 +91,17 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addressHashes, Span<byte[]?> rlps)
+        {
+            byte[][] keys = new byte[addressHashes.Length][];
+            for (int i = 0; i < addressHashes.Length; i++)
+            {
+                keys[i] = addressHashes[i].Bytes[..AccountKeyLength].ToArray();
+            }
+
+            state.MultiGet(keys, rlps);
+        }
+
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {

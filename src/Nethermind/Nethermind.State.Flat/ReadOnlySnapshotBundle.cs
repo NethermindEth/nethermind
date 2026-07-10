@@ -77,6 +77,57 @@ public sealed class ReadOnlySnapshotBundle(
         return account;
     }
 
+    /// <summary>
+    /// Batched <see cref="GetAccount(Address, HashedKey{Address})"/>: walks the in-memory tiers
+    /// per address and resolves the persistence-tier misses in one batched read.
+    /// </summary>
+    /// <remarks>Detailed per-read metrics are skipped on this path; the batch amortizes them away.</remarks>
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+    {
+        GuardDispose();
+
+        int count = addresses.Length;
+        using ArrayPoolList<int> missIdxs = new(count);
+        using ArrayPoolList<Address> missAddrs = new(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            Address address = addresses[i];
+            HashedKey<Address> key = new(address);
+            bool found = false;
+            for (int s = snapshots.Count - 1; s >= 0; s--)
+            {
+                if (snapshots[s].TryGetAccount(key, out Account? acc))
+                {
+                    results[i] = acc;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found && _persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+            {
+                results[i] = persistedAccount;
+                found = true;
+            }
+
+            if (!found)
+            {
+                missIdxs.Add(i);
+                missAddrs.Add(address);
+            }
+        }
+
+        if (missIdxs.Count == 0) return;
+
+        using ArrayPoolSpan<Account?> missResults = new(missIdxs.Count);
+        persistenceReader.GetAccounts(missAddrs.AsSpan(), missResults[..missIdxs.Count]);
+        for (int j = 0; j < missIdxs.Count; j++)
+        {
+            results[missIdxs[j]] = missResults[j];
+        }
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);

@@ -92,6 +92,58 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetAccount(address, key);
     }
 
+    /// <summary>
+    /// Batched <see cref="GetAccount"/>: walks the in-bundle tiers per address and resolves the
+    /// read-only-bundle misses in one batched read.
+    /// </summary>
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+    {
+        GuardDispose();
+
+        int count = addresses.Length;
+        using ArrayPoolList<int> missIdxs = new(count);
+        using ArrayPoolList<Address> missAddrs = new(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            Address address = addresses[i];
+            HashedKey<Address> key = new(address);
+            bool found = false;
+            if (_changedAccounts.TryGetValue(key, out Account? acc))
+            {
+                results[i] = acc;
+                found = true;
+            }
+            else
+            {
+                for (int s = _snapshots.Count - 1; s >= 0; s--)
+                {
+                    if (_snapshots[s].TryGetAccount(key, out acc))
+                    {
+                        results[i] = acc;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found)
+            {
+                missIdxs.Add(i);
+                missAddrs.Add(address);
+            }
+        }
+
+        if (missIdxs.Count == 0) return;
+
+        using ArrayPoolSpan<Account?> missResults = new(missIdxs.Count);
+        _readOnlySnapshotBundle.GetAccounts(missAddrs.AsSpan(), missResults[..missIdxs.Count]);
+        for (int j = 0; j < missIdxs.Count; j++)
+        {
+            results[missIdxs[j]] = missResults[j];
+        }
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);

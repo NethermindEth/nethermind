@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -158,6 +159,38 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
+        }
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            bool current = parent.IsCurrent(generation);
+            int count = addresses.Length;
+            using ArrayPoolList<int> missIdxs = new(count);
+            using ArrayPoolList<Address> missAddrs = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                if (current && parent._accounts.TryGetValue(addresses[i], out Account? cached))
+                {
+                    results[i] = cached;
+                }
+                else
+                {
+                    missIdxs.Add(i);
+                    missAddrs.Add(addresses[i]);
+                }
+            }
+
+            if (missIdxs.Count == 0) return;
+
+            using ArrayPoolSpan<Account?> missResults = new(missIdxs.Count);
+            inner.GetAccounts(missAddrs.AsSpan(), missResults[..missIdxs.Count]);
+
+            for (int j = 0; j < missIdxs.Count; j++)
+            {
+                Account? account = missResults[j];
+                results[missIdxs[j]] = account;
+                if (current) parent.TryCacheAccount(missAddrs[j], account, generation);
+            }
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
