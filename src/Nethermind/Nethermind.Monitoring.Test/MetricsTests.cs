@@ -170,6 +170,40 @@ public class MetricsTests
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Tx_pool_retry_metrics_have_stable_prometheus_contract()
+    {
+        const string client = "metrics-contract-test";
+        MetricsConfig metricsConfig = new()
+        {
+            Enabled = true
+        };
+        MetricsController metricsController = new(metricsConfig);
+        metricsController.RegisterMetrics(typeof(TxPool.Metrics));
+
+        TxPool.Metrics.AddNewPooledTransactionsAnnouncedByClient(client, 7);
+        TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(client, 5, TxPool.PooledTransactionRequestReason.Retry);
+        TxPool.Metrics.AddPendingTransactionRetryHandlersSkippedOnReceived(3);
+        metricsController.UpdateAllMetrics();
+
+        using MemoryStream stream = new();
+        await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
+        string scrape = Encoding.UTF8.GetString(stream.ToArray());
+        string announced = GetMetricLine(scrape, "nethermind_new_pooled_transactions_announced_by_client", client);
+        string requested = GetMetricLine(scrape, "nethermind_new_pooled_transactions_requested_by_client_and_reason", client);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scrape, Does.Contain("# TYPE nethermind_pending_transaction_retry_handlers_skipped_on_received gauge"));
+            Assert.That(announced, Does.Contain($"client=\"{client}\""));
+            Assert.That(announced, Does.EndWith(" 7"));
+            Assert.That(requested, Does.Contain($"client=\"{client}\""));
+            Assert.That(requested, Does.Contain("reason=\"retry\""));
+            Assert.That(requested, Does.EndWith(" 5"));
+        }
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void Load_DetailedMetric(bool enableDetailedMetric)
@@ -271,6 +305,10 @@ public class MetricsTests
 
     [Test]
     public void All_config_items_have_descriptions() => ValidateMetricsDescriptions();
+
+    private static string GetMetricLine(string scrape, string metricName, string client) => scrape
+        .Split('\n')
+        .Single(line => line.StartsWith(metricName, StringComparison.Ordinal) && line.Contains($"client=\"{client}\"", StringComparison.Ordinal));
 
     public static void ValidateMetricsDescriptions() => ForEachProperty(CheckDescribedOrHidden);
 

@@ -99,6 +99,7 @@ public class Eth68ProtocolHandler(ISession session,
         }
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
+        TxPool.Metrics.AddNewPooledTransactionsAnnouncedByClient(PeerClientMetricLabel, message.Hashes.Count);
 
         AddNotifiedTransactions(message.Hashes.AsSpan());
 
@@ -184,6 +185,17 @@ public class Eth68ProtocolHandler(ISession session,
         {
             ArrayPoolList<Hash256> request = hashesToRequest!;
             hashesToRequest = null;
+            PooledTransactionRequestReason requestReason = registerForRetry
+                ? PooledTransactionRequestReason.Initial
+                : PooledTransactionRequestReason.Retry;
+            TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(
+                PeerClientMetricLabel,
+                request.Count,
+                requestReason);
+            TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(
+                PeerClientMetricLabel,
+                1,
+                requestReason);
             Send(V66.Messages.GetPooledTransactionsMessage.New(request));
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
             toRequestCount = 0;

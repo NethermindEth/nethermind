@@ -90,6 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
+                        TrackRawPooledTransactionsResponseByClient(pooledTxMsg.EthMessage.Transactions?.Count ?? 0);
                         Handle(pooledTxMsg.EthMessage);
                     }
                     else

@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
@@ -48,6 +49,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
+        protected string PeerClientMetricLabel => GetPeerClientMetricLabel(Node?.ClientType ?? NodeClientType.Unknown);
+
         protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
@@ -75,6 +78,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
+                        TrackRawPooledTransactionsResponseByClient(pooledTxMsg.Transactions?.Count ?? 0);
                         Handle(pooledTxMsg);
                     }
                     else
@@ -185,6 +189,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             long startTime = Stopwatch.GetTimestamp();
             TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;
+            PooledTransactionRequestReason requestReason = registerForRetry
+                ? PooledTransactionRequestReason.Initial
+                : PooledTransactionRequestReason.Retry;
+            if (registerForRetry)
+            {
+                TxPool.Metrics.AddNewPooledTransactionsAnnouncedByClient(PeerClientMetricLabel, hashes.Count);
+            }
 
             for (int start = 0; start < hashesSpan.Length; start += MaxNumberOfTxsInOneMsg)
             {
@@ -196,12 +207,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
                 else
                 {
+                    TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(
+                        PeerClientMetricLabel,
+                        newTxHashes.Count,
+                        requestReason);
+                    TxPool.Metrics.AddNewPooledTransactionRequestMessagesByClient(
+                        PeerClientMetricLabel,
+                        1,
+                        requestReason);
                     Send(TMessage.New(newTxHashes));
                 }
             }
 
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
                                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+        }
+
+        protected void TrackRawPooledTransactionsResponseByClient(int transactionsCount)
+        {
+            TxPool.Metrics.AddNewPooledTransactionsReturnedByClient(PeerClientMetricLabel, transactionsCount);
+            TxPool.Metrics.AddNewPooledTransactionResponseMessagesByClient(PeerClientMetricLabel, 1);
+
+            if (transactionsCount == 0)
+            {
+                TxPool.Metrics.AddNewPooledTransactionEmptyResponseMessagesByClient(PeerClientMetricLabel, 1);
+            }
         }
 
         private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, bool registerForRetry)
@@ -220,6 +250,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             return discoveredTxHashesAndSizes;
         }
+
+        private static string GetPeerClientMetricLabel(NodeClientType clientType) => clientType switch
+        {
+            NodeClientType.Besu => "besu",
+            NodeClientType.Geth => "geth",
+            NodeClientType.Nethermind => "nethermind",
+            NodeClientType.Parity => "parity",
+            NodeClientType.OpenEthereum => "openethereum",
+            NodeClientType.Trinity => "trinity",
+            NodeClientType.Erigon => "erigon",
+            NodeClientType.Reth => "reth",
+            NodeClientType.Nimbus => "nimbus",
+            NodeClientType.EthereumJS => "ethereumjs",
+            NodeClientType.Ethrex => "ethrex",
+            NodeClientType.Bor => "bor",
+            NodeClientType.Ronin => "ronin",
+            NodeClientType.Scraper => "scraper",
+            NodeClientType.Sentinel => "sentinel",
+            NodeClientType.Grails => "grails",
+            NodeClientType.Sonic => "sonic",
+            NodeClientType.Gait => "gait",
+            NodeClientType.Diamond => "diamond",
+            NodeClientType.NodeCrawler => "nodecrawler",
+            NodeClientType.Energi => "energi",
+            NodeClientType.Opera => "opera",
+            NodeClientType.Gwat => "gwat",
+            NodeClientType.Tempo => "tempo",
+            NodeClientType.Swarm => "swarm",
+            _ => "unknown"
+        };
 
         public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
