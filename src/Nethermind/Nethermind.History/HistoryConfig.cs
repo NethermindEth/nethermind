@@ -7,6 +7,7 @@ public class HistoryConfig : IHistoryConfig
 {
     public PruningModes Pruning { get; set; } = PruningModes.Disabled;
     public uint RetentionEpochs { get; set; } = 82125;
-    public uint PruningInterval { get; set; } = 8;
+    public uint BalRetentionEpochs { get; set; } = 3533;
+    public ulong PruningInterval { get; set; } = 8;
     public uint PruningTimeoutSeconds { get; set; } = 2;
 }

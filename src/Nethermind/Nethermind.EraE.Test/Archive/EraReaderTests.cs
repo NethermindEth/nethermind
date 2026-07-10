@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Archive;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
-using EraException = Nethermind.Era1.EraException;
+using EraException = Nethermind.Era1.Exceptions.EraException;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -15,18 +14,18 @@ namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
-    [TestCase(3, 0)]
-    [TestCase(0, 3)]
-    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(int preMergeCount, int postMergeCount)
+    [TestCase(3U, 0U)]
+    [TestCase(0U, 3U)]
+    public async Task GetBlockByNumber_ReturnsCorrectBlockNumbers(uint preMergeCount, uint postMergeCount)
     {
-        int totalCount = preMergeCount + postMergeCount;
+        ulong totalCount = preMergeCount + postMergeCount;
         using TestEraFile file = await TestEraFile.Create(preMergeCount: preMergeCount, postMergeCount: postMergeCount);
         using EraReader sut = new(file.FilePath);
 
-        for (int i = 0; i < totalCount; i++)
+        for (ulong i = 0; i < totalCount; i++)
         {
             (Block block, _) = await sut.GetBlockByNumber(i);
-            block.Number.Should().Be(i);
+            Assert.That(block.Number, Is.EqualTo(i));
         }
     }
 
@@ -36,8 +35,8 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        (Block block, _) = await sut.GetBlockByNumber(2);
-        block.TotalDifficulty.Should().Be(file.Contents[2].Block.TotalDifficulty);
+        (Block block, _) = await sut.GetBlockByNumber(2UL);
+        Assert.That(block.TotalDifficulty, Is.EqualTo(file.Contents[2].Block.TotalDifficulty));
     }
 
     [Test]
@@ -63,7 +62,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
-        verifiedRoot.Should().Be(expectedRoot);
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot));
     }
 
     [Test]
@@ -73,8 +72,8 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         List<(Block, TxReceipt[])> result = await sut.ToListAsync();
-        result.Should().HaveCount(3);
-        result.Select(r => r.Item1.Number).Should().BeEquivalentTo([0L, 1L, 2L]);
+        Assert.That(result, Has.Count.EqualTo(3));
+        Assert.That(result.Select(r => r.Item1.Number), Is.EqualTo([0L, 1L, 2L]));
     }
 
     [Test]
@@ -93,7 +92,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         ValueHash256 result = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
-        result.Should().Be(default, "post-merge epochs have no accumulator");
+        Assert.That(result, Is.EqualTo(default(ValueHash256)), "post-merge epochs have no accumulator");
     }
 
     [Test]
@@ -110,8 +109,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
-        verifiedRoot.Should().Be(expectedRoot,
-            "transition epoch accumulator must only cover pre-merge blocks");
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot), "transition epoch accumulator must only cover pre-merge blocks");
     }
 
     [Test]
@@ -120,8 +118,8 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
         using EraReader sut = new(file.FilePath);
 
-        (Block postMergeBlock, _) = await sut.GetBlockByNumber(2);
-        postMergeBlock.Header.IsPostMerge.Should().BeTrue();
+        (Block postMergeBlock, _) = await sut.GetBlockByNumber(2UL);
+        Assert.That(postMergeBlock.Header.IsPostMerge, Is.True);
     }
 
     [Test]
@@ -130,7 +128,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(async () => await sut.GetBlockByNumber(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(async () => await sut.GetBlockByNumber(ulong.MaxValue), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
@@ -139,7 +137,7 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(async () => await sut.GetBlockByNumber(999), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(async () => await sut.GetBlockByNumber(999UL), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
@@ -148,10 +146,10 @@ internal class EraReaderTests
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 1, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0);
+        (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0UL);
 
-        receipts.Should().NotBeEmpty();
-        receipts[0].Bloom.Should().NotBeNull("bloom must be auto-computed from logs");
+        Assert.That(receipts, Is.Not.Empty);
+        Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");
     }
 
 }

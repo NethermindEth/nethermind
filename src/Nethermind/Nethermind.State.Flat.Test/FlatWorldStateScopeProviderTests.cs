@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -41,7 +43,7 @@ public class FlatWorldStateScopeProviderTests
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null)
+        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
 
@@ -78,12 +80,19 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<ILogManager>(LimboLogs.Instance)
                     .AddSingleton<IFlatDbConfig>(config)
                     .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
+                    .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
+
+            if (trieWarmer is not null)
+            {
+                _containerBuilder.AddSingleton(trieWarmer);
+            }
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
+                .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
@@ -854,4 +863,136 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(disposeTask.IsCompletedSuccessfully, Is.True);
     }
 
+    [Test]
+    public async Task Dispose_GivesUpWaiting_ReaderOutlivesInFlightWarmup()
+    {
+        BlockingPersistenceReader reader = new();
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        FlatDbConfig config = new();
+        ResourcePool resourcePool = new(config);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        await using TrieWarmer warmer = new(LimboLogs.Instance, config);
+
+        FlatWorldStateScope scope = new(
+            new StateId(0, TestItem.KeccakA),
+            bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            Substitute.For<IFlatCommitTarget>(),
+            config,
+            warmer,
+            LimboLogs.Instance);
+
+        // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
+        // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
+        scope.HintGet(TestItem.AddressA, null);
+        Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+
+        reader.ResumeReads.Set();
+
+        Assert.That(() => reader.IsDisposed, Is.True.After(5000, 50), "Reader should be disposed once the warmup job completes");
+    }
+
+    [TestCase(true, false, TestName = "StorageHintSet_SlotRingAccepts_DoesNotFallBack")]
+    [TestCase(false, true, TestName = "StorageHintSet_SlotRingFull_FallsBackToMpmcBuffer")]
+    [TestCase(false, false, TestName = "StorageHintSet_BothBuffersFull_DropsHint")]
+    public void StorageHintSet_FallsBackToMpmcBufferWhenSlotRingIsFull(bool slotRingAccepts, bool mpmcAccepts)
+    {
+        RecordingTrieWarmer warmer = new(slotRingAccepts, mpmcAccepts);
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
+
+        storageTree.HintSet((UInt256)1, [1]);
+
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
+        storageTree.HintSet((UInt256)1, [1]);
+        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+
+        // An accepted push must have incremented the outstanding-warmup counter (and a dropped one must not):
+        // after balancing accepted pushes, Dispose should not enter the wait loop.
+        bool enteredWaitLoop = false;
+        scope.OnWaitingForWarmups = () => enteredWaitLoop = true;
+        if (slotRingAccepts || mpmcAccepts) scope.DecrementOutstandingWarmups();
+        scope.Dispose();
+        Assert.That(enteredWaitLoop, Is.False);
+    }
+
+    private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
+    {
+        public int SlotJobPushes { get; private set; }
+        public int MpmcSlotJobPushes { get; private set; }
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            SlotJobPushes++;
+            return acceptSlotJob;
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            MpmcSlotJobPushes++;
+            return acceptMpmcSlotJob;
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    private sealed class BlockingPersistenceReader : IPersistence.IPersistenceReader
+    {
+        private int _activeReads;
+        private volatile bool _isDisposed;
+        private volatile bool _disposedDuringActiveRead;
+
+        public ManualResetEventSlim ReadEntered { get; } = new(false);
+        public ManualResetEventSlim ResumeReads { get; } = new(false);
+        public bool IsDisposed => _isDisposed;
+        public bool DisposedDuringActiveRead => _disposedDuringActiveRead;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _activeReads);
+            try
+            {
+                ReadEntered.Set();
+                ResumeReads.Wait(TimeSpan.FromSeconds(60));
+                return null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeReads);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Volatile.Read(ref _activeReads) != 0) _disposedDuringActiveRead = true;
+            _isDisposed = true;
+            ReadEntered.Dispose();
+            ResumeReads.Dispose();
+        }
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+    }
 }

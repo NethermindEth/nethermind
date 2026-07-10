@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,7 +16,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private static readonly byte[] _defaultSalt = [4, 5, 6];
         private static readonly byte[] _defaultDeployedCode = [1, 2, 3];
@@ -68,13 +67,13 @@ namespace Nethermind.Evm.Test
                 TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
-                TestState.IsStorageEmpty(expectedAddress).Should().BeFalse();
+                Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             }
 
             Execute(callCode);
 
-            TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
-            account.Balance.Should().Be(1.Ether);
+            Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
+            Assert.That(account.Balance, Is.EqualTo(1.Ether));
             AssertEip1014(expectedAddress, []);
         }
 
@@ -83,7 +82,7 @@ namespace Nethermind.Evm.Test
         {
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
             Execute(callCode);
-            TestState.AccountExists(expectedAddress).Should().BeFalse();
+            Assert.That(TestState.AccountExists(expectedAddress), Is.False);
         }
 
         [Test]
@@ -99,8 +98,8 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             Execute(MainnetSpecProvider.OsakaActivation, callCode);
-            TestState.GetCode(expectedAddress).Should().NotBeEmpty("delegation code should be preserved");
-            Eip7702Constants.IsDelegatedCode(TestState.GetCode(expectedAddress)).Should().BeTrue("original delegation should remain");
+            Assert.That(TestState.GetCode(expectedAddress), Is.Not.Empty, "delegation code should be preserved");
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(expectedAddress)), Is.True, "original delegation should remain");
         }
 
         /// <summary>

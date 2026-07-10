@@ -33,7 +33,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public string Name { get; } = name;
 
-            public long Gas(IReleaseSpec releaseSpec) =>
+            public ulong Gas(IReleaseSpec releaseSpec) =>
                 precompile.BaseGasCost(releaseSpec) + precompile.DataGasCost(Bytes, releaseSpec);
 
             public override string ToString() => Name;
@@ -47,6 +47,12 @@ namespace Nethermind.Precompiles.Benchmark
                 {
                     List<Param> inputs = [];
                     string inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+
+                    if (!Directory.Exists(inputsDir))
+                    {
+                        Console.Error.WriteLine($"[PrecompileBenchmark] Input directory not found, skipping: {inputsDir}");
+                        continue;
+                    }
 
                     foreach (string file in Directory.GetFiles(inputsDir, "*.csv", SearchOption.TopDirectoryOnly))
                     {

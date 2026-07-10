@@ -38,7 +38,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IHandshakeService _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
         private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
         private PublicKey RemoteId => _session.RemoteNodeId;
-        private readonly TaskCompletionSource<object> _initCompletionSource = new();
+        private readonly TaskCompletionSource<object> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private IChannel _channel;
         private readonly TimeSpan _sendLatency = sendLatency;
 

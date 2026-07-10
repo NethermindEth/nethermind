@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using System;
+using Nethermind.Core.Cpu;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -18,7 +19,11 @@ namespace Nethermind.Consensus.Processing;
 /// <param name="envFactory"></param>
 public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
-    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPoolProvider().Create(new EnvPoolPolicy(envFactory));
+    // Scales with cores to stay warm under load; absolute cap prevents 64+ core hosts from allocating ~1 GB+ of pooled envs.
+    private const int MaxRetainedAbsoluteCap = 256;
+    ObjectPool<IReadOnlyTxProcessorSource> _envPool =
+        new DefaultObjectPoolProvider { MaximumRetained = Math.Min(RuntimeInformation.ProcessorCount * 16, MaxRetainedAbsoluteCap) }
+            .Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
     {
@@ -44,8 +49,8 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
 
         public void Dispose()
         {
-            _scope.Dispose();
-            _envPool.Return(_source);
+            try { _scope.Dispose(); }
+            finally { _envPool.Return(_source); }
         }
 
         public ITransactionProcessor TransactionProcessor => _scope.TransactionProcessor;

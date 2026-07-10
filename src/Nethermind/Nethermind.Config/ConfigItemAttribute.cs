@@ -21,4 +21,10 @@ public class ConfigItemAttribute : Attribute
     public bool IsPortOption { get; set; }
 
     public string CliOptionAlias { get; set; } = "";
+
+    /// <summary>
+    /// Marks the property as containing secrets (passwords, API keys, private keys, ...).
+    /// Such values must never be written to logs or other diagnostic surfaces.
+    /// </summary>
+    public bool IsSensitive { get; set; }
 }

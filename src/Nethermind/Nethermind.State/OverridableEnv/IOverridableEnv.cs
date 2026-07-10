@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Autofac.Core;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -18,7 +19,13 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IOverridableEnv : IModule
 {
-    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    /// <remarks>
+    /// When <paramref name="blockOverride"/> is supplied it is applied to <paramref name="header"/> <b>in place</b>
+    /// (mutating Number/Timestamp/BaseFee/GasLimit/etc.), so the override is visible to the caller's block-execution
+    /// context after this returns. The header is also assigned the post-state-override state root. Callers must pass a
+    /// header they own (e.g. a clone), never a shared block-tree header.
+    /// </remarks>
+    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
 }
 
 /// <summary>
@@ -31,5 +38,9 @@ public interface IOverridableEnv : IModule
 /// <typeparam name="T"></typeparam>
 public interface IOverridableEnv<T>
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    /// <remarks>
+    /// When <paramref name="blockOverride"/> is supplied it is applied to <paramref name="header"/> <b>in place</b>;
+    /// see <see cref="IOverridableEnv.BuildAndOverride"/>. Callers must pass a header they own (e.g. a clone).
+    /// </remarks>
+    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
 }

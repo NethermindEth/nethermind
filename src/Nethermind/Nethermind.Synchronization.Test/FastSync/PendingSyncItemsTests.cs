@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
@@ -20,36 +19,36 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void At_start_count_is_zero()
         {
             IPendingSyncItems items = Init();
-            items.Count.Should().Be(0);
+            Assert.That(items.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void Description_does_not_throw_at_start()
         {
             IPendingSyncItems items = Init();
-            items.Description.Should().NotBeNullOrWhiteSpace();
+            Assert.That(string.IsNullOrWhiteSpace(items.Description), Is.False);
         }
 
         [Test]
         public void Max_levels_should_be_zero_at_start()
         {
             IPendingSyncItems items = Init();
-            items.MaxStateLevel.Should().Be(0);
-            items.MaxStorageLevel.Should().Be(0);
+            Assert.That(items.MaxStateLevel, Is.EqualTo(0));
+            Assert.That(items.MaxStorageLevel, Is.EqualTo(0));
         }
 
         [Test]
         public void Can_recalculate_priorities_at_start()
         {
             IPendingSyncItems items = Init();
-            items.RecalculatePriorities().Should().NotBeNullOrWhiteSpace();
+            Assert.That(string.IsNullOrWhiteSpace(items.RecalculatePriorities()), Is.False);
         }
 
         [Test]
         public void Peek_state_is_null_at_start()
         {
             IPendingSyncItems items = Init();
-            items.PeekState().Should().Be(null);
+            Assert.That(items.PeekState(), Is.EqualTo(null));
         }
 
         [Test]
@@ -65,7 +64,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             IPendingSyncItems items = Init();
             StateSyncItem stateSyncItem = new(Keccak.Zero, null, TreePath.Empty, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
-            items.PeekState().Should().Be(stateSyncItem);
+            Assert.That(items.PeekState(), Is.EqualTo(stateSyncItem));
         }
 
         [Test]
@@ -76,7 +75,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();
-            items.Count.Should().Be(0);
+            Assert.That(items.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -91,10 +90,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            items.Count.Should().Be(0);
-            batch[0].Level.Should().Be(64);
-            batch[1].Level.Should().Be(32);
-            batch[2].Level.Should().Be(0);
+            Assert.That(items.Count, Is.EqualTo(0));
+            Assert.That(batch[0].Level, Is.EqualTo(64));
+            Assert.That(batch[1].Level, Is.EqualTo(32));
+            Assert.That(batch[2].Level, Is.EqualTo(0));
         }
 
         [Test]
@@ -109,12 +108,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             items.MaxStateLevel = 0;
 
             List<StateSyncItem> batch = items.TakeBatch(256);
-            batch.Count.Should().Be(1);
+            Assert.That(batch.Count, Is.EqualTo(1));
 
             items.MaxStateLevel = 64;
 
             batch = items.TakeBatch(256);
-            batch.Count.Should().Be(2);
+            Assert.That(batch.Count, Is.EqualTo(2));
         }
 
         [Test]
@@ -129,7 +128,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             items.MaxStateLevel = 0;
 
             List<StateSyncItem> batch = items.TakeBatch(256);
-            batch.Count.Should().Be(3);
+            Assert.That(batch.Count, Is.EqualTo(3));
         }
 
         [Test]
@@ -144,13 +143,13 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            items.Count.Should().Be(2);
-            batch[0].NodeDataType.Should().Be(NodeDataType.Code);
+            Assert.That(items.Count, Is.EqualTo(2));
+            Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Code));
 
             batch = items.TakeBatch(256);
-            items.Count.Should().Be(0);
-            batch[0].NodeDataType.Should().Be(NodeDataType.Storage);
-            batch[1].NodeDataType.Should().Be(NodeDataType.State);
+            Assert.That(items.Count, Is.EqualTo(0));
+            Assert.That(batch[0].NodeDataType, Is.EqualTo(NodeDataType.Storage));
+            Assert.That(batch[1].NodeDataType, Is.EqualTo(NodeDataType.State));
         }
 
         [Test]
@@ -165,9 +164,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            batch[0].Rightness.Should().Be(0);
-            batch[1].Rightness.Should().Be(15);
-            batch[2].Rightness.Should().Be(10000);
+            Assert.That(batch[0].Rightness, Is.EqualTo(0));
+            Assert.That(batch[1].Rightness, Is.EqualTo(15));
+            Assert.That(batch[2].Rightness, Is.EqualTo(10000));
         }
 
         [Test]
@@ -182,9 +181,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             items.RecalculatePriorities();
             List<StateSyncItem> batch = items.TakeBatch(256);
-            batch[0].Rightness.Should().Be(0);
-            batch[1].Rightness.Should().Be(1);
-            batch[2].Rightness.Should().Be(15);
+            Assert.That(batch[0].Rightness, Is.EqualTo(0));
+            Assert.That(batch[1].Rightness, Is.EqualTo(1));
+            Assert.That(batch[2].Rightness, Is.EqualTo(15));
         }
 
         private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>

@@ -28,13 +28,12 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
 
-public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin
+public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : INethermindPlugin
 {
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
     public string Author => "Nethermind";
     public bool Enabled => shutterConfig.Enabled && mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
-    public int Priority => PluginPriorities.Shutter;
 
     private ILogger _logger;
 
@@ -45,18 +44,6 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
         _logger = nethermindApi.LogManager.GetClassLogger<ShutterPlugin>();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block improvement.");
-        return Task.CompletedTask;
-    }
-
-    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin)
-    {
-        if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
-        return consensusPlugin.InitBlockProducer();
     }
 
     public IModule? Module => new ShutterPluginModule();
@@ -106,7 +93,7 @@ public class ShutterPluginModule : Module
             shutterConfig,
             validatorsInfo,
             TimeSpan.FromSeconds(blocksConfig!.SecondsPerSlot),
-            ctx.Resolve<IIPResolver>().ExternalIp
+            ctx.Resolve<IIPResolver>()
         );
     }
 }

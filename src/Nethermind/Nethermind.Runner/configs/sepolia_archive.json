@@ -33,10 +33,13 @@
     "Enabled": true,
     "FinalTotalDifficulty": "17000018015853232"
   },
+  "Pruning": {
+    "Mode": "None"
+  },
   "Discovery": {
     "DiscoveryVersion": "V5"
   },
-  "Pruning": {
-    "Mode": "None"
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

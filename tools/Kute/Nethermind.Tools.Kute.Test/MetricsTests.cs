@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
-using NUnit.Framework;
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
+using NUnit.Framework;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
@@ -26,22 +25,22 @@ public class MetricsTests
     [Test]
     public async Task MemoryMetricsReporter_GeneratesValidReport()
     {
-        var reporter = new MemoryMetricsReporter();
+        MemoryMetricsReporter reporter = new();
 
-        var totalTimer = new Timer();
+        Timer totalTimer = new();
         using (totalTimer.Time())
         {
-            var single = Single(42, "method1");
-            var batch = Batch(Single(43), Single(44), Single(45));
+            JsonRpc.Request.Single single = Single(42, "method1");
+            JsonRpc.Request.Batch batch = Batch(Single(43), Single(44), Single(45));
 
-            var singleTimer = new Timer();
+            Timer singleTimer = new();
             using (singleTimer.Time())
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
             await reporter.Single(single, singleTimer.Elapsed);
 
-            var batchTimer = new Timer();
+            Timer batchTimer = new();
             using (batchTimer.Time())
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
@@ -51,28 +50,28 @@ public class MetricsTests
 
         await reporter.Total(totalTimer.Elapsed);
 
-        var report = reporter.Report();
+        MetricsReport report = reporter.Report();
 
-        report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(report.TotalTime, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(report.TotalTime, Is.LessThan(TimeSpan.FromMilliseconds(110)));
 
-        report.Singles.Should().HaveCount(1);
-        report.Singles.Should().ContainKey("method1");
-        report.Singles["method1"].Should().HaveCount(1);
-        report.Singles["method1"].Should().ContainKey("42");
+        Assert.That(report.Singles, Has.Count.EqualTo(1));
+        Assert.That(report.Singles, Does.ContainKey("method1"));
+        Assert.That(report.Singles["method1"], Has.Count.EqualTo(1));
+        Assert.That(report.Singles["method1"], Does.ContainKey("42"));
 
-        report.Batches.Should().HaveCount(1);
-        report.Batches.Should().ContainKey("43:45");
+        Assert.That(report.Batches, Has.Count.EqualTo(1));
+        Assert.That(report.Batches, Does.ContainKey("43:45"));
     }
 
     [Test]
     public async Task ComposedMetricsReporter_DelegatesToAllReporters()
     {
-        var A = Substitute.For<IMetricsReporter>();
-        var B = Substitute.For<IMetricsReporter>();
-        var single = Single(1);
-        var batch = Batch(Single(2), Single(3));
-        var reporter = new ComposedMetricsReporter(A, B);
+        IMetricsReporter A = Substitute.For<IMetricsReporter>();
+        IMetricsReporter B = Substitute.For<IMetricsReporter>();
+        JsonRpc.Request.Single single = Single(1);
+        JsonRpc.Request.Batch batch = Batch(Single(2), Single(3));
+        ComposedMetricsReporter reporter = new(A, B);
 
         await reporter.Message();
         await reporter.Response();

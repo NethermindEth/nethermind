@@ -24,7 +24,7 @@ public class TxTypeExtensionsTests
 
         TxType[] actualTxTypes = (TxType[])Enum.GetValues(typeof(TxType));
         Assert.That(actualTxTypes.Length, Is.EqualTo(expectedTxTypes.Length));
-        Assert.That(actualTxTypes, Is.EquivalentTo(expectedTxTypes));
+        Assert.That(actualTxTypes, Is.EqualTo(expectedTxTypes));
     }
 
     public enum TxFeatureSupport
@@ -44,9 +44,12 @@ public class TxTypeExtensionsTests
     [TestCase(TxType.DepositTx, TxFeatureSupport.None)]
     public void TxTypes_supported_functionality(TxType txType, TxFeatureSupport expectedFeaturesSupport)
     {
-        Assert.That(txType.SupportsAccessList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.AccessList)));
-        Assert.That(txType.Supports1559(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.EIP1559)));
-        Assert.That(txType.SupportsBlobs(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.Blob)));
-        Assert.That(txType.SupportsAuthorizationList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.SetCode)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txType.SupportsAccessList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.AccessList)));
+            Assert.That(txType.Supports1559(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.EIP1559)));
+            Assert.That(txType.SupportsBlobs(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.Blob)));
+            Assert.That(txType.SupportsAuthorizationList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.SetCode)));
+        }
     }
 }

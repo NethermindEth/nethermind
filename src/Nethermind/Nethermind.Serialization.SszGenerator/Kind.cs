@@ -1,3 +1,4 @@
+[Flags]
 public enum Kind
 {
     None = 0x0,

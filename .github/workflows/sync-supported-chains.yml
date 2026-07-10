@@ -258,7 +258,7 @@ jobs:
 
           extra_param=""
 
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [[ "$network" == op-* || "$network" == world-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
               CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
               EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
@@ -270,14 +270,10 @@ jobs:
               exit 1
             fi
 
-            if [[ "$network" == base-* ]]; then
-              extra_param="--chain base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
-            fi
             if [[ "$network" == world-* ]]; then
               extra_param="--chain worldchain"
             fi
 
-            stripped_network="${network#base-}"
             stripped_network="${stripped_network#op-}"
             stripped_network="${stripped_network#world-}"
 
@@ -421,7 +417,7 @@ jobs:
         if: always()
         run: |
           network="${{ matrix.config.network }}"
-          if [[ "$network" == base-* || "$network" == op-* || "$network" == world-* ]]; then
+          if [[ "$network" == op-* || "$network" == world-* ]]; then
             docker logs sedge-consensus-op-l2-client
           elif [[ "$network" == taiko-* ]]; then
             docker logs sedge-consensus-taikodriver-client

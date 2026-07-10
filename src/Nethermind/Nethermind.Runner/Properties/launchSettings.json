@@ -1,19 +1,5 @@
 {
   "profiles": {
-    "Base Mainnet": {
-      "commandName": "Project",
-      "commandLineArgs": "-c base-mainnet --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Base Sepolia": {
-      "commandName": "Project",
-      "commandLineArgs": "-c base-sepolia --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Chiado": {
       "commandName": "Project",
       "commandLineArgs": "-c chiado --data-dir .data",

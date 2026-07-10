@@ -7,7 +7,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : IOptimismSpecHelper
 {
-    private readonly long? _bedrockBlockNumber = parameters.BedrockBlockNumber;
+    private readonly ulong? _bedrockBlockNumber = parameters.BedrockBlockNumber;
     private readonly ulong? _regolithTimestamp = parameters.RegolithTimestamp;
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
     private readonly ulong? _deltaTimestamp = parameters.DeltaTimestamp;
@@ -17,6 +17,7 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     private readonly ulong? _holoceneTimestamp = parameters.HoloceneTimestamp;
     private readonly ulong? _isthmusTimestamp = parameters.IsthmusTimestamp;
     private readonly ulong? _jovianTimestamp = parameters.JovianTimestamp;
+    private readonly ulong? _karstTimestamp = parameters.KarstTimestamp;
 
     public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
@@ -39,6 +40,8 @@ public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : 
     public bool IsIsthmus(BlockHeader header) => header.Timestamp >= _isthmusTimestamp;
 
     public bool IsJovian(BlockHeader header) => header.Timestamp >= _jovianTimestamp;
+
+    public bool IsKarst(BlockHeader header) => header.Timestamp >= _karstTimestamp;
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;
     public byte[]? Create2DeployerCode { get; } = parameters.Create2DeployerCode;

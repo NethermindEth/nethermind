@@ -12,12 +12,18 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 {
     private static readonly Lock _nativeCacheLock = new();
 
+    private readonly long _capacity;
+
     public HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
     {
         lock (_nativeCacheLock)
         {
             SetHandle(Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr(capacity), 0));
         }
+        // If the native call returned a zero/null handle, SafeHandle won't call ReleaseHandle,
+        // so don't add pressure either — keep add/remove balanced.
+        _capacity = IsInvalid ? 0 : (long)capacity;
+        if (_capacity > 0) GC.AddMemoryPressure(_capacity);
     }
 
     public IntPtr Handle => DangerousGetHandle();
@@ -28,6 +34,7 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
         {
             Native.Instance.rocksdb_cache_destroy(handle);
         }
+        if (_capacity > 0) GC.RemoveMemoryPressure(_capacity);
         return true;
     }
 

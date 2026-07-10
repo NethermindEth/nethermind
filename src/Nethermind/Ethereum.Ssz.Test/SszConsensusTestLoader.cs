@@ -44,7 +44,7 @@ public static class SszConsensusTestLoader
     public static UInt256 ParseRoot(string metaFilePath)
     {
         using StreamReader reader = new(metaFilePath);
-        YamlStream yaml = new();
+        YamlStream yaml = [];
         yaml.Load(reader);
         YamlMappingNode mapping = (YamlMappingNode)yaml.Documents[0].RootNode;
         string hexRoot = ((YamlScalarNode)mapping[new YamlScalarNode("root")]).Value!;

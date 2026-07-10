@@ -24,7 +24,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        Dictionary<Address, ISet<UInt256>> dictionary = new();
+        Dictionary<Address, ISet<UInt256>> dictionary = [];
         foreach (Address address in accessedAddresses)
         {
             dictionary.Add(address, new HashSet<UInt256>());
@@ -62,7 +62,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         AccessList = builder.Build();
     }
 
-    public long GasSpent { get; set; }
+    public ulong GasSpent { get; set; }
     public AccessList? AccessList { get; private set; }
 
     public void Reset()

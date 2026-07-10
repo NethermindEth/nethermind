@@ -26,7 +26,7 @@ public class FlatEntryWriterTests
     private static byte[] Nibbles(string hex) =>
         hex.Select(c => (byte)(c >= 'a' ? c - 'a' + 10 : c >= 'A' ? c - 'A' + 10 : c - '0')).ToArray();
 
-    private static byte[] SmallAccountRlp() => new AccountDecoder().Encode(new Account(0, 1)).Bytes;
+    private static byte[] SmallAccountRlp() => Rlp.Encode(new Account(0, 1)).Bytes;
 
     #region WriteAccountFlatEntries Tests
 
@@ -67,7 +67,7 @@ public class FlatEntryWriterTests
     public void WriteStorageFlatEntries_LeafNode_WritesStorageAtCorrectPath(
         string pathHex, string leafKeyHex, string expectedPathHex)
     {
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch writeBatch = new();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString(pathHex);
         TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles(leafKeyHex), SmallSlotValue);
@@ -76,7 +76,8 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, leaf);
 
-        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPathHex)), Arg.Any<SlotValue?>());
+        Assert.That(writeBatch.SetStorageRawEncodedCalls, Has.Count.EqualTo(1));
+        Assert.That(writeBatch.SetStorageRawEncodedCalls[0].SlotHash, Is.EqualTo(new ValueHash256(Bytes.FromHexString(expectedPathHex))));
     }
 
     // path (62 nibbles) + branch index (1) + leaf key (1) = 64 nibbles
@@ -89,7 +90,7 @@ public class FlatEntryWriterTests
     public void WriteStorageFlatEntries_BranchWithInlineLeaves_WritesAllInlineLeavesAtCorrectPaths(
         int index1, int index2, string pathHex, string leafKey1Hex, string leafKey2Hex, string expectedPath1Hex, string expectedPath2Hex)
     {
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch writeBatch = new();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString(pathHex);
 
@@ -101,14 +102,17 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, branch);
 
-        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPath1Hex)), Arg.Any<SlotValue?>());
-        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString(expectedPath2Hex)), Arg.Any<SlotValue?>());
+        Assert.That(writeBatch.SetStorageRawEncodedCalls.Select(c => c.SlotHash), Is.EquivalentTo(new[]
+        {
+            new ValueHash256(Bytes.FromHexString(expectedPath1Hex)),
+            new ValueHash256(Bytes.FromHexString(expectedPath2Hex))
+        }));
     }
 
     [Test]
     public void WriteStorageFlatEntries_BranchWithMixedChildren_OnlyWritesInlineLeaves()
     {
-        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        FakeWriteBatch writeBatch = new();
         Hash256 address = Keccak.Compute("address");
         TreePath path = TreePath.FromHexString("abcd1234");
 
@@ -120,7 +124,9 @@ public class FlatEntryWriterTests
 
         FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, branch);
 
-        writeBatch.Received(1).SetStorageRaw(address, new Hash256(Bytes.FromHexString("abcd123435000000000000000000000000000000000000000000000000000000")), Arg.Any<SlotValue?>());
+        Assert.That(writeBatch.SetStorageRawEncodedCalls, Has.Count.EqualTo(1));
+        Assert.That(writeBatch.SetStorageRawEncodedCalls[0].SlotHash,
+            Is.EqualTo(new ValueHash256(Bytes.FromHexString("abcd123435000000000000000000000000000000000000000000000000000000"))));
     }
 
     #endregion

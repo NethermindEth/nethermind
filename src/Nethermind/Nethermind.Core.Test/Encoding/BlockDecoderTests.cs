@@ -23,17 +23,17 @@ public class BlockDecoderTests
     private static Block[] BuildScenarios()
     {
         Transaction[] transactions = new Transaction[100];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithData(new byte[] { (byte)i })
-                .WithNonce((UInt256)i)
+                .WithData([(byte)i])
+                .WithNonce(i)
                 .WithValue((UInt256)i)
                 .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA, true)
                 .TestObject;
         }
 
-        BlockHeader[] uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[2];
 
         for (int i = 0; i < uncles.Length; i++)
         {
@@ -109,7 +109,7 @@ public class BlockDecoderTests
     public void Can_do_roundtrip_null()
     {
         BlockDecoder decoder = new();
-        Rlp result = decoder.Encode(null);
+        Rlp result = decoder.Encode((Block?)null);
         Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
@@ -122,7 +122,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
 
         byte[] bytes = Bytes.FromHexString(regression5644);
-        Rlp.ValueDecoderContext ctx = new(bytes);
+        RlpReader ctx = new(bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
         Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
@@ -134,7 +134,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp encoded = decoder.Encode(block);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
         Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
@@ -204,7 +204,7 @@ public class BlockDecoderTests
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
-        Assert.That(decoder.GetLength(null, RlpBehaviors.None), Is.EqualTo(1));
+        Assert.That(decoder.GetLength((Block?)null, RlpBehaviors.None), Is.EqualTo(1));
     }
 
     public static byte[][] MalformedInput =
@@ -224,7 +224,7 @@ public class BlockDecoderTests
         BlockDecoder decoder = new();
         Assert.Throws<RlpException>(() =>
         {
-            Rlp.ValueDecoderContext ctx = new(input);
+            RlpReader ctx = new(input);
             decoder.Decode(ref ctx);
         });
     }

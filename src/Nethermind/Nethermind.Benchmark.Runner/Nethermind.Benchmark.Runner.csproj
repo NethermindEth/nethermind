@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Nethermind.EthereumTests.Benchmark\Nethermind.EthereumTests.Benchmark.csproj" />
     <ProjectReference Include="..\Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc.Benchmark\Nethermind.JsonRpc.Benchmark.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin.Benchmark\Nethermind.Merge.Plugin.Benchmark.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Benchmark\Nethermind.Network.Benchmark.csproj" />
     <ProjectReference Include="..\Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj" />
   </ItemGroup>

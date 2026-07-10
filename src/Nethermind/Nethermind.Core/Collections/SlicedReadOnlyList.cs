@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,21 +8,23 @@ using System.Collections.Generic;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// ChatGPT generated sliced read only list
+/// A read-only view over a contiguous segment of an <see cref="IReadOnlyList{T}"/>.
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public class SlicedReadOnlyList<T> : IReadOnlyList<T>
 {
-    private readonly IReadOnlyList<T> _list;
-    private readonly int _start;
+    protected readonly IReadOnlyList<T> _list;
+    protected readonly int _start;
     private readonly int _count;
 
     public SlicedReadOnlyList(IReadOnlyList<T> list, int start, int count)
     {
         ArgumentNullException.ThrowIfNull(list);
-        if (start < 0 || start > list.Count)
+        int listCount = list.Count;
+        if ((uint)start > (uint)listCount)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
-        if (count < 0 || start + count > list.Count)
+        // Compare against remaining capacity to avoid start + count overflow.
+        if ((uint)count > (uint)(listCount - start))
             throw new ArgumentOutOfRangeException(nameof(count), "Count is out of range.");
 
         _list = list;
@@ -34,7 +36,7 @@ public class SlicedReadOnlyList<T> : IReadOnlyList<T>
     {
         get
         {
-            if (index < 0 || index >= _count)
+            if ((uint)index >= (uint)_count)
                 throw new ArgumentOutOfRangeException(nameof(index));
             return _list[_start + index];
         }
@@ -63,9 +65,10 @@ public static class ReadOnlyListExtensions
     public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start)
     {
         ArgumentNullException.ThrowIfNull(list);
-        if (start < 0 || start > list.Count)
+        int listCount = list.Count;
+        if ((uint)start > (uint)listCount)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
 
-        return new SlicedReadOnlyList<T>(list, start, list.Count - start);
+        return new SlicedReadOnlyList<T>(list, start, listCount - start);
     }
 }

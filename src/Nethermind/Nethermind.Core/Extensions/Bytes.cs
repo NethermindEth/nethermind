@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
         internal const string ErrMissingPrefix = "hex string without 0x prefix";
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
+        private const int MaxPaddingLengthToClear = 256;
 
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
@@ -764,42 +765,74 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass) => string.Create(length, stateToPass, static (chars, state) =>
+        /// <summary>
+        /// Writes the EIP-55 checksummed hexadecimal representation of <paramref name="bytes"/> into <paramref name="chars"/>.
+        /// </summary>
+        /// <param name="bytes">The bytes to encode.</param>
+        /// <param name="chars">The destination span. Its length must match the encoded length after <paramref name="leadingZeros"/> are skipped.</param>
+        /// <param name="withZeroX">Whether to include the <c>0x</c> prefix.</param>
+        /// <param name="leadingZeros">The number of leading hex nibbles to skip in the output. The checksum is still computed over the full lowercase hex input.</param>
+        [SkipLocalsInit]
+        public static void OutputBytesToCharHexWithEip55Checksum(this ReadOnlySpan<byte> bytes, Span<char> chars, bool withZeroX, int leadingZeros = 0)
         {
-            // this path is rarely used - only in wallets
-            byte[] bytesArray = state.Bytes;
-            string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
-            Span<byte> bytes = bytesArray;
-
-            if (state.WithZeroX)
+            int hexLength = bytes.Length * 2;
+            int expectedLength = hexLength + (withZeroX ? 2 : 0) - leadingZeros;
+            if ((uint)leadingZeros > (uint)hexLength || chars.Length != expectedLength)
             {
-                chars[1] = 'x';
-                chars[0] = '0';
-                chars = chars[2..];
+                ThrowArgumentOutOfRangeException();
             }
 
-            bool odd = state.LeadingZeros % 2 == 1;
-            int oddity = odd ? 1 : 0;
+            byte[]? rentedHex = null;
+            Span<byte> lowerHex = hexLength <= 256
+                ? stackalloc byte[hexLength]
+                : (rentedHex = ArrayPool<byte>.Shared.Rent(hexLength)).AsSpan(0, hexLength);
 
-            uint[] lookup32 = Lookup32;
-            for (int i = 0; i < chars.Length; i += 2)
+            try
             {
-                uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
-                if (i != 0 || !odd)
+                bytes.OutputBytesToByteHex(lowerHex, extraNibble: false);
+                ValueHash256 checksum = ValueKeccak.Compute(lowerHex);
+
+                if (withZeroX)
                 {
-                    char char1 = (char)val;
-                    chars[i - oddity] =
-                        char.IsLetter(char1) && hashHex![i] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
+                    chars[1] = 'x';
+                    chars[0] = '0';
+                    chars = chars[2..];
                 }
 
-                char char2 = (char)(val >> 16);
-                chars[i + 1 - oddity] =
-                    char.IsLetter(char2) && hashHex![i + 1] > '7'
-                        ? char.ToUpper(char2)
-                        : char2;
+                for (int i = leadingZeros; i < lowerHex.Length; i++)
+                {
+                    chars[i - leadingZeros] = ToChecksummedHexChar(lowerHex[i], GetChecksumNibble(in checksum, i));
+                }
             }
+            finally
+            {
+                if (rentedHex is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedHex);
+                }
+            }
+
+            [DoesNotReturn]
+            static void ThrowArgumentOutOfRangeException() =>
+                throw new ArgumentOutOfRangeException(nameof(chars), "Output hex span has incorrect length.");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static char ToChecksummedHexChar(byte lowerHexChar, int checksumNibble) =>
+            lowerHexChar >= 'a' && checksumNibble > 7
+                ? (char)(lowerHexChar - ('a' - 'A'))
+                : (char)lowerHexChar;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int GetChecksumNibble(in ValueHash256 checksum, int index)
+        {
+            byte value = checksum.BytesAsSpan[index >> 1];
+            return (index & 1) == 0 ? value >> 4 : value & 0x0f;
+        }
+
+        private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass) => string.Create(length, stateToPass, static (chars, state) =>
+        {
+            state.Bytes.AsSpan().OutputBytesToCharHexWithEip55Checksum(chars, state.WithZeroX, state.LeadingZeros);
         });
 
         internal static uint[] Lookup32 = CreateLookup32("x2");
@@ -975,19 +1008,58 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
-            byte[] result = GC.AllocateArray<byte>(length);
-            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+            int paddingLength = length - actualLength;
+            byte[] result = AllocateFixedLengthHexResult(length, paddingLength);
+            Span<byte> writeToSpan = result.AsSpan(paddingLength);
             FromHexString(chars, writeToSpan, oddMod);
             return result;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] AllocateFixedLengthHexResult(int length, int paddingLength)
+        {
+            if (paddingLength >= 0 && paddingLength <= MaxPaddingLengthToClear)
+            {
+                byte[] result = GC.AllocateUninitializedArray<byte>(length);
+                if (paddingLength > 0)
+                {
+                    result.AsSpan(0, paddingLength).Clear();
+                }
+
+                return result;
+            }
+
+            return GC.AllocateArray<byte>(length);
+        }
+
         private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            bool isSuccess = oddMod == 0 && BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2
-                ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
-                : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
+            bool isSuccess = TryDecodeFromUtf16(chars, writeToSpan, oddMod);
 
             if (!isSuccess) throw new FormatException(ErrSyntax);
+        }
+
+        private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
+        {
+            if (oddMod == 0)
+            {
+                if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector512(chars, writeToSpan);
+                }
+
+                if (Avx2.IsSupported && chars.Length >= Vector256<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector256(chars, writeToSpan);
+                }
+
+                if ((Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) && chars.Length >= Vector128<ushort>.Count * 2)
+                {
+                    return HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
+                }
+            }
+
+            return HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
         }
 
         private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)

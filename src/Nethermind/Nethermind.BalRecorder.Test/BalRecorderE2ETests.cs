@@ -9,13 +9,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -42,6 +42,7 @@ public class BalRecorderE2ETests
 {
     private const int BlocksToBuild = 3;
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly BlockAccessListDecoder BalDecoder = BlockAccessListDecoder.Instance;
 
     [Test]
     public async Task Record_Then_Replay_RoundTrip()
@@ -50,24 +51,24 @@ public class BalRecorderE2ETests
         string dir = Path.Combine(Path.GetTempPath(), $"bal-e2e-{Guid.NewGuid():N}");
         try
         {
-            List<(long Number, byte[] EncodedBal)> recorded;
+            List<(ulong Number, byte[] EncodedBal)> recorded;
             await using (IContainer recorder = CreateNode(dir, recording: true, replay: false))
             {
                 BlockBuilder builder = recorder.Resolve<BlockBuilder>();
                 await builder.StartAndBuildBlocks(BlocksToBuild, cts.Token);
                 recorded = CaptureRecordedBals(recorder, BlocksToBuild);
-                recorded.Should().HaveCount(BlocksToBuild);
-                Directory.GetFiles(dir, "*.bal").Should().NotBeEmpty();
+                Assert.That(recorded, Has.Count.EqualTo(BlocksToBuild));
+                Assert.That(Directory.GetFiles(dir, "*.bal"), Is.Not.Empty);
             }
 
             await using IContainer replayContainer = CreateNode(dir, recording: false, replay: true);
             IRecordedBalStore store = replayContainer.Resolve<IRecordedBalStore>();
-            foreach ((long number, byte[] expected) in recorded)
+            foreach ((ulong number, byte[] expected) in recorded)
             {
-                BlockAccessList? reread = store.Get(number);
-                reread.Should().NotBeNull();
-                using NettyRlpStream reencoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(reread!);
-                reencoded.AsSpan().ToArray().Should().BeEquivalentTo(expected);
+                ReadOnlyBlockAccessList? reread = store.Get(number);
+                Assert.That(reread, Is.Not.Null);
+                using ArrayPoolSpan<byte> reencoded = BalDecoder.EncodeToArrayPoolSpan(reread!);
+                Assert.That(((ReadOnlySpan<byte>)reencoded).ToArray(), Is.EqualTo(expected));
             }
         }
         finally
@@ -76,19 +77,19 @@ public class BalRecorderE2ETests
         }
     }
 
-    private static List<(long, byte[])> CaptureRecordedBals(IContainer container, int count)
+    private static List<(ulong, byte[])> CaptureRecordedBals(IContainer container, int count)
     {
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IRecordedBalStore store = container.Resolve<IRecordedBalStore>();
-        List<(long, byte[])> result = [];
-        for (long i = 1; i <= count; i++)
+        List<(ulong, byte[])> result = [];
+        for (ulong i = 1; i <= (ulong)count; i++)
         {
             Block? block = blockTree.FindBlock(i);
-            block.Should().NotBeNull();
-            BlockAccessList? bal = store.Get(block!.Number);
-            bal.Should().NotBeNull($"block {i} should have a recorded BAL");
-            using NettyRlpStream encoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal!);
-            result.Add((block.Number, encoded.AsSpan().ToArray()));
+            Assert.That(block, Is.Not.Null);
+            ReadOnlyBlockAccessList? bal = store.Get(block!.Number);
+            Assert.That(bal, Is.Not.Null, $"block {i} should have a recorded BAL");
+            using ArrayPoolSpan<byte> encoded = BalDecoder.EncodeToArrayPoolSpan(bal!);
+            result.Add((block.Number, ((ReadOnlySpan<byte>)encoded).ToArray()));
         }
         return result;
     }
@@ -131,7 +132,7 @@ public class BalRecorderE2ETests
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, $"bal-e2e-{Guid.NewGuid():N}"))
-            .AddModule(new TestMergeModule(configProvider))
+            .AddModule(new TestMergeModule())
             .AddModule(new BalRecorderModule())
             .AddSingleton(timestamper)
             .AddSingleton<BlockBuilder>()
@@ -149,7 +150,7 @@ public class BalRecorderE2ETests
         IPayloadPreparationService payloadPreparationService,
         PseudoNethermindRunner runner)
     {
-        private UInt256 _nonce;
+        private ulong _nonce;
 
         public async Task StartAndBuildBlocks(int count, CancellationToken token)
         {
@@ -169,7 +170,7 @@ public class BalRecorderE2ETests
                 .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
 
             Task newBlock = blockTree.WaitForNewBlock(token);
-            txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            Assert.That(txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             timestamper.Add(TimeSpan.FromSeconds(1));
 
             string? payloadId = payloadPreparationService.StartPreparingPayload(
@@ -182,24 +183,28 @@ public class BalRecorderE2ETests
                     ParentBeaconBlockRoot = Hash256.Zero,
                     Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
                 });
-            payloadId.Should().NotBeNullOrEmpty();
+            Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             IBlockProductionContext? ctx = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
-            ctx.Should().NotBeNull();
-            (await blockTree.SuggestBlockAsync(ctx!.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
+            Assert.That(ctx, Is.Not.Null);
+            Assert.That((await blockTree.SuggestBlockAsync(ctx!.CurrentBestBlock!)), Is.EqualTo(AddBlockResult.Added));
             await newBlock;
         }
     }
 
-    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
+    private static void RekeyDictionaryToGenesis(IDictionary<ulong, ulong>? dict)
     {
         if (dict is null or { Count: 0 }) return;
-        long total = dict.Values.Sum();
+        ulong total = 0;
+        foreach (ulong v in dict.Values)
+        {
+            total += v;
+        }
         dict.Clear();
         dict[0] = total;
     }
 
-    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<ulong, UInt256>? dict)
     {
         if (dict is null or { Count: 0 }) return;
         UInt256 lastReward = dict.Values.Last();

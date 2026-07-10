@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
@@ -36,7 +35,7 @@ public class ShareableTxProcessingSourceTests
         IReadOnlyTxProcessingScope scope1 = _shareableSource.Build(IWorldState.PreGenesis);
         IReadOnlyTxProcessingScope scope2 = _shareableSource.Build(IWorldState.PreGenesis);
 
-        scope1.WorldState.Should().NotBeSameAs(scope2.WorldState);
+        Assert.That(scope1.WorldState, Is.Not.SameAs(scope2.WorldState));
     }
 
     [Test]
@@ -46,6 +45,6 @@ public class ShareableTxProcessingSourceTests
         scope1.Dispose();
         IReadOnlyTxProcessingScope scope2 = _shareableSource.Build(IWorldState.PreGenesis);
 
-        scope1.WorldState.Should().BeSameAs(scope2.WorldState);
+        Assert.That(scope1.WorldState, Is.SameAs(scope2.WorldState));
     }
 }

@@ -13,6 +13,6 @@ namespace Nethermind.Core
 
         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;
 
-        public static readonly int DefaultElasticityMultiplier = 2;
+        public static readonly ulong DefaultElasticityMultiplier = 2;
     }
 }

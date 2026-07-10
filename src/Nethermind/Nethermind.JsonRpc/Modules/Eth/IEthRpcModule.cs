@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -15,6 +16,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -50,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns block fee history.",
             IsSharable = true,
             ExampleResponse = "{\"baseFeePerGas\": [\"0x116c1cbb03\", \"0x10c3714c06\"], \"gasUsedRatio\": [0.3487305666666667, 0.3], \"oldestBlock\": \"0xc7e5ff\", \"reward\": [[\"0x3b9aca00\",\"0x3b9aca00\"], [\"0x0\",\"0x3bb24dfa\"]]}")]
-        ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
+        ResultWrapper<FeeHistoryResults> eth_feeHistory(ulong blockCount, BlockParameter newestBlock, double[] rewardPercentiles);
 
         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
         ResultWrapper<byte[]> eth_snapshot();
@@ -70,8 +72,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x1")]
         ResultWrapper<UInt256?> eth_blobBaseFee();
 
-        [JsonRpcMethod(IsImplemented = false,
-            Description = "Returns accounts",
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the base fee of the next block in wei",
+            IsSharable = true,
+            ExampleResponse = "0x3b9aca00")]
+        ResultWrapper<UInt256?> eth_baseFee();
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns a list of addresses owned by the client",
             IsSharable = true,
             ExampleResponse = "[\"0x9b96a7841d6e0b76872c85c86082959189a27342\"]")]
         ResultWrapper<IEnumerable<Address>> eth_accounts();
@@ -80,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns current block number",
             IsSharable = true,
             ExampleResponse = "0x885480")]
-        Task<ResultWrapper<long?>> eth_blockNumber();
+        Task<ResultWrapper<ulong?>> eth_blockNumber();
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns account balance",
@@ -92,13 +100,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns storage data at address. storage_index",
             IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter? blockParameter = null);
+        ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, StorageIndex positionIndex, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns storage values for multiple slots across multiple accounts in a single request. Total slot count across all addresses must not exceed 1024.",
             IsSharable = true,
             ExampleResponse = "{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x00000000000000000000000000000000000000000000000000000000000f4240\"]}")]
-        ResultWrapper<StorageValuesResult> eth_getStorageValues([JsonRpcParameter(ExampleValue = "[{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x0000000000000000000000000000000000000000000000000000000000000002\"]}]")] StorageValuesRequest requests, BlockParameter blockParameter);
+        ResultWrapper<StorageValuesResult> eth_getStorageValues([JsonRpcParameter(ExampleValue = "[{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x0000000000000000000000000000000000000000000000000000000000000002\"]}]")] StorageValuesRequest requests, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
@@ -139,14 +147,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Returns account code at given address and block", IsSharable = true)]
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
-        [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsSharable = true)]
-        ResultWrapper<string> eth_sign(Address addressData, byte[] message);
+        [JsonRpcMethod(IsImplemented = true, Description = "Returns an EIP-191 signature over the provided message", IsSharable = true)]
+        ResultWrapper<Signature> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a transaction to the tx pool and broadcasting",
             IsSharable = true,
             ExampleResponse = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760")]
-        Task<ResultWrapper<Hash256>> eth_sendTransaction([JsonRpcParameter(ExampleValue = "[{\"From\": \"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\", \"Gas\":\"21000\",\"GasPrice\":\"20000000000\", \"Nonce\":\"23794\", \"To\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\"}]")] TransactionForRpc rpcTx);
+        Task<ResultWrapper<Hash256>> eth_sendTransaction([JsonRpcParameter(ExampleValue = "[{\"From\": \"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\", \"Gas\":\"21000\",\"GasPrice\":\"20000000000\", \"Nonce\":\"23794\", \"To\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\"}]")] SignableTransactionForRpc rpcTx);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a raw transaction to the tx pool and broadcasting",
@@ -156,10 +164,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Signs the transaction using the unlocked sender account and returns the RLP-encoded signed transaction together with the parsed object.",
+            IsSharable = true,
+            ExampleResponse = "{\"raw\":\"0x02f86c0182520894b943b13292086848d8180d75c73361107920bb1a80...\",\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"gas\":\"0x5208\",\"to\":\"0x...\"}}")]
+        ResultWrapper<SignTransactionResult> eth_signTransaction(
+            [JsonRpcParameter(ExampleValue = "[{\"from\":\"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"value\":\"0x9184e72a\",\"gas\":\"0x76c0\",\"gasPrice\":\"0x9184e72a000\",\"nonce\":\"0x0\"}]")] SignableTransactionForRpc rpcTx);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Fills in the missing fields of a transaction (nonce, gas, fees and chain id) and returns the unsigned transaction, ready to be signed and submitted.",
+            IsSharable = true,
+            ExampleResponse = "{\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"gas\":\"0x5208\",\"value\":\"0x9184e72a\",\"input\":\"0x\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"maxFeePerGas\":\"0x77359400\",\"chainId\":\"0x1\"}}")]
+        Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(
+            [JsonRpcParameter(ExampleValue = "[{\"from\":\"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"value\":\"0x9184e72a\"}]")] SignableTransactionForRpc rpcTx);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Submits a raw transaction and waits for inclusion in a block, returning the receipt or a timeout error.",
+            IsSharable = false)]
+        Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(
+            [JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction,
+            ulong? timeoutMs = null);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call (does not create a transaction)",
-            IsSharable = false,
+            IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<string> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
+        ResultWrapper<HexBytes> eth_call([JsonRpcParameter(ExampleValue = "[{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a simulation across multiple blocks (does not create a transaction or block)",
@@ -170,18 +199,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call and returns gas used (does not create a transaction)",
-            IsSharable = false,
+            IsSharable = true,
             ExampleResponse = "0x")]
-        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] TransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
+        ResultWrapper<UInt256?> eth_estimateGas([JsonRpcParameter(ExampleValue = "[\"{\"from\": \"0x0001020304050607080910111213141516171819\", \"gasPrice\": \"1048576\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}\"]")] SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Creates an [EIP2930](https://eips.ethereum.org/EIPS/eip-2930) type AccessList for the given transaction",
             EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
-            IsSharable = false,
+            IsSharable = true,
             ExampleResponse = "{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"storageKeys\":[]}],\"gasUsed\":\"0xf71b\"}")]
         ResultWrapper<AccessListResultForRpc?> eth_createAccessList(
             [JsonRpcParameter(Description = "Transaction's details", ExampleValue = "[\"{\"type\":\"0x1\"]")]
-            TransactionForRpc transactionCall,
+            SignableTransactionForRpc transactionCall,
             [JsonRpcParameter(Description = "(optional)")]
             BlockParameter? blockParameter = null,
             [JsonRpcParameter(Description = "(optional)")]
@@ -202,6 +231,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<BlockForRpc> eth_getBlockByNumber([JsonRpcParameter(ExampleValue = "[\"5127545\"]")] BlockParameter blockParameter, bool returnFullTransactionObjects = false);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a block header by hash",
+            IsSharable = true,
+            ExampleResponse = "{\"difficulty\":\"0x1\",\"extraData\":\"0x000000000000436f6e73656e5379732048797065726c656467657220426573754d3f7b71165a8266fcc569c96b6fcf9971ee4a8df59eeec4dcced0df8d778733429988e21d0124918859f988be9debf4b25fb5282ea41a2fc15f827f446ec93200\",\"gasLimit\":\"0x1c9c364\",\"gasUsed\":\"0x3aa87\",\"hash\":\"0xf33507f93a046dbdbb80dee5f47b84283297f6c53f1b665adc3cb6fe4138aa84\",\"logsBloom\":\"0x00000000000020000000000008000060000000000000000000000000000000000000000000000000201000020008000000000000000000000100000000200020000000000000000000000008000000000000000010000000000000000000000000000000000000000000080000000000000000000000002000000010000000000000000000000000000000000000000000040000001000000000000000020000020400000000000000000000000000000000000000000000000000010000000000000002080000000000000000020000000000000000000000000000000000000010020000000000000000000000000100000000000000000000010000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x4e3d79\",\"parentHash\":\"0x01dba3a7eb61dc6dba3f9663c8fb632f76f60a476f57df74c3e5bd9d0a246339\",\"receiptsRoot\":\"0x70f3bd929735d8edeb953cd30a27e703e7dd3ec4af32cb74fe8ac302f9e7fb87\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"stateRoot\":\"0x71af7e25302d1baa4c988c267450eb2c7fa20938fac377809c8d77f8ff8108ac\",\"timestamp\":\"0x60ec1218\",\"baseFeePerGas\":\"0x7\",\"transactionsRoot\":\"0x90115f8dc10c08e748675f52f3904615729a014461ca80d72c60239bf75ee209\"}")]
+        ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByHash(
+            [JsonRpcParameter(ExampleValue = "[\"0xf33507f93a046dbdbb80dee5f47b84283297f6c53f1b665adc3cb6fe4138aa84\"]")] Hash256 blockHash);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a block header by number",
+            IsSharable = true,
+            ExampleResponse = "{\"difficulty\":\"0x1\",\"extraData\":\"0x000000000000436f6e73656e5379732048797065726c656467657220426573754d3f7b71165a8266fcc569c96b6fcf9971ee4a8df59eeec4dcced0df8d778733429988e21d0124918859f988be9debf4b25fb5282ea41a2fc15f827f446ec93200\",\"gasLimit\":\"0x1c9c364\",\"gasUsed\":\"0x3aa87\",\"hash\":\"0xf33507f93a046dbdbb80dee5f47b84283297f6c53f1b665adc3cb6fe4138aa84\",\"logsBloom\":\"0x00000000000020000000000008000060000000000000000000000000000000000000000000000000201000020008000000000000000000000100000000200020000000000000000000000008000000000000000010000000000000000000000000000000000000000000080000000000000000000000002000000010000000000000000000000000000000000000000000040000001000000000000000020000020400000000000000000000000000000000000000000000000000010000000000000002080000000000000000020000000000000000000000000000000000000010020000000000000000000000000100000000000000000000010000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x0000000000000000\",\"number\":\"0x4e3d79\",\"parentHash\":\"0x01dba3a7eb61dc6dba3f9663c8fb632f76f60a476f57df74c3e5bd9d0a246339\",\"receiptsRoot\":\"0x70f3bd929735d8edeb953cd30a27e703e7dd3ec4af32cb74fe8ac302f9e7fb87\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"stateRoot\":\"0x71af7e25302d1baa4c988c267450eb2c7fa20938fac377809c8d77f8ff8108ac\",\"timestamp\":\"0x60ec1218\",\"baseFeePerGas\":\"0x7\",\"transactionsRoot\":\"0x90115f8dc10c08e748675f52f3904615729a014461ca80d72c60239bf75ee209\"}")]
+        ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByNumber(
+            [JsonRpcParameter(ExampleValue = "[\"5127545\"]")] BlockParameter blockParameter);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction by hash",
             IsSharable = true,
             ExampleResponse = "{\"hash\":\"0xabca23910646013d608ec671de099447ab60b2b7159ad8319c3c088e8d9ea0fa\",\"nonce\":\"0x1a\",\"blockHash\":\"0xcb6756f69e0469acd5e5bb77966be580786ec2c11de85c9ddfd75257010e34f8\",\"blockNumber\":\"0x4dfbc7\",\"transactionIndex\":\"0xb\",\"from\":\"0xe1e7ab1c643dbe5b24739fdf2a5c7c193b54dd99\",\"to\":\"0x0b10e304088b2ba2b2acfd2f72573faad31a13a5\",\"value\":\"0x0\",\"gasPrice\":\"0x2540be400\",\"gas\":\"0xb4a4\",\"data\":\"0x095ea7b300000000000000000000000092c1576845703089cf6c0788379ed81f75f45dd500000000000000000000000000000000000000000000000000000002540be400\",\"input\":\"0x095ea7b300000000000000000000000092c1576845703089cf6c0788379ed81f75f45dd500000000000000000000000000000000000000000000000000000002540be400\",\"type\":\"0x0\",\"v\":\"0x2d\",\"s\":\"0x496d72d435ead8a8a9a865b14d6a102c1a9f848681d050dbbf11c522c612235\",\"r\":\"0xc8350e831203fecc8bff41f5cf858ac1d121e4b4d9e59c1137cc9440516ca9fd\"}")]
@@ -211,7 +254,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by hash",
             IsSharable = true)]
-        public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash);
+        public ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByHash(Hash256 transactionHash);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the pending transactions list",
@@ -232,6 +275,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "{\"hash\":\"0xfd320a4949990929f64b52041c58a74c8ce13289b3d6853bd8073b0580aa031a\",\"nonce\":\"0x5b\",\"blockHash\":\"0xd779e1a5ce8f34544d66d219bb3e5331a7b280fae89a36d7d52813a23e1ca1e3\",\"blockNumber\":\"0x4dfdd8\",\"transactionIndex\":\"0x8\",\"from\":\"0xadb540569e2db497bd973c141b0b63be98461e40\",\"to\":\"0x074b24cef703f17fe123fa1b82081055775b7004\",\"value\":\"0x0\",\"gasPrice\":\"0x12a05f200\",\"gas\":\"0x927c0\",\"data\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"input\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"type\":\"0x0\",\"v\":\"0x2e\",\"s\":\"0x37b90a929884787df717c87258f0434e2f115ce2fbb4bfc230322112fa9d5bbc\",\"r\":\"0x5222eff9e16b5c3e9e8901d9c45fc8e0f9cf774e8a56546a504025ef67ceefec\"}")]
         ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(
         [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter, UInt256 positionIndex);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a transaction RLP by block hash and index",
+            IsSharable = true)]
+        ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockHashAndIndex(
+            [JsonRpcParameter(ExampleValue = "[\"0xfe47fb3539ccce9d19a032473effdd6ce19e3c921bbae2746152ccf82ceef48e\",\"0x2\"]")] Hash256 blockHash,
+            UInt256 positionIndex);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a transaction RLP by block number and index",
+            IsSharable = true)]
+        ResultWrapper<ArrayPoolList<byte>?> eth_getRawTransactionByBlockNumberAndIndex(
+            [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter,
+            UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction receipt by tx hash",
@@ -292,7 +349,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<AccountProof> eth_getProof(
             [JsonRpcParameter(ExampleValue = "[\"0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842\",[  \"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\" ],\"latest\"]")]
             Address accountAddress,
-            HashSet<UInt256> storageKeys,
+            StorageKeys storageKeys,
             BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves Accounts via Address and Blocknumber", IsSharable = true)]
@@ -304,10 +361,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
         ResultWrapper<JsonNode> eth_config();
 
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the node's historical data availability for routing and capability discovery.",
+            IsSharable = true,
+            ExampleResponse = "{\"head\":{\"number\":\"0x1\",\"hash\":\"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3\"},\"state\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"tx\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"logs\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"receipts\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"blocks\":{\"disabled\":false,\"oldestBlock\":\"0x0\"},\"stateproofs\":{\"disabled\":false,\"oldestBlock\":\"0x0\"}}")]
+        ResultWrapper<EthCapabilities> eth_capabilities();
+
         [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
 
         [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
-        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
+        ResultWrapper<ReadOnlyBlockAccessList?> eth_getBlockAccessListByNumber(ulong number);
     }
 }

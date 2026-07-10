@@ -20,6 +20,7 @@ public class SnapshotCompactorTests
     private SnapshotCompactor _compactor = null!;
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
+    private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository;
 
     [SetUp]
@@ -27,26 +28,30 @@ public class SnapshotCompactorTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _snapshotRepository = new SnapshotRepository(LimboLogs.Instance);
-        _compactor = new SnapshotCompactor(_config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        _tier = new FlatTestContainer();
+        _snapshotRepository = _tier.Repository;
+        _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
-    private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
+    [TearDown]
+    public void TearDown() => _tier.Dispose();
+
+    private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
     {
         byte[] bytes = new byte[32];
         bytes[0] = rootByte;
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private void BuildSnapshotChain(long startBlock, long endBlock)
+    private void BuildSnapshotChain(ulong startBlock, ulong endBlock)
     {
-        for (long i = startBlock; i < endBlock; i++)
+        for (ulong i = startBlock; i < endBlock; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-            bool added = _snapshotRepository.TryAddSnapshot(snapshot);
+            bool added = _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             Assert.That(added, Is.True, $"Failed to add snapshot {i}->{i + 1}");
             _snapshotRepository.AddStateId(to);
         }
@@ -75,8 +80,10 @@ public class SnapshotCompactorTests
         Address address = new("0x1234567890123456789012345678901234567890");
         snapshot.Content.Accounts[address] = new Account(1, 100);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -122,8 +129,10 @@ public class SnapshotCompactorTests
         snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
         snapshot.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, storageNodeHash2);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -177,9 +186,11 @@ public class SnapshotCompactorTests
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
         snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -219,9 +230,11 @@ public class SnapshotCompactorTests
         snapshot1.Content.StateNodes[statePath] = new TrieNode(NodeType.Branch, Keccak.Zero);
         snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -257,16 +270,18 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = false;
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Self-destructed address should be tracked, and its storage cleared
+        // Storage nodes are not cleared — orphaned nodes are skipped during trie traversal
         Assert.That(compacted.Content.SelfDestructedStorageAddresses.Count, Is.GreaterThan(0));
         Assert.That(compacted.StoragesCount, Is.EqualTo(0));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -283,9 +298,11 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.SelfDestructedStorageAddresses[address] = true;
 
-        SnapshotPooledList snapshots = new(2);
-        snapshots.Add(snapshot0);
-        snapshots.Add(snapshot1);
+        SnapshotPooledList snapshots = new(2)
+        {
+            snapshot0,
+            snapshot1
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -303,8 +320,10 @@ public class SnapshotCompactorTests
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -319,8 +338,10 @@ public class SnapshotCompactorTests
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
-        SnapshotPooledList snapshots = new(1);
-        snapshots.Add(snapshot);
+        SnapshotPooledList snapshots = new(1)
+        {
+            snapshot
+        };
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
@@ -328,12 +349,12 @@ public class SnapshotCompactorTests
     }
 
     [Test]
-    public void Debug_AssembleSnapshotsUntil_Works()
+    public void Debug_AssembleInMemorySnapshotsForCompaction_Works()
     {
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        SnapshotPooledList assembled = _snapshotRepository.AssembleSnapshotsUntil(target, 0, 10);
+        SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
 
@@ -344,8 +365,8 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_CompactSizeDisabled_ReturnsEmpty()
     {
-        FlatDbConfig config = new() { CompactSize = 1, MinCompactSize = 0 };
-        SnapshotCompactor compactor = new(config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
+        FlatDbConfig config = new() { CompactSize = 1 };
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
 
         StateId from = new(0, Keccak.Zero);
         StateId to = new(16, Keccak.Zero);
@@ -383,14 +404,12 @@ public class SnapshotCompactorTests
     [Test]
     public void GetSnapshotsToCompact_FullCompaction_ReturnsMultipleSnapshots()
     {
-        // Build chain of 15 snapshots (0->1, 1->2, ..., 14->15)
         BuildSnapshotChain(0, 15);
 
-        // Add the 16th snapshot (15->16) separately
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot);
@@ -401,43 +420,16 @@ public class SnapshotCompactorTests
     [TestCase(4, 4)]   // 4 & -4 = 4, compact size 4, blocks 0->4
     [TestCase(8, 8)]   // 8 & -8 = 8, compact size 8, blocks 0->8
     [TestCase(12, 4)]  // 12 & -12 = 4, compact size 4, blocks 8->12
-    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    public void GetSnapshotsToCompact_PowerOf2Compaction_ReturnsCorrectCount(int blockNumber, int expectedCount)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId targetTo = CreateStateId(blockNumber);
-        _snapshotRepository.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+        StateId targetTo = CreateStateId((ulong)blockNumber);
+        _snapshotRepository.TryLeaseInMemoryState(targetTo, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(targetSnapshot!);
 
         Assert.That(snapshots.Count, Is.EqualTo(expectedCount));
-        targetSnapshot!.Dispose();
-    }
-
-    [TestCase(2)]  // 2 & -2 = 2 < MinCompactSize(4)
-    [TestCase(6)]  // 6 & -6 = 2 < MinCompactSize(4)
-    [TestCase(10)] // 10 & -10 = 2 < MinCompactSize(4)
-    public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
-    {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 4 };
-        SnapshotRepository repo = new(LimboLogs.Instance);
-        SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
-
-        for (long i = 0; i < blockNumber; i++)
-        {
-            StateId from = CreateStateId(i);
-            StateId to = CreateStateId(i + 1);
-            Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
-            repo.AddStateId(to);
-        }
-
-        StateId targetTo = CreateStateId(blockNumber);
-        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
-
-        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
-
-        Assert.That(snapshots.Count, Is.EqualTo(0));
         targetSnapshot!.Dispose();
     }
 
@@ -447,7 +439,7 @@ public class SnapshotCompactorTests
         StateId from = new(0, Keccak.Zero);
         StateId to = new(16, Keccak.Zero);
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        _snapshotRepository.TryAddSnapshot(snapshot);
+        _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(to);
 
         using Snapshot targetSnapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -461,12 +453,12 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_IncompleteChain_ReturnsEmpty()
     {
         // Missing 1
-        for (long i = 2; i < 16; i++)
+        for (ulong i = 2; i < 16; i++)
         {
             StateId from = new(i, Keccak.Zero);
             StateId to = new(i + 1, Keccak.Zero);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            _snapshotRepository.TryAddSnapshot(snapshot);
+            _snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             _snapshotRepository.AddStateId(to);
         }
 
@@ -482,15 +474,13 @@ public class SnapshotCompactorTests
     [Test]
     public void DoCompactSnapshot_ValidChain_CreatesCompactedSnapshot()
     {
-        // Build chain of 15 snapshots (0->1, 1->2, ..., 14->15)
         BuildSnapshotChain(0, 15);
 
-        // Add the 16th snapshot (15->16) separately
         StateId targetFrom = CreateStateId(15);
         StateId targetTo = CreateStateId(16);
         Snapshot targetSnapshot = _resourcePool.CreateSnapshot(targetFrom, targetTo, ResourcePool.Usage.ReadOnlyProcessingEnv);
-        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account((UInt256)20, (UInt256)2000);
-        _snapshotRepository.TryAddSnapshot(targetSnapshot);
+        targetSnapshot.Content.Accounts[TestItem.AddressB] = new Account(20UL, (UInt256)2000);
+        _snapshotRepository.TryAdd(targetSnapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.AddStateId(targetTo);
 
         _compactor.DoCompactSnapshot(targetSnapshot.To);
@@ -501,36 +491,27 @@ public class SnapshotCompactorTests
     [Test]
     public void Constructor_NonPowerOf2CompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 10 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
+            new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
 
     [Test]
-    public void Constructor_NonPowerOf2MinCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 16, MinCompactSize = 3 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void Constructor_MinCompactSizeGreaterThanCompactSize_Throws() =>
-        Assert.Throws<ArgumentException>(() =>
-            new SnapshotCompactor(new FlatDbConfig { CompactSize = 8, MinCompactSize = 16 }, _resourcePool, _snapshotRepository, LimboLogs.Instance));
-
-    [Test]
-    public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
+    public void GetSnapshotsToCompact_Size2Compaction_AllowedByDefault()
     {
-        FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
-        SnapshotRepository repo = new(LimboLogs.Instance);
-        SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 0), _resourcePool, repo, LimboLogs.Instance);
 
-        for (long i = 0; i < 2; i++)
+        for (ulong i = 0; i < 2; i++)
         {
             StateId from = CreateStateId(i);
             StateId to = CreateStateId(i + 1);
             Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
-            repo.TryAddSnapshot(snapshot);
+            repo.TryAdd(snapshot, SnapshotTier.InMemoryBase);
             repo.AddStateId(to);
         }
 
         StateId target = CreateStateId(2);
-        repo.TryLeaseState(target, out Snapshot? targetSnapshot);
+        repo.TryLeaseInMemoryState(target, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
 
         using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
 
@@ -543,12 +524,12 @@ public class SnapshotCompactorTests
     [TestCase(5)]
     [TestCase(7)]
     [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(long blockNumber)
+    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(int blockNumber)
     {
-        BuildSnapshotChain(0, blockNumber);
+        BuildSnapshotChain(0, (ulong)blockNumber);
 
-        StateId from = CreateStateId(blockNumber - 1);
-        StateId to = CreateStateId(blockNumber);
+        StateId from = CreateStateId((ulong)(blockNumber - 1));
+        StateId to = CreateStateId((ulong)blockNumber);
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
 
         using SnapshotPooledList snapshots = _compactor.GetSnapshotsToCompact(snapshot);
@@ -556,7 +537,7 @@ public class SnapshotCompactorTests
         Assert.That(snapshots.Count, Is.EqualTo(0));
     }
 
-    [TestCase(2, 2)]   // blockNumber & -blockNumber = 2
+    [TestCase(2, 2)]   // blockNumber & (~blockNumber + 1UL) = 2
     [TestCase(4, 4)]
     [TestCase(6, 2)]
     [TestCase(8, 8)]
@@ -564,9 +545,63 @@ public class SnapshotCompactorTests
     [TestCase(12, 4)]
     [TestCase(14, 2)]
     [TestCase(16, 16)]
-    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(long blockNumber, int expectedCompactSize)
+    public void GetSnapshotsToCompact_PowerOf2_CompactSizeMatchesBlockAlignment(int blockNumber, int expectedCompactSize)
     {
         int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
+    }
+
+    [Test]
+    public void GetSnapshotsToCompact_WithOffset_FullCompactionShiftedFromBoundary()
+    {
+        // CompactSize=16, offset=3 -> full compaction triggers when (block+3) % 16 == 0,
+        // i.e. at blocks 13, 29, 45, ... Build a chain to block 29 (second full boundary).
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        for (ulong i = 0; i < 29; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot s = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAdd(s, SnapshotTier.InMemoryBase);
+            repo.AddStateId(to);
+        }
+
+        // Block 29: (29+3) & -(29+3) = 32 & -32 = 32, capped at CompactSize=16 -> full compaction
+        StateId target29 = CreateStateId(29);
+        repo.TryLeaseInMemoryState(target29, SnapshotTier.InMemoryBase, out Snapshot? targetSnapshot);
+        using SnapshotPooledList snapshots29 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots29.Count, Is.EqualTo(16), "Block 29 should trigger full compaction with offset=3");
+        targetSnapshot!.Dispose();
+
+        // Block 16: (16+3) & -(16+3) = 19 & -19 = 1 -> caller sees compactSize<=1, no compaction
+        StateId target16 = CreateStateId(16);
+        repo.TryLeaseInMemoryState(target16, SnapshotTier.InMemoryBase, out targetSnapshot);
+        using SnapshotPooledList snapshots16 = compactor.GetSnapshotsToCompact(targetSnapshot!);
+        Assert.That(snapshots16.Count, Is.EqualTo(0), "Block 16 should NOT trigger compaction with offset=3");
+        targetSnapshot!.Dispose();
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_WithOffset_UsesCorrectUsageTier()
+    {
+        // CompactSize=16, offset=3. At block 13 the bit trick yields 16 -> Compact16 tier.
+        FlatDbConfig config = new() { CompactSize = 16 };
+        using FlatTestContainer tier = new();
+        SnapshotRepository repo = tier.Repository;
+        SnapshotCompactor compactor = new(config, ScheduleHelper.CreateWithOffset(config, 3), _resourcePool, repo, LimboLogs.Instance);
+
+        StateId from = new(0, Keccak.Zero);
+        StateId to = new(13, Keccak.Zero);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        SnapshotPooledList snapshots = new(1) { snapshot };
+
+        using Snapshot compacted = compactor.CompactSnapshotBundle(snapshots);
+
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compact16));
     }
 }

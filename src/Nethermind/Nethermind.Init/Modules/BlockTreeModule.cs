@@ -1,20 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
@@ -28,12 +27,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), CreateBloomStorageFileStoreFactory)
-            .AddSingleton<IBloomStorage, BloomStorage>()
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, BlockStore>()
-            .AddSingleton<IReceiptStorage, PersistentReceiptStorage>()
+            .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
+            .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
@@ -71,17 +69,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
         if (!receiptConfig.StoreReceipts)
         {
-            builder.AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance);
+            builder.AddSingleton<IReceiptMigrationStore>(NullReceiptStorage.Instance);
         }
-    }
-
-    private IFileStoreFactory CreateBloomStorageFileStoreFactory(IComponentContext ctx)
-    {
-        IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-        return initConfig.DiagnosticMode == DiagnosticMode.MemDb
-            ? new InMemoryDictionaryFileStoreFactory()
-            : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom,
-                Bloom.ByteLength);
     }
 
     private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>

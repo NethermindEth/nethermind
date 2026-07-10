@@ -27,7 +27,7 @@ public class TaikoPayloadPreparationService(
     IL1OriginStore l1OriginStore,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IRlpValueDecoder<Transaction> txDecoder) : IPayloadPreparationService
+    IRlpDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
@@ -159,7 +159,7 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
         int transactionsSequenceLength = ctx.ReadSequenceLength();
         int transactionsCheck = ctx.Position + transactionsSequenceLength;

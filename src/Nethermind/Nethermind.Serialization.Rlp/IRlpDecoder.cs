@@ -2,135 +2,66 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Buffers;
 
-namespace Nethermind.Serialization.Rlp
+namespace Nethermind.Serialization.Rlp;
+
+public interface IRlpDecoder;
+
+public interface IRlpDecoder<T> : IRlpDecoder
 {
-    public interface IRlpDecoder
-    {
-    }
+    int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public interface IRlpDecoder<in T> : IRlpDecoder
-    {
-        int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
+    int GetLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
-    public interface IRlpStreamEncoder<in T> : IRlpDecoder<T>
-    {
-        void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
+    int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
 
-    public interface IRlpObjectDecoder<in T> : IRlpDecoder<T>
-    {
-        Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
 
-    public interface IRlpValueDecoder<T> : IRlpDecoder<T>
-    {
-        T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
+    void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    public static class RlpValueDecoderExtensions
-    {
-        extension<T>(IRlpValueDecoder<T> decoder)
-        {
-            public T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                Rlp.ValueDecoderContext context = new(bytes);
-                return decoder.Decode(ref context, rlpBehaviors);
-            }
+    Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-            /// <summary>
-            /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
-            /// and verifies that the end of the stream has been reached.
-            /// </summary>
-            public T DecodeComplete(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                T value = decoder.Decode(ref context, rlpBehaviors);
-                context.CheckEnd();
-                return value;
-            }
+    Rlp Encode(T[] items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-            /// <summary>
-            /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
-            /// and verifies that the end of the stream has been reached.
-            /// </summary>
-            public T DecodeComplete(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                Rlp.ValueDecoderContext context = new(bytes);
-                return decoder.DecodeComplete(ref context, rlpBehaviors);
-            }
-        }
+    CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
 
-        extension<T>(IRlpValueDecoder<T> decoder) where T : class
-        {
-            public T DecodeGuardNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-                decoder.Decode(ref context, rlpBehaviors) ?? ThrowNullDecodedValue<T>();
+    void Encode<TWriter>(ref TWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-            public T DecodeGuardNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                Rlp.ValueDecoderContext context = new(bytes);
-                return decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
-            }
 
-            /// <summary>
-            /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
-            /// and verifies that the end of the stream has been reached.
-            /// Throws if decoded value is <c>null</c>.
-            /// </summary>
-            public T DecodeCompleteNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                T value = decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
-                context.CheckEnd();
-                return value;
-            }
 
-            /// <summary>
-            /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
-            /// and verifies that the end of the stream has been reached.
-            /// Throws if decoded value is <c>null</c>.
-            /// </summary>
-            public T DecodeCompleteNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                Rlp.ValueDecoderContext context = new(bytes);
-                return decoder.DecodeCompleteNotNull(ref context, rlpBehaviors);
-            }
-        }
+    T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static T ThrowNullDecodedValue<T>() where T : class
-            => throw new RlpException($"{typeof(T).Name} decoding returned null");
-    }
+    T[] DecodeArray(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null);
 
-    public abstract class RlpStreamEncoder<T> : IRlpStreamEncoder<T>
-    {
-        public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    T Decode(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-        public abstract void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    /// <summary>
+    /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
+    /// and verifies that the end of the stream has been reached.
+    /// </summary>
+    T DecodeComplete(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-        [DoesNotReturn]
-        [StackTraceHidden]
-        protected static void ThrowRlpException(Exception exception) =>
-            throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
-    }
+    /// <summary>
+    /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
+    /// and verifies that the end of the stream has been reached.
+    /// </summary>
+    T DecodeComplete(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract class RlpValueDecoder<T> : RlpStreamEncoder<T>, IRlpValueDecoder<T>
-    {
-        public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            try
-            {
-                return DecodeInternal(ref decoderContext, rlpBehaviors);
-            }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-            {
-                ThrowRlpException(e);
-                return default;
-            }
-        }
+    T DecodeGuardNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-        protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
+    /// <summary>
+    /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
+    /// and verifies that the end of the stream has been reached.
+    /// Throws if decoded value is <c>null</c>.
+    /// </summary>
+    T DecodeCompleteNotNull(ref RlpReader context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+    /// <summary>
+    /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
+    /// and verifies that the end of the stream has been reached.
+    /// Throws if decoded value is <c>null</c>.
+    /// </summary>
+    T DecodeCompleteNotNull(scoped ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 }

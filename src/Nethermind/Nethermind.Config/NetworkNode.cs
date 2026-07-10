@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
-using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Entries;
-using Lantern.Discv5.Enr.Identity;
-using Lantern.Discv5.Enr.Identity.V4;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Enr;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -20,11 +17,8 @@ namespace Nethermind.Config;
 /// </summary>
 public class NetworkNode
 {
-    private static readonly EnrFactory _enrFactory = new(new EnrEntryRegistry());
-    private static readonly IIdentityVerifier identityVerifier = new IdentityVerifierV4();
-
     private readonly Enode? _enode;
-    private readonly Enr? _enr;
+    private readonly NodeRecord? _enr;
 
     [MemberNotNullWhen(true, nameof(Enode))]
     [MemberNotNullWhen(false, nameof(Enr))]
@@ -42,7 +36,7 @@ public class NetworkNode
         }
         else
         {
-            _enr = _enrFactory.CreateFromString(nodeString, identityVerifier);
+            _enr = NodeRecord.FromEnrString(nodeString);
         }
     }
 
@@ -91,11 +85,20 @@ public class NetworkNode
 
     public Enode? Enode => _enode;
 
-    public Enr? Enr => _enr;
+    public NodeRecord? Enr => _enr;
 
-    public PublicKey NodeId => IsEnode ? Enode.PublicKey : new PublicKey(Enr.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value);
-    public string Host => IsEnode ? Enode.HostIp.ToString() : Enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value.ToString();
-    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
-    public int Port => IsEnode ? Enode.Port : Enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
+    public PublicKey NodeId => IsEnode ? Enode.PublicKey : GetEnrPublicKey();
+    public string Host => IsEnode ? Enode.HostIp.ToString() : HostIp.ToString();
+    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.Ip ?? IPAddress.None;
+    public int Port => IsEnode ? Enode.Port : Enr!.TcpPort ?? 0;
+    public int DiscoveryPort => IsEnode ? Enode.DiscoveryPort : Enr!.DiscoveryPort ?? 0;
     public long Reputation { get; set; }
+
+    private PublicKey GetEnrPublicKey()
+    {
+        CompressedPublicKey publicKey = Enr!.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)
+            ?? throw new InvalidOperationException("ENR is missing secp256k1 public key.");
+
+        return publicKey.Decompress();
+    }
 }

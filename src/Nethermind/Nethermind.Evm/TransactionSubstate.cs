@@ -17,8 +17,6 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
-    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -44,8 +42,8 @@ public readonly ref struct TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
-    private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry>? _logs;
+    private readonly JournalSet<Address>? _destroyList;
+    private readonly JournalCollection<LogEntry> _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -54,26 +52,28 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
-    public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
+    public JournalCollection<LogEntry> Logs => _logs;
+    public JournalSet<Address>? DestroyList => _destroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
-        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        // Reflection-free error name; see FastToString for why Enum.ToString() can't be used here.
+        Error = isTracerConnected ? exceptionType.FastToString() : SomeError;
         SubstateError = substateError;
         EvmExceptionType = exceptionType;
         Refund = 0;
-        _destroyList = _emptyDestroyList;
-        _logs = _emptyLogs;
+        _destroyList = null;
+        // Real list, not a shared empty sentinel: EIP-7708 SELFDESTRUCT appends a transfer log and this readonly struct can't reassign later.
+        _logs = [];
         ShouldRevert = false;
     }
 
     public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
-        IHashSetEnumerableCollection<Address> destroyList,
-        JournalCollection<LogEntry> logs,
+        JournalSet<Address>? destroyList,
+        JournalCollection<LogEntry>? logs,
         bool shouldRevert,
-        bool isTracerConnected,
+        bool isTracerConnected = default,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
@@ -81,7 +81,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs;
+        _logs = logs ?? [];
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -102,6 +102,10 @@ public readonly ref struct TransactionSubstate
         ReadOnlySpan<byte> span = Output.Span;
         if (TryGetErrorMessage(span) is { } decoded) Error = decoded;
     }
+
+    public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
+
+    public LogEntry[] LogsToArray() => _logs.ToArray();
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {
@@ -146,6 +150,28 @@ public readonly ref struct TransactionSubstate
         // Unknown selector — not Error(string) or Panic(uint256). Return null so the caller
         // falls back to the Revert sentinel, matching Geth's UnpackRevert default behaviour.
         return null;
+    }
+
+    /// <summary>
+    /// Builds the user-facing revert message: <c>"execution reverted: &lt;reason&gt;"</c> when the
+    /// revert payload carries a decodable <c>Error(string)</c>/<c>Panic(uint256)</c> selector and a
+    /// reason was parsed, otherwise the bare <c>"execution reverted"</c> sentinel.
+    /// </summary>
+    /// <remarks>
+    /// Shared by <c>eth_call</c>/<c>eth_estimateGas</c> and <c>proof_call</c> so they report identical
+    /// text for the same revert. The selector is checked on the raw payload (not the decoded string) to
+    /// avoid a sentinel collision — e.g. <c>require(false, "execution reverted")</c> must not be taken
+    /// for the bare sentinel.
+    /// </remarks>
+    public static string BuildRevertMessage(ReadOnlySpan<byte> revertPayload, string? reason)
+    {
+        bool isKnownRevertType = revertPayload.Length >= RevertPrefix &&
+            (revertPayload[..RevertPrefix].SequenceEqual(ErrorFunctionSelector) ||
+             revertPayload[..RevertPrefix].SequenceEqual(PanicFunctionSelector));
+
+        return isKnownRevertType && !string.IsNullOrEmpty(reason)
+            ? "execution reverted: " + reason
+            : "execution reverted";
     }
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)

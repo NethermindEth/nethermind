@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             ITxSource txSource = Substitute.For<ITxSource>();
             SinglePendingTxSelector selector = new(txSource);
-            selector.GetTransactions(_anyParent, 1000000).Should().HaveCount(0);
+            Assert.That(System.Linq.Enumerable.Count(selector.GetTransactions(_anyParent, 1000000)), Is.EqualTo(0));
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -46,9 +46,9 @@ namespace Nethermind.Blockchain.Test.Consensus
 
             SinglePendingTxSelector selector = new(txSource);
             Transaction[] result = selector.GetTransactions(_anyParent, 1000000).ToArray();
-            result.Should().HaveCount(1);
-            result[0].Timestamp.Should().Be(8);
-            result[0].Nonce.Should().Be(1);
+            Assert.That(result.Length, Is.EqualTo(1));
+            Assert.That(result[0].Timestamp, Is.EqualTo((UInt256)8));
+            Assert.That(result[0].Nonce, Is.EqualTo(1ul));
         }
     }
 }

@@ -1,17 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Services;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -27,104 +25,9 @@ namespace Nethermind.Consensus.Clique
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi;
-
-            (IApiWithStores _, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
-
-            _snapshotManager = nethermindApi.Context.Resolve<ISnapshotManager>();
-            _cliqueConfig = nethermindApi.Context.Resolve<ICliqueConfig>();
-
-            setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager));
-
-            return Task.CompletedTask;
-        }
-
-        public IBlockProducer InitBlockProducer()
-        {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return null;
-            }
-
-            (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
-
-            _blocksConfig = getFromApi.Config<IBlocksConfig>();
-            IMiningConfig miningConfig = getFromApi.Config<IMiningConfig>();
-
-            if (!miningConfig.Enabled)
-            {
-                throw new InvalidOperationException("Request to start block producer while mining disabled.");
-            }
-
-            IBlockProducerEnv env = getFromApi.BlockProducerEnvFactory.CreatePersistent();
-
-            IBlockchainProcessor chainProcessor = env.ChainProcessor;
-
-            ITxSource txPoolTxSource = env.TxSource;
-
-            IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
-
-            CliqueBlockProducer blockProducer = new(
-                txPoolTxSource,
-                chainProcessor,
-                env.ReadOnlyStateProvider,
-                getFromApi.Timestamper,
-                getFromApi.CryptoRandom,
-                _snapshotManager!,
-                getFromApi.Sealer!,
-                gasLimitCalculator,
-                getFromApi.SpecProvider,
-                _cliqueConfig!,
-                getFromApi.LogManager);
-
-            return blockProducer;
-        }
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            _blockProducerRunner = new CliqueBlockProducerRunner(
-                _nethermindApi.BlockTree,
-                _nethermindApi.Timestamper,
-                _nethermindApi.CryptoRandom,
-                _snapshotManager,
-                (CliqueBlockProducer)blockProducer,
-                _cliqueConfig,
-                _nethermindApi.LogManager);
-            _nethermindApi.DisposeStack.Push(_blockProducerRunner);
-            return _blockProducerRunner;
-        }
-
-        public Task InitRpcModules()
-        {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
-            {
-                return Task.CompletedTask;
-            }
-
-            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcModule cliqueRpcModule = new(
-                _blockProducerRunner,
-                _snapshotManager!,
-                getFromApi.BlockTree!);
-
-            SingletonModulePool<ICliqueRpcModule> modulePool = new(cliqueRpcModule);
-            getFromApi.RpcModuleProvider!.Register(modulePool);
-
-            return Task.CompletedTask;
-        }
+        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
-
-        private INethermindApi? _nethermindApi;
-
-        private ISnapshotManager? _snapshotManager;
-
-        private ICliqueConfig? _cliqueConfig;
-
-        private IBlocksConfig? _blocksConfig;
-        private CliqueBlockProducerRunner _blockProducerRunner = null!;
 
         public IModule Module => new CliqueModule();
     }
@@ -149,10 +52,17 @@ namespace Nethermind.Consensus.Clique
                 })
 
                 .AddSingleton<ISnapshotManager, SnapshotManager>()
+                .AddLast<IBlockPreprocessorStep, AuthorRecoveryStep>()
                 .AddSingleton<ISealValidator, CliqueSealValidator>()
                 .AddSingleton<ISealer, CliqueSealer>()
 
+                .AddSingleton<CliqueBlockProducerFactory>()
+                .Bind<IBlockProducerFactory, CliqueBlockProducerFactory>()
+                .Bind<IBlockProducerRunnerFactory, CliqueBlockProducerFactory>()
+
                 .AddSingleton<IHealthHintService, CliqueHealthHintService>()
+
+                .RegisterSingletonJsonRpcModule<ICliqueRpcModule, CliqueRpcModule>()
                 ;
         }
     }

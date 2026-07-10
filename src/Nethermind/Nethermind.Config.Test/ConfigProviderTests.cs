@@ -4,9 +4,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Linq;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using NUnit.Framework;
 
@@ -57,7 +59,7 @@ namespace Nethermind.Config.Test
                 bitArray.Set(4, (i >> 4) % 2 == 1);
                 bitArray.Set(5, (i >> 5) % 2 == 1);
 
-                Dictionary<string, string> args = new();
+                Dictionary<string, string> args = [];
                 if (bitArray.Get(4))
                 {
                     args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
@@ -69,7 +71,7 @@ namespace Nethermind.Config.Test
                     Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
-                Dictionary<string, string> fakeJson = new();
+                Dictionary<string, string> fakeJson = [];
                 if (bitArray.Get(0))
                 {
                     fakeJson.Add("JsonRpc.Enabled", bitArray.Get(1).ToString());
@@ -99,7 +101,109 @@ namespace Nethermind.Config.Test
             };
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
-            configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
+            Assert.That(configProvider.GetConfig<IBlocksConfig>().MinGasPrice, Is.EqualTo((UInt256)12345));
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.None)]
+    public class GetNonDefaultValuesTests
+    {
+        [Test]
+        public void Returns_empty_when_no_overrides() =>
+            Assert.That(Provider().GetNonDefaultValues(), Is.Empty);
+
+        [Test]
+        public void Returns_overridden_value_with_current_and_default()
+        {
+            List<NonDefaultConfigValue> nonDefaults = Provider(("Network.DiscoveryPort", "12345"))
+                .GetNonDefaultValues()
+                .Where(static x => x.Category == "Network" && x.Name == nameof(INetworkConfig.DiscoveryPort))
+                .ToList();
+
+            Assert.That(nonDefaults, Has.Count.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nonDefaults[0].CurrentValue, Is.EqualTo(12345));
+                Assert.That(nonDefaults[0].DefaultValue, Is.EqualTo(30303));
+            }
+        }
+
+        public static IEnumerable<TestCaseData> ReportedKeyCases()
+        {
+            yield return new TestCaseData(
+                new[] { ("Network.DiscoveryPort", "12345"), ("JsonRpc.Enabled", "true") },
+                new[] { "Network.DiscoveryPort", "JsonRpc.Enabled" },
+                Array.Empty<string>())
+                .SetName("Surfaces overrides across categories");
+
+            yield return new TestCaseData(
+                new[]
+                {
+                    ("KeyStore.TestNodeKey", "0xdeadbeef"),
+                    ("KeyStore.Passwords", "[\"hunter2\"]"),
+                    ("KeyStore.KeyStoreDirectory", "custom-keystore")
+                },
+                new[] { $"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}" },
+                new[]
+                {
+                    $"KeyStore.{nameof(IKeyStoreConfig.TestNodeKey)}",
+                    $"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"
+                })
+                .SetName("Skips sensitive properties");
+        }
+
+        [TestCaseSource(nameof(ReportedKeyCases))]
+        public void Reports_expected_keys(
+            (string Key, string Value)[] overrides,
+            string[] mustContain,
+            string[] mustNotContain)
+        {
+            HashSet<string> keys = NonDefaultKeys(Provider(overrides));
+
+            foreach (string key in mustContain) Assert.That(keys, Does.Contain(key));
+            foreach (string key in mustNotContain) Assert.That(keys, Does.Not.Contain(key));
+        }
+
+        [Test]
+        public void Failing_provider_for_one_type_does_not_poison_others()
+        {
+            FailingProvider failing = new(Provider(("Network.DiscoveryPort", "12345")), typeof(IJsonRpcConfig));
+            List<(Type ConfigType, Exception Error)> errors = [];
+
+            HashSet<string> keys = NonDefaultKeys(failing, (t, e) => errors.Add((t, e)));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
+                Assert.That(errors, Has.Some.Matches<(Type, Exception)>(static x => x.Item1 == typeof(IJsonRpcConfig)));
+            }
+        }
+
+        private static IConfigProvider Provider(params (string Key, string Value)[] overrides)
+        {
+            ConfigProvider provider = new();
+            if (overrides.Length > 0)
+                provider.AddSource(new ArgsConfigSource(overrides.ToDictionary(static o => o.Key, static o => o.Value)));
+            provider.Initialize();
+            return provider;
+        }
+
+        private static HashSet<string> NonDefaultKeys(IConfigProvider provider, Action<Type, Exception>? onError = null) =>
+            provider.GetNonDefaultValues(onError)
+                .Select(static x => $"{x.Category}.{x.Name}")
+                .ToHashSet();
+
+        private sealed class FailingProvider(IConfigProvider inner, Type failingType) : IConfigProvider
+        {
+            public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
+
+            public IConfig GetConfig(Type configType) =>
+                configType == failingType
+                    ? throw new InvalidOperationException("simulated failure")
+                    : inner.GetConfig(configType);
+
+            public object? GetRawValue(string category, string name) => inner.GetRawValue(category, name);
         }
     }
 }

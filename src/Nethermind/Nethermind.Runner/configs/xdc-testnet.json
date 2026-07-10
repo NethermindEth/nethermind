@@ -5,6 +5,19 @@
     "BaseDbPath": "nethermind_db/xdc-testnet",
     "LogFileName": "xdc-testnet.log"
   },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 420000000
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
@@ -12,9 +25,9 @@
     "FastSync": true,
     "SnapSync": false,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 80400000,
-    "PivotHash": "0x2a1c36d5a2d8247161f3ddf1bbd628498928c87b910d3ac23283f73490b8a4a4",
-    "PivotTotalDifficulty": 336737235,
+    "PivotNumber": 83860000,
+    "PivotHash": "0x8e5d213aef42d8feb9274bc1813c040c1b157bc0a579ff7ffc17d6158ff7f2ec",
+    "PivotTotalDifficulty": "340197235",
     "AncientReceiptsBarrier": 56828700,
     "AncientBodiesBarrier": 56828700
   },

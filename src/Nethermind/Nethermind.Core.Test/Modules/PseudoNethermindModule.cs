@@ -1,15 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Reflection;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
@@ -22,7 +19,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NUnit.Framework;
 using Module = Autofac.Module;
 
 namespace Nethermind.Core.Test.Modules;
@@ -36,21 +32,10 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="spec"></param>
 public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvider, ILogManager logManager) : Module
 {
-    public static bool TestUseFlat = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
-
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.AutoDump = DumpOptions.None;
-        if (TestUseFlat)
-        {
-            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
-            if (syncConfig.FastSync || syncConfig.SnapSync)
-            {
-                Assert.Ignore("Flat does not work with fast sync or snap sync");
-            }
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
-        }
 
         base.Load(builder);
         builder
@@ -59,12 +44,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddModule(new TestBlockProcessingModule())
 
             // Environments
-            .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider>((blockProcessingContext, chainHeadInfoProvider) => new BackgroundTaskScheduler(
-                blockProcessingContext.BranchProcessor,
-                chainHeadInfoProvider,
-                initConfig.BackgroundTaskConcurrency,
-                initConfig.BackgroundTaskMaxNumber,
-                logManager))
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
@@ -81,6 +60,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             {
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
+                flatDbConfig.WarmReadConcurrency = 2;
             })
 
             // Rpc

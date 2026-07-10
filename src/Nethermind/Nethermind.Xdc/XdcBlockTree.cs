@@ -4,13 +4,14 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Xdc.Types;
 
@@ -26,29 +27,32 @@ internal class XdcBlockTree(
     IBlockAccessListStore? balStore,
     IChainLevelInfoRepository? chainLevelInfoRepository,
     ISpecProvider? specProvider,
-    IBloomStorage? bloomStorage,
     ISyncConfig? syncConfig,
+    IStateBoundary? stateBoundary,
     ILogManager? logManager,
-    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    ulong genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, stateBoundary, logManager, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
+        if (!CanAcceptNewBlocks) return AddBlockResult.CannotAccept;
+
         BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return base.Suggest(block, header, options);
-        if (finalizedBlockInfo.Hash == header.Hash)
-        {
-            //Weird case if re-suggesting the finalized block
-            return AddBlockResult.AlreadyKnown;
-        }
+
         if (finalizedBlockInfo.BlockNumber >= header.Number)
         {
-            return AddBlockResult.InvalidBlock;
+            // During sync, already-finalized blocks may be re-suggested (e.g. gap filling).
+            // Accept them as AlreadyKnown instead of treating them as invalid reorg attempts.
+            return IsKnownBlock(header.Number, header.Hash) && (BestSuggestedHeader?.Number ?? 0) >= header.Number
+                ? AddBlockResult.AlreadyKnown
+                : AddBlockResult.InvalidBlock;
         }
+
         BlockHeader current = header;
-        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        while (true)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -60,8 +64,6 @@ internal class XdcBlockTree(
             if (current is null)
                 return AddBlockResult.UnknownParent;
         }
-        //This is not possible to reach
-        return AddBlockResult.InvalidBlock;
     }
 
     protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)

@@ -20,9 +20,11 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} (${{ matrix.variant.label }})
+    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -100,10 +102,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
@@ -111,13 +109,18 @@ jobs:
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet test --project ${{ matrix.project }}.csproj -c release \
-            ${{ matrix.variant.dotnet-args }}
+          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          test_args=(--no-build --no-restore)
+
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
   tests-chunked:
-    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}, ${{ matrix.variant.label }})
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -148,6 +151,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -156,10 +160,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -169,8 +169,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
-            ${{ matrix.variant.dotnet-args }}
+          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          test_args=(--no-build --no-restore)
+
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
   tests-summary:
     name: Tests summary

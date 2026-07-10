@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -13,16 +12,21 @@ public interface ITxGossipPolicy
     bool ShouldGossipTransaction(Transaction tx) => true;
 }
 
-// Lazy: resolving ITxGossipPolicy[] eagerly pulls in the sync infrastructure
-// (SyncedTxGossipPolicy → ISyncModeSelector → ...) which depends on services
-// not yet available during init step construction.
-public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGossipPolicy
+public interface ITxGossipPolicySource
+{
+    ITxGossipPolicy[] Policies { get; }
+}
+
+// The source is deliberately lazy: resolving ITxGossipPolicy[] eagerly pulls in the sync infrastructure
+// (SyncedTxGossipPolicy -> ISyncModeSelector -> ...) which depends on services not yet available during
+// init step construction.
+public class CompositeTxGossipPolicy(ITxGossipPolicySource policySource) : ITxGossipPolicy
 {
     public bool ShouldListenToGossipedTransactions
     {
         get
         {
-            ITxGossipPolicy[] policy = policies.Value;
+            ITxGossipPolicy[] policy = policySource.Policies;
             for (int i = 0; i < policy.Length; i++)
             {
                 if (!policy[i].ShouldListenToGossipedTransactions)
@@ -36,7 +40,7 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
     {
         get
         {
-            ITxGossipPolicy[] policy = policies.Value;
+            ITxGossipPolicy[] policy = policySource.Policies;
             for (int i = 0; i < policy.Length; i++)
             {
                 if (!policy[i].CanGossipTransactions)
@@ -48,7 +52,7 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        ITxGossipPolicy[] policy = policies.Value;
+        ITxGossipPolicy[] policy = policySource.Policies;
         for (int i = 0; i < policy.Length; i++)
         {
             if (!policy[i].ShouldGossipTransaction(tx))

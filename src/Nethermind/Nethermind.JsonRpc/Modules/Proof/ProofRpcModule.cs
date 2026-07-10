@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -10,16 +9,18 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.Evm;
+using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
+using Nethermind.Serialization.Json;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -28,67 +29,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
     /// </summary>
     public class ProofRpcModule(
         IOverridableEnv<ITracer> tracerEnv,
+        IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
-        private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
+        // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
+        private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
+        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
+        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
 
-        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
-        {
-            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<CallResultWithProof>.Fail(searchResult);
-            }
-
-            BlockHeader sourceHeader = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(sourceHeader);
-
-            BlockHeader callHeader = new(
-                sourceHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                0,
-                sourceHeader.Number + 1,
-                sourceHeader.GasLimit,
-                sourceHeader.Timestamp,
-                [])
-            {
-                TxRoot = Keccak.EmptyTreeHash,
-                ReceiptsRoot = Keccak.EmptyTreeHash,
-                Author = Address.Zero
-            };
-
-            callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
-            callHeader.Hash = callHeader.CalculateHash();
-
-            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap);
-            if (!txResult.Success(out Transaction? transaction, out string? error))
-            {
-                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
-            }
-
-            Block block = new(callHeader, new[] { transaction }, []);
-
-            ProofBlockTracer proofBlockTracer = new(null, transaction.SenderAddress == Address.Zero);
-            scope.Component.Trace(block, proofBlockTracer);
-
-            CallResultWithProof callResultWithProof = new();
-            ProofTxTracer proofTxTracer = proofBlockTracer.BuildResult().Single();
-
-            callResultWithProof.BlockHeaders = CollectHeaderBytes(proofTxTracer, sourceHeader);
-            callResultWithProof.Result = proofTxTracer.Output;
-
-            // we collect proofs from before execution (after learning which addresses will be touched)
-            // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader, proofTxTracer);
-
-            return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
-        }
+        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
+            _witnessCall.Execute(tx, blockParameter);
 
         public ResultWrapper<TransactionForRpcWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
@@ -175,32 +129,44 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
         {
-            List<AccountProof> accountProofs = new();
-            foreach (Address address in proofTxTracer.Accounts)
+            if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
-                AccountProofCollector collector = new(address, proofTxTracer.Storages
-                    .Where(s => s.Address == address)
-                    .Select(s => s.Index).ToArray());
-
-                tracer.Accept(collector, baseBlock);
-                accountProofs.Add(collector.BuildResult());
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"storageKeys: {storageKeys.Count} is over the query limit {EthRpcModule.GetProofStorageKeyLimit}.",
+                    ErrorCodes.InvalidParams);
             }
 
-            return accountProofs.ToArray();
-        }
-
-        private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
-        {
-            List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
-            foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
+            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
             {
-                relevantHeaders.Add(blockFinder.FindHeader(blockHash));
+                return ResultWrapper<AccountProofWithMeta>.Fail(searchResult);
             }
 
-            return relevantHeaders
-                .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
+            BlockHeader header = searchResult.Object;
+
+            if (!blockchainBridge.HasStateForBlock(header!))
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"No state available for block {header!.ToString(BlockHeader.Format.Short)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            VisitingStats diagnostics = new();
+            blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
+
+            return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
+            {
+                Proof = accountProofCollector.BuildResult(),
+                Meta = new ProofMeta
+                {
+                    NodeLookups = diagnostics.NodeLookups,
+                    CacheHits = diagnostics.CacheHits,
+                    MaxDepth = diagnostics.MaxDepth,
+                },
+            });
         }
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);

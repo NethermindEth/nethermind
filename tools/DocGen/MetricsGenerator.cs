@@ -19,7 +19,7 @@ internal static partial class MetricsGenerator
         string startMark = "<!--[start autogen]-->";
         string endMark = "<!--[end autogen]-->";
         string[] excluded = Array.Empty<string>();
-        var types = Directory
+        IOrderedEnumerable<Type> types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
@@ -31,8 +31,8 @@ internal static partial class MetricsGenerator
         // Delete the temp file if it exists
         File.Delete(tempFileName);
 
-        using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
+        using StreamReader readStream = new(File.OpenRead(fileName));
+        using StreamWriter writeStream = new(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -48,7 +48,7 @@ internal static partial class MetricsGenerator
 
         writeStream.WriteLine();
 
-        foreach (var type in types)
+        foreach (Type type in types)
             WriteMarkdown(writeStream, type);
 
         bool skip = true;
@@ -76,7 +76,7 @@ internal static partial class MetricsGenerator
 
     private static void WriteMarkdown(StreamWriter file, Type metricsType)
     {
-        var props = metricsType
+        IOrderedEnumerable<PropertyInfo> props = metricsType
             .GetProperties()
             .OrderBy(p => p.Name);
 
@@ -88,9 +88,9 @@ internal static partial class MetricsGenerator
 
             """);
 
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var attr = prop.GetCustomAttribute<DescriptionAttribute>();
+            DescriptionAttribute? attr = prop.GetCustomAttribute<DescriptionAttribute>();
             string param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
 
             file.WriteLine($"- #### `nethermind{param}` \\{{#{param[1..]}\\}}");

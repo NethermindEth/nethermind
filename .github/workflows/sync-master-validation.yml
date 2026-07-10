@@ -78,8 +78,8 @@ jobs:
               ;;
           esac
 
-          # Filter testnet-matrix.json to master-validation chains only
-          MASTER_CHAINS='["mainnet","gnosis","op-mainnet"]'
+          # master-validation chains; op-mainnet dropped to cut Linode cost (kept in sync-supported-chains)
+          MASTER_CHAINS='["mainnet","gnosis"]'
 
           matrix=$(cat scripts/config/testnet-matrix.json | jq \
             --argjson chains "$MASTER_CHAINS" \
@@ -120,7 +120,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -154,7 +154,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -340,7 +340,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
@@ -37,6 +38,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly IBlockProcessingPauseControl _blockProcessingPauseControl;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -49,7 +51,8 @@ public class AdminRpcModule : IAdminRpcModule
         ChainParameters parameters,
         ITrustedNodesManager trustedNodesManager,
         ISubscriptionManager subscriptionManager,
-        IJsonRpcConfig jsonRpcConfig)
+        IJsonRpcConfig jsonRpcConfig,
+        IBlockProcessingPauseControl blockProcessingPauseControl)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -62,9 +65,25 @@ public class AdminRpcModule : IAdminRpcModule
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
         _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _blockProcessingPauseControl = blockProcessingPauseControl ?? throw new ArgumentNullException(nameof(blockProcessingPauseControl));
 
         BuildNodeInfo();
     }
+
+    public ResultWrapper<bool> admin_pauseBlockProcessing()
+    {
+        _blockProcessingPauseControl.Pause();
+        return ResultWrapper<bool>.Success(_blockProcessingPauseControl.IsPaused);
+    }
+
+    public ResultWrapper<bool> admin_resumeBlockProcessing()
+    {
+        _blockProcessingPauseControl.Resume();
+        return ResultWrapper<bool>.Success(!_blockProcessingPauseControl.IsPaused);
+    }
+
+    public ResultWrapper<bool> admin_isBlockProcessingPaused() =>
+        ResultWrapper<bool>.Success(_blockProcessingPauseControl.IsPaused);
 
     public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)
     {
@@ -155,6 +174,8 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null)
     {
+        if (Subscription.ValidateArgs(args) is { } failure) return failure;
+
         try
         {
             ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));

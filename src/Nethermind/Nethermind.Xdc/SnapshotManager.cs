@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
@@ -13,18 +17,26 @@ using Nethermind.Xdc.Types;
 namespace Nethermind.Xdc;
 
 internal sealed class SnapshotManager(
-    IDb snapshotDb,
+    [KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb snapshotDb,
     IBlockTree blockTree,
     IMasternodeVotingContract votingContract,
-    ISpecProvider specProvider)
+    ISpecProvider specProvider,
+    IStateReader stateReader,
+    ILogManager logManager
+    )
     : BaseSnapshotManager<Snapshot>(
         snapshotDb,
         blockTree,
         votingContract,
         specProvider,
+        stateReader,
+        logManager,
         new SnapshotDecoder(),
         cacheName: "XDC Snapshot cache")
 {
+    public override Snapshot CreateInitialSnapshot(ulong number, Hash256 hash, Address[] genesisMasterNodes) =>
+        new(number, hash, genesisMasterNodes);
+
     protected override Snapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);

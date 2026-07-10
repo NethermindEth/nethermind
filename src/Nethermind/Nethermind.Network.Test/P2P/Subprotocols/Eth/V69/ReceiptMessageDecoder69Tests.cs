@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
@@ -26,15 +25,16 @@ public class ReceiptMessageDecoder69Tests
 
         ReceiptMessageDecoder69 decoder = new();
         int length = decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts);
-        RlpStream rlpStream = new(length);
-        decoder.Encode(rlpStream, receipt, RlpBehaviors.Eip658Receipts);
-        byte[] encoded = rlpStream.Data!.ToArray();
+        byte[] encoded = new byte[length];
+        RlpWriter writer = new(encoded);
+        decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
 
-        TxReceipt? decoded = decoder.Decode(encoded, RlpBehaviors.Eip658Receipts);
+        RlpReader context = new(encoded);
+        TxReceipt? decoded = decoder.Decode(ref context, RlpBehaviors.Eip658Receipts);
 
-        decoded.Should().NotBeNull();
-        decoded!.TxType.Should().Be(receipt.TxType);
-        decoded.StatusCode.Should().Be(receipt.StatusCode);
-        decoded.GasUsedTotal.Should().Be(receipt.GasUsedTotal);
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.TxType, Is.EqualTo(receipt.TxType));
+        Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
+        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
     }
 }

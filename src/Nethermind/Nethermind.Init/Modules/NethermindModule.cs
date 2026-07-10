@@ -22,10 +22,10 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Testably.Abstractions;
 
 namespace Nethermind.Init.Modules;
@@ -52,6 +52,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             ))
             .AddModule(new DbMonitoringModule())
             .AddModule(new WorldStateModule(configProvider.GetConfig<IInitConfig>()))
+            .AddModule(new PruningTrieStoreModule())
+            .AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()))
+            .AddModule(new WorldStateDbDeciderModule())
             .AddModule(new PrewarmerModule(configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BuiltInStepsModule())
             .AddModule(new DatabaseMigrationsModule())
@@ -61,10 +64,11 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
+            .AddModule(new KeyStoreModule())
             .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
-            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INethermindApi>().NodeKey!)
+            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
             .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
@@ -95,8 +99,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
-        if (configProvider.GetConfig<IFlatDbConfig>().Enabled)
-            builder.AddModule(new FlatWorldStateModule(configProvider.GetConfig<IFlatDbConfig>()));
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -36,6 +36,9 @@ public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
     ]);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         // In Optimism, EIP1559 is activated in Bedrock
         bool isPreBedrock = !releaseSpec.IsEip1559Enabled;
@@ -45,6 +48,6 @@ public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
             return ValidationResult.Success;
         }
 
-        return _postBedrockValidator.IsWellFormed(transaction, releaseSpec);
+        return _postBedrockValidator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
     }
 }

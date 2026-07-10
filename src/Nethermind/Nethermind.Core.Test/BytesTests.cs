@@ -8,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.Intrinsics;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -17,6 +16,17 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BytesTests
     {
+        private static string CreateHexString(int byteLength)
+        {
+            char[] chars = new char[byteLength * 2];
+            for (int i = 0; i < byteLength; i++)
+            {
+                HexConverter.ToCharsBuffer((byte)i, chars, i * 2);
+            }
+
+            return new string(chars);
+        }
+
         [TestCase("0x", "0x", 0)]
         [TestCase(null, null, 0)]
         [TestCase(null, "0x", -1)]
@@ -48,6 +58,67 @@ namespace Nethermind.Core.Test
                 Assert.That(expectedResult, Is.EqualTo(bytes.Length), "Bytes array should be empty but is not");
             else
                 Assert.That(expectedResult, Is.EqualTo(bytes[0]), "new");
+        }
+
+        [TestCase("1234", 2, new byte[] { 0x12, 0x34 })]
+        [TestCase("0x1234", 2, new byte[] { 0x12, 0x34 })]
+        [TestCase("1234", 4, new byte[] { 0x00, 0x00, 0x12, 0x34 })]
+        [TestCase("123", 2, new byte[] { 0x01, 0x23 })]
+        public void FromHexString_with_length_returns_requested_length(string hexString, int length, byte[] expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString, length);
+
+            Assert.That(bytes, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FromHexString_with_length_zero_pads_large_prefix()
+        {
+            byte[] bytes = Bytes.FromHexString("1234", 512);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes, Has.Length.EqualTo(512));
+                Assert.That(bytes[..510], Is.All.Zero);
+                Assert.That(bytes[^2..], Is.EqualTo(new byte[] { 0x12, 0x34 }));
+            }
+        }
+
+        [TestCase("", true)]
+        [TestCase("0123456789abcdefABCDEF", true)]
+        [TestCase("0123456789abcdefABCDEF0123456789abcdef", true)]
+        [TestCase("0123456789abcdefg", false)]
+        [TestCase("0123456789abcdef\u0100", false)]
+        public void TryCopyHexToUtf8_validates_and_copies_hex_chars(string hex, bool expected)
+        {
+            byte[] utf8 = new byte[hex.Length];
+
+            bool actual = HexConverter.TryCopyHexToUtf8(hex, utf8);
+
+            Assert.That(actual, Is.EqualTo(expected));
+            if (expected)
+            {
+                for (int i = 0; i < hex.Length; i++)
+                {
+                    Assert.That(utf8[i], Is.EqualTo((byte)hex[i]));
+                }
+            }
+        }
+
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        public void FromHexString_large_even_length_matches_expected_bytes(int byteLength)
+        {
+            string hex = CreateHexString(byteLength);
+
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.That(bytes.Length, Is.EqualTo(byteLength));
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                Assert.That(bytes[i], Is.EqualTo((byte)i));
+            }
         }
 
         [TestCase(null)]
@@ -88,12 +159,15 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Bytes.ByteArrayToHexViaLookup32Safe(bytes, with0x), Is.EqualTo(expectedResult.ToLower()));
             }
-            Assert.That(bytes.ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
-            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false), Is.EqualTo(expectedResult.ToLower()));
-            Assert.That(new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
+                Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: false), Is.EqualTo(expectedResult.ToLower()));
+                Assert.That(new ReadOnlySpan<byte>(bytes).ToHexString(with0x, noLeadingZeros), Is.EqualTo(expectedResult.ToLower()));
 
-            Assert.That(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(expectedResult));
-            Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true)));
+                Assert.That(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(expectedResult));
+                Assert.That(bytes.AsSpan().ToHexString(with0x, noLeadingZeros, withEip55Checksum: true), Is.EqualTo(bytes.ToHexString(with0x, noLeadingZeros, withEip55Checksum: true)));
+            }
         }
 
         [TestCase("0x", "0x", true)]
@@ -121,19 +195,17 @@ namespace Nethermind.Core.Test
 
             try
             {
-                using (MemoryStream ms = new())
-                {
-                    sw = new StreamWriter(ms);
-                    sr = new StreamReader(ms);
+                using MemoryStream ms = new();
+                sw = new StreamWriter(ms);
+                sr = new StreamReader(ms);
 
-                    bytes.StreamHex(sw);
-                    sw.Flush();
+                bytes.StreamHex(sw);
+                sw.Flush();
 
-                    ms.Position = 0;
+                ms.Position = 0;
 
-                    string result = sr.ReadToEnd();
-                    Assert.That(result, Is.EqualTo("0f10ff"));
-                }
+                string result = sr.ReadToEnd();
+                Assert.That(result, Is.EqualTo("0f10ff"));
             }
             finally
             {
@@ -293,7 +365,7 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hex);
             Bytes.ChangeEndianness8(bytes);
-            bytes.ToHexString(true).Should().Be(expectedResult);
+            Assert.That(bytes.ToHexString(true), Is.EqualTo(expectedResult));
         }
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
@@ -389,9 +461,12 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hex);
 
-            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
-            Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
-            Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+                Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
+                Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+            }
         }
 
         [TestCase("0x8000000000000000")] // 8 bytes, top bit set (== 2^63)
@@ -511,24 +586,24 @@ namespace Nethermind.Core.Test
         public void Or(byte[] first, byte[] second, byte[] expected)
         {
             first.AsSpan().Or(second);
-            first.Should().Equal(expected);
+            Assert.That(first, Is.EqualTo(expected));
         }
 
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {
             first.AsSpan().Xor(second);
-            first.Should().Equal(expected);
+            Assert.That(first, Is.EqualTo(expected));
         }
 
         [Test]
-        public void NullableComparison() => Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
+        public void NullableComparison() => Assert.That(Bytes.NullableEqualityComparer.Equals(null, null), Is.True);
 
         [Test]
         public void FastHash_EmptyInput_ReturnsZero()
         {
             ReadOnlySpan<byte> empty = ReadOnlySpan<byte>.Empty;
-            empty.FastHash().Should().Be(0);
+            Assert.That(empty.FastHash(), Is.EqualTo(0));
         }
 
         [Test]
@@ -540,7 +615,7 @@ namespace Nethermind.Core.Test
             int hash1 = ((ReadOnlySpan<byte>)input).FastHash();
             int hash2 = ((ReadOnlySpan<byte>)input).FastHash();
 
-            hash1.Should().Be(hash2);
+            Assert.That(hash1, Is.EqualTo(hash2));
         }
 
         [Test]
@@ -555,7 +630,7 @@ namespace Nethermind.Core.Test
             int hash1 = ((ReadOnlySpan<byte>)input1).FastHash();
             int hash2 = ((ReadOnlySpan<byte>)input2).FastHash();
 
-            hash1.Should().NotBe(hash2);
+            Assert.That(hash1, Is.Not.EqualTo(hash2));
         }
 
         // Test cases for the fold-back bug fix: remaining in [49-63] after 64-byte initial load
@@ -582,7 +657,7 @@ namespace Nethermind.Core.Test
                 modified[i] ^= 0xFF;
 
                 int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
-                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+                Assert.That(modifiedHash, Is.Not.EqualTo(originalHash), $"Changing byte at index {i} should change the hash for length {length}");
             }
         }
 
@@ -603,7 +678,7 @@ namespace Nethermind.Core.Test
                 modified[i] ^= 0xFF;
 
                 int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
-                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} (in gap range) should change the hash");
+                Assert.That(modifiedHash, Is.Not.EqualTo(originalHash), $"Changing byte at index {i} (in gap range) should change the hash");
             }
         }
 
@@ -623,7 +698,7 @@ namespace Nethermind.Core.Test
                 modified[i] ^= 0xFF;
 
                 int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
-                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+                Assert.That(modifiedHash, Is.Not.EqualTo(originalHash), $"Changing byte at index {i} should change the hash for length {length}");
             }
         }
 
@@ -654,7 +729,7 @@ namespace Nethermind.Core.Test
                 modified[i] ^= 0xFF;
 
                 int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
-                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+                Assert.That(modifiedHash, Is.Not.EqualTo(originalHash), $"Changing byte at index {i} should change the hash for length {length}");
             }
         }
 
@@ -678,9 +753,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < length; i++)
                 input[i] = (byte)(i * 0x17 + 0x42);
 
-            SpanExtensions.FastHash(input, seed1).Should()
-                .NotBe(SpanExtensions.FastHash(input, seed2),
-                    $"seeds {seed1} vs {seed2} for {length} bytes");
+            Assert.That(SpanExtensions.FastHash(input, seed1), Is.Not.EqualTo(SpanExtensions.FastHash(input, seed2)), $"seeds {seed1} vs {seed2} for {length} bytes");
         }
 
         // ── CountZeros edge-case tests ──
@@ -723,7 +796,7 @@ namespace Nethermind.Core.Test
                 if (t == 0) expected++;
             }
 
-            data.AsSpan().CountZeros().Should().Be(expected);
+            Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(expected));
         }
 
         /// <summary>
@@ -739,7 +812,7 @@ namespace Nethermind.Core.Test
         public void CountZeros_all_zeros_exact_vector_multiples(int length)
         {
             byte[] data = new byte[length];
-            data.AsSpan().CountZeros().Should().Be(length);
+            Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(length));
         }
 
         /// <summary>
@@ -756,7 +829,7 @@ namespace Nethermind.Core.Test
         {
             byte[] data = new byte[length];
             Array.Fill(data, (byte)0xFF);
-            data.AsSpan().CountZeros().Should().Be(0);
+            Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(0));
         }
 
         /// <summary>
@@ -772,8 +845,7 @@ namespace Nethermind.Core.Test
                 byte[] data = new byte[32];
                 Array.Fill(data, (byte)0xFF);
                 data[pos] = 0;
-                data.AsSpan().CountZeros().Should().Be(1,
-                    $"single zero at position {pos} should be counted");
+                Assert.That(data.AsSpan().CountZeros(), Is.EqualTo(1), $"single zero at position {pos} should be counted");
             }
         }
     }

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -13,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State.Healing;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -26,7 +26,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Synchronization.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -34,6 +33,8 @@ namespace Nethermind.Synchronization
         ISyncModeSelector syncModeSelector,
         ISyncReport syncReport,
         ISyncConfig syncConfig,
+        IBlockTree blockTree,
+        ISyncPivotResolver syncPivotResolver,
         ILogManager logManager,
         INodeStatsManager nodeStatsManager,
         [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> fullSyncComponent,
@@ -93,8 +94,29 @@ namespace Nethermind.Synchronization
                 SyncModeSelector.Changed += GCOnFeedFinished;
             }
 
-            // Make unit test faster.
-            SyncModeSelector.Update();
+            // Mode selection only begins once startup prerequisites are met: the DB block load has finished
+            // and the starting sync pivot has been resolved. Until then the feeds wired above stay dormant.
+            _ = StartModeSelectorAfterGates(_syncCancellation!.Token);
+        }
+
+        private async Task StartModeSelectorAfterGates(CancellationToken cancellationToken)
+        {
+            try
+            {
+                // Gate 1: the block tree cannot accept new blocks while a bulk DB load holds it, so wait for
+                // that to finish (the old DbLoad sync mode polled the same flag every selector tick).
+                while (!blockTree.CanAcceptNewBlocks)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(syncConfig.MultiSyncModeSelectorLoopTimerMs), cancellationToken);
+                }
+                await syncPivotResolver.EnsureSyncPivot(cancellationToken);
+                await SyncModeSelector.StartAsync();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Failed to start sync mode selector", e);
+            }
         }
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
@@ -304,11 +326,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
             .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
             .AddSingleton<ISyncReport, SyncReport>()
-            .AddSingleton<IFullStateFinder, FullStateFinder>()
             .AddSingleton<SyncDbTuner>()
             .AddSingleton<MallocTrimmer>()
             .AddSingleton<ISyncPointers, SyncPointers>()
             .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddSingleton<ISyncPivotResolver>(No.SyncPivot)
             .AddSingleton<IPivot, Pivot>() // Used by sync report
             .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
             .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
@@ -356,12 +378,6 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
-
-            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
-                new NodeDataRecovery(peerPool!, nodeStorage, logManager),
-                new SnapRangeRecovery(peerPool!, logManager),
-                logManager
-            ))
 
             .AddSingleton<ISyncServer, SyncServer>();
 

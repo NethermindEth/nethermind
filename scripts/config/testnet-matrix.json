@@ -36,7 +36,7 @@
     "cl": "lodestar",
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
-    "timeout": 180,
+    "timeout": 360,
     "agent": "g6-standard-8"
   },
   {
@@ -46,14 +46,6 @@
     "checkpoint-sync-url": "",
     "timeout": 180,
     "agent": "g6-standard-6"
-  },
-  {
-    "network": "base-sepolia",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 180,
-    "agent": "g6-standard-8"
   },
   {
     "network": "world-sepolia",
@@ -70,14 +62,6 @@
     "checkpoint-sync-url": "",
     "timeout": 600,
     "agent": "g6-standard-8"
-  },
-  {
-    "network": "base-mainnet",
-    "cl": "",
-    "cl_image": "",
-    "checkpoint-sync-url": "",
-    "timeout": 600,
-    "agent": "g6-standard-16"
   },
   {
     "network": "world-mainnet",

@@ -11,9 +11,13 @@ namespace Nethermind.Merge.Plugin.Data;
 public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees)
     : IForkValidator where TVersionedExecutionPayload : ExecutionPayload, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
+    private TVersionedExecutionPayload? _executionPayload;
+
+    protected Block Block { get; } = block;
+
     public UInt256 BlockValue { get; } = blockFees;
 
-    public virtual TVersionedExecutionPayload ExecutionPayload { get; } = TVersionedExecutionPayload.Create(block);
+    public virtual TVersionedExecutionPayload ExecutionPayload => _executionPayload ??= TVersionedExecutionPayload.Create(Block);
 
     public virtual bool ValidateFork(ISpecProvider specProvider) => ExecutionPayload.ValidateFork(specProvider);
 

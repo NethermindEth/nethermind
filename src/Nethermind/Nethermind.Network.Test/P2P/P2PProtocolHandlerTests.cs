@@ -3,7 +3,8 @@
 
 using System.Linq;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Net;
+using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -64,7 +65,7 @@ namespace Nethermind.Network.Test.P2P
 
             return new P2PProtocolHandler(
                 _session,
-                TestItem.PublicKeyA,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
                 _nodeStatsManager,
                 _serializer,
                 Substitute.For<IBackgroundTaskScheduler>(),
@@ -122,7 +123,7 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(packet);
 
-            _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
+            Assert.That(_nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation, Is.Not.Null);
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
@@ -138,7 +139,8 @@ namespace Nethermind.Network.Test.P2P
         public void Sets_local_node_id_from_constructor()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            Assert.That(TestItem.PublicKeyA, Is.EqualTo(p2PProtocolHandler.LocalNodeId));
+            p2PProtocolHandler.Init();
+            _session.Received(1).DeliverMessage(Arg.Is<HelloMessage>(m => m.NodeId == TestItem.PublicKeyA));
         }
 
         [Test]
@@ -249,15 +251,15 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
 
-            requestedCount.Should().Be(1);
-            p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+            Assert.That(requestedCount, Is.EqualTo(1));
+            Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)), Is.EqualTo(1));
         }
 
         [Test]
         public void Hello_starts_highest_agreed_eth_version_only()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            List<ProtocolEventArgs> requestedProtocols = new();
+            List<ProtocolEventArgs> requestedProtocols = [];
 
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
@@ -280,9 +282,9 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
-            requestedProtocols.Should().ContainSingle();
-            requestedProtocols[0].ProtocolCode.Should().Be(Protocol.Eth);
-            requestedProtocols[0].Version.Should().Be(71);
+            Assert.That(requestedProtocols, Has.Exactly(1).Items);
+            Assert.That(requestedProtocols[0].ProtocolCode, Is.EqualTo(Protocol.Eth));
+            Assert.That(requestedProtocols[0].Version, Is.EqualTo(71));
         }
 
         [Test]

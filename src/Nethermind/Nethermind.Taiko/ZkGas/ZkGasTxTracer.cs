@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -29,7 +30,7 @@ public sealed class ZkGasTxTracer : TxTracer
 
     // Per-opcode step tracking
     private byte _currentOpcode;
-    private long _currentGasStart;
+    private ulong _currentGasStart;
     private bool _stepActive;
 
     // Deferred spawn opcode charging
@@ -37,11 +38,12 @@ public sealed class ZkGasTxTracer : TxTracer
     private byte _deferredOpcode;
     private ulong _deferredGasDelta;
     private bool _deferredSpawned;
+    private bool _deferredErrored;
 
     // Precompile tracking
     private bool _pendingPrecompile;
-    private byte _precompileAddressByte;
-    private long _precompileGasStart;
+    private Address? _precompileAddress;
+    private ulong _precompileGasStart;
 
     /// <summary>
     /// Creates a new ZK gas tracer backed by the provided meter.
@@ -57,7 +59,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Captures the opcode and pre-execution gas for the current step.
     /// Flushes any previously deferred spawn opcode charge first.
     /// </summary>
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FlushDeferredStep();
 
@@ -71,24 +73,28 @@ public sealed class ZkGasTxTracer : TxTracer
     /// charging until we learn whether child work was dispatched. For all other
     /// opcodes, charges immediately.
     /// </summary>
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_stepActive)
             return;
 
         _stepActive = false;
 
-        long delta = _currentGasStart - gas;
-        ulong rawGas = delta > 0 ? (ulong)delta : 0;
+        ulong rawGas = _currentGasStart.SaturatingSub(gas);
 
         if (IsSpawnOpcode(_currentOpcode))
         {
             // Defer: we don't yet know if this opcode will open a child frame.
-            // ReportAction will mark it as spawned if it does.
+            // Resolution happens in one of three places:
+            //  1. ReportAction (success path, CALL or CREATE) → _deferredSpawned = true
+            //  2. ReportOperationError (instruction error path)  → _deferredErrored = true
+            //  3. Otherwise (CREATE/CREATE2 post-trace bail on EIP-7610 collision)
+            //     → treated as spawned at flush time.
             _hasDeferredStep = true;
             _deferredOpcode = _currentOpcode;
             _deferredGasDelta = rawGas;
             _deferredSpawned = false;
+            _deferredErrored = false;
         }
         else
         {
@@ -100,7 +106,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Tracks call/create actions. Marks the deferred spawn opcode as spawned and
     /// captures precompile gas start for separate precompile charging.
     /// </summary>
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         // Mark the deferred step as having actually spawned child work
         if (_hasDeferredStep)
@@ -111,7 +117,7 @@ public sealed class ZkGasTxTracer : TxTracer
         if (isPrecompileCall)
         {
             _pendingPrecompile = true;
-            _precompileAddressByte = to.Bytes[19];
+            _precompileAddress = to;
             _precompileGasStart = gas;
         }
     }
@@ -120,7 +126,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas when a precompile call completes successfully.
     /// Also flushes the deferred spawn step since the action is now resolved.
     /// </summary>
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
@@ -130,7 +136,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas when a create-type action ends.
     /// Also flushes the deferred spawn step since the action is now resolved.
     /// </summary>
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
@@ -170,6 +176,14 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void ReportOperationError(EvmExceptionType error)
     {
+        // Remember that the just-deferred spawn op errored (e.g. OOG between
+        // EndInstructionTrace and child-frame dispatch). At flush time this
+        // suppresses the post-trace-bail "treat as spawned" path for CREATE/CREATE2.
+        if (_hasDeferredStep)
+        {
+            _deferredErrored = true;
+        }
+
         if (error == EvmExceptionType.StaticCallViolation)
         {
             ulong staticGas = GetRevmStaticGasForOpcode(_currentOpcode);
@@ -205,16 +219,22 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charges precompile ZK gas on revert.
     /// Also flushes the deferred spawn step.
     /// </summary>
-    public override void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
     }
 
     /// <summary>
-    /// Flushes any deferred spawn opcode charge. If the opcode was marked as spawned
-    /// (by ReportAction), uses the fixed spawn estimate; otherwise uses the measured
-    /// gas delta.
+    /// Flushes any deferred spawn opcode charge.
+    ///
+    /// Charge selection:
+    ///  - <c>_deferredSpawned</c> set by ReportAction (child frame dispatched) → spawn estimate.
+    ///  - Else if CREATE/CREATE2 reached ReportOperationRemainingGas without erroring,
+    ///    it must have been a post-trace bail (EIP-7610 collision);
+    ///    REVM treats this as spawned too → spawn estimate.
+    ///  - Otherwise (CALL-family with no dispatch, or any spawn op that errored mid-flight)
+    ///    → measured raw gas delta.
     /// </summary>
     private void FlushDeferredStep()
     {
@@ -223,24 +243,29 @@ public sealed class ZkGasTxTracer : TxTracer
 
         _hasDeferredStep = false;
 
-        ulong rawGas = _deferredSpawned
+        bool isCreate = _deferredOpcode == 0xf0 || _deferredOpcode == 0xf5;
+        bool treatAsSpawned = _deferredSpawned || (isCreate && !_deferredErrored);
+
+        ulong rawGas = treatAsSpawned
             ? GetSpawnEstimate(_deferredOpcode)
             : _deferredGasDelta;
 
         _meter.ChargeOpcode(_deferredOpcode, rawGas);
     }
 
-    private void ChargePrecompileIfPending(long gasRemaining)
+    private void ChargePrecompileIfPending(ulong gasRemaining)
     {
         if (!_pendingPrecompile)
             return;
 
         _pendingPrecompile = false;
-        long gasUsed = _precompileGasStart - gasRemaining;
-        if (gasUsed > 0)
+        ulong gasUsed = _precompileGasStart.SaturatingSub(gasRemaining);
+        if (gasUsed > 0 && _precompileAddress is not null)
         {
-            _meter.ChargePrecompile(_precompileAddressByte, (ulong)gasUsed);
+            _meter.ChargePrecompile(_precompileAddress, gasUsed);
         }
+
+        _precompileAddress = null;
     }
 
     private static bool IsSpawnOpcode(byte opcode) =>

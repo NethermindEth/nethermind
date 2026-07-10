@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -27,7 +26,7 @@ public class VisitorProgressTrackerTests
 
         // Assert - should be ~50% progress
         double progress = tracker.GetProgress();
-        progress.Should().BeApproximately(0.5, 0.01);
+        Assert.That(progress, Is.EqualTo(0.5).Within(0.01));
     }
 
     [Test]
@@ -47,7 +46,7 @@ public class VisitorProgressTrackerTests
 
         // Assert - should be ~25% progress
         double progress = tracker.GetProgress();
-        progress.Should().BeApproximately(0.25, 0.01);
+        Assert.That(progress, Is.EqualTo(0.25).Within(0.01));
     }
 
     [Test]
@@ -73,7 +72,7 @@ public class VisitorProgressTrackerTests
         });
 
         // Assert - node count should match
-        tracker.NodeCount.Should().Be(threadCount * nodesPerThread);
+        Assert.That(tracker.NodeCount, Is.EqualTo(threadCount * nodesPerThread));
     }
 
     [Test]
@@ -91,12 +90,12 @@ public class VisitorProgressTrackerTests
             tracker.OnNodeVisited(path, isStorage: false, isLeaf: true);
 
             double progress = tracker.GetProgress();
-            progress.Should().BeGreaterThanOrEqualTo(lastProgress);
+            Assert.That(progress, Is.GreaterThanOrEqualTo(lastProgress));
             lastProgress = progress;
         }
 
         // Assert - after visiting all 16 single-nibble leaves, progress should be 100%
-        tracker.GetProgress().Should().Be(1.0);
+        Assert.That(tracker.GetProgress(), Is.EqualTo(1.0));
     }
 
     [Test]
@@ -112,7 +111,7 @@ public class VisitorProgressTrackerTests
 
         // Assert - GetProgress still returns actual progress, but logger shows 100%
         // (We can't easily test logger output, so just verify Finish doesn't throw)
-        tracker.NodeCount.Should().Be(1);
+        Assert.That(tracker.NodeCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -131,7 +130,7 @@ public class VisitorProgressTrackerTests
         tracker.OnNodeVisited(path3);
 
         // Assert - should not throw and should track nodes
-        tracker.NodeCount.Should().Be(3);
+        Assert.That(tracker.NodeCount, Is.EqualTo(3));
     }
 
     [Test]
@@ -145,7 +144,7 @@ public class VisitorProgressTrackerTests
         tracker.OnNodeVisited(path);
 
         // Assert
-        tracker.NodeCount.Should().Be(1);
-        tracker.GetProgress().Should().Be(0); // Empty path doesn't contribute to progress
+        Assert.That(tracker.NodeCount, Is.EqualTo(1));
+        Assert.That(tracker.GetProgress(), Is.EqualTo(0)); // Empty path doesn't contribute to progress
     }
 }

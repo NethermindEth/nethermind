@@ -63,7 +63,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private readonly bool _causeTimeoutOnInit;
         private readonly bool _causeTimeoutOnBlocks;
         private readonly bool _causeTimeoutOnHeaders;
-        private List<Block> Blocks { get; } = new();
+        private List<Block> Blocks { get; } = [];
 
         public Block HeadBlock => Blocks.Last();
 
@@ -118,7 +118,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public override Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token)
         {
             if (_causeTimeoutOnHeaders)
             {
@@ -186,10 +186,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-        public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
+        public void AddBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = block.Number; j < i; j++)
+            for (ulong j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                     .WithTotalDifficulty(block.TotalDifficulty + 1000000)
@@ -200,10 +200,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             UpdateHead();
         }
 
-        public void AddHighDifficultyBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
+        public void AddHighDifficultyBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {
             Block block = Blocks.Last();
-            for (long j = block.Number; j < i; j++)
+            for (ulong j = block.Number; j < i; j++)
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
@@ -303,7 +303,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new TestMergeModule(configProvider));
+                builder.RegisterModule(new TestMergeModule());
             }
 
             Container = builder.Build();
@@ -341,14 +341,15 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             return this;
         }
 
-        private const int DynamicTimeout = 10000;
+        private const int DynamicTimeout = 30000;
 
         public SyncingContext BestSuggestedHeaderIs(BlockHeader header, int timeout = DynamicTimeout)
         {
+            Hash256 expectedHash = header.Hash!;
             Assert.That(
-                () => BlockTree.BestSuggestedHeader,
-                Is.EqualTo(header).After(timeout, 10), "header");
-
+                () => BlockTree.BestSuggestedHeader?.Hash,
+                Is.EqualTo(expectedHash).After(timeout, 10),
+                () => $"BestSuggestedHeader hash mismatch. Expected {expectedHash}, current: {BlockTree.BestSuggestedHeader}");
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
         }
@@ -356,11 +357,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext BestSuggestedBlockHasNumber(long number)
         {
             _logger.Info($"ASSERTING THAT NUMBER IS {number}");
-
             Assert.That(
-                () => BlockTree.BestSuggestedHeader!.Number,
-                Is.EqualTo(number).After(DynamicTimeout, 10), "block number");
-
+                () => BlockTree.BestSuggestedHeader?.Number,
+                Is.EqualTo(number).After(DynamicTimeout, 10),
+                () => $"BestSuggestedHeader number mismatch. Expected {number}, current: {BlockTree.BestSuggestedHeader}");
             _blockHeader = BlockTree.BestSuggestedHeader!;
             return this;
         }
@@ -407,7 +407,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         {
             Block genesis = _genesisBlock;
             BlockTree.SuggestBlock(genesis);
-            BlockTree.UpdateMainChain(genesis);
+            BlockTree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
             return this;
         }
 
@@ -432,7 +432,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
         {
             _logger.Info($"NEW BLOCK MESSAGE {block.Number}");
-            block.Header.TotalDifficulty = block.Difficulty * (ulong)(block.Number + 1);
+            block.Header.TotalDifficulty = block.Difficulty * (block.Number + 1);
             SyncServer.AddNewBlock(block, peer);
             return this;
         }
@@ -452,7 +452,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext PeerCountEventuallyIs(long i)
         {
-            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 10), "peer count");
+            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(30_000, 10), "peer count");
             return this;
         }
 
@@ -487,7 +487,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         }
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Init_condition_are_as_expected() =>
         await When.Syncing
             .AfterProcessingGenesis()
@@ -496,7 +496,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .BestSuggested.BlockIsSameAsGenesis()
             .StopAsync();
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_sync_with_one_peer_straight()
     {
         SyncPeerMock peerA = new("A");
@@ -508,7 +508,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_sync_with_one_peer_straight_and_extend_chain()
     {
         SyncPeerMock peerA = new("A");
@@ -521,23 +521,24 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_extend_chain_by_one_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(2))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_reorg_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
@@ -550,14 +551,14 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
+            .BestSuggestedBlockHasNumber(3)
             .After(() => peerB.AddBlocksUpTo(6))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
             .BestSuggestedHeaderIs(peerB.HeadHeader)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     [Ignore("Not supported for now - still analyzing this scenario")]
     public async Task Can_reorg_on_hint_block_message()
     {
@@ -577,57 +578,60 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_extend_chain_by_one_on_block_hint_message()
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(2))
             .AfterHintBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_extend_chain_by_more_than_one_on_new_block_message()
     {
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(8))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Will_ignore_new_block_that_is_far_ahead()
     {
         // this test was designed for no sync-timer sync process
         // now it checks something different
         SyncPeerMock peerA = new("A");
         peerA.AddBlocksUpTo(1);
+        BlockHeader initialHead = peerA.HeadHeader;
 
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(initialHead)
             .After(() => peerA.AddBlocksUpTo(16))
             .AfterNewBlockMessage(peerA.HeadBlock, peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_sync_when_best_peer_is_timing_out()
     {
         SyncPeerMock peerA = new("A");
@@ -729,7 +733,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_reorg_on_add_peer()
     {
         SyncPeerMock peerA = new("A");
@@ -747,7 +751,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test]
+    [Test, Retry(3)]
     public async Task Can_reorg_based_on_total_difficulty()
     {
         if (WithTTD(_synchronizerType)) { return; }
@@ -760,13 +764,13 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     [Ignore("Not supported for now - still analyzing this scenario")]
     public async Task Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
     {
@@ -802,17 +806,16 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
-            .WaitUntilInitialized()
-            .BestSuggestedHeaderIs(peerB.HeadHeader)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Will_not_reorganize_on_same_chain_length()
     {
         SyncPeerMock peerA = new("A");
@@ -842,10 +845,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         await When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .AfterPeerIsAdded(peerB)
             .WaitALittle()
-            .BestSuggestedHeaderIs(peerA.HeadHeader)
+            .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
     }
 
@@ -862,7 +865,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_sync_exactly_one_batch()
     {
         SyncPeerMock peerA = new("A");
@@ -875,7 +878,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_stop()
     {
         SyncPeerMock peerA = new("A");

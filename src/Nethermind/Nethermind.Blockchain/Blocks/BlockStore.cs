@@ -6,29 +6,32 @@ using System.Buffers;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore, IClearableCache
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder? headerDecoder = null) : IBlockStore, IClearableCache
 {
-    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
+
+    private readonly IDb _blockDb = blockDb;
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
 
-    public void SetMetadata(byte[] key, byte[] value) => blockDb.Set(key, value);
+    public void SetMetadata(byte[] key, byte[] value) => _blockDb.Set(key, value);
 
-    public byte[]? GetMetadata(byte[] key) => blockDb.Get(key);
+    public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return blockDb.KeyExists(dbKey);
+        return _blockDb.KeyExists(dbKey);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -38,43 +41,40 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
             throw new InvalidOperationException("An attempt to store a block with a null hash.");
         }
 
-        // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
-        // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
-        using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-
-        blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+        using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
+        _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
     }
 
-    public void Delete(long blockNumber, Hash256 blockHash)
+    public void Delete(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(in blockHash.ValueHash256);
-        blockDb.Delete(blockNumber, blockHash);
-        blockDb.Remove(blockHash.Bytes);
+        _blockDb.Delete(blockNumber, blockHash);
+        _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
+    public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
-    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        byte[] b = blockDb.Get(dbKey);
+        byte[] b = _blockDb.Get(dbKey);
         if (b is not null) return b;
-        return blockDb.Get(blockHash);
+        return _blockDb.Get(blockHash);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
-        memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
+        memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);

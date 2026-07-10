@@ -5,7 +5,6 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -52,7 +50,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             NetworkDiagTracer.IsEnabled = true;
 
-            _disposables = new();
+            _disposables = [];
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -93,14 +91,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Metadata_correct()
         {
-            _handler.ProtocolCode.Should().Be("eth");
-            _handler.Name.Should().Be("eth65");
-            _handler.ProtocolVersion.Should().Be(65);
-            _handler.MessageIdSpaceSize.Should().Be(17);
-            _handler.IncludeInTxPool.Should().BeTrue();
-            _handler.ClientId.Should().Be(_session.Node?.ClientId);
-            _handler.HeadHash.Should().BeNull();
-            _handler.HeadNumber.Should().Be(0);
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth65"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(65));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
         }
 
         [TestCase(1)]
@@ -112,7 +110,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -132,7 +130,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             for (int i = 0; i < txCount; i++)
             {
-                txs[i] = Build.A.Transaction.WithNonce((UInt256)i).SignedAndResolved().TestObject;
+                txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved().TestObject;
             }
 
             _handler.SendNewTransactions(txs, false);
@@ -154,7 +152,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 });
             using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
-            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+            Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
         }
 
         [TestCase(0)]
@@ -178,7 +176,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 });
             using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
-            response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+            Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
         }
 
         [Test]

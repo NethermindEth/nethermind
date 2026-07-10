@@ -4,9 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Trie;
+using Nethermind.Core.Extensions;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
 
@@ -15,26 +14,42 @@ namespace Nethermind.Evm.State;
 public class PreBlockCaches
 {
     private const int InitialCapacity = 4096 * 8;
+
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
+    private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
-    public PreBlockCaches() => _clearCaches =
+    public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
+
+    public PreBlockCaches(PreBlockCachesConfig config)
+    {
+        _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
             () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
+    }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public SeqlockCache<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
+
+    /// <summary>
+    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
+    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
+    /// </summary>
+    public IWorldStateScopeProvider.IScope? MainScope
+    {
+        get => _mainScope;
+        set => _mainScope = value;
+    }
 
     public CacheType ClearCaches()
     {
@@ -55,6 +70,12 @@ public class PreBlockCaches
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
         public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
+}
+
+public sealed record PreBlockCachesConfig
+{
+    // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
+    public int StorageCacheSetsBits { get; init; } = 17;
 }
 
 [Flags]

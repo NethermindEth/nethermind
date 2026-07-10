@@ -61,27 +61,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                             {
                                 try
                                 {
-                                    bool set = false;
-
-                                    foreach (IMessageHandler<TMessage> retryHandler in bag.Drain())
-                                    {
-                                        if (!set)
-                                        {
-                                            _requestingResources.Set(item.ResourceId);
-                                            set = true;
-
-                                            if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
-                                        }
-
-                                        try
-                                        {
-                                            retryHandler.HandleMessage(TMessage.New(item.ResourceId));
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            _logger.TraceError($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
-                                        }
-                                    }
+                                    RetryRequestSender sender = new(this, item.ResourceId);
+                                    bag.Drain(ref sender);
                                 }
                                 finally
                                 {
@@ -111,7 +92,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            _logger.DebugWarn($"{typeof(TResourceId)} retry queue is full");
+            _logger.TraceWarn($"{typeof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
@@ -199,6 +180,31 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         Clear();
     }
+
+    private struct RetryRequestSender(RetryCache<TMessage, TResourceId> cache, TResourceId resourceId) : IHandlerBagDrainProcessor<TMessage>
+    {
+        private bool _requestingResourceSet;
+
+        public void Process(IMessageHandler<TMessage> retryHandler)
+        {
+            if (!_requestingResourceSet)
+            {
+                cache._requestingResources.Set(resourceId);
+                _requestingResourceSet = true;
+
+                if (cache._logger.IsTrace) cache._logger.Trace($"Sending retry requests for {resourceId} after timeout");
+            }
+
+            try
+            {
+                retryHandler.HandleMessage(TMessage.New(resourceId));
+            }
+            catch (Exception ex)
+            {
+                cache._logger.TraceError($"Failed to send retry request to {retryHandler} for {resourceId}", ex);
+            }
+        }
+    }
 }
 
 public enum AnnounceResult
@@ -270,21 +276,27 @@ internal sealed class HandlerBag<TMessage>
     }
 
     /// <summary>
-    /// Snapshot the handlers, clear the set, and deactivate. After this call,
+    /// Process the handlers, clear the set, and deactivate. After this call,
     /// any in-flight TryAdd will be rejected.
     /// </summary>
-    public IMessageHandler<TMessage>[] Drain()
+    public void Drain<TProcessor>(ref TProcessor processor)
+        where TProcessor : struct, IHandlerBagDrainProcessor<TMessage>
     {
         lock (_lock)
         {
             _active = false;
+        }
 
-            if (_handlers.Count == 0)
-                return [];
-
-            IMessageHandler<TMessage>[] snapshot = [.. _handlers];
+        try
+        {
+            foreach (IMessageHandler<TMessage> handler in _handlers)
+            {
+                processor.Process(handler);
+            }
+        }
+        finally
+        {
             _handlers.Clear();
-            return snapshot;
         }
     }
 
@@ -300,6 +312,11 @@ internal sealed class HandlerBag<TMessage>
             _handlers.Clear();
         }
     }
+}
+
+internal interface IHandlerBagDrainProcessor<TMessage>
+{
+    void Process(IMessageHandler<TMessage> handler);
 }
 
 internal sealed class HandlerBagPolicy<TMessage> : IPooledObjectPolicy<HandlerBag<TMessage>>

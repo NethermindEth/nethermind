@@ -12,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.Network
 {
@@ -22,10 +21,9 @@ namespace Nethermind.Network
         private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
-        private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
 
         private readonly TimeSpan _pingInterval;
-        private readonly List<Task<bool>> _pingTasks = new();
+        private readonly List<Task<bool>> _pingTasks = [];
 
         private CancellationTokenSource? _cancellationTokenSource;
 
@@ -35,7 +33,6 @@ namespace Nethermind.Network
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
-            _onDisconnected = OnDisconnected;
         }
 
         public void Start() => StartPingTimer();
@@ -47,7 +44,6 @@ namespace Nethermind.Network
 
         public void AddSession(ISession session)
         {
-            session.Disconnected += _onDisconnected;
             if (session.State < SessionState.DisconnectingProtocols)
             {
                 // Stagger ping times so sessions added around the same time don't all ping on the same tick.
@@ -58,12 +54,8 @@ namespace Nethermind.Network
             }
         }
 
-        private void OnDisconnected(object sender, DisconnectEventArgs e)
-        {
-            ISession session = (ISession)sender;
-            session.Disconnected -= _onDisconnected;
+        public void RemoveSession(ISession session) =>
             _sessions.TryRemove(session.SessionId, out session);
-        }
 
         private async Task SendPingMessagesAsync()
         {

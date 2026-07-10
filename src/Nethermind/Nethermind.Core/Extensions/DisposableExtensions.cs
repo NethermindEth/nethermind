@@ -4,12 +4,35 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Extensions;
 
 public static class DisposableExtensions
 {
+    /// <summary>
+    /// Disposes <paramref name="disposable"/> if non-null and clears the field to null in the
+    /// same step. Mirrors <see cref="CancellationTokenExtensions.CancelDisposeAndClear"/> for
+    /// arbitrary <see cref="IDisposable"/> fields.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> if this call performed the dispose; <see langword="false"/>
+    /// when the field was already null (or another thread won the swap first).
+    /// </returns>
+    /// <remarks>
+    /// Thread-safe via <see cref="Interlocked.CompareExchange{T}(ref T, T, T)"/> — concurrent
+    /// callers are guaranteed exactly one <see cref="IDisposable.Dispose"/> invocation.
+    /// </remarks>
+    public static bool DisposeAndNull<T>(ref T? disposable) where T : class, IDisposable
+    {
+        T? won = Interlocked.Exchange(ref disposable, null);
+        if (won is null) return false;
+
+        won.Dispose();
+        return true;
+    }
+
     /// <summary>
     /// Attempts to dispose <paramref name="item"/> if it implements <see cref="IDisposable"/>.
     /// For <see cref="ITuple"/> values (e.g. value tuples) that don't implement IDisposable,

@@ -11,12 +11,12 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, BlockDecoder blockDecoder)
+public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, IRlpDecoder<Block> blockDecoder, IBlockForRpcFactory blockForRpcFactory)
 {
-    public BlockForRpc Block { get; } = new BlockForRpc(block, includeFullTransactionData, specProvider);
+    public BlockForRpc Block { get; } = blockForRpcFactory.Create(block, includeFullTransactionData, specProvider);
     public Hash256 Hash { get; } = block.Header.Hash;
     public byte[] Rlp { get; } = blockDecoder.Encode(block).Bytes;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public BlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
+    public GeneratedBlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
 }

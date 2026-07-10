@@ -54,7 +54,7 @@ public class SyncedTxGossipPolicyTests
     {
         MutableSelector selector = new(SyncMode.FastSync);
         SyncedTxGossipPolicy syncPolicy = new(selector);
-        CompositeTxGossipPolicy composite = new(new Lazy<ITxGossipPolicy[]>([syncPolicy]));
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
 
         // During sync: gossip disabled
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
@@ -88,7 +88,13 @@ public class SyncedTxGossipPolicyTests
         public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
         public event EventHandler<SyncModeChangedEventArgs>? Changed;
         public Task StopAsync() => Task.CompletedTask;
+        public Task StartAsync() => Task.CompletedTask;
         public void Update() { }
         public void Dispose() { }
+    }
+
+    private class FixedTxGossipPolicySource(ITxGossipPolicy[] policies) : ITxGossipPolicySource
+    {
+        public ITxGossipPolicy[] Policies => policies;
     }
 }

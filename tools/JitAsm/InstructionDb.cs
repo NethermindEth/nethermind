@@ -13,19 +13,14 @@ internal sealed class InstructionInfo
     public string? Ports { get; init; }
 }
 
-internal sealed class InstructionDb
+internal sealed class InstructionDb(string archName)
 {
     private const string Magic = "UOPS";
     private const ushort Version = 2;
 
     private readonly Dictionary<string, List<InstructionInfo>> _instructions = new(StringComparer.OrdinalIgnoreCase);
 
-    public string ArchName { get; }
-
-    public InstructionDb(string archName)
-    {
-        ArchName = archName;
-    }
+    public string ArchName { get; } = archName;
 
     public void Add(InstructionInfo info)
     {
@@ -73,20 +68,18 @@ internal sealed class InstructionDb
         return null;
     }
 
-    private static string RelaxPattern(string pattern)
-    {
+    private static string RelaxPattern(string pattern) =>
         // Normalize register widths: r8/r16/r32/r64 → r, m8/m16/m32/m64/m128/m256/m512 → m, imm8/imm32 → imm
-        return pattern
+        pattern
             .Replace("r64", "r").Replace("r32", "r").Replace("r16", "r").Replace("r8", "r")
             .Replace("m512", "m").Replace("m256", "m").Replace("m128", "m")
             .Replace("m64", "m").Replace("m32", "m").Replace("m16", "m").Replace("m8", "m")
             .Replace("imm32", "imm").Replace("imm8", "imm");
-    }
 
     public void Save(string path)
     {
         using FileStream stream = File.Create(path);
-        using var writer = new BinaryWriter(stream);
+        using BinaryWriter writer = new(stream);
 
         // Header
         writer.Write(Magic.ToCharArray());
@@ -115,7 +108,7 @@ internal sealed class InstructionDb
     public static InstructionDb Load(string path)
     {
         using FileStream stream = File.OpenRead(path);
-        using var reader = new BinaryReader(stream);
+        using BinaryReader reader = new(stream);
 
         // Header
         char[] magic = reader.ReadChars(4);
@@ -129,7 +122,7 @@ internal sealed class InstructionDb
         string archName = reader.ReadString();
         int entryCount = reader.ReadInt32();
 
-        var db = new InstructionDb(archName);
+        InstructionDb db = new(archName);
 
         for (int i = 0; i < entryCount; i++)
         {

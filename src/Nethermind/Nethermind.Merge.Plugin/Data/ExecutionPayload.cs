@@ -3,11 +3,14 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
@@ -29,15 +32,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
-    public long BlockNumber { get; set; }
+    public ulong BlockNumber { get; set; }
 
     public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 
-    public long GasLimit { get; set; }
+    public ulong GasLimit { get; set; }
 
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
@@ -58,11 +61,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
+    [JsonConverter(typeof(TransactionsByteArrayArrayConverter))]
     public byte[][] Transactions
     {
         get => _encodedTransactions;
         set
         {
+            ArgumentNullException.ThrowIfNull(value);
             _encodedTransactions = value;
             _transactions = null;
         }
@@ -146,16 +151,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <summary>
     /// Creates the execution block from payload.
     /// </summary>
-    /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
-    /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    /// <returns>The decoded execution block or a decoding error.</returns>
+    public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        TransactionDecodingResult transactions = TryGetTransactions();
-        if (transactions.Error is not null)
+        Result<Transaction[]> transactions = TryGetTransactions();
+        if (transactions.IsError)
         {
-            return new(transactions.Error);
+            return transactions.Error;
         }
 
         BlockHeader header = new(
@@ -183,50 +187,94 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Transactions, Array.Empty<BlockHeader>(), Withdrawals)
+        Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
         {
             EncodedTransactions = encodedTransactions
         };
-        return new BlockDecodingResult(block);
+        return block;
     }
 
     protected virtual Hash256? BuildWithdrawalsRoot() => Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash;
 
     protected Transaction[]? _transactions = null;
 
+    private const int MinTxsForParallelDecoding = 32;
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
-    public TransactionDecodingResult TryGetTransactions()
+    public Result<Transaction[]> TryGetTransactions()
     {
-        if (_transactions is not null) return new TransactionDecodingResult(_transactions);
+        if (_transactions is not null) return _transactions;
 
-        IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
-        if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
+        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
+        if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
 
+        byte[][] txData = Transactions;
+        if (txData.Length >= MinTxsForParallelDecoding && TryDecodeTransactionsParallel(rlpDecoder, txData, out Transaction[] decoded))
+        {
+            return _transactions = decoded;
+        }
+
+        // Serial path doubles as the failure fallback: it reproduces the exact single-threaded
+        // behavior, pinpointing the first invalid transaction.
         int i = 0;
         try
         {
-            byte[][] txData = Transactions;
             Transaction[] transactions = new Transaction[txData.Length];
 
             for (i = 0; i < transactions.Length; i++)
             {
-                Rlp.ValueDecoderContext ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                transactions[i] = DecodeTransaction(rlpDecoder, txData[i]);
             }
 
-            return new TransactionDecodingResult(_transactions = transactions);
+            return _transactions = transactions;
         }
         catch (RlpException e)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid: {e.Message}");
+            return $"Transaction {i} is not valid: {e.Message}";
         }
         catch (ArgumentException)
         {
-            return new TransactionDecodingResult($"Transaction {i} is not valid");
+            return $"Transaction {i} is not valid";
         }
+    }
+
+    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
+    {
+        RlpReader ctx = new(rlp);
+        return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+    }
+
+    private static bool TryDecodeTransactionsParallel(IRlpDecoder<Transaction> rlpDecoder, byte[][] txData, out Transaction[] transactions)
+    {
+        Transaction[] decoded = new Transaction[txData.Length];
+        bool[] failed = new bool[1];
+
+        ParallelUnbalancedWork.For(
+            0,
+            txData.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            (rlpDecoder, txData, decoded, failed),
+            static (i, state) =>
+            {
+                try
+                {
+                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
+                }
+                catch
+                {
+                    // Any failure defers to the serial fallback, which reproduces the exact
+                    // single-threaded error behavior (first invalid index, exception surface).
+                    Volatile.Write(ref state.failed[0], true);
+                }
+
+                return state;
+            });
+
+        transactions = decoded;
+        return !Volatile.Read(ref failed[0]);
     }
 
     /// <summary>
@@ -275,24 +323,4 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
-}
-
-public struct TransactionDecodingResult
-{
-    public readonly string? Error;
-    public readonly Transaction[] Transactions = [];
-
-    public TransactionDecodingResult(Transaction[] transactions) => Transactions = transactions;
-
-    public TransactionDecodingResult(string error) => Error = error;
-}
-
-public struct BlockDecodingResult
-{
-    public readonly string? Error;
-    public readonly Block? Block;
-
-    public BlockDecodingResult(Block block) => Block = block;
-
-    public BlockDecodingResult(string error) => Error = error;
 }

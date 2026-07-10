@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using FluentAssertions;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -112,7 +111,7 @@ public class GethGenesisLoaderTests
         foreach (string eip in AmsterdamEipNumbers)
         {
             bool value = (bool)spec.GetType().GetProperty($"IsEip{eip}Enabled")!.GetValue(spec)!;
-            value.Should().Be(expected, $"IsEip{eip}Enabled");
+            Assert.That(value, Is.EqualTo(expected), $"IsEip{eip}Enabled");
         }
     }
 
@@ -122,7 +121,7 @@ public class GethGenesisLoaderTests
         {
             PropertyInfo property = chainSpec.Parameters.GetType().GetProperty($"Eip{eip}TransitionTimestamp")!;
             ulong? value = (ulong?)property.GetValue(chainSpec.Parameters);
-            value.Should().Be(expectedTimestamp, $"Eip{eip}TransitionTimestamp");
+            Assert.That(value, Is.EqualTo(expectedTimestamp), $"Eip{eip}TransitionTimestamp");
         }
     }
 
@@ -131,32 +130,38 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadHoodiChainSpec();
 
-        chainSpec.ChainId.Should().Be(560048);
-        chainSpec.NetworkId.Should().Be(560048);
+        // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
+        // if they were inside the same EnterMultipleScope (which records failure but keeps going).
+        Assert.That(chainSpec.Genesis, Is.Not.Null);
+        Assert.That(chainSpec.Allocations, Is.Not.Empty);
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
 
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
-        chainSpec.ByzantiumBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
-        chainSpec.IstanbulBlockNumber.Should().Be(0);
-        chainSpec.BerlinBlockNumber.Should().Be(0);
-        chainSpec.LondonBlockNumber.Should().Be(0);
-        chainSpec.ShanghaiTimestamp.Should().Be(0);
-        chainSpec.CancunTimestamp.Should().Be(0);
-        chainSpec.PragueTimestamp.Should().Be(1742999832);
-        chainSpec.OsakaTimestamp.Should().Be(1761677592);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(560048));
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(560048));
 
-        chainSpec.Genesis.Should().NotBeNull();
-        chainSpec.Genesis.Header.GasLimit.Should().Be(0x2255100);
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1742999832));
+            Assert.That(chainSpec.OsakaTimestamp, Is.EqualTo(1761677592));
 
-        chainSpec.Allocations.Should().NotBeEmpty();
-        chainSpec.Allocations[Address.Zero].Balance.Should().Be(1);
+            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x2255100));
 
-        chainSpec.Parameters.BlobSchedule.Should().NotBeEmpty();
-        chainSpec.Parameters.BlobSchedule.Should().HaveCount(3);
+            Assert.That(chainSpec.Allocations[Address.Zero].Balance, Is.EqualTo(UInt256.One));
 
-        chainSpec.Parameters.DepositContractAddress.Should().Be(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa"));
+            Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(3));
+
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+        }
     }
 
     [Test]
@@ -166,22 +171,32 @@ public class GethGenesisLoaderTests
             chainId: 12345,
             allocJson: """{ "0x0000000000000000000000000000000000000001": { "balance": "0x1" } }""");
 
-        chainSpec.ChainId.Should().Be(12345);
-        chainSpec.NetworkId.Should().Be(12345);
-        chainSpec.SealEngineType.Should().Be(SealEngineType.Ethash);
-        chainSpec.Genesis.Header.GasLimit.Should().Be(0x8000000);
-        chainSpec.Genesis.Header.Difficulty.Should().Be(UInt256.One);
-        chainSpec.Allocations.Should().HaveCount(1);
-        chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance.Should().Be(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(12345));
+            Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash));
+            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000));
+            Assert.That(chainSpec.Genesis.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+        }
 
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
-        ethashParameters.DifficultyBoundDivisor.Should().Be(0x800);
-        ethashParameters.BlockReward.Should().ContainKey(0);
+        Assert.That(ethashParameters, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ethashParameters!.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(ethashParameters!.BlockReward!.ContainsKey(0), Is.True);
+        }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         IReleaseSpec genesisSpec = provider.GetSpec(new ForkActivation(0));
-        genesisSpec.DifficultyBoundDivisor.Should().Be(0x800);
-        genesisSpec.BlockReward.Should().Be(new UInt256(5_000_000_000_000_000_000ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisSpec.DifficultyBoundDivisor, Is.EqualTo(0x800));
+            Assert.That(genesisSpec.BlockReward, Is.EqualTo(new UInt256(5_000_000_000_000_000_000ul)));
+        }
     }
 
     [Test]
@@ -200,11 +215,14 @@ public class GethGenesisLoaderTests
             "pragueTime": 1800000000
             """);
 
-        chainSpec.ChainId.Should().Be(1);
-        chainSpec.ShanghaiTimestamp.Should().Be(1681338455);
-        chainSpec.CancunTimestamp.Should().Be(1710338135);
-        chainSpec.PragueTimestamp.Should().Be(1800000000);
-        chainSpec.TerminalTotalDifficulty.Should().Be(UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1681338455));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(1710338135));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(1800000000));
+            Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -212,7 +230,7 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");
 
-        chainSpec.AmsterdamTimestamp.Should().Be(15);
+        Assert.That(chainSpec.AmsterdamTimestamp, Is.EqualTo(15));
         AssertAmsterdamTransitionTimestamps(chainSpec, 15);
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -220,16 +238,19 @@ public class GethGenesisLoaderTests
 
         IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(15));
         AssertAmsterdamEipsEnabled(amsterdam, true);
-        amsterdam.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
+        Assert.That(amsterdam.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
 
         // When genesis timestamp matches amsterdamTime, genesis header fields are set
         ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
         ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
 
-        genesisAtAmsterdam.Genesis.BlockAccessListHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
-        genesisAtAmsterdam.Genesis.SlotNumber.Should().Be(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesisAtAmsterdam.Genesis.BlockAccessListHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(genesisAtAmsterdam.Genesis.SlotNumber, Is.EqualTo(0));
+        }
         AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
-        genesisProvider.GenesisSpec.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
+        Assert.That(genesisProvider.GenesisSpec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
     }
 
     [Test]
@@ -263,9 +284,12 @@ public class GethGenesisLoaderTests
 
         ChainSpec chainSpec = LoadFromString(genesis);
 
-        chainSpec.Parameters.Eip7Transition.Should().Be(1);
-        chainSpec.Parameters.ValidateChainIdTransition.Should().Be(3);
-        chainSpec.Parameters.ValidateReceiptsTransition.Should().Be(5);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip7Transition, Is.EqualTo(1));
+            Assert.That(chainSpec.Parameters.ValidateChainIdTransition, Is.EqualTo(3));
+            Assert.That(chainSpec.Parameters.ValidateReceiptsTransition, Is.EqualTo(5));
+        }
     }
 
     [Test]
@@ -280,16 +304,19 @@ public class GethGenesisLoaderTests
             }
             """);
 
-        chainSpec.Parameters.BlobSchedule.Should().HaveCount(2);
+        Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(2));
 
         List<BlobScheduleSettings> blobScheduleList = [.. chainSpec.Parameters.BlobSchedule];
-        blobScheduleList[0].Timestamp.Should().Be(1710338135);
-        blobScheduleList[0].Target.Should().Be(3);
-        blobScheduleList[0].Max.Should().Be(6);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobScheduleList[0].Timestamp, Is.EqualTo(1710338135));
+            Assert.That(blobScheduleList[0].Target, Is.EqualTo(3));
+            Assert.That(blobScheduleList[0].Max, Is.EqualTo(6));
 
-        blobScheduleList[1].Timestamp.Should().Be(1800000000);
-        blobScheduleList[1].Target.Should().Be(6);
-        blobScheduleList[1].Max.Should().Be(9);
+            Assert.That(blobScheduleList[1].Timestamp, Is.EqualTo(1800000000));
+            Assert.That(blobScheduleList[1].Target, Is.EqualTo(6));
+            Assert.That(blobScheduleList[1].Max, Is.EqualTo(9));
+        }
     }
 
     [Test]
@@ -309,13 +336,16 @@ public class GethGenesisLoaderTests
             """);
 
         Address address = new("0x0000000000000000000000000000000000000100");
-        chainSpec.Allocations.Should().ContainKey(address);
+        Assert.That(chainSpec.Allocations.ContainsKey(address), Is.True);
 
         ChainSpecAllocation allocation = chainSpec.Allocations[address];
-        allocation.Balance.Should().Be(UInt256.Parse("1000000000000000000")); // 1 ETH in wei
-        allocation.Nonce.Should().Be(1);
-        allocation.Code.Should().BeEquivalentTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 });
-        allocation.Storage.Should().HaveCount(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocation.Balance, Is.EqualTo(UInt256.Parse("1000000000000000000"))); // 1 ETH in wei
+            Assert.That(allocation.Nonce, Is.EqualTo(1UL));
+            Assert.That(allocation.Code, Is.EqualTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 }));
+            Assert.That(allocation.Storage!.Count, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -328,16 +358,19 @@ public class GethGenesisLoaderTests
             }
             """);
 
-        chainSpec.Allocations.Should().HaveCount(2);
-        chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance.Should().Be(1);
-        chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000002")].Balance.Should().Be(2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Allocations.Count, Is.EqualTo(2));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance, Is.EqualTo(UInt256.One));
+            Assert.That(chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000002")].Balance, Is.EqualTo((UInt256)2));
+        }
     }
 
     [Test]
     public void AutoDetectingLoader_detects_geth_format()
     {
         ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(chainId: 12345));
-        chainSpec.ChainId.Should().Be(12345);
+        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
     }
 
     [Test]
@@ -361,8 +394,11 @@ public class GethGenesisLoaderTests
 
         ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
 
-        chainSpec.Name.Should().Be("TestNet");
-        chainSpec.ChainId.Should().Be(1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Name, Is.EqualTo("TestNet"));
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -372,8 +408,23 @@ public class GethGenesisLoaderTests
             "\"pragueTime\": 1800000000, " +
             "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
-        chainSpec.Parameters.DepositContractAddress.Should().Be(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa"));
-        chainSpec.Parameters.Eip6110TransitionTimestamp.Should().Be(1800000000);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
+    }
+
+    [Test]
+    public void Defaults_deposit_contract_to_zero_when_unspecified()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(chainId: 12345, configExtra: "\"pragueTime\": 1800000000");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(Address.Zero));
+            Assert.That(chainSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(1800000000));
+        }
     }
 
     /// <summary>
@@ -501,14 +552,14 @@ public class GethGenesisLoaderTests
         }
 
         TestContext.Out.WriteLine($"Checked {configPropsChecked} config properties and {forkClassesChecked} fork classes with EIPs");
-        mismatches.Should().BeEmpty(string.Join("\n", mismatches));
+        Assert.That(mismatches, Is.Empty, string.Join("\n", mismatches));
     }
 
     [Test]
     public void LoadParameters_maps_all_fork_eips()
     {
         List<ForkActivationInfo> forks = DiscoverGethForks();
-        forks.Should().NotBeEmpty();
+        Assert.That(forks, Is.Not.Empty);
 
         // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
@@ -563,8 +614,7 @@ public class GethGenesisLoaderTests
 
         TestContext.Out.WriteLine($"Total: {forks.Count} forks, {eipCount} EIP mappings verified");
 
-        mismatches.Should().BeEmpty(
-            "GethGenesisLoader.LoadParameters must map every EIP from Fork classes.\n" +
+        Assert.That(mismatches, Is.Empty, "GethGenesisLoader.LoadParameters must map every EIP from Fork classes.\n" +
             "If a new EIP was added to a Fork class, update LoadParameters to set its transition timestamp.\n" +
             string.Join("\n", mismatches));
     }
@@ -631,10 +681,13 @@ public class GethGenesisLoaderTests
             }
         }
 
-        differences.Should().BeEmpty($"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(differences, Is.Empty, $"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
 
-        provider.ChainId.Should().Be(hardCodedSpec.ChainId);
-        provider.NetworkId.Should().Be(hardCodedSpec.NetworkId);
-        provider.TerminalTotalDifficulty.Should().Be(hardCodedSpec.TerminalTotalDifficulty);
+            Assert.That(provider.ChainId, Is.EqualTo(hardCodedSpec.ChainId));
+            Assert.That(provider.NetworkId, Is.EqualTo(hardCodedSpec.NetworkId));
+            Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
+        }
     }
 }

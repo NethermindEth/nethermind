@@ -29,7 +29,8 @@ public class Snapshot(
 ) : RefCountingDisposable
 {
     public long EstimateMemory() => content.EstimateMemory();
-    public ResourcePool.Usage Usage => usage;
+    // Test-only observability (SnapshotCompactorTests); not consumed by production.
+    internal ResourcePool.Usage Usage => usage;
 
     public StateId From => from;
     public StateId To => to;
@@ -86,12 +87,12 @@ public sealed class SnapshotContent : IDisposable, IResettable
     }
 
     public long EstimateMemory() =>
-        // ConcurrentDictionary entry overhead ~48 bytes for Accounts/Storages/SelfDestruct
-        Accounts.Count * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
-            Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
-            SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
-            StateNodes.Count * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-            StorageNodes.Count * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+        // Cast Count to long before multiplying to avoid int overflow for large snapshots
+        (long)Accounts.Count * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
+            (long)Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
+            (long)StateNodes.Count * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            (long)StorageNodes.Count * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
 
     /// <summary>
     /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.

@@ -6,7 +6,6 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -36,9 +35,9 @@ public class StandardDbInitializerTests
     public async Task InitializerTests_MemDbProvider(bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
-        Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
+        Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
         AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
-        dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
+        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
     [TestCase(false)]
@@ -48,7 +47,7 @@ public class StandardDbInitializerTests
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"rocks_{useReceipts}");
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
-        dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
+        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
     [TestCase(false)]
@@ -60,15 +59,15 @@ public class StandardDbInitializerTests
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
         AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
-        dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
-        ((IDbProvider)readonlyDbProvider).StateDb.Should().BeOfType(typeof(ReadOnlyDb));
+        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
+        Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
     }
 
     [Test]
     public async Task InitializerTests_WithPruning()
     {
         using IDbProvider dbProvider = await InitializeStandardDb(false, true, "pruning");
-        dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
+        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
     private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
@@ -87,7 +86,7 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new WorldStateModule(initConfig)) // For the full pruning db
+            .AddModule(new PruningTrieStoreModule()) // For the full pruning db
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)
@@ -104,12 +103,11 @@ public class StandardDbInitializerTests
 
     private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
     {
-        dbProvider.BlockInfosDb.Should().BeOfType(dbType);
-        dbProvider.BlocksDb.Should().BeOfType(dbType);
-        dbProvider.BloomDb.Should().BeOfType(dbType);
-        dbProvider.HeadersDb.Should().BeOfType(dbType);
-        dbProvider.ReceiptsDb.Should().BeOfType(receiptsDb);
-        dbProvider.CodeDb.Should().BeOfType(dbType);
+        Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
+        Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
+        Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
+        Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
+        Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
     }
 
     [OneTimeTearDown]

@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public abstract class FilterBase(int id)
     {

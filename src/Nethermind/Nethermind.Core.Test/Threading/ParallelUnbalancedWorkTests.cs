@@ -6,7 +6,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Threading;
 using NUnit.Framework;
 
@@ -22,7 +21,7 @@ public class ParallelUnbalancedWorkTests
         int sum = 0;
         ParallelUnbalancedWork.For(0, 1000, i => Interlocked.Add(ref sum, i));
 
-        sum.Should().Be(Enumerable.Range(0, 1000).Sum());
+        Assert.That(sum, Is.EqualTo(Enumerable.Range(0, 1000).Sum()));
     }
 
     [Test]
@@ -35,8 +34,8 @@ public class ParallelUnbalancedWorkTests
             if (i == 500) throw expected;
         });
 
-        act.Should().Throw<InvalidOperationException>()
-            .Which.Should().BeSameAs(expected);
+        InvalidOperationException exception = Assert.Catch<InvalidOperationException>(act)!;
+        Assert.That(exception, Is.SameAs(expected));
     }
 
     [Test]
@@ -47,8 +46,8 @@ public class ParallelUnbalancedWorkTests
             if (i == 100) ThrowFromHelper();
         });
 
-        act.Should().Throw<InvalidOperationException>()
-            .Which.StackTrace.Should().Contain(nameof(ThrowFromHelper));
+        InvalidOperationException exception = Assert.Catch<InvalidOperationException>(act)!;
+        Assert.That(exception.StackTrace, Does.Contain(nameof(ThrowFromHelper)));
     }
 
     [Test]
@@ -58,7 +57,7 @@ public class ParallelUnbalancedWorkTests
         Action act = () => ParallelUnbalancedWork.For(0, 10_000, FourThreads,
             i => throw new InvalidOperationException($"boom-{i}"));
 
-        act.Should().Throw<InvalidOperationException>();
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -81,9 +80,9 @@ public class ParallelUnbalancedWorkTests
             },
             @finally: _ => Interlocked.Increment(ref finallyCount));
 
-        act.Should().Throw<InvalidOperationException>();
-        finallyCount.Should().Be(initCount);
-        initCount.Should().BeGreaterThan(0);
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
+        Assert.That(finallyCount, Is.EqualTo(initCount));
+        Assert.That(initCount, Is.GreaterThan(0));
     }
 
     [Test]
@@ -95,8 +94,7 @@ public class ParallelUnbalancedWorkTests
             action: (_, l) => l,
             @finally: _ => { });
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("init failed");
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("init failed"));
     }
 
     [Test]
@@ -112,27 +110,25 @@ public class ParallelUnbalancedWorkTests
             action: (_, l) => l,
             @finally: _ => Interlocked.Increment(ref finallyCalls));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("init failed");
-        finallyCalls.Should().Be(0);
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("init failed"));
+        Assert.That(finallyCalls, Is.EqualTo(0));
     }
 
     [Test]
     public void For_WhenWorkerFaults_OtherWorkersStopFetchingWork()
     {
-        // Once one worker captures an exception, others must stop pulling new indices — otherwise
-        // we burn CPU and run side effects after the operation is already faulted.
         int actionCalls = 0;
         const int range = 100_000;
 
         Action act = () => ParallelUnbalancedWork.For(0, range, FourThreads, i =>
         {
             Interlocked.Increment(ref actionCalls);
+            Thread.SpinWait(50);
             if (i == 0) throw new InvalidOperationException();
         });
 
-        act.Should().Throw<InvalidOperationException>();
-        // Some racing iterations are unavoidable, but we should be nowhere near the full range.
-        actionCalls.Should().BeLessThan(range / 2);
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
+        Assert.That(actionCalls, Is.LessThan(range / 2));
     }
 
     [Test]
@@ -144,8 +140,7 @@ public class ParallelUnbalancedWorkTests
             action: (_, l) => l,
             @finally: _ => throw new InvalidOperationException("finally failed"));
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("finally failed");
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("finally failed"));
     }
 
     [Test]
@@ -159,7 +154,7 @@ public class ParallelUnbalancedWorkTests
             action: (i, local) => local + i,
             @finally: local => Interlocked.Add(ref total, local));
 
-        total.Should().Be(Enumerable.Range(0, 1000).Sum());
+        Assert.That(total, Is.EqualTo(Enumerable.Range(0, 1000).Sum()));
     }
 
     [Test]
@@ -178,14 +173,14 @@ public class ParallelUnbalancedWorkTests
                 if (i % 11 == 0) throw new InvalidOperationException();
             });
 
-            act.Should().Throw<InvalidOperationException>();
+            Assert.That(act, Throws.TypeOf<InvalidOperationException>());
         }
         finally
         {
             AppDomain.CurrentDomain.UnhandledException -= handler;
         }
 
-        unhandled.Should().Be(0);
+        Assert.That(unhandled, Is.EqualTo(0));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

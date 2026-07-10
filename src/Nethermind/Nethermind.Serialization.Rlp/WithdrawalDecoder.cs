@@ -7,9 +7,9 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
-public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
-    protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override Withdrawal? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -36,30 +36,29 @@ public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
         return withdrawal;
     }
 
-    public override void Encode(RlpStream stream, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
         int contentLength = GetContentLength(item);
 
-        stream.StartSequence(contentLength);
-        stream.Encode(item.Index);
-        stream.Encode(item.ValidatorIndex);
-        stream.Encode(item.Address);
-        stream.Encode(item.AmountInGwei);
+        writer.StartSequence(contentLength);
+        writer.Encode(item.Index);
+        writer.Encode(item.ValidatorIndex);
+        writer.Encode(item.Address);
+        writer.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpStream stream = new(GetLength(item, rlpBehaviors));
-
-        Encode(stream, item, rlpBehaviors);
-
-        return new(stream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new(bytes);
     }
 
     private static int GetContentLength(Withdrawal item) =>

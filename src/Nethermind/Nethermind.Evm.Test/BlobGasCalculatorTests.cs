@@ -113,4 +113,46 @@ public class BlobGasCalculatorTests
         yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 0, 131072000);
         yield return (Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject, 10000000, 2490368000);
     }
+
+    [TestCaseSource(nameof(TryCalculateBlobMaxFeeCases))]
+    public void TryCalculateBlobMaxFee_computes_correctly((int blobCount, UInt256 maxFeePerBlobGas, bool expectedResult, UInt256 expectedFee) testCase)
+    {
+        bool result = BlobGasCalculator.TryCalculateBlobMaxFee(testCase.blobCount, testCase.maxFeePerBlobGas, out UInt256 blobFee);
+        Assert.That(result, Is.EqualTo(testCase.expectedResult));
+        if (testCase.expectedResult)
+            Assert.That(blobFee, Is.EqualTo(testCase.expectedFee));
+    }
+
+    private static IEnumerable<(int, UInt256, bool, UInt256)> TryCalculateBlobMaxFeeCases()
+    {
+        yield return (1, (UInt256)1, true, (UInt256)Eip4844Constants.GasPerBlob);
+        yield return (6, (UInt256)1_000_000_000, true, (UInt256)(6 * Eip4844Constants.GasPerBlob * 1_000_000_000));
+        yield return (1, (UInt256)ulong.MaxValue, true, (UInt256)Eip4844Constants.GasPerBlob * ulong.MaxValue);
+        yield return (1_000_000, UInt256.MaxValue, false, UInt256.Zero);
+    }
+
+    [TestCaseSource(nameof(TrySubtractBlobFeeCases))]
+    public void TrySubtractBlobFee_computes_correctly((IReleaseSpec spec, Transaction tx, UInt256 available, bool expectedResult, UInt256 expectedAvailable) testCase)
+    {
+        UInt256 left = testCase.available;
+        bool result = BlobGasCalculator.TrySubtractBlobFee(testCase.spec, testCase.tx, ref left);
+        Assert.That(result, Is.EqualTo(testCase.expectedResult));
+        Assert.That(left, Is.EqualTo(testCase.expectedAvailable));
+    }
+
+    private static IEnumerable<(IReleaseSpec, Transaction, UInt256, bool, UInt256)> TrySubtractBlobFeeCases()
+    {
+        UInt256 plenty = 1_000_000_000_000_000;
+        UInt256 fee1 = (UInt256)Eip4844Constants.GasPerBlob * 1_000_000_000;
+        Transaction blobTx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1_000_000_000).TestObject;
+        Transaction noHashTx = Build.A.Transaction.TestObject;
+        Transaction overflowTx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1_000_000).WithMaxFeePerBlobGas(UInt256.MaxValue).TestObject;
+
+        yield return (Shanghai.Instance, blobTx, (UInt256)100, true, (UInt256)100);
+        yield return (Cancun.Instance, noHashTx, plenty, true, plenty);
+        yield return (Cancun.Instance, blobTx, plenty, true, plenty - fee1);
+        yield return (Cancun.Instance, blobTx, fee1, true, UInt256.Zero);
+        yield return (Cancun.Instance, blobTx, fee1 - 1, false, fee1 - 1);
+        yield return (Cancun.Instance, overflowTx, plenty, false, plenty);
+    }
 }

@@ -52,14 +52,14 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         {
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
-            writeBatch.SetStateTrieNode(path, node);
+            writeBatch.SetStateTrieNode(path, data);
             FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
         }
         else
         {
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
-            writeBatch.SetStorageTrieNode(address, path, node);
+            writeBatch.SetStorageTrieNode(address, path, data);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
     }
@@ -83,7 +83,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteAccountRange(range.From, range.To);
-            writeBatch.DeleteStateTrieNodeRange(new TreePath(range.From, 64), new TreePath(range.To, 64));
+            writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
     }
 
@@ -95,7 +95,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, new TreePath(range.From, 64), new TreePath(range.To, 64));
+            writeBatch.DeleteStorageTrieNodeRange(addressHash, range.From, range.To);
         }
     }
 
@@ -241,6 +241,10 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         StateId from = reader.CurrentState;
         StateId to = new(pivotHeader);
 
+        // Snap/heal writes use DisableWAL and are only crash-durable once flushed. Flush before advancing the
+        // WAL-durable pointer, so a crash can't leave CurrentState pointing past unflushed (holed) data. #11457
+        persistence.Flush();
+
         // Create and immediately dispose to increment state ID
         // This pattern is used by Importer - the from->to transition updates the current state pointer
         using (persistence.CreateWriteBatch(from, to))
@@ -272,7 +276,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public Account? GetAccount(Hash256 addressHash)
         {
             ReadOnlySpan<byte> bytes = _stateTree.Get(addressHash.Bytes);
-            return bytes.IsEmpty ? null : _accountDecoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            RlpReader context = new(bytes);
+            return _accountDecoder.Decode(ref context);
         }
 
         public void Dispose() => _reader.Dispose();

@@ -5,7 +5,7 @@ namespace Nethermind.Serialization.Json
 {
     public enum NumberConversion
     {
-        Hex,
+        Hex = 0,
         Decimal,
         Raw,
         ZeroPaddedHex

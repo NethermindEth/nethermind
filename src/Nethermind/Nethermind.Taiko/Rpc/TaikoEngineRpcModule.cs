@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
@@ -43,14 +42,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
-        IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
-        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
-        IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
-        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -58,7 +59,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ITxPool txPool,
         IBlockFinder blockFinder,
         IShareableTxProcessorSource txProcessorSource,
-        IRlpStreamEncoder<Transaction> txDecoder,
+        IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
         ISurgeConfig surgeConfig) :
             EngineRpcModule(getPayloadHandlerV1,
@@ -75,8 +76,10 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 capabilitiesHandler,
                 getBlobsHandler,
                 getBlobsHandlerV2,
+                getBlobsHandlerV4,
                 getPayloadBodiesByHashV2Handler,
                 getPayloadBodiesByRangeV2Handler,
+                newPayloadWithWitnessHandler,
                 engineRequestsTracker,
                 specProvider,
                 gcKeeper,
@@ -105,7 +108,35 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     private static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult =
         ResultWrapper<L1Origin?>.Success(null);
 
+    /// <summary>
+    /// Cached null-result for <c>taikoAuth_last{Certain,}BlockIDByBatchID</c> when the resolved
+    /// block id sits below this network's last-Pacaya threshold. Geth and reth both report this
+    /// case as success+null rather than the "not found" error, so the driver does not mistake
+    /// the threshold gate for a transient miss.
+    /// </summary>
+    private static readonly ResultWrapper<UInt256?> BlockIdBatchLookupNullResult =
+        ResultWrapper<UInt256?>.Success(null);
+
+    /// <summary>
+    /// Resolved once at construction from <see cref="ISpecProvider.ChainId"/>. <c>null</c> on
+    /// networks with no last-Pacaya threshold (Devnet, Masaya, unknown). On Mainnet and Hoodi,
+    /// any resolved batch-lookup block id strictly less than this value is reported as null.
+    /// </summary>
+    private readonly UInt256? _batchLookupThreshold =
+        BatchLookupThresholds.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+            ? new UInt256(t)
+            : (UInt256?)null;
+
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
+
+    /// <summary>
+    /// Returns <c>true</c> when this network has a batch-lookup threshold and the resolved
+    /// block id sits strictly below it. Mirrors <c>batchLookupResultBelowThreshold</c> in
+    /// taiko-geth (PR #558) and <c>batch_lookup_result_below_last_pacaya_block_id</c> in
+    /// alethia-reth (PR #177).
+    /// </summary>
+    private bool IsBlockBelowBatchLookupThreshold(UInt256 blockId) =>
+        _batchLookupThreshold is { } threshold && blockId < threshold;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
@@ -127,7 +158,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) => base.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
 
     public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
          ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists) =>
@@ -169,7 +200,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 beneficiary,
                 UInt256.Zero,
                 head!.Number + 1,
-                (long)blockMaxGasLimit,
+                blockMaxGasLimit,
                 head.Timestamp + 1,
                 [])
         {
@@ -191,7 +222,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         void CommitAndDisposeBatch(Batch batch)
         {
             Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => TransactionForRpc.FromTransaction(tx)).ToArray(),
-                                            (ulong)blockHeader.GasUsed,
+                                            blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
             batch.Dispose();
@@ -201,12 +232,19 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
+        void Restore(Snapshot snapshot, ulong gasUsed)
+        {
+            worldState.Restore(snapshot);
+            blockHeader.GasUsed = gasUsed;
+        }
+
         try
         {
             for (int i = 0; i < txSource.Length;)
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
+                ulong gasUsedBefore = blockHeader.GasUsed;
 
                 try
                 {
@@ -214,7 +252,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                     if (!executionResult)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
 
                         if (executionResult == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
@@ -237,21 +275,21 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     // For Surge, filter out any transaction with very high gas limit
                     if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * surgeConfig.MaxGasLimitRatio)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
                 }
                 catch
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
                     while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                     continue;
                 }
 
                 if (!batch.TryAddTx(tx))
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
 
                     if (batch.Transactions.Count is 0)
                     {
@@ -287,7 +325,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamEncoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpDecoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -312,53 +350,36 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public readonly ulong GetCompressedTxsLength()
         {
             int contentLength = Transactions.Sum(GetTxLength);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
+            writer.StartSequence(contentLength);
+            foreach (Transaction tx in Transactions.AsSpan())
             {
-                RlpStream rlpStream = new(data);
-
-                rlpStream.StartSequence(contentLength);
-                foreach (Transaction tx in Transactions.AsSpan())
-                {
-                    txDecoder.Encode(rlpStream, tx);
-                }
-
-                return GetCompressedLength(data, rlpStream.Position);
-
+                txDecoder.Encode(ref writer, tx);
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
         private readonly ulong EstimateTxLength(Transaction tx)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
-            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(data);
 
-            try
-            {
-                RlpStream rlpStream = new(data);
+            writer.StartSequence(contentLength);
+            txDecoder.Encode(ref writer, tx);
 
-                rlpStream.StartSequence(contentLength);
-                txDecoder.Encode(rlpStream, tx);
-
-                return GetCompressedLength(data, rlpStream.Position);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(data);
-            }
+            return GetCompressedLength(data.Slice(0, writer.Position));
         }
 
-        private static ulong GetCompressedLength(byte[] data, int length)
+        private static ulong GetCompressedLength(ReadOnlySpan<byte> data)
         {
             using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(Batch));
             using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
 
-            compressingStream.Write(data, 0, length);
+            compressingStream.Write(data);
             compressingStream.Flush();
             return (ulong)stream.Position;
         }
@@ -417,6 +438,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             }
         }
 
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
+
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
         // Debug: a known block can lack its L1Origin record briefly between insertion and
         // the driver's taikoAuth_updateL1Origin writeback — expected, not a fault.
@@ -439,12 +463,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             }
         }
 
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return BlockIdBatchLookupNullResult;
+
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
     public ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId)
     {
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is { } b && IsBlockBelowBatchLookupThreshold(b))
+            return BlockIdBatchLookupNullResult;
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
@@ -453,8 +482,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
         if (blockId is null)
         {
-            return ResultWrapper<L1Origin?>.Success(null);
+            return L1OriginByBatchIdNullResult;
         }
+
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
         return ResultWrapper<L1Origin?>.Success(origin);

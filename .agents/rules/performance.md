@@ -4,6 +4,7 @@
 
 - **Ref structs** for hot-path state (`EvmStack`, `EvmPooledMemory`) — avoids heap allocation
 - **`Span<byte>` and `stackalloc`** for temporary buffers
+- **`ArrayPoolList<T>` and `ArrayPoolListRef<T>`** for pooled memory, the latter for local usage
 - **SIMD types** (`Vector256<byte>`, `Vector128<byte>`) for bulk memory operations
 - **`[MethodImpl(MethodImplOptions.AggressiveInlining)]`** on hot methods
 - **`ZeroPaddedSpan`** (readonly ref struct) for zero-copy padded data

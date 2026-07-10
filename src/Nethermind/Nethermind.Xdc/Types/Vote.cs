@@ -3,8 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
@@ -21,8 +21,13 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public override string ToString() =>
         $"{ProposedBlockInfo.Round}:{GapNumber}:{ProposedBlockInfo.BlockNumber}";
 
-    public (ulong Round, Hash256 hash) PoolKey() => (ProposedBlockInfo.Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
+    public (ulong Round, Hash256 hash) PoolKey()
+    {
+        KeccakRlpWriter writer = new();
+        _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
+        return (ProposedBlockInfo.Round, writer.GetHash());
+    }
 
-    protected override void Encode(KeccakRlpStream stream) =>
-        _decoder.Encode(stream, this, RlpBehaviors.None);
+    protected override void Encode(ref KeccakRlpWriter writer) =>
+        _decoder.Encode(ref writer, this, RlpBehaviors.None);
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -31,6 +30,19 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
+    public void IsCodeOverridable_Propagates_BaseRepository_Value()
+    {
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(FrozenDictionary<AddressAsKey, CodeInfo>.Empty);
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        baseRepository.IsCodeOverridable.Returns(true);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, null);
+
+        Assert.That(repository.IsCodeOverridable, Is.True);
+    }
+
+    [Test]
     public void Precompile_WithCachingEnabled_IsWrappedInCachedPrecompile()
     {
         // Arrange
@@ -51,13 +63,13 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().NotBeSameAs(cachingPrecompile);
-        codeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.Not.SameAs(cachingPrecompile));
+        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
     }
 
     [Test]
@@ -81,12 +93,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(nonCachingPrecompile);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(nonCachingPrecompile));
     }
 
     [Test]
@@ -107,12 +119,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(IdentityPrecompile.Instance);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
     }
 
     [Test]
@@ -136,7 +148,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -146,8 +158,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - should only run once due to caching
-        runCount.Should().Be(1);
-        cache.Count.Should().Be(1);
+        Assert.That(runCount, Is.EqualTo(1));
+        Assert.That(cache.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -171,7 +183,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -181,8 +193,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - should run twice since caching is disabled
-        runCount.Should().Be(2);
-        cache.Count.Should().Be(0);
+        Assert.That(runCount, Is.EqualTo(2));
+        Assert.That(cache.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -205,12 +217,12 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act - pass null cache
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, null);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, null);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert - precompile should not be wrapped
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().BeSameAs(cachingPrecompile);
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.SameAs(cachingPrecompile));
     }
 
     [Test]
@@ -231,13 +243,13 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         // Assert - Sha256Precompile should be wrapped (unlike IdentityPrecompile)
-        codeInfo.Should().NotBeNull();
-        codeInfo.Precompile.Should().NotBeSameAs(Sha256Precompile.Instance);
-        codeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(codeInfo, Is.Not.Null);
+        Assert.That(codeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
+        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
     }
 
     [Test]
@@ -264,15 +276,15 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }.ToFrozenSet());
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo sha256CodeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
         CodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert - Sha256 wrapped, Identity not wrapped
-        sha256CodeInfo.Precompile.Should().NotBeSameAs(Sha256Precompile.Instance);
-        sha256CodeInfo.Precompile!.GetType().Name.Should().Contain("CachedPrecompile");
+        Assert.That(sha256CodeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
+        Assert.That(sha256CodeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
 
-        identityCodeInfo.Precompile.Should().BeSameAs(IdentityPrecompile.Instance);
+        Assert.That(identityCodeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
     }
 
     [Test]
@@ -296,7 +308,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input1 = [1, 2, 3];
@@ -309,8 +321,8 @@ public class PrecompileCachedCodeInfoRepositoryTests
         codeInfo.Precompile!.Run(input2, Prague.Instance); // should hit cache
 
         // Assert - should run twice (once per unique input), cache should have 2 entries
-        runCount.Should().Be(2);
-        cache.Count.Should().Be(2);
+        Assert.That(runCount, Is.EqualTo(2));
+        Assert.That(cache.Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -335,7 +347,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -345,11 +357,11 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - both results should be the same cached value
-        runCount.Should().Be(1);
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(expectedOutput);
-        result2.Data.Should().BeEquivalentTo(expectedOutput);
+        Assert.That(runCount, Is.EqualTo(1));
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(expectedOutput));
+        Assert.That(result2.Data, Is.EqualTo(expectedOutput));
     }
 
     [Test]
@@ -369,7 +381,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
@@ -379,10 +391,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - results should match and cache should have entry
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(result2.Data);
-        cache.Count.Should().Be(1);
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(result2.Data));
+        Assert.That(cache.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -402,7 +414,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
@@ -412,10 +424,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
 
         // Assert - results should match but cache should be empty (no caching for Identity)
-        ((bool)result1).Should().BeTrue();
-        ((bool)result2).Should().BeTrue();
-        result1.Data.Should().BeEquivalentTo(result2.Data);
-        cache.Count.Should().Be(0); // Key difference from Sha256 test
+        Assert.That(((bool)result1), Is.True);
+        Assert.That(((bool)result2), Is.True);
+        Assert.That(result1.Data, Is.EqualTo(result2.Data));
+        Assert.That(cache.Count, Is.EqualTo(0)); // Key difference from Sha256 test
     }
 
     [Test]
@@ -439,7 +451,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Same first 4 bytes, different suffixes — both calls should map to the same cache key.
@@ -477,7 +489,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input1 = [1, 2, 3];          // length 3, not 4
@@ -504,9 +516,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => supportsCaching;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -522,9 +534,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
             inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -539,9 +551,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => true;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {

@@ -34,23 +34,20 @@ internal static class InstructionDbBuilder
         ["ZEN2"] = ["ZEN+"],
     };
 
-    public static string ResolveArchName(string cliValue)
-    {
-        return ArchMap.TryGetValue(cliValue, out var name) ? name : cliValue.ToUpperInvariant();
-    }
+    public static string ResolveArchName(string cliValue) => ArchMap.TryGetValue(cliValue, out string? name) ? name : cliValue.ToUpperInvariant();
 
     public static IReadOnlyCollection<string> SupportedArchitectures => ArchMap.Keys;
 
     public static InstructionDb Build(string xmlPath, string archCliValue)
     {
         string targetArch = ResolveArchName(archCliValue);
-        string[] fallbacks = FallbackChain.TryGetValue(targetArch, out var fb) ? fb : [];
+        string[] fallbacks = FallbackChain.TryGetValue(targetArch, out string[]? fb) ? fb : [];
 
-        var db = new InstructionDb(targetArch);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        InstructionDb db = new(targetArch);
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
 
         using FileStream stream = File.OpenRead(xmlPath);
-        using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
+        using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore });
 
         while (reader.Read())
         {
@@ -68,7 +65,7 @@ internal static class InstructionDbBuilder
 
             // Read the instruction subtree
             string instructionXml = reader.ReadOuterXml();
-            var instrDoc = new XmlDocument();
+            XmlDocument instrDoc = new();
             instrDoc.LoadXml(instructionXml);
             XmlElement instrNode = instrDoc.DocumentElement!;
 
@@ -143,7 +140,7 @@ internal static class InstructionDbBuilder
 
     private static string BuildOperandPattern(XmlElement instrNode)
     {
-        var parts = new List<string>();
+        List<string> parts = [];
         foreach (XmlNode child in instrNode.ChildNodes)
         {
             if (child is not XmlElement operandEl || operandEl.Name != "operand")
@@ -199,37 +196,30 @@ internal static class InstructionDbBuilder
         };
     }
 
-    private static string ClassifyMem(string? width)
+    private static string ClassifyMem(string? width) => width switch
     {
-        return width switch
-        {
-            "8" => "m8",
-            "16" => "m16",
-            "32" => "m32",
-            "64" => "m64",
-            "128" => "m128",
-            "256" => "m256",
-            "512" => "m512",
-            _ => "m"
-        };
-    }
+        "8" => "m8",
+        "16" => "m16",
+        "32" => "m32",
+        "64" => "m64",
+        "128" => "m128",
+        "256" => "m256",
+        "512" => "m512",
+        _ => "m"
+    };
 
-    private static string ClassifyImm(string? width)
+    private static string ClassifyImm(string? width) => width switch
     {
-        return width switch
-        {
-            "8" => "imm8",
-            "16" => "imm16",
-            "32" => "imm32",
-            _ => "imm"
-        };
-    }
+        "8" => "imm8",
+        "16" => "imm16",
+        "32" => "imm32",
+        _ => "imm"
+    };
 
     private static XmlElement? FindMeasurement(XmlElement instrNode, string targetArch, string[] fallbacks)
     {
         // Try target arch first, then fallbacks
-        var archsToTry = new List<string> { targetArch };
-        archsToTry.AddRange(fallbacks);
+        List<string> archsToTry = [targetArch, .. fallbacks];
 
         foreach (string archName in archsToTry)
         {

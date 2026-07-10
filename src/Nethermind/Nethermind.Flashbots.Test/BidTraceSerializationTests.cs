@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Flashbots.Data;
 using Nethermind.Serialization.Json;
@@ -33,12 +32,12 @@ namespace Nethermind.Flashbots.Test
 
             BidTrace trace = _serializer.Deserialize<BidTrace>(fullKeyJson);
 
-            trace.BuilderPublicKey.Should().NotBeNull();
-            trace.ProposerPublicKey.Should().NotBeNull();
-            trace.BuilderPublicKey.Bytes.Length.Should().Be(64);
-            trace.ProposerPublicKey.Bytes.Length.Should().Be(64);
-            trace.BuilderPublicKey.Bytes.Should().BeEquivalentTo(builderKeyBytes);
-            trace.ProposerPublicKey.Bytes.Should().BeEquivalentTo(proposerKeyBytes);
+            Assert.That(trace.BuilderPublicKey, Is.Not.Null);
+            Assert.That(trace.ProposerPublicKey, Is.Not.Null);
+            Assert.That(trace.BuilderPublicKey.Bytes.Length, Is.EqualTo(64));
+            Assert.That(trace.ProposerPublicKey.Bytes.Length, Is.EqualTo(64));
+            Assert.That(trace.BuilderPublicKey.Bytes, Is.EqualTo(builderKeyBytes));
+            Assert.That(trace.ProposerPublicKey.Bytes, Is.EqualTo(proposerKeyBytes));
         }
     }
 }

@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Xdc.RLP;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -28,8 +29,8 @@ internal class XdcBlockAndHeaderStoreTests
         blockNumDb = new MemDb();
         blockDb = new MemDb();
 
-        _headerStore = new XdcHeaderStore(headerDb, blockNumDb);
-        _blockStore = new XdcBlockStore(blockDb);
+        _headerStore = new XdcHeaderStore(headerDb, blockNumDb, new XdcHeaderDecoder());
+        _blockStore = new XdcBlockStore(blockDb, new XdcHeaderDecoder());
     }
 
     [Test]
@@ -47,7 +48,7 @@ internal class XdcBlockAndHeaderStoreTests
         _headerStore.Insert(header);
         XdcBlockHeader? retrievedHeader = _headerStore.Get(header.Hash!, false);
         // Assert
-        retrievedHeader.Should().BeEquivalentTo(header);
+        Assert.That(retrievedHeader, Is.EqualTo(header).UsingXdcComparer());
     }
 
     [Test]
@@ -62,6 +63,58 @@ internal class XdcBlockAndHeaderStoreTests
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
-        retrievedBlock.Should().BeEquivalentTo(block, options => options.Excluding(h => h.EncodedSize));
+        Assert.That(retrievedBlock, Is.EqualTo(block).UsingXdcComparer());
+    }
+
+    [Test]
+    public void XdcBlockHeader_CreateSimulatedChild_ShouldKeepXdcHeaderTypeWithExplicitDefaults()
+    {
+        XdcBlockHeader parent = Build.A.XdcBlockHeader()
+            .WithHash(TestItem.KeccakA)
+            .WithGeneratedExtraConsensusData()
+            .TestObject;
+        parent.Validators = [1, 2, 3];
+        parent.Validator = [4, 5, 6];
+        parent.Penalties = [7, 8, 9];
+
+        BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
+
+        Assert.That(child, Is.TypeOf<XdcBlockHeader>());
+        XdcBlockHeader xdcChild = (XdcBlockHeader)child;
+        Assert.Multiple(() =>
+        {
+            Assert.That(xdcChild.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That(xdcChild.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(xdcChild.Timestamp, Is.EqualTo(parent.Timestamp + 12));
+            Assert.That(xdcChild.ExtraData, Is.Empty);
+            Assert.That(xdcChild.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(xdcChild.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(xdcChild.Validators, Is.Null);
+            Assert.That(xdcChild.Validator, Is.Null);
+            Assert.That(xdcChild.Penalties, Is.Null);
+            Assert.That(xdcChild.ExtraConsensusData, Is.Null);
+        });
+    }
+
+    [Test]
+    public void XdcSubnetBlockHeader_CreateSimulatedChild_ShouldKeepSubnetHeaderType()
+    {
+        XdcSubnetBlockHeader parent = Build.A.XdcSubnetBlockHeader().WithGeneratedExtraConsensusData().TestObject;
+        parent.Hash = TestItem.KeccakA;
+        parent.NextValidators = [1, 2, 3];
+
+        BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
+
+        Assert.That(child, Is.TypeOf<XdcSubnetBlockHeader>());
+        XdcSubnetBlockHeader subnetChild = (XdcSubnetBlockHeader)child;
+        Assert.Multiple(() =>
+        {
+            Assert.That(subnetChild.ParentHash, Is.EqualTo(parent.Hash));
+            Assert.That(subnetChild.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(subnetChild.Timestamp, Is.EqualTo(parent.Timestamp + 12));
+            Assert.That(subnetChild.ExtraData, Is.Empty);
+            Assert.That(subnetChild.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(subnetChild.NextValidators, Is.Null);
+        });
     }
 }

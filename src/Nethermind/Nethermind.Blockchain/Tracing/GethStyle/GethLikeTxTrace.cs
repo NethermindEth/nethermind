@@ -18,9 +18,7 @@ public class GethLikeTxTrace : IDisposable
 
     public GethLikeTxTrace() { }
 
-    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
-
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
 
     public bool Failed { get; set; }
 
@@ -28,7 +26,7 @@ public class GethLikeTxTrace : IDisposable
 
     public Hash256? TxHash { get; set; }
 
-    public List<GethTxTraceEntry> Entries { get; set; } = new();
+    public List<GethTxTraceEntry> Entries { get; set; } = [];
 
     public GethLikeCustomTrace? CustomTracerResult { get; set; }
 

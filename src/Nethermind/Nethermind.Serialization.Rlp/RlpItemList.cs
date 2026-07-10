@@ -21,11 +21,16 @@ public sealed class RlpItemList : IRlpItemList
     private RlpItemList? _parent;
 
     public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion)
+        : this(memoryOwner, rlpRegion, knownCount: -1)
+    {
+    }
+
+    public RlpItemList(IMemoryOwner<byte> memoryOwner, Memory<byte> rlpRegion, int knownCount)
     {
         _memoryOwner = new RefCountingMemoryOwner<byte>(memoryOwner);
         _rlpRegion = rlpRegion;
         _prefixLength = PeekPrefixAndContentLength(rlpRegion.Span, 0).prefixLength;
-        _count = -1;
+        _count = knownCount;
         _cachedIndex = 0;
         _cachedPosition = _prefixLength;
     }
@@ -68,7 +73,8 @@ public sealed class RlpItemList : IRlpItemList
     public int RlpLength => _rlpRegion.Length;
     public ReadOnlySpan<byte> RlpSpan => _rlpRegion.Span;
 
-    public void Write(RlpStream stream) => stream.Write(_rlpRegion.Span);
+    public void Write<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(_rlpRegion.Span);
 
     public ReadOnlySpan<byte> ReadContent(int index)
     {
@@ -97,7 +103,7 @@ public sealed class RlpItemList : IRlpItemList
         return new RlpItemList(_memoryOwner, nestedRegion, parent: this);
     }
 
-    public static IRlpItemList DecodeList(ref Rlp.ValueDecoderContext ctx, IMemoryOwner<byte> memoryOwner)
+    public static IRlpItemList DecodeList(ref RlpReader ctx, IMemoryOwner<byte> memoryOwner)
     {
         int prefixStart = ctx.Position;
         int innerLength = ctx.ReadSequenceLength();

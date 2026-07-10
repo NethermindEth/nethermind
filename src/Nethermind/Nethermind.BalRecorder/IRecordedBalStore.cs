@@ -9,8 +9,8 @@ namespace Nethermind.BalRecorder;
 
 public interface IRecordedBalStore : IDisposable
 {
-    void Insert(Block block, BlockAccessList bal);
-    BlockAccessList? Get(long blockNumber);
+    void Insert(Block block, GeneratedBlockAccessList bal);
+    ReadOnlyBlockAccessList? Get(ulong blockNumber);
     bool ReplayEnabled { get; }
     bool RecordingEnabled { get; }
 }

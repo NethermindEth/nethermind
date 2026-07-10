@@ -8,35 +8,39 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
 public class ProcessedTransactionsDbCleaner : IDisposable
 {
-    private readonly IBlockFinalizationManager _finalizationManager;
+    private readonly IBlockTree _blockTree;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
-    private long _lastFinalizedBlock = 0;
+    private ulong _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
-    public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
+    public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, ITxPoolConfig txPoolConfig)
     {
-        _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
-        _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
+        ArgumentNullException.ThrowIfNull(dbProvider);
+        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _processedTxsDb = dbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs);
         _logger = logManager?.GetClassLogger<ProcessedTransactionsDbCleaner>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        _finalizationManager.BlocksFinalized += OnBlocksFinalized;
+        // Only blob-tx reorg support persists processed txs, so there is nothing to clean otherwise.
+        if (txPoolConfig.BlobsSupport.SupportsReorgs())
+            _blockTree.BlocksFinalized += OnBlocksFinalized;
     }
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
+        if (e.FinalizedBlock.Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
         {
-            CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
+            CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlock.Number));
         }
     }
 
-    private void CleanProcessedTransactionsDb(long newlyFinalizedBlockNumber)
+    private void CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
     {
         try
         {
@@ -44,7 +48,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
             {
                 foreach (byte[] key in _processedTxsDb.GetAllKeys())
                 {
-                    long blockNumber = key.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                    ulong blockNumber = key.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
@@ -67,5 +71,5 @@ public class ProcessedTransactionsDbCleaner : IDisposable
         }
     }
 
-    public void Dispose() => _finalizationManager.BlocksFinalized -= OnBlocksFinalized;
+    public void Dispose() => _blockTree.BlocksFinalized -= OnBlocksFinalized;
 }

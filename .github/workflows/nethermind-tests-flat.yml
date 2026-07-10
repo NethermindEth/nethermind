@@ -20,6 +20,8 @@ jobs:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       matrix:
@@ -61,33 +63,17 @@ jobs:
             chunk: 7of8
           - project: Ethereum.Legacy.Blockchain.Test
             chunk: 8of8
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 1of4
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 2of4
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 3of4
-          - project: Ethereum.Blockchain.Pyspec.Test
-            chunk: 4of4
     steps:
-      - name: Free up disk space
-        if: startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: |
-            src/Nethermind/**/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
@@ -95,14 +81,32 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          dotnet test --project ${{ matrix.project }}.csproj -c release
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
+
+  # EEST fixtures under the flat state layout (formerly the Ethereum.Blockchain.Pyspec.Test
+  # flat shards and their Amsterdam parallel/batch-read variant chunks) run through the
+  # reusable nethtest workflow. The flat layout and the variant toggles are passed by the
+  # template's matrix (--flatdb / --parallelExecution / --batchRead), not by TEST_USE_FLAT,
+  # which does not propagate into called workflows. txTest is layout-independent and only
+  # runs in nethermind-tests.yml.
+  nethtest:
+    name: EEST nethtest (flat)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: engineTest,blockTest,stateTest,syncTest
+      setup_group: flat
 
   tests-summary:
     name: Tests summary
-    needs: tests
+    needs: [tests, nethtest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
-          [[ "${{ needs.tests.result }}" == "success" ]]
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.nethtest.result }}" == "success" \
+          ]]

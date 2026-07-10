@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public NetworkInfo Network { get; set; } = new();
 
-        public Dictionary<string, object> Protocols { get; set; } = new();
+        public Dictionary<string, object> Protocols { get; set; } = [];
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public NodeClientType? ClientType { get; set; }
@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Name = peer.Node.ClientId;
             Enode = peer.Node.ToString(Node.Format.ENode);
             Caps = capabilities;
-            Enr = peer.Node.Enr;
+            Enr = peer.Node.Enr?.ToString();
         }
 
         private void SetNetworkInfo(Peer peer)
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         private void SetProtocols(IReadOnlyList<Capability> capabilities)
         {
-            Dictionary<string, object> protocols = new();
+            Dictionary<string, object> protocols = [];
 
             int ethVersion = 0;
             int snapVersion = 0;

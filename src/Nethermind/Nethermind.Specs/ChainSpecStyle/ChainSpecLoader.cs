@@ -51,11 +51,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             DataDir = chainSpecJson.DataDir
         };
 
+        // LoadGenesis reads chainSpec.Parameters, which LoadParameters populates and label-expands.
+        LoadParameters(chainSpecJson, chainSpec);
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
         LoadBootnodes(chainSpecJson, chainSpec);
-        LoadParameters(chainSpecJson, chainSpec);
         LoadTransitions(chainSpecJson, chainSpec);
 
         return chainSpec;
@@ -63,7 +64,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
+        ulong? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
             AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
@@ -71,13 +72,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
-                return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
+                return ulong.TryParse(key, out ulong transition) ? transition : Convert.ToUInt64(key, 16);
             }
 
             return null;
         }
 
-        long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
+        ulong? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
             bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out JsonElement value) && value.GetInt64() == expectedValue;
@@ -85,7 +86,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
-        long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
+        ulong? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
             bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) =>
                 o.Value.TryGetSubProperty(innerPath, out _);
@@ -93,14 +94,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
-        ValidateParams(chainSpecJson.Params);
-
         chainSpec.Parameters = new ChainParameters
         {
-            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
+            GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400UL,
             MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
-            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
+            MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000UL,
             MinHistoryRetentionEpochs = chainSpecJson.Params.MinHistoryRetentionEpochs ?? 82125,
+            MinBalRetentionEpochs = chainSpecJson.Params.MinBalRetentionEpochs ?? 3533,
             MaxCodeSize = chainSpecJson.Params.MaxCodeSize,
             MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = chainSpecJson.Params.MaxCodeSizeTransitionTimestamp,
@@ -108,12 +108,12 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             ForkBlock = chainSpecJson.Params.ForkBlock,
             ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
             Eip7Transition = chainSpecJson.Params.Eip7Transition,
-            Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
+            Eip150Transition = chainSpecJson.Params.Eip150Transition,
             Eip152Transition = chainSpecJson.Params.Eip152Transition,
-            Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
-            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0,
-            Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0,
-            Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0,
+            Eip160Transition = chainSpecJson.Params.Eip160Transition,
+            Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition,
+            Eip161dTransition = chainSpecJson.Params.Eip161dTransition,
+            Eip155Transition = chainSpecJson.Params.Eip155Transition,
             Eip140Transition = chainSpecJson.Params.Eip140Transition,
             Eip211Transition = chainSpecJson.Params.Eip211Transition,
             Eip214Transition = chainSpecJson.Params.Eip214Transition,
@@ -159,9 +159,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
-            OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
-            OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
-            OpIsthmusTransitionTimestamp = chainSpecJson.Params.OpIsthmusTransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
             Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
@@ -216,9 +213,24 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
 
             Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
+            Eip8246TransitionTimestamp = chainSpecJson.Params.Eip8246TransitionTimestamp,
+            Eip8038TransitionTimestamp = chainSpecJson.Params.Eip8038TransitionTimestamp,
+            Eip8282TransitionTimestamp = chainSpecJson.Params.Eip8282TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
+            Eip2780TransitionTimestamp = chainSpecJson.Params.Eip2780TransitionTimestamp,
         };
+
+        chainSpec.Parameters.ExpandAll(chainSpecJson.Params);
+        ValidateParams(chainSpec.Parameters);
+
+        // Pre-Shanghai EIPs that are part of the genesis baseline for chains without explicit
+        // transitions. Applied AFTER ExpandAll so an explicit chainspec field or fork label wins.
+        chainSpec.Parameters.Eip150Transition ??= 0;
+        chainSpec.Parameters.Eip160Transition ??= 0;
+        chainSpec.Parameters.Eip161abcTransition ??= 0;
+        chainSpec.Parameters.Eip161dTransition ??= 0;
+        chainSpec.Parameters.Eip155Transition ??= 0;
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
         chainSpec.Parameters.Eip1108Transition ??= GetTransitionForExpectedPricing("alt_bn128_add", "price.alt_bn128_const_operations.price", 150)
@@ -244,7 +256,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                 : value
             : default;
 
-    private static void ValidateParams(ChainSpecParamsJson parameters)
+    private static void ValidateParams(ChainParameters parameters)
     {
         if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
             && parameters.Eip1283DisableTransition.HasValue)
@@ -285,7 +297,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
 
-
         if (chainSpec.EngineChainSpecParametersProvider is not null)
         {
             foreach (IChainSpecEngineParameters chainSpecEngineParameters in chainSpec.EngineChainSpecParametersProvider
@@ -321,19 +332,21 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return;
         }
 
-        UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
+        ulong nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0UL;
         Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-        byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
-        long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
+        // Engine-specific seal sections are stashed raw; the owning consensus plugin (e.g. AuRa)
+        // upgrades Genesis.Header via its ChainSpec interceptor.
+        chainSpec.CustomSeal = chainSpecJson.Genesis.Seal?.CustomSeal;
 
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
-        UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
+        ulong gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        UInt256 baseFee = chainSpecJson.Params.Eip1559Transition switch
+        ChainParameters parameters = chainSpec.Parameters;
+        UInt256 baseFee = parameters.Eip1559Transition switch
         {
             null => chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero,
             0 => chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
@@ -350,7 +363,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            gasLimit,
             timestamp,
             extraData)
         {
@@ -358,19 +371,19 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Hash = Keccak.Zero, // need to run the block to know the actual hash
             Bloom = Bloom.Empty,
             MixHash = mixHash,
-            Nonce = (ulong)nonce,
+            Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = stateRoot,
             TxRoot = Keccak.EmptyTreeHash,
             BaseFeePerGas = baseFee
         };
 
-        bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
-        bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
-        bool consolidationRequestsEnabled = chainSpecJson.Params.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7251TransitionTimestamp;
-        bool blockAccessListsEnabled = chainSpecJson.Params.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7928TransitionTimestamp;
-        bool slotNumberEnabled = chainSpecJson.Params.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7843TransitionTimestamp;
+        bool withdrawalsEnabled = parameters.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4895TransitionTimestamp;
+        bool depositsEnabled = parameters.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip6110TransitionTimestamp;
+        bool withdrawalRequestsEnabled = parameters.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7002TransitionTimestamp;
+        bool consolidationRequestsEnabled = parameters.Eip7251TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7251TransitionTimestamp;
+        bool blockAccessListsEnabled = parameters.Eip7928TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7928TransitionTimestamp;
+        bool slotNumberEnabled = parameters.Eip7843TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip7843TransitionTimestamp;
 
         if (withdrawalsEnabled)
         {
@@ -383,14 +396,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
         }
 
-        bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+        bool isEip4844Enabled = parameters.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
         {
             genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
             genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
-        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        bool isEip4788Enabled = parameters.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= parameters.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
@@ -408,11 +421,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         if (slotNumberEnabled)
         {
-            genesisHeader.SlotNumber = 0;
+            genesisHeader.SlotNumber = chainSpecJson.Genesis.SlotNumber ?? 0;
         }
-
-        genesisHeader.AuRaStep = step;
-        genesisHeader.AuRaSignature = auRaSignature;
 
         chainSpec.Genesis = !blockAccessListsEnabled ?
             (!withdrawalsEnabled
@@ -437,7 +447,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             chainSpecJson.CodeHashes[Hash256.Zero.ToString()] = [];
         }
 
-        chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
+        chainSpec.Allocations = [];
         foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
         {
             if (account.Value.BuiltIn is not null && account.Value.Balance is null)

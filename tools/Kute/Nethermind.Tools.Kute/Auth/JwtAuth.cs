@@ -23,15 +23,14 @@ public sealed class JwtAuth : IAuth
         _clock = clock;
 
         string hexSecret = secretProvider.Secret;
-        _key = new(Enumerable.Range(0, hexSecret.Length)
+        _key = new([.. Enumerable.Range(0, hexSecret.Length)
             .Where(x => x % 2 == 0)
-            .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
-            .ToArray());
+            .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))]);
     }
 
     private string GenerateAuthToken()
     {
-        var handler = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false };
+        JsonWebTokenHandler handler = new() { SetDefaultTimesOnTokenCreation = false };
 
         return handler.CreateToken(new SecurityTokenDescriptor
         {

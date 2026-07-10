@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program
     {
-        private static readonly List<string> AllFailingTests = new();
+        private static readonly List<string> AllFailingTests = [];
         private static double _totalMs;
 
         public static async Task Main(params string[] args) => await Run();

@@ -28,7 +28,6 @@
     <Project Path="Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
-    <Project Path="Nethermind.Merkleization/Nethermind.Merkleization.csproj" />
     <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
@@ -45,7 +44,10 @@
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />
     <Project Path="Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="Nethermind.State/Nethermind.State.csproj" />
+    <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
     <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
+    <Project Path="Nethermind.Test.Analyzers.CodeFixes/Nethermind.Test.Analyzers.CodeFixes.csproj" />
+    <Project Path="Nethermind.Test.Analyzers/Nethermind.Test.Analyzers.csproj" />
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
     <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
@@ -55,7 +57,6 @@
   <Project Path="Ethereum.Blockchain.Block.Test/Ethereum.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Pyspec.Test/Ethereum.Blockchain.Pyspec.Test.csproj" />
   <Project Path="Ethereum.Difficulty.Test/Ethereum.Difficulty.Test.csproj" />
-  <Project Path="Ethereum.Ssz.Test/Ethereum.Ssz.Test.csproj" />
   <Project Path="Ethereum.HexPrefix.Test/Ethereum.HexPrefix.Test.csproj" />
   <Project Path="Ethereum.KeyAddress.Test/Ethereum.KeyAddress.Test.csproj" />
   <Project Path="Ethereum.KeyStore.Test/Ethereum.KeyStore.Test.csproj" />
@@ -65,6 +66,7 @@
   <Project Path="Ethereum.Legacy.VM.Test/Ethereum.Legacy.VM.Test.csproj" />
   <Project Path="Ethereum.PoW.Test/Ethereum.PoW.Test.csproj" />
   <Project Path="Ethereum.Rlp.Test/Ethereum.Rlp.Test.csproj" />
+  <Project Path="Ethereum.Ssz.Test/Ethereum.Ssz.Test.csproj" />
   <Project Path="Ethereum.Test.Base/Ethereum.Test.Base.csproj" />
   <Project Path="Ethereum.Transaction.Test/Ethereum.Transaction.Test.csproj" />
   <Project Path="Ethereum.Trie.Test/Ethereum.Trie.Test.csproj" />

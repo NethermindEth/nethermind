@@ -13,7 +13,7 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
+        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = [];
         private readonly bool _neverPrune;
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
@@ -59,7 +59,7 @@ namespace Nethermind.Db
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
-            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = new();
+            Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = [];
             foreach (KeyValuePair<TKey, SnapshotableMemDb> kvp in _columnDbs)
             {
                 snapshots[kvp.Key] = kvp.Value.CreateSnapshot();

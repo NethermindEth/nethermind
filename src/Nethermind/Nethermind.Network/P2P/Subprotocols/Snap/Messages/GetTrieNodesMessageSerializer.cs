@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -37,35 +38,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 + Rlp.LengthOf(message.Bytes);
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            NettyRlpStream stream = new(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            stream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
 
-            stream.Encode(message.RequestId);
-            stream.Encode(message.RootHash);
+            writer.Encode(message.RequestId);
+            writer.Encode(message.RootHash);
 
             if (message.Paths is null || message.Paths.Count == 0)
             {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
             }
             else if (message.Paths is IRlpWrapper wrapper)
             {
-                wrapper.Write(stream);
+                wrapper.Write(ref writer);
             }
             else
             {
-                EncodePaths(stream, message.Paths);
+                EncodePaths(ref writer, message.Paths);
             }
 
-            stream.Encode(message.Bytes);
+            writer.Encode(message.Bytes);
         }
 
-        private static int GetPathsRlpLength(IReadOnlyList<PathGroup> paths)
+        private static int GetPathsRlpLength(IOwnedReadOnlyList<PathGroup> paths)
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -76,12 +78,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static void EncodePaths(RlpStream stream, IReadOnlyList<PathGroup> paths)
+        private static void EncodePaths<TWriter>(ref TWriter writer, IOwnedReadOnlyList<PathGroup> paths)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             int contentLength = 0;
-            for (int i = 0; i < paths.Count; i++)
+            ReadOnlySpan<PathGroup> pathsSpan = paths.AsSpan();
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
@@ -90,19 +94,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 contentLength += Rlp.LengthOfSequence(groupContentLength);
             }
 
-            stream.StartSequence(contentLength);
-            for (int i = 0; i < paths.Count; i++)
+            writer.StartSequence(contentLength);
+            for (int i = 0; i < pathsSpan.Length; i++)
             {
-                byte[][] group = paths[i].Group;
+                byte[][] group = pathsSpan[i].Group;
                 int groupContentLength = 0;
                 for (int j = 0; j < group.Length; j++)
                 {
                     groupContentLength += Rlp.LengthOf(group[j]);
                 }
-                stream.StartSequence(groupContentLength);
+                writer.StartSequence(groupContentLength);
                 for (int j = 0; j < group.Length; j++)
                 {
-                    stream.Encode(group[j]);
+                    writer.Encode(group[j]);
                 }
             }
         }
@@ -110,7 +114,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            RlpReader ctx = new(memoryOwner.Memory.Span);
             int startingPosition = ctx.Position;
             GetTrieNodesMessage message = new();
             IRlpItemList? rawPaths = null;

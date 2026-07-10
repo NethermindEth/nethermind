@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -54,8 +55,8 @@ public class ResourcePoolTests
     {
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
-        int capacity = _config.CompactSize + 8;
-        List<SnapshotContent> items = new();
+        int capacity = (int)_config.CompactSize + 8;
+        List<SnapshotContent> items = [];
 
         for (int i = 0; i < capacity + 5; i++)
         {
@@ -144,6 +145,28 @@ public class ResourcePoolTests
         SnapshotContent recycledContent = _resourcePool.GetSnapshotContent(usage);
         Assert.That(recycledContent, Is.SameAs(content));
     }
+
+    [TestCase(1UL, ResourcePool.Usage.Compact2)]
+    [TestCase(2UL, ResourcePool.Usage.Compact2)]
+    [TestCase(4UL, ResourcePool.Usage.Compact4)]
+    [TestCase(8UL, ResourcePool.Usage.Compact8)]
+    [TestCase(16UL, ResourcePool.Usage.Compact16)]
+    [TestCase(32UL, ResourcePool.Usage.Compact32)]
+    [TestCase(64UL, ResourcePool.Usage.Compact64)]
+    [TestCase(128UL, ResourcePool.Usage.Compact128)]
+    [TestCase(256UL, ResourcePool.Usage.Compact256)]
+    [TestCase(512UL, ResourcePool.Usage.Compact512)]
+    [TestCase(1024UL, ResourcePool.Usage.Compact1024)]
+    [TestCase(2048UL, ResourcePool.Usage.Compact2048)]
+    [TestCase(4096UL, ResourcePool.Usage.Compact2048)]
+    public void Test_CompactUsage_MapsCompactSizeToUsage(ulong compactSize, ResourcePool.Usage expected) =>
+        Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
+
+    [TestCase(3UL)]
+    [TestCase(5UL)]
+    [TestCase(2047UL)]
+    public void Test_CompactUsage_ThrowsOnInvalidSize(ulong compactSize) =>
+        Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]
     public void Test_DifferentUsages_HaveIndependentPools()

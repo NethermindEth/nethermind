@@ -12,8 +12,8 @@ namespace Nethermind.Core.Test;
 
 public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
-    private Dictionary<Address, AccountStruct> _accounts = new();
-    private Dictionary<ValueHash256, byte[]> _codes = new();
+    private Dictionary<Address, AccountStruct> _accounts = [];
+    private Dictionary<ValueHash256, byte[]> _codes = [];
 
     public bool TryGetAccount(Address address, out AccountStruct account) => _accounts.TryGetValue(address, out account);
 
@@ -32,7 +32,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
 
-    public void CreateAccount(Address address, UInt256 wei, UInt256 nonce = default) => _accounts[address] = new AccountStruct(nonce, wei);
+    public void CreateAccount(Address address, UInt256 wei, ulong nonce = default) => _accounts[address] = new AccountStruct(nonce, wei);
 
 
     public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec) => InsertCode(code.ToArray(), address);

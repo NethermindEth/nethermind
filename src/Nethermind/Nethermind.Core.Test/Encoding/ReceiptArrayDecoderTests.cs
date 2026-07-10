@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -71,13 +72,13 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt[] txReceipts = { BuildReceipt(), BuildReceipt() };
 
             ReceiptArrayStorageDecoder encoder = new(compactEncoding);
-            using NettyRlpStream rlp = encoder.EncodeToNewNettyStream(txReceipts, encodeBehaviors);
+            using ArrayPoolSpan<byte> rlp = encoder.EncodeToArrayPoolSpan(txReceipts, encodeBehaviors);
 
             ReceiptArrayStorageDecoder decoder = new();
-            Rlp.ValueDecoderContext ctx = new(rlp.AsSpan());
+            RlpReader ctx = new((ReadOnlySpan<byte>)rlp);
             TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
-            deserialized.Should().BeEquivalentTo(GetExpectedArray());
+            deserialized.AssertEquivalentTo(GetExpectedArray());
         }
     }
 }

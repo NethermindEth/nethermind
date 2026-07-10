@@ -54,6 +54,9 @@ public class StateSyncRunner(
                 }
 
                 await RunStateSyncRounds(token);
+
+                if (syncConfig.StaticSnapPivot && _logger.IsInfo)
+                    _logger.Info($"StaticSnapPivot: state sync complete at block {syncConfig.PivotNumber} - node is idle (no further sync without a consensus client). Set Sync.ExitOnSynced=true to exit on completion.");
             }
             finally
             {
@@ -94,7 +97,7 @@ public class StateSyncRunner(
 
             // If sync completed in this round, the pivot it committed against is roundPivot.
             // Capturing here avoids re-reading GetPivotHeader() (mutating) for FinalizeSync.
-            if (treeSync.IsRootComplete)
+            if (treeSync.CanFinalize(roundPivot))
             {
                 finalPivot = roundPivot;
                 break;
@@ -122,17 +125,20 @@ public class StateSyncRunner(
     {
         await syncModeSelector.WaitUntilMode(m => (m & SyncMode.StateNodes) != 0, token);
 
-        int totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
+        if (syncConfig.StaticSnapPivot) return;
+
+        ulong totalSyncLag = syncConfig.StateMinDistanceFromHead + syncConfig.HeaderStateDistance;
 
         while (!token.IsCancellationRequested)
         {
-            long header = syncProgressResolver.FindBestHeader();
-            long peerBlock = 0;
+            ulong header = syncProgressResolver.FindBestHeader();
+            ulong peerBlock = 0;
             foreach (PeerInfo p in syncPeerPool.InitializedPeers)
             {
-                if (p.HeadNumber > peerBlock) peerBlock = p.HeadNumber;
+                ulong peerHeadNumber = p.HeadNumber;
+                if (peerHeadNumber > peerBlock) peerBlock = peerHeadNumber;
             }
-            long targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
+            ulong targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
 
             if (targetBlock >= header && (targetBlock - header) <= totalSyncLag)
                 return;

@@ -36,9 +36,17 @@ internal class TransactionProcessorEip7702Tests
     private IDisposable _worldStateCloser;
 
     [SetUp]
-    public void Setup()
+    public void Setup() => Initialize(Prague.Instance);
+
+    private void UseSpec(IReleaseSpec spec)
     {
-        _specProvider = new TestSpecProvider(Prague.Instance);
+        _worldStateCloser.Dispose();
+        Initialize(spec);
+    }
+
+    private void Initialize(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -49,6 +57,106 @@ internal class TransactionProcessorEip7702Tests
 
     [TearDown]
     public void TearDown() => _worldStateCloser.Dispose();
+
+    public enum AuthorityPreState
+    {
+        Nonexistent,
+        ExistingLeaf,
+        ExistingDelegation
+    }
+
+    public static IEnumerable<TestCaseData> Eip8037AuthRefundCases()
+    {
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0L)
+            .SetName("Nonexistent authority - no auth state refund");
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.PerAuthBaseState)
+            .SetName("Nonexistent authority clear - refunds auth-base state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, false, 0UL, GasCostOf.NewAccountState)
+            .SetName("Existing authority leaf - refunds new account state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, true, 0UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            .SetName("Existing authority leaf clear - refunds full auth state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, false, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            .SetName("Existing delegation overwrite - refunds full auth state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingDelegation, true, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            .SetName("Existing delegation clear - refunds full auth state gas");
+    }
+
+    [TestCaseSource(nameof(Eip8037AuthRefundCases))]
+    public void Execute_Eip8037AuthRefunds_UpdateReceiptAndBlockGas(
+        AuthorityPreState authorityPreState,
+        bool clearDelegation,
+        ulong authorityNonce,
+        long expectedStateGasRefund)
+    {
+        UseSpec(Amsterdam.Instance);
+
+        PrivateKey authority = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+        Address previousDelegation = TestItem.AddressC;
+        Address newDelegation = TestItem.AddressD;
+        Address authTarget = clearDelegation ? Address.Zero : newDelegation;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+        DeployCode(previousDelegation, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployCode(newDelegation, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        if (authorityPreState is not AuthorityPreState.Nonexistent)
+        {
+            UInt256 authorityBalance = authorityPreState is AuthorityPreState.ExistingLeaf ? UInt256.One : UInt256.Zero;
+            _stateProvider.CreateAccount(authority.Address, authorityBalance, authorityNonce);
+        }
+
+        if (authorityPreState is AuthorityPreState.ExistingDelegation)
+        {
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. previousDelegation.Bytes];
+            _stateProvider.InsertCode(authority.Address, ValueKeccak.Compute(delegation), delegation, Amsterdam.Instance);
+        }
+
+        ulong intrinsicStateGas = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(newDelegation)
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + intrinsicStateGas)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, authTarget, authorityNonce))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.AmsterdamBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + intrinsicStateGas)
+            .TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+        using ITxTracer txTracer = receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(
+            tx,
+            new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)),
+            receiptsTracer);
+        receiptsTracer.EndTxTrace();
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+        // Intrinsic regular = TX base + value-bearing recipient touch + EIP-7702 per-auth regular;
+        // existing authorities refund ACCOUNT_WRITE, capped at before/5.
+        ulong intrinsicRegularGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
+            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseRegular;
+        ulong stateGasRefund = (ulong)expectedStateGasRefund;
+        ulong beforeRegularRefund = intrinsicRegularGas + intrinsicStateGas - stateGasRefund;
+        ulong regularRefund = authorityPreState == AuthorityPreState.Nonexistent
+            ? 0
+            : Math.Min(beforeRegularRefund / 5, Eip8038Constants.AccountWrite);
+        ulong expectedSpentGas = beforeRegularRefund - regularRefund;
+        Assert.That(tx.SpentGas, Is.EqualTo(expectedSpentGas));
+        Assert.That(receiptsTracer.LastReceipt.GasUsedTotal, Is.EqualTo(expectedSpentGas));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(intrinsicRegularGas, intrinsicStateGas - stateGasRefund)));
+        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(authorityNonce + 1));
+
+        byte[] expectedCode = clearDelegation
+            ? []
+            : [.. Eip7702Constants.DelegationHeader, .. newDelegation.Bytes];
+        Assert.That(_stateProvider.GetCode(authority.Address), Is.EqualTo(expectedCode));
+    }
 
     [Test]
     public void Execute_TxHasAuthorizationWithCodeThatSavesCallerAddress_ExpectedAddressIsSaved()
@@ -81,7 +189,7 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
+        Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
 
     public static IEnumerable<TestCaseData> DelegatedAndNotDelegatedCodeCases()
@@ -125,7 +233,7 @@ internal class TransactionProcessorEip7702Tests
 
         byte[] expectedCode = shouldInsert ? [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes] : authorityCode;
 
-        Assert.That(signerCode.ToArray(), Is.EquivalentTo(expectedCode));
+        Assert.That(signerCode.ToArray(), Is.EqualTo(expectedCode));
     }
 
     public static IEnumerable<TestCaseData> SenderSignerCases()
@@ -234,11 +342,10 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(10)]
-    [TestCase(99)]
-    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(int count)
+    [TestCase(1ul)]
+    [TestCase(10ul)]
+    [TestCase(99ul)]
+    public void Execute_TxHasDifferentAmountOfAuthorizedCode_UsedGasIsExpected(ulong count)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -248,7 +355,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * count)
-            .WithAuthorizationCode(Enumerable.Range(0, count)
+            .WithAuthorizationCode(Enumerable.Range(0, (int)count)
                                              .Select(i => _ethereumEcdsa.Sign(
                                                  signer,
                                                  _specProvider.ChainId,
@@ -256,7 +363,7 @@ internal class TransactionProcessorEip7702Tests
                                                  0)).ToArray())
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(long.MaxValue)
+        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(100000000).TestObject;
@@ -439,7 +546,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { expectedStoredValue }));
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { expectedStoredValue }));
     }
 
     [TestCase]
@@ -463,7 +570,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx1 = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(100_000)
             .WithAuthorizationCode(_ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
@@ -471,12 +578,13 @@ internal class TransactionProcessorEip7702Tests
                     0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
+        // tx2 clears the delegation by authorizing address(0), then calls signer — no code runs
         Transaction tx2 = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithNonce(1)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
-            .WithAuthorizationCode([])
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, Address.Zero, 1))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -488,7 +596,7 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { 1 }));
     }
 
     public static IEnumerable<TestCaseData> OpcodesWithEXTCODE()
@@ -563,7 +671,7 @@ internal class TransactionProcessorEip7702Tests
         CallOutputTracer callOutputTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), callOutputTracer);
 
-        Assert.That(callOutputTracer.ReturnValue?.ToArray(), Is.EquivalentTo(expectedValue));
+        Assert.That(callOutputTracer.ReturnValue?.ToArray(), Is.EqualTo(expectedValue));
     }
 
     public static IEnumerable<TestCaseData> EXTCODEHASHAccountSetup()
@@ -636,7 +744,7 @@ internal class TransactionProcessorEip7702Tests
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
-        Assert.That(actual.ToArray(), Is.EquivalentTo(expected));
+        Assert.That(actual.ToArray(), Is.EqualTo(expected));
     }
     public static IEnumerable<TestCaseData> AccountAccessGasCases()
     {
@@ -651,15 +759,15 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             true,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODESIZE delegated - cold access");
         yield return new TestCaseData(
             extcodesizeCode,
-            23602,
+            23602ul,
             true,
             //Gas limit is set so it doesn't have enough for accessing the account
-            23602,
+            23602ul,
             true
         ).SetName("EXTCODESIZE delegated - out of gas");
         yield return new TestCaseData(
@@ -668,7 +776,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             false,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODESIZE not delegated - cold access");
         byte[] extcodecopyCode =
@@ -686,7 +794,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.VeryLow
             + GasCostOf.Base * 3,
             true,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODECOPY delegated - cold access");
         yield return new TestCaseData(
@@ -696,7 +804,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.VeryLow
             + GasCostOf.Base * 3,
             false,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODECOPY not delegated - cold access");
         byte[] extcodehashCode =
@@ -710,7 +818,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             true,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODEHASH delegated - cold access");
         yield return new TestCaseData(
@@ -719,7 +827,7 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow,
             false,
-            100_000,
+            100_000ul,
             false
         ).SetName("EXTCODEHASH not delegated - cold access");
         byte[] callOpcode =
@@ -740,15 +848,15 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow * 7,
             true,
-            100_000,
+            100_000ul,
             false
         ).SetName("CALL delegated - cold access");
         yield return new TestCaseData(
             callOpcode,
-            23621,
+            23621ul,
             true,
             //Gas limit is set so it doesn't have enough for accessing the account
-            23621,
+            23621ul,
             true
         ).SetName("CALL delegated - out of gas");
         yield return new TestCaseData(
@@ -757,12 +865,12 @@ internal class TransactionProcessorEip7702Tests
             + GasCostOf.ColdAccountAccess
             + GasCostOf.VeryLow * 7,
             false,
-            100_000,
+            100_000ul,
             false
         ).SetName("CALL not delegated - cold access");
     }
     [TestCaseSource(nameof(AccountAccessGasCases))]
-    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, long expectedGas, bool isDelegated, long gasLimit, bool shouldRunOutOfGas)
+    public void Execute_DifferentAccountAccessOpcodes_ChargesCorrectAccountAccessGas(byte[] code, ulong expectedGas, bool isDelegated, ulong gasLimit, bool shouldRunOutOfGas)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -785,7 +893,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
-        Block block = Build.A.Block.WithNumber(long.MaxValue)
+        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
@@ -892,7 +1000,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
+        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo(1ul));
     }
 
 
@@ -992,7 +1100,7 @@ internal class TransactionProcessorEip7702Tests
         CallOutputTracer tracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.ReturnValue, Is.EquivalentTo(new byte[] { Convert.ToByte(!isDelegated) }));
+        Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { Convert.ToByte(!isDelegated) }));
     }
 
     private void DeployCode(Address codeSource, byte[] code)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,6 +35,7 @@ public class BlockValidator(
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
@@ -314,7 +316,12 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            if (spec.IsEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
@@ -358,7 +365,7 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
-                error = BlockErrorMessages.InsufficientMaxFeePerBlobGas;
+                error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
             }
@@ -441,6 +448,11 @@ public class BlockValidator(
             {
                 return false;
             }
+
+            if (!ValidateBlockLevelAccessListIndexBounds(block, ref error))
+            {
+                return false;
+            }
         }
 
         error = null;
@@ -451,12 +463,53 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
-        int maxBalItems = (int)(block.Header.GasLimit / Eip7928Constants.ItemCost);
+        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
+        // validation reaches this helper after execution with only GeneratedBlockAccessList.
+        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
+        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        if (bal.ItemCount > maxBalItems)
+        if (itemCount > 0 && itemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockLevelAccessListExceededSizeLimit(bal.ItemCount, maxBalItems);
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
+        }
+
+        return true;
+    }
+
+    // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
+    // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
+    private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
+    {
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null) return true;
+
+        uint maxAllowed = (uint)block.Transactions.Length + 1;
+
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes, maxAllowed, ref error)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, T[] changes, uint maxAllowed, ref string? error)
+        where T : IIndexedChange
+    {
+        for (int i = 0; i < changes.Length; i++)
+        {
+            uint index = changes[i].Index;
+            if (index <= maxAllowed) continue;
+
+            error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, maxAllowed);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
@@ -502,13 +555,14 @@ public class BlockValidator(
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
     {
         BlockHeader header = block.Header;
-        if (block.BlockAccessList is null)
+        ReadOnlyBlockAccessList? bal = block.BlockAccessList;
+        if (bal is null)
         {
             balRoot = null;
             return header.BlockAccessListHash is null;
         }
 
-        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+        balRoot = bal.WireHash ?? new Hash256(ValueKeccak.Compute(block.EncodedBlockAccessList!));
 
         return balRoot == header.BlockAccessListHash;
     }

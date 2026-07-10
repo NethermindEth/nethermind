@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Db;
@@ -37,16 +36,16 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(blockId, origin);
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.BlockId.Should().Be(blockId);
-        retrieved.L1BlockHeight.Should().Be(456);
+        Assert.That(retrieved, Is.Not.Null);
+        Assert.That(retrieved!.BlockId, Is.EqualTo(blockId));
+        Assert.That(retrieved.L1BlockHeight, Is.EqualTo(456));
     }
 
     [Test]
     public void Returns_null_for_non_existent_l1_origin()
     {
         L1Origin? retrieved = _store.ReadL1Origin(999);
-        retrieved.Should().BeNull();
+        Assert.That(retrieved, Is.Null);
     }
 
     [Test]
@@ -57,14 +56,14 @@ public class L1OriginStoreTests
         _store.WriteHeadL1Origin(headBlockId);
         UInt256? retrieved = _store.ReadHeadL1Origin();
 
-        retrieved.Should().Be((UInt256)789);
+        Assert.That(retrieved, Is.EqualTo((UInt256)789));
     }
 
     [Test]
     public void Returns_null_for_non_existent_head()
     {
         UInt256? retrieved = _store.ReadHeadL1Origin();
-        retrieved.Should().BeNull();
+        Assert.That(retrieved, Is.Null);
     }
 
     [Test]
@@ -76,14 +75,14 @@ public class L1OriginStoreTests
         _store.WriteBatchToLastBlockID(batchId, blockId);
         UInt256? retrieved = _store.ReadBatchToLastBlockID(batchId);
 
-        retrieved.Should().Be((UInt256)200);
+        Assert.That(retrieved, Is.EqualTo((UInt256)200));
     }
 
     [Test]
     public void Returns_null_for_non_existent_batch_mapping()
     {
         UInt256? retrieved = _store.ReadBatchToLastBlockID(999);
-        retrieved.Should().BeNull();
+        Assert.That(retrieved, Is.Null);
     }
 
     [Test]
@@ -92,8 +91,8 @@ public class L1OriginStoreTests
         _store.WriteBatchToLastBlockID(1, 100);
         _store.WriteBatchToLastBlockID(2, 200);
 
-        _store.ReadBatchToLastBlockID(1).Should().Be((UInt256)100);
-        _store.ReadBatchToLastBlockID(2).Should().Be((UInt256)200);
+        Assert.That(_store.ReadBatchToLastBlockID(1), Is.EqualTo((UInt256)100));
+        Assert.That(_store.ReadBatchToLastBlockID(2), Is.EqualTo((UInt256)200));
     }
 
     [Test]
@@ -105,8 +104,8 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(1, origin1);
         _store.WriteL1Origin(2, origin2);
 
-        _store.ReadL1Origin(1)!.L1BlockHeight.Should().Be(100);
-        _store.ReadL1Origin(2)!.L1BlockHeight.Should().Be(200);
+        Assert.That(_store.ReadL1Origin(1)!.L1BlockHeight, Is.EqualTo(100));
+        Assert.That(_store.ReadL1Origin(2)!.L1BlockHeight, Is.EqualTo(200));
     }
 
     [Test]
@@ -119,7 +118,7 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(blockId, origin1);
         _store.WriteL1Origin(blockId, origin2);
 
-        _store.ReadL1Origin(blockId)!.L1BlockHeight.Should().Be(200);
+        Assert.That(_store.ReadL1Origin(blockId)!.L1BlockHeight, Is.EqualTo(200));
     }
 
     [Test]
@@ -132,9 +131,9 @@ public class L1OriginStoreTests
 
         TestMemDb testDb = (TestMemDb)_db;
         byte[][] allKeys = testDb.Keys.ToArray();
-        allKeys.Should().HaveCount(1);
-        allKeys[0].Length.Should().Be(33, "Keys should be 33 bytes (1 prefix + 32 UInt256)");
-        allKeys[0][0].Should().Be(0x00, "L1Origin keys should have prefix 0x00");
+        Assert.That(allKeys.Length, Is.EqualTo(1));
+        Assert.That(allKeys[0].Length, Is.EqualTo(33), "Keys should be 33 bytes (1 prefix + 32 UInt256)");
+        Assert.That(allKeys[0][0], Is.EqualTo(0x00), "L1Origin keys should have prefix 0x00");
     }
 
     [Test]
@@ -144,9 +143,9 @@ public class L1OriginStoreTests
 
         TestMemDb testDb = (TestMemDb)_db;
         byte[][] allKeys = testDb.Keys.ToArray();
-        allKeys.Should().HaveCount(1);
-        allKeys[0].Length.Should().Be(33);
-        allKeys[0][0].Should().Be(0x01, "Batch keys should have prefix 0x01");
+        Assert.That(allKeys.Length, Is.EqualTo(1));
+        Assert.That(allKeys[0].Length, Is.EqualTo(33));
+        Assert.That(allKeys[0][0], Is.EqualTo(0x01), "Batch keys should have prefix 0x01");
     }
 
     [Test]
@@ -156,9 +155,9 @@ public class L1OriginStoreTests
 
         TestMemDb testDb = (TestMemDb)_db;
         byte[][] allKeys = testDb.Keys.ToArray();
-        allKeys.Should().HaveCount(1);
-        allKeys[0].Length.Should().Be(1);
-        allKeys[0][0].Should().Be(0xFF, "Head key should have prefix 0xFF");
+        Assert.That(allKeys.Length, Is.EqualTo(1));
+        Assert.That(allKeys[0].Length, Is.EqualTo(1));
+        Assert.That(allKeys[0][0], Is.EqualTo(0xFF), "Head key should have prefix 0xFF");
     }
 
     [Test]
@@ -171,10 +170,10 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(blockId, origin);
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.Signature.Should().NotBeNull();
-        retrieved.Signature!.Length.Should().Be(65);
-        retrieved.Signature.Should().BeEquivalentTo(signature);
+        Assert.That(retrieved, Is.Not.Null);
+        Assert.That(retrieved!.Signature, Is.Not.Null);
+        Assert.That(retrieved.Signature!.Length, Is.EqualTo(65));
+        Assert.That(retrieved.Signature, Is.EqualTo(signature));
     }
 
     [Test]
@@ -186,9 +185,9 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(blockId, origin);
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
-        retrieved.Should().NotBeNull();
-        retrieved!.L1BlockHeight.Should().Be(0);
-        retrieved.IsPreconfBlock.Should().BeTrue();
+        Assert.That(retrieved, Is.Not.Null);
+        Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
+        Assert.That(retrieved.IsPreconfBlock, Is.True);
     }
 
     [TestCase(0)]
@@ -201,7 +200,8 @@ public class L1OriginStoreTests
         L1Origin origin = new(1, Hash256.Zero, 456, Hash256.Zero, null) { Signature = signature };
 
         Action act = () => _decoder.Encode(origin);
-        act.Should().Throw<RlpException>().WithMessage($"*Signature*{L1OriginDecoder.SignatureLength}*");
+        Assert.That(act, Throws.TypeOf<RlpException>()
+            .With.Message.EqualTo($"Signature should be exactly {L1OriginDecoder.SignatureLength}"));
     }
 
     [Test]
@@ -215,11 +215,10 @@ public class L1OriginStoreTests
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
 
-        contentLength.Should().Be(encoded.Bytes.Length - prefixLength,
-            "StartSequence must receive content length, not total length");
+        Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");
     }
 
     [Test]
@@ -229,7 +228,7 @@ public class L1OriginStoreTests
 
         L1Origin? result = _store.SetL1OriginSignature(blockId: 42, signature);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -242,9 +241,9 @@ public class L1OriginStoreTests
         byte[] signature = Enumerable.Range(0, L1OriginDecoder.SignatureLength).Select(i => (byte)i).ToArray();
         L1Origin? returned = _store.SetL1OriginSignature(blockId, signature);
 
-        returned.Should().NotBeNull();
-        returned!.Signature.Should().BeEquivalentTo(signature);
-        _store.ReadL1Origin(blockId)!.Signature.Should().BeEquivalentTo(signature);
+        Assert.That(returned, Is.Not.Null);
+        Assert.That(returned!.Signature, Is.EqualTo(signature));
+        Assert.That(_store.ReadL1Origin(blockId)!.Signature, Is.EqualTo(signature));
     }
 
     [Test]
@@ -289,11 +288,10 @@ public class L1OriginStoreTests
         await Task.WhenAll(signer, updater);
 
         L1Origin? final = _store.ReadL1Origin(blockId);
-        final.Should().NotBeNull();
+        Assert.That(final, Is.Not.Null);
         // Signature must be one of the values we ever wrote (no torn bytes from concurrent encoding).
-        final!.Signature.Should().NotBeNull();
+        Assert.That(final!.Signature, Is.Not.Null);
         bool sigMatches = final.Signature!.SequenceEqual(sigA) || final.Signature.SequenceEqual(sigB);
-        sigMatches.Should().BeTrue("the signature must be a complete value from one of the writers, never torn");
+        Assert.That(sigMatches, Is.True, "the signature must be a complete value from one of the writers, never torn");
     }
 }
-

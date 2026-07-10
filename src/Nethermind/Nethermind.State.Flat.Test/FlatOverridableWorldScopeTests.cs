@@ -16,11 +16,20 @@ using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
+
+internal static class ScopeProviderTestExtensions
+{
+    // Test convenience overload: begins a scope with a throwaway metrics accumulator for tests that
+    // call the scope provider directly and do not assert on the folded counters.
+    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider provider, BlockHeader? baseBlock)
+        => provider.BeginScope(baseBlock, new LocalMetrics());
+}
 
 public class FlatOverridableWorldScopeTests
 {
@@ -60,7 +69,7 @@ public class FlatOverridableWorldScopeTests
                         .Returns(_ =>
                         {
                             SnapshotPooledList snapshotList = new(0);
-                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false);
+                            return new ReadOnlySnapshotBundle(snapshotList, Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty());
                         });
 
                     flatDbManager.HasStateForBlock(Arg.Any<StateId>())
@@ -121,11 +130,9 @@ public class FlatOverridableWorldScopeTests
             {
                 writeBatch.Set(testAddress, testAccount);
 
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2))
-                {
-                    storageBatch.Set(storageIndex1, storageValue1);
-                    storageBatch.Set(storageIndex2, storageValue2);
-                }
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 2);
+                storageBatch.Set(storageIndex1, storageValue1);
+                storageBatch.Set(storageIndex2, storageValue2);
             }
             scope.Commit(1);
             baseBlock = Build.A.BlockHeader.WithNumber(1).WithStateRoot(scope.RootHash).TestObject;
@@ -140,14 +147,21 @@ public class FlatOverridableWorldScopeTests
         }
 
         // Verify account readable through GlobalStateReader
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(baseBlock, testAddress, out AccountStruct acc), Is.True);
-        Assert.That(acc.Balance, Is.EqualTo(testAccount.Balance));
+        bool hasAccount = overridableScope.GlobalStateReader.TryGetAccount(baseBlock, testAddress, out AccountStruct acc);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasAccount, Is.True);
+            Assert.That(acc.Balance, Is.EqualTo(testAccount.Balance));
+        }
 
         // Verify storage readable through GlobalStateReader
         ReadOnlySpan<byte> readValue1 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex1);
         ReadOnlySpan<byte> readValue2 = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, storageIndex2);
-        Assert.That(readValue1.ToArray(), Is.EqualTo(storageValue1), "Storage slot 1 should be readable");
-        Assert.That(readValue2.ToArray(), Is.EqualTo(storageValue2), "Storage slot 2 should be readable");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readValue1.ToArray(), Is.EqualTo(storageValue1), "Storage slot 1 should be readable");
+            Assert.That(readValue2.ToArray(), Is.EqualTo(storageValue2), "Storage slot 2 should be readable");
+        }
 
         // Verify non-existent slot returns zeros
         ReadOnlySpan<byte> nonExistent = overridableScope.GlobalStateReader.GetStorage(baseBlock, testAddress, 999);
@@ -227,29 +241,32 @@ public class FlatOverridableWorldScopeTests
             block3 = Build.A.BlockHeader.WithNumber(3).WithStateRoot(scope.RootHash).TestObject;
         }
 
-        // Verify final state (block 3) sees all three accounts
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressA, out AccountStruct accA3), Is.True, "Block 3 should see account A");
-        Assert.That(accA3.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressB, out AccountStruct accB3), Is.True, "Block 3 should see account B");
-        Assert.That(accB3.Balance, Is.EqualTo(accountB.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressC, out AccountStruct accC3), Is.True, "Block 3 should see account C");
-        Assert.That(accC3.Balance, Is.EqualTo(accountC.Balance));
+        using (Assert.EnterMultipleScope())
+        {
+            // Verify final state (block 3) sees all three accounts
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressA, out AccountStruct accA3), Is.True, "Block 3 should see account A");
+            Assert.That(accA3.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressB, out AccountStruct accB3), Is.True, "Block 3 should see account B");
+            Assert.That(accB3.Balance, Is.EqualTo(accountB.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block3, addressC, out AccountStruct accC3), Is.True, "Block 3 should see account C");
+            Assert.That(accC3.Balance, Is.EqualTo(accountC.Balance));
 
-        // Verify intermediate state (block 2) sees A+B but not C
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressA, out AccountStruct accA2), Is.True, "Block 2 should see account A");
-        Assert.That(accA2.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressB, out AccountStruct accB2), Is.True, "Block 2 should see account B");
-        Assert.That(accB2.Balance, Is.EqualTo(accountB.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressC, out _), Is.False, "Block 2 should NOT see account C");
+            // Verify intermediate state (block 2) sees A+B but not C
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressA, out AccountStruct accA2), Is.True, "Block 2 should see account A");
+            Assert.That(accA2.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressB, out AccountStruct accB2), Is.True, "Block 2 should see account B");
+            Assert.That(accB2.Balance, Is.EqualTo(accountB.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block2, addressC, out _), Is.False, "Block 2 should NOT see account C");
 
-        // Verify initial state (block 1) sees only A
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressA, out AccountStruct accA1), Is.True, "Block 1 should see account A");
-        Assert.That(accA1.Balance, Is.EqualTo(accountA.Balance));
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressB, out _), Is.False, "Block 1 should NOT see account B");
-        Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressC, out _), Is.False, "Block 1 should NOT see account C");
+            // Verify initial state (block 1) sees only A
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressA, out AccountStruct accA1), Is.True, "Block 1 should see account A");
+            Assert.That(accA1.Balance, Is.EqualTo(accountA.Balance));
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressB, out _), Is.False, "Block 1 should NOT see account B");
+            Assert.That(overridableScope.GlobalStateReader.TryGetAccount(block1, addressC, out _), Is.False, "Block 1 should NOT see account C");
 
-        // Verify no calls to main FlatDbManager
-        Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+            // Verify no calls to main FlatDbManager
+            Assert.That(ctx.FlatDbManagerAddSnapshotCalls, Is.Empty);
+        }
     }
 
     [Test]

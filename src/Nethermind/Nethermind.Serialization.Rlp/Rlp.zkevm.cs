@@ -23,7 +23,7 @@ public partial class Rlp
     {
         get
         {
-            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }
     }
@@ -31,7 +31,14 @@ public partial class Rlp
     private static Dictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
         using Lock.Scope _ = _decoderLock.EnterScope();
-        return _decodersSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+        Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+        }
+
+        return snapshot;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
@@ -40,11 +47,11 @@ public partial class Rlp
         // (CustomAttribute instantiation can trigger TypeLoader failures).
         // Register the required decoders explicitly instead.
         RegisterDecoder(typeof(Account), AccountDecoder.Instance);
-        RegisterDecoder(typeof(AccountChanges), AccountChangesDecoder.Instance);
+        RegisterDecoder(typeof(ReadOnlyAccountChanges), AccountChangesDecoder.Instance);
         RegisterDecoder(typeof(AuthorizationTuple), new AuthorizationTupleDecoder());
         RegisterDecoder(typeof(BalanceChange), BalanceChangeDecoder.Instance);
         RegisterDecoder(typeof(Block), new BlockDecoder());
-        RegisterDecoder(typeof(BlockAccessList), BlockAccessListDecoder.Instance);
+        RegisterDecoder(typeof(ReadOnlyBlockAccessList), BlockAccessListDecoder.Instance);
         RegisterDecoder(typeof(BlockBody), BlockBodyDecoder.Instance);
         RegisterDecoder(typeof(BlockHeader), new HeaderDecoder());
         RegisterDecoder(typeof(BlockInfo), BlockInfoDecoder.Instance);
@@ -53,14 +60,14 @@ public partial class Rlp
         RegisterDecoder(typeof(Hash256), KeccakDecoder.Instance);
         RegisterDecoder(typeof(LogEntry), LogEntryDecoder.Instance);
         RegisterDecoder(typeof(NonceChange), NonceChangeDecoder.Instance);
-        RegisterDecoder(typeof(SlotChanges), SlotChangesDecoder.Instance);
+        RegisterDecoder(typeof(ReadOnlySlotChanges), SlotChangesDecoder.Instance);
         RegisterDecoder(typeof(StorageChange), StorageChangeDecoder.Instance);
         RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         RegisterDecoder(typeof(Withdrawal), new WithdrawalDecoder());
 
         // Receipt decoders with explicit keys.
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Default), new ReceiptMessageDecoder());
-        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), ReceiptArrayStorageDecoder.Instance);
+        RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
     }

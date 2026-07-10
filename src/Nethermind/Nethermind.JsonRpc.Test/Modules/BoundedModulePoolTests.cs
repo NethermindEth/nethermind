@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -17,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Network;
 using Nethermind.State;
+using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -38,7 +42,6 @@ public class BoundedModulePoolTests
 
         BlockTree blockTree = Build.A
             .BlockTree()
-            .WithRealBloom
             .TestObject;
 
         _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
@@ -58,7 +61,16 @@ public class BoundedModulePoolTests
             Substitute.For<IProtocolsManager>(),
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogIndexConfig>()),
+            Substitute.For<ILogIndexConfig>(),
+            new ReceiptConfig(),
+            new EthCapabilitiesProvider(
+                blockTree.AsReadOnly(),
+                Substitute.For<IStateBoundary>(),
+                new SyncConfig(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>()),
+            new BlockForRpcFactory()),
              1, 1000);
 
         return Task.CompletedTask;

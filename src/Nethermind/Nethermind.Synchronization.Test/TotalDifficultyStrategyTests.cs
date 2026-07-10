@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -37,7 +36,7 @@ public class TotalDifficultyStrategyTests
 
         foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
-            header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
+            Assert.That(header.TotalDifficulty, Is.EqualTo(expectedTotalDifficulty));
         }
     }
 
@@ -49,8 +48,8 @@ public class TotalDifficultyStrategyTests
         BlockHeader withNonZeroDiff = Build.A.BlockHeader.WithDifficulty(1126457).WithTotalDifficulty(0).TestObject;
         BlockHeader withZeroDiff = Build.A.BlockHeader.WithDifficulty(0).WithTotalDifficulty(100).TestObject;
 
-        strategy.ParentTotalDifficulty(withNonZeroDiff).Should().Be(UInt256.Zero);
-        strategy.ParentTotalDifficulty(withZeroDiff).Should().Be(UInt256.Zero);
+        Assert.That(strategy.ParentTotalDifficulty(withNonZeroDiff), Is.EqualTo(UInt256.Zero));
+        Assert.That(strategy.ParentTotalDifficulty(withZeroDiff), Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class TotalDifficultyStrategyTests
 
         foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
-            header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
+            Assert.That(header.TotalDifficulty, Is.EqualTo(expectedTotalDifficulty));
         }
     }
 }

@@ -7,14 +7,13 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
 {
-    private static NonceChangeDecoder? _instance;
-    public static NonceChangeDecoder Instance => _instance ??= new();
+    public static readonly NonceChangeDecoder Instance = new();
 
-    protected override NonceChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUShort(), ctx.DecodeULong());
+    protected override NonceChange DecodeFields(ref RlpReader ctx)
+        => new(ctx.DecodeUInt(), ctx.DecodeULong());
 
-    protected override void EncodeValue(RlpStream stream, NonceChange item)
-        => stream.Encode(item.Value);
+    protected override void EncodeValue<TWriter>(ref TWriter writer, NonceChange item)
+        => writer.Encode(item.Value);
 
     protected override int GetValueLength(NonceChange item)
         => Rlp.LengthOf(item.Value);

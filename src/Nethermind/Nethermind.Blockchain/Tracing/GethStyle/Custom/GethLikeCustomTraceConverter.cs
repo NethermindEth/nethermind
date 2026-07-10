@@ -19,15 +19,15 @@ public class GethLikeCustomTraceConverter : JsonConverter<GethLikeCustomTrace>
             return;
         }
 
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
             JsonSerializer.Serialize(writer, value.Value, options);
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
     }
 

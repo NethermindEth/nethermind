@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,8 +7,10 @@ using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
+using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
@@ -94,18 +96,24 @@ public sealed class TxValidator : ITxValidator
     /// just before the execution of the block / tx.
     /// </remarks>
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, releaseSpec)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
 public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -122,10 +130,19 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private IntrinsicGasTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
-        // This is unnecessarily calculated twice - at validation and execution times.
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
-        return transaction.GasLimit < intrinsicGas.MinimalGas
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
+        {
+            return TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap);
+        }
+
+        // Implicit conversion combines Standard + StateReservoir (EIP-8037) before max'ing with FloorGas.
+        EthereumIntrinsicGas combined = intrinsicGas;
+        return transaction.GasLimit < combined.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }
@@ -230,7 +247,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         return ValidationResult.Success;
     }
 
-    internal static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
+    public static ValidationResult ValidateBlobGasLimits(int txBlobCount, IReleaseSpec spec)
     {
         if (txBlobCount < Eip4844Constants.MinBlobsPerTransaction)
         {
@@ -365,7 +382,7 @@ public sealed class NoContractCreationTxValidator : ITxValidator
     public static readonly NoContractCreationTxValidator Instance = new();
     private NoContractCreationTxValidator() { }
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.IsContractCreation ? TxErrorMessages.NotAllowedCreateTransaction : ValidationResult.Success;
+        SetCodeTxValidation.ValidateNoContractCreation(transaction);
 }
 
 public sealed class AuthorizationListTxValidator : ITxValidator
@@ -374,11 +391,7 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     private AuthorizationListTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.AuthorizationList switch
-        {
-            null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            _ => ValidationResult.Success
-        };
+        SetCodeTxValidation.ValidateAuthorizationList(transaction);
 }
 
 public sealed class GasLimitCapTxValidator : ITxValidator
@@ -388,7 +401,7 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long gasLimitCap = releaseSpec.GetTxGasLimitCap();
+        ulong gasLimitCap = releaseSpec.GetTxGasLimitCap();
         return transaction.GasLimit > gasLimitCap ?
             TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
     }

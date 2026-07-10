@@ -3,7 +3,6 @@
 
 using System;
 using System.Reflection;
-using FluentAssertions;
 using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
 
@@ -24,7 +23,6 @@ public class PerTableDbConfigTests
             DbNames.Headers,
             DbNames.Receipts,
             DbNames.BlockInfos,
-            DbNames.Bloom,
             DbNames.Metadata
         ];
 
@@ -49,7 +47,7 @@ public class PerTableDbConfigTests
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts, "Blocks");
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;some_option=3;");
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;some_option=3;"));
     }
 
     [Test]
@@ -61,7 +59,7 @@ public class PerTableDbConfigTests
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;");
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;"));
     }
 
     [Test]
@@ -71,7 +69,19 @@ public class PerTableDbConfigTests
         dbConfig.MaxOpenFiles = 2;
 
         PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
-        config.MaxOpenFiles.Should().Be(2);
+        Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
+    }
+
+    [TestCase(null, FlushOnExitMode.WalOnly, TestName = "FlushOnExit defaults to WalOnly")]
+    [TestCase(FlushOnExitMode.None, FlushOnExitMode.None)]
+    [TestCase(FlushOnExitMode.Full, FlushOnExitMode.Full)]
+    public void FlushOnExit_reads_general_config(FlushOnExitMode? configured, FlushOnExitMode expected)
+    {
+        DbConfig dbConfig = new();
+        if (configured is not null) dbConfig.FlushOnExit = configured.Value;
+
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.FlushOnExit, Is.EqualTo(expected));
     }
 
     [Test]
@@ -80,9 +90,9 @@ public class PerTableDbConfigTests
         Type dbConfigType = typeof(DbConfig);
         Type iDbConfigType = typeof(IDbConfig);
 
-        foreach (PropertyInfo propertyInfo in dbConfigType.Properties())
+        foreach (PropertyInfo propertyInfo in dbConfigType.GetProperties())
         {
-            iDbConfigType.GetProperty(propertyInfo.Name).Should().NotBeNull($"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
+            Assert.That(iDbConfigType.GetProperty(propertyInfo.Name), Is.Not.Null, $"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
         }
     }
 }

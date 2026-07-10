@@ -17,10 +17,10 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
-        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
+        protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
-        private readonly List<Change> _keptInCache = new();
+        private readonly List<Change> _keptInCache = [];
 
         // stack of snapshot indexes on changes for start of each transaction
         // this is needed for OriginalValues for new transactions
@@ -38,7 +38,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
+        public virtual void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -134,7 +134,7 @@ namespace Nethermind.State
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer)
+        public virtual void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
@@ -175,7 +175,9 @@ namespace Nethermind.State
         /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            // If the cache is completely empty (no writes or reads yet this transaction),
+            // skip hashing the 52-byte cell — TryGetValue would miss anyway.
+            if (_intraBlockCache.Count != 0 && _intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {

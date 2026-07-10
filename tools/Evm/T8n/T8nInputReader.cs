@@ -58,7 +58,7 @@ public static class T8nInputReader
     {
         try
         {
-            var fileContent = File.ReadAllText(filePath);
+            string fileContent = File.ReadAllText(filePath);
             return EthereumJsonSerializer.Deserialize<T>(fileContent);
         }
         catch (FileNotFoundException e)
@@ -73,7 +73,7 @@ public static class T8nInputReader
 
     private static InputData ReadStdInput()
     {
-        using var reader = new StreamReader(Console.OpenStandardInput());
+        using StreamReader reader = new(Console.OpenStandardInput());
         try
         {
             return EthereumJsonSerializer.Deserialize<InputData>(reader.ReadToEnd());

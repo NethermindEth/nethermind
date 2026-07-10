@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -52,7 +51,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // For flat, sync finalization writes to persistence. Verify root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None).Should().NotBeNull("root node should exist after flush");
+        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Not.Null, "root node should exist after flush");
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
@@ -84,7 +83,8 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(reader.CurrentState, reader.CurrentState);
-        writeBatch.DeleteStateTrieNodeRange(TreePath.Empty, TreePath.Empty);
+        // The whole state trie is under the empty-path root, so [Zero, MaxValue] removes every node (heal re-fetches).
+        writeBatch.DeleteStateTrieNodeRange(ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     /// <summary>
@@ -137,7 +137,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
                 return node;
             }
@@ -169,7 +169,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }

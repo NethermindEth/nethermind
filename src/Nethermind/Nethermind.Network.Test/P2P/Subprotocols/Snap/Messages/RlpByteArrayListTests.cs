@@ -4,7 +4,7 @@
 using System;
 using System.Buffers;
 using System.Linq;
-using FluentAssertions;
+using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -13,6 +13,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class RlpByteArrayListTests
 {
+    private const int SmallPrefixBarrier = 56;
+
     private static byte[][] SingleByteItems => [
         [0x01], [0x42], [0x7f]
     ];
@@ -51,11 +53,11 @@ public class RlpByteArrayListTests
     public void SequentialAccess_ReturnsCorrectData(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
-        list.Count.Should().Be(items.Length);
+        Assert.That(list.Count, Is.EqualTo(items.Length));
 
         for (int i = 0; i < items.Length; i++)
         {
-            list[i].ToArray().Should().BeEquivalentTo(items[i], $"item {i} should match");
+            Assert.That(list[i].ToArray(), Is.EqualTo(items[i]), $"item {i} should match");
         }
     }
 
@@ -68,8 +70,36 @@ public class RlpByteArrayListTests
         {
             byte[] first = list[i].ToArray();
             byte[] second = list[i].ToArray();
-            second.Should().BeEquivalentTo(first, $"re-access of item {i} should be identical");
+            Assert.That(second, Is.EqualTo(first), $"re-access of item {i} should be identical");
         }
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void RlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    {
+        using RlpByteArrayList list = CreateList(items);
+        byte[] expected = EncodeItems(items);
+
+        byte[] buffer = new byte[list.RlpLength];
+        RlpWriter writer = new(buffer);
+        writer.WriteByteArrayList(list);
+
+        Assert.That(writer.Position, Is.EqualTo(expected.Length));
+        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
+    }
+
+    [TestCaseSource(nameof(TestCases))]
+    public void ByteBuffer_RlpWriter_WithWrapper_MatchesCanonicalEncoding(byte[][] items)
+    {
+        using RlpByteArrayList list = CreateList(items);
+        byte[] expected = EncodeItems(items);
+
+        using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.WriteByteArrayList(list);
+
+        Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
+        Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -80,37 +110,181 @@ public class RlpByteArrayListTests
         using RlpByteArrayList list = CreateList(items);
 
         // Access last item first to set cache forward
-        list[items.Length - 1].ToArray().Should().BeEquivalentTo(items[^1]);
+        Assert.That(list[items.Length - 1].ToArray(), Is.EqualTo(items[^1]));
         // Then access first item (requires cache reset)
-        list[0].ToArray().Should().BeEquivalentTo(items[0]);
+        Assert.That(list[0].ToArray(), Is.EqualTo(items[0]));
         // Access middle if possible
         if (items.Length > 2)
         {
             int mid = items.Length / 2;
-            list[mid].ToArray().Should().BeEquivalentTo(items[mid]);
+            Assert.That(list[mid].ToArray(), Is.EqualTo(items[mid]));
         }
+    }
+
+    [TestCase(0, 256, false)]
+    [TestCase(1, 256, false)]
+    [TestCase(255, 256, false)]
+    [TestCase(256, 256, false)]
+    [TestCase(257, 256, true)]
+    [TestCase(1024, 256, true)]
+    public void DecodeList_WithLimit_EnforcesCount(int itemCount, int limit, bool shouldThrow)
+    {
+        byte[] encoded = EncodeSingleByteItemList(itemCount);
+        RlpLimit rlpLimit = RlpLimit.For<RlpByteArrayListTests>(limit, "test");
+
+        if (shouldThrow)
+        {
+            Assert.Throws<RlpLimitException>(() =>
+            {
+                RlpReader ctx = new(encoded);
+                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            });
+        }
+        else
+        {
+            RlpReader ctx = new(encoded);
+            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            Assert.That(list.Count, Is.EqualTo(itemCount));
+        }
+    }
+
+    [Test]
+    public void DecodeList_WithoutLimit_AcceptsLargeList()
+    {
+        const int count = 10_000;
+        byte[] encoded = EncodeSingleByteItemList(count);
+
+        RlpReader ctx = new(encoded);
+        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        Assert.That(list.Count, Is.EqualTo(count));
+    }
+
+    private static byte[] EncodeSingleByteItemList(int count)
+    {
+        int contentLength = count;
+        int totalLength = LengthOfSequence(contentLength);
+        byte[] encoded = new byte[totalLength];
+        int position = 0;
+        WriteSequencePrefix(encoded, ref position, contentLength);
+        for (int i = 0; i < count; i++)
+        {
+            encoded[position++] = 0x42;
+        }
+        return encoded;
     }
 
     private static RlpByteArrayList CreateList(byte[][] items)
     {
+        byte[] data = EncodeItems(items);
+        ExactMemoryOwner memoryOwner = new(data);
+        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(0, data.Length));
+    }
+
+    private static byte[] EncodeItems(byte[][] items)
+    {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
         {
-            contentLength += Rlp.LengthOf(items[i]);
+            contentLength += LengthOfByteArray(items[i]);
         }
 
-        int totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream rlpStream = new(totalLength);
+        int totalLength = LengthOfSequence(contentLength);
+        byte[] encoded = new byte[totalLength];
+        int position = 0;
 
-        rlpStream.StartSequence(contentLength);
+        WriteSequencePrefix(encoded, ref position, contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            rlpStream.Encode(items[i]);
+            WriteByteArray(encoded, ref position, items[i]);
         }
 
-        byte[] data = rlpStream.Data.ToArray()!;
-        ExactMemoryOwner memoryOwner = new(data);
-        return new RlpByteArrayList(memoryOwner, memoryOwner.Memory.Slice(0, totalLength));
+        return encoded;
+    }
+
+    private static int LengthOfByteArray(byte[] item)
+    {
+        if (item.Length == 0 || item.Length == 1 && item[0] < 0x80)
+        {
+            return 1;
+        }
+
+        return item.Length < SmallPrefixBarrier
+            ? 1 + item.Length
+            : 1 + LengthOfLength(item.Length) + item.Length;
+    }
+
+    private static int LengthOfSequence(int contentLength) =>
+        contentLength < SmallPrefixBarrier
+            ? 1 + contentLength
+            : 1 + LengthOfLength(contentLength) + contentLength;
+
+    private static void WriteSequencePrefix(Span<byte> encoded, ref int position, int contentLength)
+    {
+        if (contentLength < SmallPrefixBarrier)
+        {
+            encoded[position++] = (byte)(0xc0 + contentLength);
+        }
+        else
+        {
+            encoded[position++] = (byte)(0xf7 + LengthOfLength(contentLength));
+            WriteLength(encoded, ref position, contentLength);
+        }
+    }
+
+    private static void WriteByteArray(Span<byte> encoded, ref int position, byte[] item)
+    {
+        if (item.Length == 0)
+        {
+            encoded[position++] = 0x80;
+            return;
+        }
+
+        if (item.Length == 1 && item[0] < 0x80)
+        {
+            encoded[position++] = item[0];
+            return;
+        }
+
+        if (item.Length < SmallPrefixBarrier)
+        {
+            encoded[position++] = (byte)(0x80 + item.Length);
+        }
+        else
+        {
+            encoded[position++] = (byte)(0xb7 + LengthOfLength(item.Length));
+            WriteLength(encoded, ref position, item.Length);
+        }
+
+        item.AsSpan().CopyTo(encoded[position..]);
+        position += item.Length;
+    }
+
+    private static int LengthOfLength(int value)
+    {
+        if (value < 1 << 8)
+        {
+            return 1;
+        }
+
+        if (value < 1 << 16)
+        {
+            return 2;
+        }
+
+        if (value < 1 << 24)
+        {
+            return 3;
+        }
+
+        return 4;
+    }
+
+    private static void WriteLength(Span<byte> encoded, ref int position, int length)
+    {
+        for (int shift = (LengthOfLength(length) - 1) * 8; shift >= 0; shift -= 8)
+        {
+            encoded[position++] = (byte)(length >> shift);
+        }
     }
 
     private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>

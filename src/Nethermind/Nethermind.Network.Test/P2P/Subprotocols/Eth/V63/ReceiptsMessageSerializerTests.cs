@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -45,11 +44,7 @@ public class ReceiptsMessageSerializerTests
                 {
                     for (int j = 0; j < txReceipts[i].Length; j++)
                     {
-                        if (txReceipts[i][j] is null)
-                        {
-                            Assert.That(deserialized.TxReceipts[i][j], Is.Null, $"receipts[{i}][{j}]");
-                        }
-                        else
+                        using (Assert.EnterMultipleScope())
                         {
                             Assert.That(deserialized.TxReceipts[i][j].TxType, Is.EqualTo(txReceipts[i][j].TxType), $"receipts[{i}][{j}].TxType");
                             Assert.That(deserialized.TxReceipts[i][j].Bloom, Is.EqualTo(txReceipts[i][j].Bloom), $"receipts[{i}][{j}].Bloom");
@@ -87,7 +82,8 @@ public class ReceiptsMessageSerializerTests
         ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        TxReceipt decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
+        RlpReader context = new(encoded);
+        TxReceipt decoded = decoder.Decode(ref context);
 
         TxReceipt expectedDecoded = new()
         {
@@ -97,7 +93,7 @@ public class ReceiptsMessageSerializerTests
             Logs = receipt.Logs
         };
 
-        decoded.Should().BeEquivalentTo(expectedDecoded);
+        decoded.AssertEquivalentTo(expectedDecoded);
     }
 
     [Test]
@@ -118,10 +114,23 @@ public class ReceiptsMessageSerializerTests
     public void Roundtrip_with_null_top_level() => Test(null);
 
     [Test]
-    public void Roundtrip_with_nulls()
+    public void Roundtrip_with_null_block()
     {
-        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null, new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
+        TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], null];
         Test(data);
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_Null_Receipt()
+    {
+        TxReceipt[][] data = [new[] { null, Build.A.Receipt.WithAllFieldsFilled.TestObject }];
+        using ReceiptsMessage message = new(data.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        RlpException? exception = Assert.Throws<RlpException>(() => serializer.Deserialize(serialized));
+        Assert.That(exception?.Message, Is.EqualTo("Unexpected null receipt payload"));
     }
 
     [Test]
@@ -129,7 +138,7 @@ public class ReceiptsMessageSerializerTests
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
         using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        receiptsMessage.TxReceipts.Should().HaveCount(0);
+        Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
     }
 
     [Test]
@@ -146,7 +155,7 @@ public class ReceiptsMessageSerializerTests
         serializer.Serialize(buffer, message);
         using ReceiptsMessage deserialized = serializer.Deserialize(buffer);
 
-        deserialized.TxReceipts.Count.Should().Be(data.Length);
+        Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(data.Length));
     }
 
     [Test]

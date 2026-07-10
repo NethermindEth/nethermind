@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -50,6 +51,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
 
+    [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
+
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
 
@@ -81,22 +85,25 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
-    Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to);
+    Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
 
     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
 
     [JsonRpcMethod(Description = "Get Raw Block format.")]
-    ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawBlock(BlockParameter blockParameter);
+
+    [JsonRpcMethod(Description = "Get raw block access list format.")]
+    ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
-    ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);
+    ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Header format.")]
-    ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
-    ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
+    ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
     Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();
@@ -121,7 +128,4 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
-
-    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.")]
-    ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
 }

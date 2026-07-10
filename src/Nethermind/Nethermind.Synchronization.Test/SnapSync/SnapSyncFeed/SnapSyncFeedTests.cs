@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
@@ -31,6 +30,6 @@ public class SnapSyncFeedTests
 
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
 
-        feed.HandleResponse(response, peer).Should().Be(SyncResponseHandlingResult.NoProgress);
+        Assert.That(feed.HandleResponse(response, peer), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
     }
 }

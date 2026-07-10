@@ -10,6 +10,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -19,17 +20,19 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Combines several protocol versions under a single <see cref="IDiscoveryApp"/> implementation.
 /// </summary>
-public class CompositeDiscoveryApp : IDiscoveryApp
+public sealed class CompositeDiscoveryApp : IDiscoveryApp
 {
     private readonly INetworkConfig _networkConfig;
     private readonly IConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
     private readonly IDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
+    private readonly ILogger _logger;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
         ILogManager logManager,
         Func<DiscoveryV5App> discoveryV5Factory, // These two are factory because they are optional.
         Func<DiscoveryApp> discoveryV4Factory,
@@ -37,8 +40,9 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     )
     {
         _networkConfig = networkConfig;
-        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), ipResolver, discoveryConfig);
         _channelFactory = channelFactory;
+        _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
 
         List<IDiscoveryApp> discoveryApps = new(2);
 
@@ -52,7 +56,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             discoveryApps.Add(discoveryV5Factory());
         }
 
-        _discoveryApps = discoveryApps.ToArray();
+        _discoveryApps = [.. discoveryApps];
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
@@ -92,6 +96,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         finally
         {
             _compositeNodeSource.Dispose();
+            await DisposeDiscoveryApps();
         }
     }
 
@@ -125,6 +130,25 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         Task result = Task.WhenAll(tasks.AsSpan());
         tasks.Dispose();
         return result;
+    }
+
+    private async Task DisposeDiscoveryApps()
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            if (discoveryApps[i] is IAsyncDisposable asyncDisposable)
+            {
+                try
+                {
+                    await asyncDisposable.DisposeAsync();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Error disposing discovery app {discoveryApps[i]}: {e}");
+                }
+            }
+        }
     }
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => _compositeNodeSource.DiscoverNodes(cancellationToken);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -26,7 +25,7 @@ public class ClHealthTrackerTests
         ManualTimestamper timestamper = new(DateTime.Parse("18:23:00"));
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
     }
 
     [Test]
@@ -36,7 +35,7 @@ public class ClHealthTrackerTests
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
-        healthTracker.CheckClAlive().Should().BeFalse();
+        Assert.That(healthTracker.CheckClAlive(), Is.False);
     }
 
     [Test]
@@ -46,7 +45,7 @@ public class ClHealthTrackerTests
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
     }
 
     [Test]
@@ -56,10 +55,10 @@ public class ClHealthTrackerTests
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
-        healthTracker.CheckClAlive().Should().BeFalse();
+        Assert.That(healthTracker.CheckClAlive(), Is.False);
 
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
     }
 
     [Test]
@@ -69,10 +68,10 @@ public class ClHealthTrackerTests
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
-        healthTracker.CheckClAlive().Should().BeFalse();
+        Assert.That(healthTracker.CheckClAlive(), Is.False);
 
         healthTracker.OnNewPayloadCalled();
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
     }
 
     [Test]
@@ -82,13 +81,13 @@ public class ClHealthTrackerTests
         ClHealthRequestsTracker healthTracker = CreateHealthTracker(timestamper);
 
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
 
         healthTracker.OnNewPayloadCalled();
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds + 1));
-        healthTracker.CheckClAlive().Should().BeFalse();
+        Assert.That(healthTracker.CheckClAlive(), Is.False);
     }
 
     [Test]
@@ -99,9 +98,9 @@ public class ClHealthTrackerTests
 
         timestamper.Add(TimeSpan.FromSeconds(MaxIntervalSeconds - 1));
         healthTracker.OnForkchoiceUpdatedCalled();
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
 
         timestamper.Add(TimeSpan.FromSeconds(2));
-        healthTracker.CheckClAlive().Should().BeTrue();
+        Assert.That(healthTracker.CheckClAlive(), Is.True);
     }
 }

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -24,7 +23,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             byte[] retrievedBytes = memDb.Get(TestItem.KeccakA);
-            retrievedBytes.Should().BeEquivalentTo(_sampleValue);
+            Assert.That(retrievedBytes, Is.EqualTo(_sampleValue));
         }
 
         [Test]
@@ -33,7 +32,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new("test_db");
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Get(TestItem.KeccakA);
-            memDb.Name.Should().Be("test_db");
+            Assert.That(memDb.Name, Is.EqualTo("test_db"));
         }
 
         [Test]
@@ -43,10 +42,10 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
 
             IKeyValueStoreSnapshot snapshot = memDb.CreateSnapshot();
-            snapshot.Should().NotBeNull();
+            Assert.That(snapshot, Is.Not.Null);
 
             byte[] value = snapshot.Get(TestItem.KeccakA);
-            value.Should().BeEquivalentTo(_sampleValue);
+            Assert.That(value, Is.EqualTo(_sampleValue));
 
             snapshot.Dispose();
         }
@@ -65,14 +64,14 @@ namespace Nethermind.Db.Test
 
             // Snapshot should see old values
             byte[] valueA = snapshot.Get(TestItem.KeccakA);
-            valueA.Should().BeEquivalentTo(_sampleValue);
+            Assert.That(valueA, Is.EqualTo(_sampleValue));
 
             byte[] valueB = snapshot.Get(TestItem.KeccakB);
-            valueB.Should().BeNull();
+            Assert.That(valueB, Is.Null);
 
             // Main db should see new values
-            memDb.Get(TestItem.KeccakA).Should().BeEquivalentTo(_sampleValue2);
-            memDb.Get(TestItem.KeccakB).Should().BeEquivalentTo(_sampleValue2);
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
+            Assert.That(memDb.Get(TestItem.KeccakB), Is.EqualTo(_sampleValue2));
 
             snapshot.Dispose();
         }
@@ -99,13 +98,13 @@ namespace Nethermind.Db.Test
             byte[]? value2 = snapshot2.Get(TestItem.KeccakA);
             byte[]? value3 = snapshot3.Get(TestItem.KeccakA);
 
-            value1.Should().NotBeNull();
-            value2.Should().NotBeNull();
-            value3.Should().NotBeNull();
+            Assert.That(value1, Is.Not.Null);
+            Assert.That(value2, Is.Not.Null);
+            Assert.That(value3, Is.Not.Null);
 
-            value1.Should().BeEquivalentTo(new byte[] { 1 });
-            value2.Should().BeEquivalentTo(new byte[] { 2 });
-            value3.Should().BeEquivalentTo(new byte[] { 3 });
+            Assert.That(value1, Is.EqualTo(new byte[] { 1 }));
+            Assert.That(value2, Is.EqualTo(new byte[] { 2 }));
+            Assert.That(value3, Is.EqualTo(new byte[] { 3 }));
 
             snapshot1.Dispose();
             snapshot2.Dispose();
@@ -130,9 +129,9 @@ namespace Nethermind.Db.Test
 
             // After disposal, old versions should be pruned
             // Main db should still work
-            memDb.Get(TestItem.KeccakA).Should().BeEquivalentTo(new byte[] { 3 });
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 3 }));
             memDb.Set(TestItem.KeccakA, new byte[] { 4 });
-            memDb.Get(TestItem.KeccakA).Should().BeEquivalentTo(new byte[] { 4 });
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 4 }));
         }
 
         [Test]
@@ -141,7 +140,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Remove(TestItem.KeccakA.Bytes);
-            memDb.KeyExists(TestItem.KeccakA).Should().BeFalse();
+            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.False);
         }
 
         [Test]
@@ -155,11 +154,11 @@ namespace Nethermind.Db.Test
             memDb.Remove(TestItem.KeccakA.Bytes);
 
             // Main db should not see key
-            memDb.KeyExists(TestItem.KeccakA).Should().BeFalse();
+            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.False);
 
             // Snapshot should still see key
-            snapshot.KeyExists(TestItem.KeccakA).Should().BeTrue();
-            snapshot.Get(TestItem.KeccakA).Should().BeEquivalentTo(_sampleValue);
+            Assert.That(snapshot.KeyExists(TestItem.KeccakA), Is.True);
+            Assert.That(snapshot.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
 
             snapshot.Dispose();
         }
@@ -170,7 +169,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.Keys.Should().HaveCount(2);
+            Assert.That(memDb.Keys, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -179,7 +178,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.GetAllValues().Should().HaveCount(2);
+            Assert.That(System.Linq.Enumerable.Count(memDb.GetAllValues()), Is.EqualTo(2));
         }
 
         [Test]
@@ -188,7 +187,7 @@ namespace Nethermind.Db.Test
             SnapshotableMemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
-            memDb.Values.Should().HaveCount(2);
+            Assert.That(memDb.Values, Has.Count.EqualTo(2));
         }
 
         [Test]
@@ -212,7 +211,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Clear();
-            memDb.Keys.Should().HaveCount(0);
+            Assert.That(memDb.Keys, Has.Count.EqualTo(0));
         }
 
         [Test]
@@ -228,8 +227,8 @@ namespace Nethermind.Db.Test
             memDb.Set(keyB, _sampleValue);
 
             byte[]? firstKey = memDb.FirstKey;
-            firstKey.Should().NotBeNull();
-            firstKey.Should().BeEquivalentTo(keyA);  // 0x01 is smallest
+            Assert.That(firstKey, Is.Not.Null);
+            Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01 is smallest
         }
 
         [Test]
@@ -245,8 +244,8 @@ namespace Nethermind.Db.Test
             memDb.Set(keyB, _sampleValue);
 
             byte[]? lastKey = memDb.LastKey;
-            lastKey.Should().NotBeNull();
-            lastKey.Should().BeEquivalentTo(keyC);  // 0x03 is largest
+            Assert.That(lastKey, Is.Not.Null);
+            Assert.That(lastKey, Is.EqualTo(keyC));  // 0x03 is largest
         }
 
         [Test]
@@ -268,22 +267,22 @@ namespace Nethermind.Db.Test
             // Get keys between B (inclusive) and E (exclusive)
             ISortedView view = memDb.GetViewBetween(keyB, keyE);
 
-            List<byte[]> keys = new();
-            List<byte[]> values = new();
+            List<byte[]> keys = [];
+            List<byte[]> values = [];
             while (view.MoveNext())
             {
                 keys.Add(view.CurrentKey.ToArray());
                 values.Add(view.CurrentValue.ToArray());
             }
 
-            keys.Should().HaveCount(3);
-            keys[0].Should().BeEquivalentTo(keyB);
-            keys[1].Should().BeEquivalentTo(keyC);
-            keys[2].Should().BeEquivalentTo(keyD);
+            Assert.That(keys, Has.Count.EqualTo(3));
+            Assert.That(keys[0], Is.EqualTo(keyB));
+            Assert.That(keys[1], Is.EqualTo(keyC));
+            Assert.That(keys[2], Is.EqualTo(keyD));
 
-            values[0].Should().BeEquivalentTo(new byte[] { 2 });
-            values[1].Should().BeEquivalentTo(new byte[] { 3 });
-            values[2].Should().BeEquivalentTo(new byte[] { 4 });
+            Assert.That(values[0], Is.EqualTo(new byte[] { 2 }));
+            Assert.That(values[1], Is.EqualTo(new byte[] { 3 }));
+            Assert.That(values[2], Is.EqualTo(new byte[] { 4 }));
 
             view.Dispose();
         }
@@ -312,16 +311,16 @@ namespace Nethermind.Db.Test
             ISortedKeyValueStore sortedSnapshot = (ISortedKeyValueStore)snapshot;
             ISortedView view = sortedSnapshot.GetViewBetween(keyA, keyE);
 
-            List<byte[]> values = new();
+            List<byte[]> values = [];
             while (view.MoveNext())
             {
                 values.Add(view.CurrentValue.ToArray());
             }
 
-            values.Should().HaveCount(3);
-            values[0].Should().BeEquivalentTo(new byte[] { 1 });
-            values[1].Should().BeEquivalentTo(new byte[] { 2 }); // Old version
-            values[2].Should().BeEquivalentTo(new byte[] { 3 });
+            Assert.That(values, Has.Count.EqualTo(3));
+            Assert.That(values[0], Is.EqualTo(new byte[] { 1 }));
+            Assert.That(values[1], Is.EqualTo(new byte[] { 2 })); // Old version
+            Assert.That(values[2], Is.EqualTo(new byte[] { 3 }));
 
             view.Dispose();
             snapshot.Dispose();
@@ -337,7 +336,7 @@ namespace Nethermind.Db.Test
             }
 
             byte[] retrieved = memDb.Get(TestItem.KeccakA);
-            retrieved.Should().BeEquivalentTo(_sampleValue);
+            Assert.That(retrieved, Is.EqualTo(_sampleValue));
         }
 
         [Test]
@@ -353,13 +352,12 @@ namespace Nethermind.Db.Test
 
             IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
 
-            orderedItems.Should().HaveCount(5);
+            Assert.That(System.Linq.Enumerable.Count(orderedItems), Is.EqualTo(5));
 
             byte[][] keys = orderedItems.Select(kvp => kvp.Key).ToArray();
             for (int i = 0; i < keys.Length - 1; i++)
             {
-                Bytes.BytesComparer.Compare(keys[i], keys[i + 1]).Should().BeLessThan(0,
-                    $"Keys should be in ascending order at position {i}");
+                Assert.That(Bytes.BytesComparer.Compare(keys[i], keys[i + 1]), Is.LessThan(0), $"Keys should be in ascending order at position {i}");
             }
         }
 
@@ -382,11 +380,11 @@ namespace Nethermind.Db.Test
             byte[]? firstKey = sortedSnapshot.FirstKey;
             byte[]? lastKey = sortedSnapshot.LastKey;
 
-            firstKey.Should().NotBeNull();
-            lastKey.Should().NotBeNull();
+            Assert.That(firstKey, Is.Not.Null);
+            Assert.That(lastKey, Is.Not.Null);
 
-            firstKey.Should().BeEquivalentTo(keyA);  // 0x01
-            lastKey.Should().BeEquivalentTo(keyB);   // 0x02 (not keyC which was added after)
+            Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01
+            Assert.That(lastKey, Is.EqualTo(keyB));   // 0x02 (not keyC which was added after)
 
             snapshot.Dispose();
         }
@@ -417,12 +415,12 @@ namespace Nethermind.Db.Test
 
             // snapshot1 should still see the original value for key A
             byte[]? valueA = snapshot1.Get(TestItem.KeccakA);
-            valueA.Should().NotBeNull("snapshot1 at version 2 should still see key A written at version 1");
-            valueA.Should().BeEquivalentTo(new byte[] { 1 });
+            Assert.That(valueA, Is.Not.Null, "snapshot1 at version 2 should still see key A written at version 1");
+            Assert.That(valueA, Is.EqualTo(new byte[] { 1 }));
 
             // Key B should still work
             byte[]? valueB = snapshot1.Get(TestItem.KeccakB);
-            valueB.Should().BeEquivalentTo(new byte[] { 2 });
+            Assert.That(valueB, Is.EqualTo(new byte[] { 2 }));
 
             snapshot1.Dispose();
         }
@@ -443,7 +441,7 @@ namespace Nethermind.Db.Test
 
             // snapshot1 should still work
             byte[]? value = snapshot1.Get(TestItem.KeccakA);
-            value.Should().BeEquivalentTo(new byte[] { 1 });
+            Assert.That(value, Is.EqualTo(new byte[] { 1 }));
 
             snapshot1.Dispose();
         }

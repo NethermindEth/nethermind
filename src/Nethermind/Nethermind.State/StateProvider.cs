@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -21,23 +20,25 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Metrics = Nethermind.Db.Metrics;
 using static Nethermind.State.StateProvider;
 
 namespace Nethermind.State;
 
-internal class StateProvider(ILogManager logManager) : IJournal<int>
+internal partial class StateProvider(ILogManager logManager, LocalMetrics metrics) : IJournal<int>
 {
     private static readonly UInt256 _zero = UInt256.Zero;
 
-    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = new();
-    private readonly HashSet<AddressAsKey> _committedThisRound = new();
-    private readonly HashSet<AddressAsKey> _nullAccountReads = new();
-    // Only guarding against hot duplicates so filter doesn't need to be too big
-    // Note:
-    // False negatives are fine as they will just result in a overwrite set
-    // False positives would be problematic as the code _must_ be persisted
-    private readonly AssociativeKeyCache<ValueHash256> _persistedCodeInsertFilter = new(1_024);
+    private readonly LocalMetrics _metrics = metrics;
+
+
+    private readonly Dictionary<AddressAsKey, StackList<int>> _intraTxCache = [];
+    private readonly HashSet<AddressAsKey> _committedThisRound = [];
+    private readonly HashSet<AddressAsKey> _nullAccountReads = [];
+    // Only guarding against hot duplicates within the current block; the cross-block
+    // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
+    // This is intentional: the lifetime of "is this code durably persisted" must match
+    // the lifetime of the durable storage, not the StateProvider — otherwise a transient
+    // (overlay) codeDb could poison the hint with non-durable entries.
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
@@ -51,6 +52,28 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     private bool _needsStateRootUpdate;
     private IWorldStateScopeProvider.ICodeDb? _codeDb;
+
+    // Invalidates the guest front cache when a restore/commit/reset recycles the change stacks; elided on
+    // mainline, which has no front cache (no implementing declaration).
+    partial void InvalidateFrontCache();
+#if ZK_EVM
+    // Single-entry cache in front of _intraTxCache: the EVM accesses the same
+    // account many times in a row. A cheap return when the address' change
+    // stack is unchanged (stack.Count); a push for any *other* address leaves
+    // it valid. Invalidated when a restore/commit/reset recycles the stacks (epoch).
+    private Address? _cachedAddress;
+    private StackList<int>? _cachedStack;
+    private Account? _cachedAccount;
+    private int _cachedStackCount;
+    private int _cachedEpoch = -1;
+    private int _epoch;
+
+    partial void InvalidateFrontCache() => _epoch++;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool IsFrontCacheHit(Address address) =>
+        _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
+#endif
 
     public void RecalculateStateRoot()
     {
@@ -94,10 +117,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         return account?.IsEmpty ?? true;
     }
 
-    public UInt256 GetNonce(Address address)
+    public ulong GetNonce(Address address)
     {
         Account? account = GetThroughCache(address);
-        return account?.Nonce ?? UInt256.Zero;
+        return account?.Nonce ?? 0;
     }
 
     public ref readonly UInt256 GetBalance(Address address)
@@ -113,7 +136,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         // Don't reinsert if already inserted. This can be the case when the same
         // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
         // or people copy and pasting popular contracts
-        if (!_blockCodeInsertFilter.Get(codeHash) && !_persistedCodeInsertFilter.Get(codeHash))
+        if (!_blockCodeInsertFilter.Get(codeHash) && !(_codeDb?.ContainsCode(codeHash) == true))
         {
             if (_codeBatch is null)
             {
@@ -134,6 +157,9 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
             _blockCodeInsertFilter.Set(codeHash);
             inserted = true;
+
+            _metrics.IncrementCodeWrites();
+            _metrics.IncrementCodeBytesWritten(code.Length);
         }
 
         Account? account = GetThroughCache(address) ?? ThrowIfNull(address);
@@ -246,10 +272,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, out UInt256 oldBalance)
         => SetNewBalance(address, balanceChange, releaseSpec, false, out oldBalance);
 
-    public void IncrementNonce(Address address, UInt256 delta)
+    public void IncrementNonce(Address address, ulong delta)
         => IncrementNonce(address, delta, out _);
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
@@ -268,7 +294,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
     }
 
-    public void DecrementNonce(Address address, UInt256 delta)
+    public void DecrementNonce(Address address, ulong delta)
     {
         _needsStateRootUpdate = true;
         Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
@@ -355,6 +381,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         if (_logger.IsTrace) Trace(snapshot);
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
+        InvalidateFrontCache();
 
         int stepsBack = lastIndex - snapshot;
         // Reserve capacity up‐front (avoid grows)
@@ -416,16 +443,16 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Expected actual position {actual} to be equal to {current} - {step}");
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         _needsStateRootUpdate = true;
         if (_logger.IsTrace) Trace(address, balance, nonce);
 
-        Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
+        Account account = (balance.IsZero && nonce == 0) ? Account.TotallyEmpty : new Account(nonce, balance);
         PushNew(address, account);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, in UInt256 balance, in UInt256 nonce)
+        void Trace(Address address, in UInt256 balance, in ulong nonce)
             => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
     }
 
@@ -453,7 +480,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => _logger.Trace($"Creating zombie account: {address}");
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         if (!AccountExists(address))
         {
@@ -606,6 +633,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
         trace?.ReportStateTrace(stateTracer, _nullAccountReads, this);
 
+        InvalidateFrontCache();
         _changes.Clear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
@@ -627,13 +655,18 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                 {
                     // Insert ordered for improved performance
-                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict.OrderBy(static kvp => kvp.Key))
+                    using ArrayPoolListRef<KeyValuePair<Hash256AsKey, byte[]>> entries = dict.ToPooledListRef();
+                    entries.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in entries)
                         batch.Set(kvp.Key.Value, kvp.Value);
                 }
 
-                // Mark all inserted codes as persisted
+                // Mark all inserted codes as persisted on the codeDb itself. For durable
+                // codeDbs this populates a hint cache used by ContainsCode; for transient
+                // (overlay) codeDbs this is a no-op — overlay writes must not be reported
+                // as durably persisted.
                 foreach (Hash256AsKey kvp in dict.Keys)
-                    _persistedCodeInsertFilter.Set(kvp.Value.ValueHash256);
+                    codeDb.MarkCodePersisted(kvp.Value.ValueHash256);
 
                 // Reuse Dictionary if not already re-initialized
                 dict.Clear();
@@ -703,35 +736,45 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         }
 
         if (writes > 0)
-            Metrics.IncrementStateTreeWrites(writes);
+            _metrics.IncrementStateTreeWrites(writes);
         if (skipped > 0)
-            Metrics.IncrementStateSkippedWrites(skipped);
+            _metrics.IncrementStateSkippedWrites(skipped);
     }
 
     public bool WarmUp(Address address)
         => GetState(address) is not null;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
+        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(addressAsKey, out bool exists);
         if (!exists)
         {
-            Metrics.IncrementStateTreeReads();
+            _metrics.IncrementStateTreeReads();
             Account? account = _tree.Get(address);
 
             accountChanges = new(account, account);
         }
         else
         {
-            Metrics.IncrementStateTreeCacheHits();
+            _metrics.IncrementStateTreeCacheHits();
         }
         return accountChanges.After;
     }
 
     internal void SetState(Address address, Account? account)
     {
-        ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, address, out _);
+        _metrics.IncrementAccountWrites();
+        if (account is null)
+        {
+            _metrics.IncrementAccountDeleted();
+        }
+
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
@@ -754,10 +797,35 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         return account;
     }
 
-    internal Account? GetThroughCache(Address address) =>
-        _intraTxCache.TryGetValue(address, out StackList<int> value)
+    internal Account? GetThroughCache(Address address)
+    {
+#if ZK_EVM
+        if (IsFrontCacheHit(address))
+        {
+            StackList<int> s = _cachedStack;
+            int count = s.Count;
+
+            if (count == _cachedStackCount)
+                return _cachedAccount;
+
+            _cachedStackCount = count;
+            return _cachedAccount = _changes[s.Peek()].Account;
+        }
+        if (_intraTxCache.TryGetValue(address, out StackList<int> value))
+        {
+            _cachedAddress = address;
+            _cachedStack = value;
+            _cachedStackCount = value.Count;
+            _cachedEpoch = _epoch;
+            return _cachedAccount = _changes[value.Peek()].Account;
+        }
+        return GetAndAddToCache(address);
+#else
+        return _intraTxCache.TryGetValue(address, out StackList<int> value)
             ? _changes[value.Peek()].Account
             : GetAndAddToCache(address);
+#endif
+    }
 
     private void PushJustCache(Address address, Account account)
         => Push(address, account, ChangeType.JustCache);
@@ -802,6 +870,12 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 
     private StackList<int> SetupCache(Address address)
     {
+#if ZK_EVM
+        // A push almost always follows a read of the same account; the front
+        // cache already holds that account's (live) change stack.
+        if (IsFrontCacheHit(address))
+            return _cachedStack;
+#endif
         ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
         if (!exists)
         {
@@ -841,6 +915,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         _intraTxCache.ResetAndClear();
         _committedThisRound.Clear();
         _nullAccountReads.Clear();
+        InvalidateFrontCache();
         _changes.Clear();
         _needsStateRootUpdate = false;
 
@@ -857,7 +932,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     }
 
     // used in EthereumTests
-    internal void SetNonce(Address address, in UInt256 nonce)
+    internal void SetNonce(Address address, in ulong nonce)
     {
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
