@@ -44,6 +44,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private long _snapshotCount;
     private long _compactedSnapshotCount;
+    private long _inMemoryBytes;
     private readonly ReadWriteLockBox<SortedSet<StateId>> _sortedSnapshotStateIds = new([]);
 
     // StateId is larger than a machine word, so its read/write across threads must be synchronized.
@@ -68,6 +69,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     public int SnapshotCount => (int)Interlocked.Read(ref _snapshotCount);
+
+    public long InMemoryBytes => Interlocked.Read(ref _inMemoryBytes);
     // Test-only; not part of ISnapshotRepository.
     internal int CompactedSnapshotCount => (int)Interlocked.Read(ref _compactedSnapshotCount);
 
@@ -194,6 +197,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Metrics.SnapshotCount++;
 
                 long totalBytes = snapshot.EstimateMemory();
+                Interlocked.Add(ref _inMemoryBytes, totalBytes);
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
 
@@ -209,6 +213,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Metrics.CompactedSnapshotCount++;
 
             long compactedBytes = snapshot.EstimateCompactedMemory();
+            Interlocked.Add(ref _inMemoryBytes, compactedBytes);
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
 
@@ -292,6 +297,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Metrics.CompactedSnapshotCount--;
 
                 long compactedBytes = existingState.EstimateCompactedMemory();
+                Interlocked.Add(ref _inMemoryBytes, -compactedBytes);
                 Metrics.CompactedSnapshotMemory -= compactedBytes;
                 Metrics.TotalSnapshotMemory -= compactedBytes;
 
@@ -312,6 +318,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 sortedSnapshots.Remove(stateId);
 
             long totalBytes = existing.EstimateMemory();
+            Interlocked.Add(ref _inMemoryBytes, -totalBytes);
             Metrics.SnapshotMemory -= totalBytes;
             Metrics.TotalSnapshotMemory -= totalBytes;
 
