@@ -37,6 +37,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max reorg depth — the force-persist backstop used when EnableLongFinality is off: once the in-memory depth exceeds it while finality is stalled, persistence is forced to bound memory.", DefaultValue = "256")]
     ulong MaxReorgDepth { get; set; }
 
+    [ConfigItem(Description = "Byte budget for the in-memory snapshot window. When positive and the estimated in-memory snapshot bytes exceed it, persistence (or conversion to the persisted-snapshot tier) is triggered even below MinReorgDepth, and forced when finality stalls — bounding memory by size rather than block count, so heavy blocks shrink the retained window instead of exhausting memory. 0 disables.", DefaultValue = "0")]
+    ulong MaxInMemorySnapshotBytes { get; set; }
+
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     ulong MinReorgDepth { get; set; }
 

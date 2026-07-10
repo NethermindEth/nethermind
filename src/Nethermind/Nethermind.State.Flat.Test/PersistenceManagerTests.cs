@@ -334,6 +334,123 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
+    // The byte budget engages the finalized trigger even below MinReorgDepth: depth 40 (+16 = 56)
+    // fails the count gate (64), so only an exceeded MaxInMemorySnapshotBytes lets the persist through.
+    [TestCase(0UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_CountGateHolds")]
+    [TestCase(1UL, true, TestName = "DetermineSnapshotAction_OverByteBudget_PersistsBelowMinReorgDepth")]
+    public void DetermineSnapshotAction_ByteBudget_EngagesFinalizedTriggerBelowMinReorgDepth(ulong byteBudget, bool expectPersist)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxReorgDepth = 256,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = true,
+            MaxInMemoryBaseSnapshotCount = 160,
+            MaxInMemorySnapshotBytes = byteBudget,
+        };
+        using PersistenceManager pm = new(
+            config,
+            ScheduleHelper.CreateWithOffset(config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        StateId latest = CreateStateId(40);
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        (_, Snapshot? toPersist, _) = pm.DetermineSnapshotAction(latest);
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectPersist));
+        toPersist?.Dispose();
+    }
+
+    private PersistenceManager CreateByteBudgetManager(ulong byteBudget, bool enableLongFinality)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxReorgDepth = 256,
+            LongFinalityMaxReorgDepth = 90000,
+            EnableLongFinality = enableLongFinality,
+            MaxInMemoryBaseSnapshotCount = 160,
+            MaxInMemorySnapshotBytes = byteBudget,
+        };
+        return new PersistenceManager(
+            config,
+            ScheduleHelper.CreateWithOffset(config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+    }
+
+    // With finality stalled and long finality ON, byte pressure must take the reorg-safe path:
+    // conversion into the persisted-snapshot tier, not a forced persist of unfinalized state.
+    [Test]
+    public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_PrefersConversion()
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget: 1, enableLongFinality: true);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(100));
+
+        Assert.That(toConvert, Is.Not.Null, "byte pressure with long finality on must convert, not persist unfinalized state");
+        Assert.That(toPersist, Is.Null);
+        toConvert!.Compacted?.Dispose();
+        toConvert.Base?.Dispose();
+    }
+
+    // With long finality OFF the byte backstop force-persists — but only above the MinReorgDepth
+    // floor, so a repeated drain can never zero the reorg window.
+    [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
+    [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
+    [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
+    public void DetermineSnapshotAction_ByteBudget_ForcesBackstopWhenFinalityStalled(ulong byteBudget, ulong latestBlock, bool expectPersist)
+    {
+        using PersistenceManager pm = CreateByteBudgetManager(byteBudget, enableLongFinality: false);
+
+        StateId tierTip = CreateStateId(16);
+        using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
+        _finalizedStateProvider.SetFinalizedBlockNumber(5);
+
+        (_, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = pm.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectPersist));
+        Assert.That(toConvert, Is.Null);
+        toPersist?.Dispose();
+    }
+
+    [Test]
+    public void SnapshotRepository_InMemoryBytes_ReturnsToZeroAfterRemove()
+    {
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+
+        // Repo-owned: RemoveAndReleaseInMemoryKnownState disposes it.
+        Snapshot snapshot = CreateSnapshot(Block0, CreateStateId(1), compacted: false);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.GreaterThan(0));
+
+        _snapshotRepository.RemoveAndReleaseInMemoryKnownState(snapshot.To, SnapshotTier.InMemoryBase);
+        Assert.That(_snapshotRepository.InMemoryBytes, Is.EqualTo(0));
+    }
+
     [Test]
     public void DetermineSnapshotAction_FinalizedGatePassesButSeedMissing_BackstopStillForcesPersist()
     {
