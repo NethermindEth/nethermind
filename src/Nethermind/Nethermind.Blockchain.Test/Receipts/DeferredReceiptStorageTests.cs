@@ -397,6 +397,20 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Barrier_drain_returns_after_writer_completed_normally()
+    {
+        StatePersistenceBarrier barrier = new();
+        DeferredBlockDataWriter writer = new(enabled: true, capacity: 8, LimboLogs.Instance, barrier);
+        await writer.DisposeAsync();
+
+        Task drain = Task.Run(barrier.FlushDeferred);
+        Task completed = await Task.WhenAny(drain, Task.Delay(Timeout.MaxTestTime));
+
+        Assert.That(completed, Is.SameAs(drain), "a completed writer generation must not make the barrier spin");
+        await drain;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Persistent_write_fault_aborts_drain()
     {
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();

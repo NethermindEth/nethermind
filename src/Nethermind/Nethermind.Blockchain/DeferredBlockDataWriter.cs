@@ -230,7 +230,19 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
 
             WriterGeneration generation = _generation!;
             TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!TryEnqueue(generation, new ActionOperation(drained.SetResult))) continue;
+            if (!TryEnqueue(generation, new ActionOperation(drained.SetResult)))
+            {
+                ThrowIfUnrecoverable();
+                if (ReferenceEquals(generation, _generation) && _faultState is null)
+                {
+                    // Disposal can complete the channel before a later dependency flushes the barrier.
+                    // Wait for the consumer so its final dequeued write cannot still be executing.
+                    generation.Consumer!.GetAwaiter().GetResult();
+                    ThrowIfUnrecoverable();
+                    if (ReferenceEquals(generation, _generation) && _faultState is null) return;
+                }
+                continue;
+            }
 
             // A marker proves every earlier write in this generation executed. Consumer termination wins the
             // race on a fault, in which case the loop recovers the retained marker with the rest of the backlog.
