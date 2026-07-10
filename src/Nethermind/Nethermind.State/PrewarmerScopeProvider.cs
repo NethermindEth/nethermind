@@ -140,6 +140,7 @@ public class PrewarmerScopeProvider(
                 // Consumers seed the scope-local cache on a hit for their later commit; populators don't.
                 if (!isPrewarmer) baseScope.HintGet(address, account);
                 _metrics.IncrementStateTreeCacheHits();
+                _metrics.IncrementPreBlockAccountHits();
                 ReadTrace.Mark(ReadTraceSource.PreBlockCache);
             }
             else
@@ -147,6 +148,7 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
+                _metrics.IncrementPreBlockAccountMisses();
                 ReadTrace.OnPreBlockAccountSet(address, isPrewarmer ? ReadTraceProvenance.Prewarmer : ReadTraceProvenance.MainBackfill);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
@@ -218,6 +220,7 @@ public class PrewarmerScopeProvider(
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
+                _metrics.IncrementPreBlockStorageHits();
                 ReadTrace.Mark(ReadTraceSource.PreBlockCache);
             }
             else
@@ -235,7 +238,9 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            _metrics.IncrementStorageTreeReads();
+            // PreBlock misses only: StorageTreeReads is already counted once per first-in-block touch by
+            // PersistentStorageProvider; counting it here again double-counted fully-cold reads.
+            _metrics.IncrementPreBlockStorageMisses();
 
             return !storageCell.IsHash
                 ? baseStorageTree.Get(storageCell.Index)
