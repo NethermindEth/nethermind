@@ -51,6 +51,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Optimize for single reader concurrency
             SingleReader = true,
+             // Wake the recovery reader inline instead of paying a thread-pool hop on each enqueue
+            AllowSynchronousContinuations = true,
         });
 
     private readonly Channel<BlockRef> _blockQueue = Channel.CreateBounded<BlockRef>(

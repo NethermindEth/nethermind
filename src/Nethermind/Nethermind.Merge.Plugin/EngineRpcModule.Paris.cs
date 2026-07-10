@@ -95,17 +95,27 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+                IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 long gcTimestamp = Stopwatch.GetTimestamp();
-                ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
-                if (_logger.IsDebug)
-                    _logger.Debug($"newPayload breakdown blk={executionPayload.BlockNumber} " +
-                        $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
-                        $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
-                        $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +
-                        $"handle={Stopwatch.GetElapsedTime(gcTimestamp).TotalMilliseconds:F2}ms " +
-                        $"total={Stopwatch.GetElapsedTime(entryTimestamp).TotalMilliseconds:F2}ms");
-                return result;
+                long handleTimestamp = 0;
+                try
+                {
+                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    handleTimestamp = Stopwatch.GetTimestamp();
+                    return result;
+                }
+                finally
+                {
+                    region.Dispose();
+                    if (_logger.IsDebug && handleTimestamp != 0)
+                        _logger.Debug($"newPayload breakdown blk={executionPayload.BlockNumber} " +
+                            $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
+                            $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
+                            $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +
+                            $"handle={Stopwatch.GetElapsedTime(gcTimestamp, handleTimestamp).TotalMilliseconds:F2}ms " +
+                            $"dispose={Stopwatch.GetElapsedTime(handleTimestamp).TotalMilliseconds:F2}ms " +
+                            $"total={Stopwatch.GetElapsedTime(entryTimestamp).TotalMilliseconds:F2}ms");
+                }
             }
             catch (BlockchainException exception)
             {

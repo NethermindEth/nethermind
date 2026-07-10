@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -456,9 +457,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // but add it to the processing queue just in case.
                 // Invariant: recovery completes before the queue sees the block — the prewarmer
                 // groups txs by sender at ProcessBranch start, so it needs every sender up front.
+                long recStartTimestamp = Stopwatch.GetTimestamp();
                 await senderRecoveryTask;
+                long enqueueStartTimestamp = Stopwatch.GetTimestamp();
                 await _processingQueue.Enqueue(block, processingOptions);
+                long waitStartTimestamp = Stopwatch.GetTimestamp();
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                if (_logger.IsDebug)
+                    _logger.Debug($"newPayload inner blk={block.Number} " +
+                        $"recWait={Stopwatch.GetElapsedTime(recStartTimestamp, enqueueStartTimestamp).TotalMilliseconds:F2}ms " +
+                        $"enqueue={Stopwatch.GetElapsedTime(enqueueStartTimestamp, waitStartTimestamp).TotalMilliseconds:F2}ms " +
+                        $"wait={Stopwatch.GetElapsedTime(waitStartTimestamp).TotalMilliseconds:F2}ms");
             }
             else
             {
