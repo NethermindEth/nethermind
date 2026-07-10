@@ -35,7 +35,7 @@ env:
   TERM: xterm
 
 concurrency:
-  group: sync-master-validation
+  group: sync-master-validation-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
