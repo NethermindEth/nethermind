@@ -77,7 +77,16 @@ public struct ReceiptRecoveryBlock
 
         if (_transactions is not null)
         {
-            return _transactions[_currentTransactionIndex++].Hash!;
+            Transaction transaction = _transactions[_currentTransactionIndex++];
+            Hash256? transactionHash = transaction.Hash;
+            if (transactionHash is null)
+            {
+                KeccakRlpWriter writer = new();
+                TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
+                transaction.Hash = transactionHash = writer.GetHash();
+            }
+
+            return transactionHash;
         }
 
         if ((uint)_currentTransactionPosition >= (uint)_transactionData.Length)

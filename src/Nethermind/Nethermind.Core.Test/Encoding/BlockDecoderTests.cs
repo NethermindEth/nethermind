@@ -239,6 +239,26 @@ public class BlockDecoderTests
         }
     }
 
+    [Test]
+    public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1)
+            .Signed()
+            .TestObject;
+        Hash256 expectedHash = transaction.CalculateHash();
+        transaction.Hash = null;
+        ReceiptRecoveryBlock recovery = new(Build.A.Block.WithTransactions(transaction).TestObject);
+        Hash256 actualHash = recovery.GetNextTransactionHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualHash, Is.EqualTo(expectedHash));
+            Assert.That(transaction.Hash, Is.EqualTo(expectedHash), "the calculated hash should be cached on the transaction");
+        }
+    }
+
     public static byte[][] MalformedRecoveryTransactions =
     [
         [],

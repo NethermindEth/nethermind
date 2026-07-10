@@ -138,6 +138,7 @@ public sealed class DeferredBlockDataWriter : IDeferredBlockDataWriter
             }
 
             // Backpressure: block the producer so a slow disk degrades to synchronous, not unbounded memory.
+            // Channel may return an incomplete IValueTaskSource-backed ValueTask, whose GetResult does not block.
             if (!_channel.Writer.WaitToWriteAsync().AsTask().GetAwaiter().GetResult())
             {
                 work.Execute();
