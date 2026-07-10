@@ -463,20 +463,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         private bool _missingAreDefault;
         private readonly Dictionary<UInt256, StorageChangeTrace> _dictionary = new(Comparer.Instance);
-        public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
+        private List<UInt256>? _dirtyKeys;
+        public int EstimatedSize => (_dirtyKeys?.Count ?? 0) + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
         public int Capacity => _dictionary.Capacity;
+        public ReadOnlySpan<UInt256> DirtyKeys => _dirtyKeys is null ? [] : CollectionsMarshal.AsSpan(_dirtyKeys);
 
         public void Reset()
         {
             _missingAreDefault = false;
             _dictionary.Clear();
+            _dirtyKeys?.Clear();
         }
         public void ClearAndSetMissingAsDefault()
         {
             _missingAreDefault = true;
             _dictionary.Clear();
+            _dirtyKeys?.Clear();
         }
+
+        public void MarkDirty(in UInt256 storageCellIndex) => (_dirtyKeys ??= []).Add(storageCellIndex);
+
+        public void ClearDirtyKeys() => _dirtyKeys?.Clear();
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
         {
@@ -598,13 +606,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            bool wasDirty = valueChanges.IsDirty;
             if (!exists)
             {
-                valueChanges = new StorageChangeTrace(value);
+                valueChanges = new StorageChangeTrace(value, isDirty: true);
             }
             else
             {
-                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges = new StorageChangeTrace(valueChanges.Before, value, isDirty: true);
+            }
+            if (!wasDirty)
+            {
+                BlockChange.MarkDirty(storageCell.Index);
             }
 
             EnsureStorageTree();
@@ -658,22 +671,22 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
 
-            using ArrayPoolListRef<KeyValuePair<UInt256, StorageChangeTrace>> deferredDeletes = new(0);
+            using ArrayPoolList<UInt256> deferredDeletes = new(0);
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (UInt256 key in BlockChange.DirtyKeys)
             {
-                byte[] after = kvp.Value.After;
-                if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)
+                ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
+                byte[] after = change.After;
+                if (!Bytes.AreEqual(change.Before, after) || change.IsInitialValue)
                 {
                     if (after.IsZero())
                     {
-                        deferredDeletes.Add(kvp);
+                        deferredDeletes.Add(key);
                     }
                     else
                     {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, after);
+                        BlockChange[key] = new(after, after);
+                        storageWriteBatch.Set(key, after);
 
                         writes++;
                     }
@@ -684,14 +697,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 }
             }
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in deferredDeletes.AsSpan())
+            foreach (UInt256 key in deferredDeletes.AsSpan())
             {
-                byte[] after = kvp.Value.After;
-                BlockChange[kvp.Key] = new(after, after);
-                storageWriteBatch.Set(kvp.Key, after);
+                byte[] after = BlockChange.GetValueRefOrNullRef(key).After;
+                BlockChange[key] = new(after, after);
+                storageWriteBatch.Set(key, after);
 
                 writes++;
             }
+
+            BlockChange.ClearDirtyKeys();
 
             return (writes, skipped);
         }
@@ -744,21 +759,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public static readonly StorageChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
         public static ref readonly StorageChangeTrace ZeroBytes => ref _zeroBytes;
 
-        public StorageChangeTrace(byte[]? before, byte[]? after)
+        public StorageChangeTrace(byte[]? before, byte[]? after, bool isDirty = false)
         {
             After = after ?? StorageTree.ZeroBytes;
             Before = before ?? StorageTree.ZeroBytes;
+            IsDirty = isDirty;
         }
 
-        public StorageChangeTrace(byte[]? after)
+        public StorageChangeTrace(byte[]? after, bool isDirty = false)
         {
             After = after ?? StorageTree.ZeroBytes;
             Before = StorageTree.ZeroBytes;
             IsInitialValue = true;
+            IsDirty = isDirty;
         }
 
         public readonly byte[] Before;
         public readonly byte[] After;
         public readonly bool IsInitialValue;
+        public readonly bool IsDirty;
     }
 }
