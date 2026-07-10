@@ -179,7 +179,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
             try
             {
-                using (SstFileWriter writer = new(new EnvOptions(), new ColumnFamilyOptions()))
+                ColumnFamilyOptions writerOptions = columnDb._mainDb.GetColumnFamilyOptions(columnDb.Name) ?? new ColumnFamilyOptions();
+                using (SstFileWriter writer = new(new EnvOptions(), writerOptions))
                 {
                     writer.Open(file);
                     foreach ((byte[] key, byte[]? value) in items)
