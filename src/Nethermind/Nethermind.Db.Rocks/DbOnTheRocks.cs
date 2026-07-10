@@ -100,6 +100,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // a single shared word per DB serializes them under load.
     internal readonly StripedLong _allocatedSpan = new();
     private readonly StripedLong _totalReads = new();
+
+    // Rooted for the DB lifetime so SST-ingest writers can produce files with the column's real
+    // table format (filter policy, block size, compression) instead of RocksDB defaults — a
+    // default-format ingested file has no filter, so every point read probes its data blocks.
+    private readonly Dictionary<string, ColumnFamilyOptions> _columnFamilyOptionsByName = [];
+
+    internal ColumnFamilyOptions? GetColumnFamilyOptions(string columnFamilyName) =>
+        _columnFamilyOptionsByName.GetValueOrDefault(columnFamilyName);
     private CacheLinePaddedLong _totalWrites;
 
     private readonly DisposableLazy<IteratorManager>? _iteratorManager;
@@ -186,6 +194,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
                     if (columnFamily == "Default") columnFamily = "default";
                     columnFamilies.Add(columnFamily, options);
+                    _columnFamilyOptionsByName[columnFamily] = options;
                 }
             }
 
