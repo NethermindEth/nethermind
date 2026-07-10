@@ -16,6 +16,10 @@ public interface IMessageHandler<TMessage>
 /// <summary>
 /// Handles multiple resources that can be represented as individual messages.
 /// </summary>
+/// <remarks>
+/// The caller has already admitted the resources for dispatch. Implementations should send
+/// them directly instead of submitting them back through the same admission path.
+/// </remarks>
 public interface IBatchMessageHandler<TMessage, TResourceId> : IMessageHandler<TMessage>
 {
     /// <summary>

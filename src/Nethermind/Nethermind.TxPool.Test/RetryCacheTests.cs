@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,12 +43,15 @@ public class RetryCacheTests
     private class TestHandler : ITestHandler
     {
         private int _handleMessageCallCount;
+        private long _lastHandleTimestamp;
         public int HandleMessageCallCount => _handleMessageCallCount;
+        public long LastHandleTimestamp => Volatile.Read(ref _lastHandleTimestamp);
         public bool WasCalled => _handleMessageCallCount > 0;
         public Action<ResourceRequestMessage> OnHandleMessage { get; set; }
 
         public virtual void HandleMessage(ResourceRequestMessage message)
         {
+            Volatile.Write(ref _lastHandleTimestamp, Stopwatch.GetTimestamp());
             Interlocked.Increment(ref _handleMessageCallCount);
             OnHandleMessage?.Invoke(message);
         }
@@ -117,7 +121,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public void Announced_AfterTimeout_ExecutesRetryRequests()
+    public void Announced_AfterTimeout_ExecutesOneRetryPerTimeout()
     {
         TestHandler request1 = new();
         TestHandler request2 = new();
@@ -127,9 +131,19 @@ public class RetryCacheTests
         _cache.Announced(1, request2);
         _cache.Announced(1, request3);
 
-        Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
-        Assert.That(() => request3.WasCalled, Is.True.After(AssertTimeoutMs, 100));
-        Assert.That(request1.WasCalled, Is.False);
+        Assert.That(
+            () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
+            Is.EqualTo(2).After(AssertTimeoutMs, 100));
+
+        long firstTimestamp = Math.Min(request2.LastHandleTimestamp, request3.LastHandleTimestamp);
+        long secondTimestamp = Math.Max(request2.LastHandleTimestamp, request3.LastHandleTimestamp);
+        TimeSpan retrySpacing = Stopwatch.GetElapsedTime(firstTimestamp, secondTimestamp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrySpacing, Is.GreaterThan(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2)));
+            Assert.That(request1.WasCalled, Is.False);
+        }
     }
 
     [Test]
@@ -218,7 +232,7 @@ public class RetryCacheTests
             });
         });
 
-        await Task.Delay(CacheTimeoutMs * 4, _cancellationTokenSource.Token);
+        await Task.Delay(CacheTimeoutMs * 6, _cancellationTokenSource.Token);
 
         Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
     }
@@ -231,9 +245,103 @@ public class RetryCacheTests
 
         _cache.Announced(1, new TestHandler());
         _cache.Announced(1, faultyRequest);
-        _cache.Announced(1, normalRequest);
+        _cache.Announced(2, new TestHandler());
+        _cache.Announced(2, normalRequest);
 
         Assert.That(() => normalRequest.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+    }
+
+    [Test]
+    public async Task Received_AfterFirstRetry_PreventsRemainingRetries()
+    {
+        TestHandler request2 = new() { OnHandleMessage = _ => _cache.Received(1) };
+        TestHandler request3 = new() { OnHandleMessage = _ => _cache.Received(1) };
+
+        _cache.Announced(1, new TestHandler());
+        _cache.Announced(1, request2);
+        _cache.Announced(1, request3);
+
+        Assert.That(
+            () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
+            Is.EqualTo(1).After(AssertTimeoutMs, 100));
+
+        _cache.Received(1);
+        await Task.Delay(CacheTimeoutMs * 2, _cancellationTokenSource.Token);
+
+        Assert.That(request2.HandleMessageCallCount + request3.HandleMessageCallCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Announced_SourceHandlerAgain_DoesNotRetrySameHandler()
+    {
+        TestHandler source = new();
+
+        Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.Delayed));
+
+        await Task.Delay(CacheTimeoutMs * 2, _cancellationTokenSource.Token);
+
+        Assert.That(source.HandleMessageCallCount, Is.Zero);
+    }
+
+    [Test]
+    public void Announced_LateAlternateHandler_RetriesWithinBoundedCycle()
+    {
+        TestHandler firstAlternate = new();
+        TestHandler lateAlternate = new();
+
+        _cache.Announced(1, new TestHandler());
+        _cache.Announced(1, firstAlternate);
+        Assert.That(() => firstAlternate.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+
+        Assert.That(_cache.Announced(1, lateAlternate), Is.EqualTo(AnnounceResult.Delayed));
+        Assert.That(() => lateAlternate.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+    }
+
+    [Test]
+    public async Task Announced_SelectedBatchHandlerAgain_DoesNotRetryHandlerTwice()
+    {
+        BatchTestHandler batchHandler = new();
+
+        _cache.Announced(1, new TestHandler());
+        _cache.Announced(1, batchHandler);
+        Assert.That(() => batchHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 100));
+
+        Assert.That(_cache.Announced(1, batchHandler), Is.EqualTo(AnnounceResult.Delayed));
+        await Task.Delay(CacheTimeoutMs * 2, _cancellationTokenSource.Token);
+
+        Assert.That(batchHandler.HandleMessagesCallCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Received_ThenReannounced_IgnoresPreviousExpiry()
+    {
+        const int timeoutMs = 1500;
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeoutMs: timeoutMs,
+            token: cancellationTokenSource.Token);
+
+        try
+        {
+            cache.Announced(1, new TestHandler());
+            await Task.Delay(timeoutMs / 2, cancellationTokenSource.Token);
+
+            cache.Received(1);
+            TestHandler retryHandler = new();
+            cache.Announced(1, new TestHandler());
+            cache.Announced(1, retryHandler);
+
+            await Task.Delay(timeoutMs * 3 / 4, cancellationTokenSource.Token);
+            Assert.That(retryHandler.WasCalled, Is.False);
+            Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
     }
 
     [Test]
@@ -298,7 +406,7 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task Announced_WhenRetryQueueIsFull_ReturnsRequestRequired()
+    public async Task Announced_WhenRetryQueueIsFull_BypassesRetryTracking()
     {
         using CancellationTokenSource cancellationTokenSource = new();
         RetryCache<ResourceRequestMessage, ResourceId> cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, expiringQueueLimit: 0, token: cancellationTokenSource.Token);
@@ -317,78 +425,170 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Announced_ConcurrentUniqueResources_DoesNotExceedRetryQueueLimit()
+    {
+        const int queueLimit = 10;
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeoutMs: AssertTimeoutMs,
+            expiringQueueLimit: queueLimit,
+            token: cancellationTokenSource.Token);
+
+        try
+        {
+            Parallel.For(0, 100, i => cache.Announced(i, new TestHandler()));
+            Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(queueLimit));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_SameHandler_DoesNotExceedPendingResourceLimit()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeoutMs: AssertTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 2);
+
+        try
+        {
+            TestHandler source = new();
+            AnnounceResult result1 = cache.Announced(1, source);
+            AnnounceResult result2 = cache.Announced(2, source);
+            AnnounceResult limitedResult = cache.Announced(3, source);
+
+            cache.Received(1);
+            AnnounceResult resultAfterRelease = cache.Announced(4, source);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(result2, Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(limitedResult, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(resultAfterRelease, Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Announced_SameAlternateHandler_DoesNotExceedPendingResourceLimit()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 2);
+
+        try
+        {
+            TestHandler alternate = new();
+            for (int resourceId = 1; resourceId <= 3; resourceId++)
+            {
+                cache.Announced(resourceId, new TestHandler());
+                cache.Announced(resourceId, alternate);
+            }
+
+            Assert.That(() => alternate.HandleMessageCallCount, Is.EqualTo(2).After(AssertTimeoutMs, 100));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
     public void HandlerBag_StaleAddAfterDrainAndReuse_IsRejected()
     {
-        // Simulate the race: capture a bag reference, drain+return it, reuse for another resource,
-        // then try to add via the stale reference — should be rejected.
         HandlerBag<ResourceRequestMessage> bag = new();
-        bag.Activate();
+        long staleGeneration = bag.Activate();
 
         TestHandler handler1 = new();
         TestHandler staleHandler = new();
 
-        bag.TryAdd(handler1, 8);
-        Assert.That(DrainToList(bag), Has.Count.EqualTo(1));
+        bag.Add(handler1, 8, staleGeneration);
+        Assert.That(TakeAll(bag, staleGeneration), Has.Count.EqualTo(1));
 
-        // Bag is now inactive (drained). Simulate pool return + reuse.
         bag.Reset();
-        bag.Activate();
+        long currentGeneration = bag.Activate();
 
-        // Stale add from a thread that captured the reference before drain.
-        // This should succeed because the bag is active again — but in RetryCache,
-        // TryRemove ensures the stale reference is no longer in the dictionary,
-        // so GetOrAdd would return a different bag. The HandlerBag itself
-        // cannot distinguish old vs new lifecycle after Activate. The safety
-        // comes from the dictionary-level removal, not the bag-level flag.
-        // This test verifies Drain deactivates and Reset+Activate reactivates.
-        bool addedAfterReactivation = bag.TryAdd(staleHandler, 8);
-        Assert.That(addedAfterReactivation, Is.True);
+        HandlerBagAddResult staleAdd = bag.Add(staleHandler, 8, staleGeneration);
+        HandlerBagAddResult currentAdd = bag.Add(handler1, 8, currentGeneration);
 
-        List<IMessageHandler<ResourceRequestMessage>> handlers = DrainToList(bag);
-        Assert.That(handlers, Has.Count.EqualTo(1));
-        Assert.That(handlers[0], Is.SameAs(staleHandler));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(staleAdd, Is.EqualTo(HandlerBagAddResult.Inactive));
+            Assert.That(currentAdd, Is.EqualTo(HandlerBagAddResult.Added));
+            Assert.That(TakeAll(bag, currentGeneration), Is.EqualTo(new[] { handler1 }));
+        }
     }
 
     [Test]
     public void HandlerBag_AddAfterDrainWithoutReactivation_IsRejected()
     {
         HandlerBag<ResourceRequestMessage> bag = new();
-        bag.Activate();
+        long generation = bag.Activate();
 
-        bag.TryAdd(new TestHandler(), 8);
-        DrainToList(bag);
+        bag.Add(new TestHandler(), 8, generation);
+        TakeAll(bag, generation);
 
-        // Bag is inactive after drain — TryAdd must be rejected
-        bool added = bag.TryAdd(new TestHandler(), 8);
-        Assert.That(added, Is.False);
+        HandlerBagAddResult added = bag.Add(new TestHandler(), 8, generation);
+        Assert.That(added, Is.EqualTo(HandlerBagAddResult.Inactive));
     }
 
     [Test]
     public void HandlerBag_AddAfterDeactivate_IsRejected()
     {
         HandlerBag<ResourceRequestMessage> bag = new();
-        bag.Activate();
+        long generation = bag.Activate();
 
-        bag.TryAdd(new TestHandler(), 8);
-        bag.Deactivate();
+        bag.Add(new TestHandler(), 8, generation);
+        NoopHandlerBagProcessor processor = default;
+        bag.Deactivate(generation, ref processor);
 
-        // Bag is inactive after explicit deactivate — TryAdd must be rejected
-        bool added = bag.TryAdd(new TestHandler(), 8);
-        Assert.That(added, Is.False);
+        HandlerBagAddResult added = bag.Add(new TestHandler(), 8, generation);
+        Assert.That(added, Is.EqualTo(HandlerBagAddResult.Inactive));
     }
 
     [Test]
     public void HandlerBag_PreservesSetSemantics_NoDuplicates()
     {
         HandlerBag<ResourceRequestMessage> bag = new();
-        bag.Activate();
+        long generation = bag.Activate();
 
         TestHandler handler = new();
-        Assert.That(bag.TryAdd(handler, 8), Is.True);
-        Assert.That(bag.TryAdd(handler, 8), Is.False);
+        Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Added));
+        Assert.That(bag.Add(handler, 8, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
 
-        List<IMessageHandler<ResourceRequestMessage>> handlers = DrainToList(bag);
+        List<IMessageHandler<ResourceRequestMessage>> handlers = TakeAll(bag, generation);
         Assert.That(handlers, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void HandlerBag_AcceptsLateDistinctHandlersWithinLifetimeBound()
+    {
+        HandlerBag<ResourceRequestMessage> bag = new();
+        long generation = bag.Activate();
+
+        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+        Assert.That(bag.TryTake(generation, out _, out bool hasMoreHandlers), Is.True);
+        Assert.That(hasMoreHandlers, Is.True);
+        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Added));
+        Assert.That(bag.Add(new TestHandler(), 3, generation), Is.EqualTo(HandlerBagAddResult.Full));
     }
 
     [Test]
@@ -403,16 +603,19 @@ public class RetryCacheTests
         Assert.That(() => receivedResourceId, Is.EqualTo(42).After(AssertTimeoutMs, 100));
     }
 
-    private static List<IMessageHandler<ResourceRequestMessage>> DrainToList(HandlerBag<ResourceRequestMessage> bag)
+    private static List<IMessageHandler<ResourceRequestMessage>> TakeAll(HandlerBag<ResourceRequestMessage> bag, long generation)
     {
         List<IMessageHandler<ResourceRequestMessage>> handlers = [];
-        HandlerCollector collector = new(handlers);
-        bag.Drain(ref collector);
+        while (bag.TryTake(generation, out IMessageHandler<ResourceRequestMessage> handler, out _))
+        {
+            handlers.Add(handler);
+        }
+
         return handlers;
     }
 
-    private readonly struct HandlerCollector(List<IMessageHandler<ResourceRequestMessage>> handlers) : IHandlerBagDrainProcessor<ResourceRequestMessage>
+    private readonly struct NoopHandlerBagProcessor : IHandlerBagProcessor<ResourceRequestMessage>
     {
-        public void Process(IMessageHandler<ResourceRequestMessage> handler) => handlers.Add(handler);
+        public void Process(IMessageHandler<ResourceRequestMessage> handler) { }
     }
 }

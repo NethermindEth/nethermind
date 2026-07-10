@@ -177,43 +177,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes)
+        protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
         {
-            AddNotifiedTransactions(hashes.AsSpan());
+            ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
+            AddNotifiedTransactions(hashesSpan);
 
             long startTime = Stopwatch.GetTimestamp();
             TxPool.Metrics.PendingTransactionsHashesReceived += hashes.Count;
 
-            ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashes.AsSpan());
-
-            if (newTxHashes.Count is 0)
+            for (int start = 0; start < hashesSpan.Length; start += MaxNumberOfTxsInOneMsg)
             {
-                newTxHashes.Dispose();
-                return;
-            }
-
-            if (newTxHashes.Count <= MaxNumberOfTxsInOneMsg)
-            {
-                Send(TMessage.New(newTxHashes));
-            }
-            else
-            {
-                try
-                {
-                    for (int start = 0; start < newTxHashes.Count; start += MaxNumberOfTxsInOneMsg)
-                    {
-                        int end = Math.Min(start + MaxNumberOfTxsInOneMsg, newTxHashes.Count);
-
-                        ArrayPoolList<Hash256> hashesToRequest = new(end - start);
-                        hashesToRequest.AddRange(newTxHashes.AsSpan()[start..end]);
-
-                        Send(TMessage.New(hashesToRequest));
-                    }
-                }
-                finally
+                int count = Math.Min(MaxNumberOfTxsInOneMsg, hashesSpan.Length - start);
+                ArrayPoolList<Hash256> newTxHashes = AddMarkUnknownHashes(hashesSpan.Slice(start, count), registerForRetry);
+                if (newTxHashes.Count is 0)
                 {
                     newTxHashes.Dispose();
+                }
+                else
+                {
+                    Send(TMessage.New(newTxHashes));
                 }
             }
 
@@ -221,19 +204,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes)
+        private ArrayPoolList<Hash256> AddMarkUnknownHashes(ReadOnlySpan<Hash256> hashes, bool registerForRetry)
         {
             ArrayPoolList<Hash256> discoveredTxHashesAndSizes = new(hashes.Length);
 
             for (int i = 0; i < hashes.Length; i++)
             {
                 Hash256 hash = hashes[i];
-                if (!_txPool.IsKnown(hash))
+                if (!_txPool.IsKnown(hash)
+                    && (!registerForRetry || _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired))
                 {
-                    if (_txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
-                    {
-                        discoveredTxHashesAndSizes.Add(hash);
-                    }
+                    discoveredTxHashesAndSizes.Add(hash);
                 }
             }
 
@@ -243,18 +224,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public virtual void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry, registerForRetry: false);
         }
 
-        public virtual void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
-        {
-            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
-            for (int i = 0; i < txHashes.Length; i++)
-            {
-                hashesToRetry.Add(new Hash256(txHashes[i]));
-            }
+        public virtual void HandleMessages(ReadOnlySpan<ValueHash256> txHashes) =>
+            HandleMessages<GetPooledTransactionsMessage>(txHashes);
 
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+        protected void HandleMessages<TMessage>(ReadOnlySpan<ValueHash256> txHashes)
+            where TMessage : P2PMessage, INew<IOwnedReadOnlyList<Hash256>, TMessage>
+        {
+            for (int start = 0; start < txHashes.Length; start += MaxNumberOfTxsInOneMsg)
+            {
+                int count = Math.Min(MaxNumberOfTxsInOneMsg, txHashes.Length - start);
+                using ArrayPoolList<Hash256> hashesToRetry = new(count);
+                for (int i = start; i < start + count; i++)
+                {
+                    hashesToRetry.Add(new Hash256(txHashes[i]));
+                }
+
+                RequestPooledTransactions<TMessage>(hashesToRetry, registerForRetry: false);
+            }
         }
     }
 }

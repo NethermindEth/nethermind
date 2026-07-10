@@ -261,19 +261,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override void HandleMessage(PooledTransactionRequestMessage message)
         {
             using ArrayPoolList<Hash256> hashesToRetry = new(1) { new Hash256(message.TxHash) };
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
+            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry, registerForRetry: false);
         }
 
-        public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes)
-        {
-            using ArrayPoolList<Hash256> hashesToRetry = new(txHashes.Length);
-            for (int i = 0; i < txHashes.Length; i++)
-            {
-                hashesToRetry.Add(new Hash256(txHashes[i]));
-            }
-
-            RequestPooledTransactions<GetPooledTransactionsMessage>(hashesToRetry);
-        }
+        public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes) =>
+            HandleMessages<GetPooledTransactionsMessage>(txHashes);
 
         private readonly struct GetBlockHeadersHandler : ISyncServeRequestHandler<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage>
         {
