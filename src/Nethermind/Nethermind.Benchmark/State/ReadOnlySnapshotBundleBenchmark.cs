@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -73,7 +74,6 @@ public class ReadOnlySnapshotBundleBenchmark
             int storageAccountCount = 20 * multiplier;
             int slotsPerStorageAccount = 100 * multiplier;
 
-            // Build ReadOnlySnapshotBundle from previously captured snapshots
             SnapshotPooledList prevSnapshots = new(allSnapshots.Count);
             foreach (FlatSnapshot s in allSnapshots)
             {
@@ -81,8 +81,10 @@ public class ReadOnlySnapshotBundleBenchmark
                 prevSnapshots.Add(s);
             }
 
+            // Build ReadOnlySnapshotBundle from previously captured snapshots
             ReadOnlySnapshotBundle readOnly = new(
-                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
                 readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -154,7 +156,6 @@ public class ReadOnlySnapshotBundleBenchmark
                 maxSlotsPerStorageAccount = slotsPerStorageAccount;
         }
 
-        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
@@ -162,8 +163,10 @@ public class ReadOnlySnapshotBundleBenchmark
             finalSnapshots.Add(s);
         }
 
+        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         _bundle = new ReadOnlySnapshotBundle(
-            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];
