@@ -76,6 +76,27 @@
 
         header .net .number { color: white; }
 
+        header .total {
+            margin-left: auto;
+            display: none;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        header .total .number { font-size: 15px; }
+
+        select {
+            background: #0a0a0a;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 4px 6px;
+            font-family: 'DM Mono', ui-monospace, monospace;
+            font-size: 12px;
+            outline: none;
+        }
+
+        select:focus { border-color: var(--accent); }
+
         .row {
             display: flex;
             gap: 8px;
@@ -212,6 +233,7 @@
         .card td { padding: 4px 0; }
         .card td.bal { text-align: right; font-size: 13px; }
         .card td.tick { color: var(--muted); width: 72px; }
+        .card td.fiat { text-align: right; color: var(--muted); width: 110px; font-size: 12px; }
 
         #status {
             min-height: 18px;
@@ -237,6 +259,11 @@
         <div class="net">network <span id="netName" class="number">…</span></div>
         <div class="net">chain <span id="chainId" class="number">…</span></div>
         <div class="net">head <span id="headBlock" class="number">…</span></div>
+        <div class="total" id="totalBox">
+            <span class="net">total ≈</span>
+            <span id="totalFiat" class="number">…</span>
+            <select id="currency" title="Display currency (Chainlink on-chain feeds)"></select>
+        </div>
     </header>
 
     <div class="panel">
@@ -368,21 +395,87 @@
         }
 
         // ---------- chains ----------
+        // Chainlink Feed Registry (mainnet only): prices looked up by (base, quote) address pair.
+        // Fiat quotes use ISO 4217 numeric codes as pseudo-addresses; ETH/BTC have dedicated pseudo-addresses.
+        const FEED_REGISTRY = '0x47Fb2585D2C56Fe188D0E6ec628a38b74fCeeeDf';
+        const PSEUDO_ETH = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+        const PSEUDO_BTC = '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB';
+        const DENOM = {
+            USD: '0x0000000000000000000000000000000000000348',
+            EUR: '0x00000000000000000000000000000000000003d2',
+            GBP: '0x000000000000000000000000000000000000033a',
+            JPY: '0x0000000000000000000000000000000000000188',
+            CHF: '0x00000000000000000000000000000000000002f4',
+        };
+
+        // Verified Chainlink aggregator addresses on Gnosis (no feed registry there).
+        const GNOSIS_FEEDS = {
+            native: '0x678df3415fc31947dA4324eC63212874be5a82f8',                        // DAI/USD (xDAI)
+            '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1': '0xa767f745331D267c7751297D982b050c93985627', // WETH → ETH/USD
+            '0x9c58bacc331c9aa871afd802db6379a98e80cedb': '0x22441d81416430A54336aB28765abd31a792Ad37', // GNO
+            '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83': '0x26C31ac71010aF62E6B486D1132E266D6298857D', // USDC
+            '0x4ecaba5870353805a9f068101a40e0f32ed605c6': '0x68811D7DF835B1c33e6EEae8E7C141eF48d48cc7', // USDT
+            '0x8e5bbbb09ed1ebde8674cda39a0c169401db4252': '0x00288135bE38B83249F380e9b6b9a04c90EC39eE', // WBTC
+            '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d': '0x678df3415fc31947dA4324eC63212874be5a82f8', // WXDAI → DAI/USD
+        };
+        const GNOSIS_FX = {
+            EUR: '0xab70BCB260073d036d1660201e9d5405F5829b7a',
+            JPY: '0x2AfB993C670C01e9dA1550c58e8039C1D8b8A317',
+            CHF: '0xFb00261Af80ADb1629D3869E377ae1EEC7bE659F',
+        };
+
+        const MAINNET_DEFAULT_TOKENS = [
+            { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', ticker: 'USDC', decimals: 6, name: 'USD Coin' },
+            { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', ticker: 'USDT', decimals: 6, name: 'Tether USD' },
+            { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', ticker: 'DAI', decimals: 18, name: 'Dai Stablecoin' },
+            { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', ticker: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+            { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', ticker: 'WBTC', decimals: 8, name: 'Wrapped BTC' },
+        ];
+        const GNOSIS_DEFAULT_TOKENS = [
+            { address: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', ticker: 'USDC', decimals: 6, name: 'USD Coin on Gnosis' },
+            { address: '0x4ECaBa5870353805a9F068101A40E0f32ed605C6', ticker: 'USDT', decimals: 6, name: 'Tether USD on Gnosis' },
+            { address: '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1', ticker: 'WETH', decimals: 18, name: 'Wrapped Ether on Gnosis' },
+            { address: '0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb', ticker: 'GNO', decimals: 18, name: 'Gnosis Token' },
+            { address: '0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252', ticker: 'WBTC', decimals: 8, name: 'Wrapped BTC on Gnosis' },
+        ];
+
         const CHAINS = {
-            1: { name: 'Ethereum', ticker: 'ETH', ens: true },
+            1: {
+                name: 'Ethereum', ticker: 'ETH', ens: true,
+                registry: FEED_REGISTRY,
+                // no direct registry feeds for wrapped assets — price via the underlying
+                alias: {
+                    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': PSEUDO_ETH, // WETH
+                    '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': PSEUDO_BTC, // WBTC
+                },
+                currencies: ['USD', 'EUR', 'GBP', 'JPY', 'CHF'],
+                defaults: MAINNET_DEFAULT_TOKENS,
+            },
             11155111: { name: 'Sepolia', ticker: 'ETH', ens: true },
             17000: { name: 'Holesky', ticker: 'ETH', ens: true },
             560048: { name: 'Hoodi', ticker: 'ETH', ens: true },
-            100: { name: 'Gnosis', ticker: 'xDAI', ens: false },
+            100: {
+                name: 'Gnosis', ticker: 'xDAI', ens: false,
+                feeds: GNOSIS_FEEDS,
+                fx: GNOSIS_FX,
+                currencies: ['USD', 'EUR', 'JPY', 'CHF'],
+                defaults: GNOSIS_DEFAULT_TOKENS,
+            },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false },
         };
         const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
-        const SEL_RESOLVER = '0x0178b8bf';   // resolver(bytes32)
-        const SEL_ADDR = '0x3b3b57de';       // addr(bytes32)
-        const SEL_BALANCE_OF = '0x70a08231'; // balanceOf(address)
-        const SEL_SYMBOL = '0x95d89b41';     // symbol()
-        const SEL_NAME = '0x06fdde03';       // name()
-        const SEL_DECIMALS = '0x313ce567';   // decimals()
+        const SEL_RESOLVER = '0x0178b8bf';         // resolver(bytes32)
+        const SEL_ADDR = '0x3b3b57de';             // addr(bytes32)
+        const SEL_BALANCE_OF = '0x70a08231';       // balanceOf(address)
+        const SEL_SYMBOL = '0x95d89b41';           // symbol()
+        const SEL_NAME = '0x06fdde03';             // name()
+        const SEL_DECIMALS = '0x313ce567';         // decimals()
+        const SEL_LATEST_ROUND = '0xfeaf968c';     // latestRoundData()
+        const SEL_LATEST_ROUND_REG = '0xbcfd032d'; // latestRoundData(address,address)
+
+        const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
+        const PRICE_SCALE = 10n ** PRICE_DECIMALS;
+        const PRICE_STALE_SECONDS = 48 * 3600;
 
         let chain = { id: 0, name: '…', ticker: 'NATIVE', ens: false };
 
@@ -392,14 +485,20 @@
             load() {
                 try {
                     const raw = localStorage.getItem(this.key());
-                    const data = raw ? JSON.parse(raw) : {};
+                    if (raw === null) {
+                        // first visit on this chain — seed the popular tokens (still removable)
+                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })) };
+                    }
+                    const data = JSON.parse(raw);
                     return { addresses: data.addresses || [], tokens: data.tokens || [] };
                 } catch { return { addresses: [], tokens: [] }; }
             },
             save(data) { localStorage.setItem(this.key(), JSON.stringify(data)); }
         };
 
+        const CURRENCY_KEY = 'nethermind.balances.currency';
         let state = { addresses: [], tokens: [] };
+        let currency = 'USD';
 
         // ---------- helpers ----------
         const $ = (id) => document.getElementById(id);
@@ -447,6 +546,48 @@
         }
 
         const pad32 = (addr) => addr.toLowerCase().replace('0x', '').padStart(64, '0');
+
+        // ---------- Chainlink prices (read from this node only) ----------
+        const fiatEnabled = () => Boolean(chain.registry || chain.feeds);
+
+        function parseRoundAnswer(hexValue) {
+            if (!hexValue || hexValue.length < 2 + 64 * 5) return null;
+            const words = hexValue.slice(2);
+            const answer = BigInt('0x' + words.slice(64, 128));
+            const updatedAt = Number(BigInt('0x' + words.slice(192, 256)));
+            if (answer <= 0n || answer >= 1n << 255n) return null; // zero or negative int256
+            if (Date.now() / 1000 - updatedAt > PRICE_STALE_SECONDS) return null;
+            return answer;
+        }
+
+        // assetKey: 'native' or a lowercase token address
+        function priceCall(assetKey) {
+            if (chain.registry) {
+                const base = assetKey === 'native' ? PSEUDO_ETH : (chain.alias?.[assetKey] ?? assetKey);
+                return ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']];
+            }
+            const feed = assetKey === 'native' ? chain.feeds?.native : chain.feeds?.[assetKey];
+            return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
+        }
+
+        function fxCall() {
+            if (currency === 'USD') return null;
+            if (chain.registry) {
+                return ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']];
+            }
+            const feed = chain.fx?.[currency];
+            return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
+        }
+
+        // value scaled by PRICE_SCALE (1e8) in the selected currency
+        function formatFiat(value8) {
+            const cents = value8 / 10n ** (PRICE_DECIMALS - 2n);
+            return (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
+        }
+
+        function setTotal(text) {
+            $('totalFiat').textContent = text;
+        }
 
         // ---------- ENS (forward resolution, simple case) ----------
         async function resolveEns(name) {
@@ -512,13 +653,19 @@
 
                 const table = el('table');
                 const rows = [{ ticker: chain.ticker, key: 'native' }].concat(
-                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address })));
+                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase() })));
+                const showFiat = fiatEnabled();
                 for (const row of rows) {
                     const tr = el('tr');
                     tr.append(el('td', 'tick number', row.ticker));
                     const bal = el('td', 'bal number spin', '…');
                     bal.dataset.key = row.key;
                     tr.append(bal);
+                    if (showFiat) {
+                        const fiat = el('td', 'fiat number', '');
+                        fiat.dataset.fiatkey = row.key;
+                        tr.append(fiat);
+                    }
                     table.append(tr);
                 }
                 card.append(table);
@@ -530,10 +677,30 @@
         let refreshing = false;
 
         async function refreshBalances() {
-            if (refreshing || state.addresses.length === 0) return;
+            if (refreshing) return;
+            if (state.addresses.length === 0) {
+                if (fiatEnabled()) setTotal('0.00 ' + currency);
+                return;
+            }
             refreshing = true;
             try {
+                const fiat = fiatEnabled();
+                const assets = [{ key: 'native', decimals: 18 }].concat(
+                    state.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })));
+
+                // one batched request: prices (+ FX) first, then all balances
                 const calls = [];
+                const priceIndex = new Map();
+                let fxIndex = -1;
+                if (fiat) {
+                    for (const asset of assets) {
+                        const call = priceCall(asset.key);
+                        if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
+                    }
+                    const fx = fxCall();
+                    if (fx) { fxIndex = calls.length; calls.push(fx); }
+                }
+                const balanceStart = calls.length;
                 for (const entry of state.addresses) {
                     calls.push(['eth_getBalance', [entry.address, 'latest']]);
                     for (const token of state.tokens) {
@@ -541,16 +708,40 @@
                     }
                 }
                 const results = await rpcBatch(calls);
-                let i = 0;
+
+                const prices = new Map();
+                for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
+                // FX feeds quote CCY/USD; token values are computed in USD then divided by it
+                const fxRate = currency === 'USD' ? PRICE_SCALE : (fxIndex >= 0 ? parseRoundAnswer(results[fxIndex]) : null);
+
+                let total = 0n;
+                let anyPrice = false;
+                let i = balanceStart;
                 for (const entry of state.addresses) {
                     const card = document.querySelector(`.card[data-address="${entry.address}"]`);
-                    const set = (key, text) => {
-                        const cell = card?.querySelector(`td[data-key="${key}"]`);
-                        if (cell) { cell.textContent = text ?? '—'; cell.classList.remove('spin'); }
-                    };
-                    set('native', formatUnits(results[i++], 18));
-                    for (const token of state.tokens) set(token.address, formatUnits(results[i++], token.decimals));
+                    for (const asset of assets) {
+                        const raw = results[i++];
+                        const balCell = card?.querySelector(`td[data-key="${asset.key}"]`);
+                        const fiatCell = card?.querySelector(`td[data-fiatkey="${asset.key}"]`);
+                        const balText = formatUnits(raw, asset.decimals);
+                        if (balCell) { balCell.textContent = balText ?? '—'; balCell.classList.remove('spin'); }
+                        if (!fiatCell) continue;
+                        const price = prices.get(asset.key);
+                        let fiatText = '';
+                        if (balText !== null && price && fxRate) {
+                            let value8;
+                            try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
+                            if (value8 !== null) {
+                                if (currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
+                                total += value8;
+                                anyPrice = true;
+                                fiatText = formatFiat(value8) + ' ' + currency;
+                            }
+                        }
+                        fiatCell.textContent = fiatText;
+                    }
                 }
+                if (fiat) setTotal(anyPrice ? formatFiat(total) + ' ' + currency : '—');
             } catch (e) {
                 setStatus('Balance refresh failed: ' + e.message, true);
             } finally {
@@ -654,6 +845,21 @@
                 $('netName').textContent = chain.name;
                 $('chainId').textContent = chain.id;
                 if (!chain.ens) $('addrInput').placeholder = '0x address' + (chain.id === 100 || chain.id === 10200 ? ' (ENS unavailable on Gnosis)' : '');
+
+                if (fiatEnabled()) {
+                    const select = $('currency');
+                    for (const code of chain.currencies) select.append(el('option', null, code));
+                    const stored = localStorage.getItem(CURRENCY_KEY);
+                    currency = chain.currencies.includes(stored) ? stored : 'USD';
+                    select.value = currency;
+                    select.onchange = () => {
+                        currency = select.value;
+                        localStorage.setItem(CURRENCY_KEY, currency);
+                        lastBlock = null; // force a refetch on the next poll even without a new block
+                        refreshBalances();
+                    };
+                    $('totalBox').style.display = 'flex';
+                }
             } catch (e) {
                 setStatus('Cannot reach JSON-RPC on this endpoint: ' + e.message, true);
                 return;
