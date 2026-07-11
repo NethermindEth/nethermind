@@ -1500,7 +1500,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
             Debug.Assert(blockStateGas >= 0, $"EIP-8037 fail-path invariant violated: negative block state gas ({blockStateGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
@@ -1527,10 +1527,13 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.SetOutOfGas(ref gasAfterCollision);
-            ulong spentGas = Math.Max(TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit), floorGas);
+            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit);
+            ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
+            Debug.Assert(blockStateGas >= 0, $"EIP-8037 collision-path invariant violated: negative block state gas ({blockStateGas}).");
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
         protected virtual GasConsumed RefundOnTopLevelHalt(
@@ -1562,12 +1565,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // On an exceptional halt spilled state gas ends up in gas_left and is burned as regular;
             // only the intrinsic state gas remaining after the reset stays in the state dimension.
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            // Block regular gas = before_refund - state (tx_regular_gas); refunds and the calldata
-            // floor adjust only the sender charge, never this dimension.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            // System txs are exempt from the assert above; saturate so their unused block gas cannot wrap.
-            ulong blockGas = burnFullGasLimit ? preRefundGas : preRefundGas.SaturatingSub((ulong)effectiveStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1771,7 +1771,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
             Debug.Assert(blockStateGas >= 0, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return (blockGas, blockStateGas);
         }

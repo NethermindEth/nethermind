@@ -399,6 +399,48 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip8037_exceptional_halt_applies_calldata_floor_after_authorization_state_gas()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address codeSource = TestItem.AddressC;
+        byte[] calldata = new byte[10_000];
+
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.INVALID).Done, SpecProvider.GenesisSpec);
+
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(RecipientKey.Address)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithData(calldata)
+            .WithAuthorizationCode(ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        Assert.That(intrinsicGas.FloorGas, Is.GreaterThan(intrinsicGas.Standard));
+        transaction.GasLimit = intrinsicGas.MinimalGas;
+
+        (Block block, _) = PrepareTx(
+            Activation,
+            transaction.GasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.PerAuthBaseState));
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(intrinsicGas.FloorGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(intrinsicGas.FloorGas));
+        }
+    }
+
     [TestCase(false, 591_128L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_regular_gas_CREATE")]
     [TestCase(true, 591_128L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_regular_gas_CREATE2")]
     public void Eip8037_nested_create_collision_skips_state_charge_and_burns_regular_gas(bool create2, long expectedBlockGas)
