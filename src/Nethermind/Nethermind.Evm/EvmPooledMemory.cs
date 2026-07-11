@@ -421,7 +421,10 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            // Returned dirty: the next renter zeroes only the gaps it exposes (see _validUpTo).
+            // Reset so a reused struct starts with an empty valid prefix even if the holder does not
+            // reset it; the buffer is returned dirty and the next renter zeroes the gaps it exposes.
+            _validUpTo = 0;
+            Size = 0;
             ReturnDirty(memory);
         }
     }
@@ -446,11 +449,7 @@ public struct EvmPooledMemory
         return _memory!.AsSpan(offset, length);
     }
 
-    /// <summary>
-    /// Ensures the buffer can hold <see cref="Size"/> bytes and that a write of <paramref name="length"/>
-    /// bytes at <paramref name="offset"/> reads back correctly: the exposed region below the write (the
-    /// only part not overwritten) is zeroed. A contiguous write (offset == valid extent) clears nothing.
-    /// </summary>
+    // Zero the exposed region below a write; a contiguous write (offset == valid extent) clears nothing.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareWrite(int offset, int length)
     {
@@ -467,10 +466,7 @@ public struct EvmPooledMemory
         }
     }
 
-    /// <summary>
-    /// Ensures the buffer can hold up to <paramref name="end"/> bytes and that the whole exposed region
-    /// [validExtent, end) reads as zero — a read fills none of it, so all of it is a gap.
-    /// </summary>
+    // A read fills nothing, so zero the whole newly-exposed region.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareRead(int end)
     {

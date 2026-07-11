@@ -10,14 +10,11 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
-/// Measures the EVM memory rent -> grow -> access -> dispose cycle across realistic frame patterns.
-/// The point is to compare, on the same workload, the cost of clearing memory: master zeroes the whole
-/// buffer on dispose, whereas the clear-on-grow branch zeroes only the exposed gaps on growth. Runs the
-/// same code on master and either branch (public + InternalsVisibleTo API only), so results are directly
-/// comparable — see scripts/bench-evm-memory.sh.
+/// Measures the EVM memory rent/grow/access/dispose cycle across representative frame patterns, to
+/// compare the cost of memory-zeroing strategies on the same workload.
 /// </summary>
-// In-process toolchain: avoids BenchmarkDotNet generating/building a separate project (which fails when
-// the repo contains multiple copies of this project, e.g. git worktrees). Fine for relative comparison.
+// In-process toolchain: avoids building a separate project, which fails when the repo has multiple
+// copies of it (e.g. git worktrees).
 [MemoryDiagnoser]
 [Config(typeof(Config))]
 public class EvmMemoryBenchmarks
@@ -27,8 +24,6 @@ public class EvmMemoryBenchmarks
         public Config() => AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
     }
 
-    // Frames per invocation: enough to reach steady state where the buffer pool is warm and dispose
-    // dominates (this is where master pays its full-buffer clear and this branch pays little/nothing).
     private const int Frames = 64;
 
     private readonly byte[] _word = new byte[EvmPooledMemory.WordSize];
@@ -46,7 +41,7 @@ public class EvmMemoryBenchmarks
         for (int i = 0; i < _chunk.Length; i++) _chunk[i] = (byte)i;
     }
 
-    /// <summary>Typical Solidity frame: three contiguous scratch/free-pointer word stores, then dispose.</summary>
+    // Typical Solidity scratch/free-pointer stores.
     [Benchmark(OperationsPerInvoke = Frames)]
     public void ScratchWrites()
     {
@@ -60,8 +55,7 @@ public class EvmMemoryBenchmarks
         }
     }
 
-    /// <summary>Build a buffer with contiguous word stores (ABI encoding / return construction), then dispose.
-    /// The common growth pattern: every write fills the newly exposed word, so clear-on-grow clears nothing.</summary>
+    // Contiguous word stores filling the region (ABI encoding / return construction).
     [Benchmark(OperationsPerInvoke = Frames)]
     public void ContiguousStores()
     {
@@ -76,7 +70,7 @@ public class EvmMemoryBenchmarks
         }
     }
 
-    /// <summary>Single bulk copy filling the whole region (CALLDATACOPY/CODECOPY/RETURN build), then dispose.</summary>
+    // Single bulk copy filling the whole region (CALLDATACOPY/CODECOPY/RETURN).
     [Benchmark(OperationsPerInvoke = Frames)]
     public void BulkCopyWrite()
     {
@@ -88,8 +82,7 @@ public class EvmMemoryBenchmarks
         }
     }
 
-    /// <summary>Read (MLOAD/RETURN/KECCAK) a region that was never written — the whole span is a gap that
-    /// must be zeroed on both master and this branch, so a near-tie is expected.</summary>
+    // Read of a never-written region (MLOAD/RETURN/KECCAK): the whole span is a gap.
     [Benchmark(OperationsPerInvoke = Frames)]
     public void ReadGrow()
     {
@@ -102,8 +95,7 @@ public class EvmMemoryBenchmarks
         }
     }
 
-    /// <summary>Scattered word stores leaving 224-byte gaps between them (worst case for this branch:
-    /// each write pays a head-gap clear), then dispose.</summary>
+    // Scattered stores leaving 224-byte gaps between them.
     [Benchmark(OperationsPerInvoke = Frames)]
     public void SparseStores()
     {
