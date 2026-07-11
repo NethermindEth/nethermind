@@ -91,7 +91,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
-        include: # macOS and windows-latest run only the OS-sensitive subset (I/O, networking, sockets); the full suite runs on Linux (x64 + arm64)
+        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
