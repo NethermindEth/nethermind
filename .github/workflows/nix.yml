@@ -13,7 +13,9 @@ on:
       - global.json
       - nix/**
       - nuget.config
+      - src/Nethermind/**/*.csproj
       - src/Nethermind/Directory.Build.props
+      - src/Nethermind/Directory.Build.targets
       - src/Nethermind/Nethermind.Runner/packages.lock.json
   pull_request:
     paths:
@@ -26,7 +28,9 @@ on:
       - global.json
       - nix/**
       - nuget.config
+      - src/Nethermind/**/*.csproj
       - src/Nethermind/Directory.Build.props
+      - src/Nethermind/Directory.Build.targets
       - src/Nethermind/Nethermind.Runner/packages.lock.json
   workflow_dispatch:
 

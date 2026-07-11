@@ -10,14 +10,14 @@
 }:
 let
   buildProps = builtins.readFile ../src/Nethermind/Directory.Build.props;
+  # Captures the first occurrence, so later ones (e.g. in a conditioned
+  # PropertyGroup) cannot shadow the value.
   getXmlValue =
     name:
     let
-      match = builtins.match ".*<${name}>([^<]+)</${name}>.*" (
-        builtins.replaceStrings [ "\n" "\r" ] [ " " " " ] buildProps
-      );
+      matches = builtins.split "<${name}>([^<]+)</${name}>" buildProps;
     in
-    if match == null then null else builtins.head match;
+    if builtins.length matches < 2 then null else builtins.head (builtins.elemAt matches 1);
   versionPrefix = getXmlValue "VersionPrefix";
   # Absent on release branches, where the version is just the prefix.
   versionSuffix = getXmlValue "VersionSuffix";
