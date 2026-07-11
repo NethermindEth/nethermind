@@ -47,6 +47,7 @@
             package = nethermind;
             command = "nethermind --version";
           };
+          smoke = pkgs.callPackage ./nix/smoke.nix { inherit nethermind; };
         }
       );
 
