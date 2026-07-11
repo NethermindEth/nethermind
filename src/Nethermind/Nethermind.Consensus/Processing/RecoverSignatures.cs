@@ -82,6 +82,9 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+                return;
+
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {

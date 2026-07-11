@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -179,6 +180,64 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         {
             // Signal that this thread has completed its work
             _data.MarkThreadCompleted();
+        }
+    }
+
+    /// <summary>
+    /// A small pool of persistent worker threads for <c>ForDedicated</c> bursts. Workers are
+    /// created once and parked on a semaphore, so a burst pays a wake-up (~tens of microseconds)
+    /// instead of thread creation (~milliseconds under load). Priority is applied per work item
+    /// and restored afterwards. Intended for short CPU-bound bursts only.
+    /// </summary>
+    private static class DedicatedWorkers
+    {
+        private static readonly ConcurrentQueue<(IThreadPoolWorkItem Item, ThreadPriority Priority)> _queue = new();
+        private static readonly SemaphoreSlim _signal = new(0);
+        private static int _started;
+
+        public static void Post(IThreadPoolWorkItem item, ThreadPriority priority)
+        {
+            EnsureStarted();
+            _queue.Enqueue((item, priority));
+            _signal.Release();
+        }
+
+        private static void EnsureStarted()
+        {
+            if (Volatile.Read(ref _started) != 0) return;
+            if (Interlocked.Exchange(ref _started, 1) != 0) return;
+
+            int workers = Math.Max(1, Cpu.RuntimeInformation.ProcessorCount - 1);
+            for (int i = 0; i < workers; i++)
+            {
+                Thread worker = new(Run)
+                {
+                    IsBackground = true,
+                    Name = $"{nameof(ParallelUnbalancedWork)}.{nameof(DedicatedWorkers)}",
+                };
+                worker.Start();
+            }
+        }
+
+        private static void Run()
+        {
+            Thread currentThread = Thread.CurrentThread;
+            while (true)
+            {
+                _signal.Wait();
+                if (!_queue.TryDequeue(out (IThreadPoolWorkItem Item, ThreadPriority Priority) work)) continue;
+
+                currentThread.Priority = work.Priority;
+                try
+                {
+                    // Work items capture their own exceptions (rethrown on the caller); nothing escapes here.
+                    work.Item.Execute();
+                }
+                finally
+                {
+                    currentThread.Priority = ThreadPriority.Normal;
+                }
+            }
         }
     }
 
@@ -361,13 +420,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
             for (int i = 0; i < threads - 1; i++)
             {
-                Thread worker = new(static state => ((InitProcessor<TLocal>)state!).Execute())
-                {
-                    IsBackground = true,
-                    Priority = workerPriority,
-                    Name = nameof(ParallelUnbalancedWork),
-                };
-                worker.Start(new InitProcessor<TLocal>(data));
+                DedicatedWorkers.Post(new InitProcessor<TLocal>(data), workerPriority);
             }
 
             Thread currentThread = Thread.CurrentThread;
