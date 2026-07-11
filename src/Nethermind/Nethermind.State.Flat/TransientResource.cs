@@ -60,8 +60,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         long hash = SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetReference(addressBytes));
         if (slot is not null)
         {
-            // Safe reinterpret: the ref targets a 32-byte stack local, so the read is exactly sized and
-            // cannot outlive or move. Hashes the native representation; the filter is process-transient.
             UInt256 slotValue = slot.Value;
             hash ^= SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref slotValue));
         }
