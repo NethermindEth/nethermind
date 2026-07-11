@@ -383,7 +383,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Most of a payload's transactions were already recovered when they entered the pool;
                 // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
                 // needs ecrecover here.
-                int reused = 0;
                 foreach (Transaction tx in txs)
                 {
                     if (tx.SenderAddress is null
@@ -392,10 +391,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                         && pooled.SenderAddress is not null)
                     {
                         tx.SenderAddress = pooled.SenderAddress;
-                        reused++;
                     }
                 }
-                if (_logger.IsDebug) _logger.Debug($"senderReuse blk={request.BlockNumber} reused={reused}/{txs.Length}");
 
                 _senderRecovery.RecoverData(txs, spec);
             }
