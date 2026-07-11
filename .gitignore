@@ -456,3 +456,7 @@ keystore/
 # Worktrees
 .worktrees/
 /.dotnet-cli
+
+# Nix build output symlinks
+/result
+/result-*
