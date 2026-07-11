@@ -12,10 +12,14 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
 {
     [TestCase("new TaskCompletionSource()")]
     [TestCase("new TaskCompletionSource((object?)null)")]
+    [TestCase("new TaskCompletionSource(TaskCreationOptions.None)")]
     [TestCase("new TaskCompletionSource(TaskCreationOptions.LongRunning)")]
+    [TestCase("new TaskCompletionSource(creationOptions: TaskCreationOptions.None)")]
     [TestCase("new TaskCompletionSource(opt)")]
     [TestCase("new TaskCompletionSource<int>()")]
     [TestCase("new TaskCompletionSource<int>((object?)null)")]
+    [TestCase("new TaskCompletionSource<int>(TaskCreationOptions.None)")]
+    [TestCase("new TaskCompletionSource<int>(creationOptions: TaskCreationOptions.None)")]
     public Task Construction_without_run_continuations_async_reports_diagnostic(string expression) =>
         Verify(WrapMethodBody($"var t = {{|#0:{expression}|}};"), Diagnostic().WithLocation(0));
 
@@ -25,13 +29,6 @@ public class TaskCompletionSourceMustRunContinuationsAsynchronouslyAnalyzerTests
     [TestCase("new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously)")]
     [TestCase("new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously | TaskCreationOptions.LongRunning)")]
     public Task Construction_with_run_continuations_async_no_diagnostic(string expression) =>
-        Verify(WrapMethodBody($"var t = {expression};"));
-
-    [TestCase("new TaskCompletionSource(TaskCreationOptions.None)")]
-    [TestCase("new TaskCompletionSource(creationOptions: TaskCreationOptions.None)")]
-    [TestCase("new TaskCompletionSource<int>(TaskCreationOptions.None)")]
-    [TestCase("new TaskCompletionSource<int>(creationOptions: TaskCreationOptions.None)")]
-    public Task Explicit_none_is_deliberate_opt_out_no_diagnostic(string expression) =>
         Verify(WrapMethodBody($"var t = {expression};"));
 
     [Test]

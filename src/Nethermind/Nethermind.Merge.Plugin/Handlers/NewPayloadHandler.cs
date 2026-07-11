@@ -365,6 +365,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // for their recovery.
         if (block.Number > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return;
 
+        // Streaming trades idle cores for latency, which only exists at the tip: with a backlog
+        // (catch-up, replay benchmarks) the recovery fan-out steals cores from the block that is
+        // executing and the joins move inside processing, so throughput regresses. The pipelined
+        // preprocessor recovery is already optimal there — leave backlogged blocks to it.
+        if (!_processingQueue.IsEmpty) return;
+
         Transaction[] txs = block.Transactions;
         if (txs.Length == 0) return;
 
@@ -425,7 +431,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         ValidationCompletion blockProcessed =
             _blockValidationTasks.GetOrAdd(
-                block.Hash!, new ValidationCompletion(TaskCreationOptions.None));
+                block.Hash!,
+                static _ => new ValidationCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
 
         try
         {

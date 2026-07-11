@@ -165,6 +165,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
+            // Observe the root task so a throw cannot surface as an unobserved task exception.
+            txRootTask?.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return transactions.Error;
         }
 
