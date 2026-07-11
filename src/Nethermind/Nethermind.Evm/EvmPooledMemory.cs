@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
@@ -479,7 +481,7 @@ public struct EvmPooledMemory
         if (minLength > MaxCachedArrayLength)
         {
             byte[] pooled = RentLarge(minLength);
-            Array.Clear(pooled);
+            ClearBuffer(pooled, pooled.Length);
             return pooled;
         }
 
@@ -497,9 +499,47 @@ public struct EvmPooledMemory
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
         {
-            Array.Clear(array, 0, dirtyLength);
+            ClearBuffer(array, dirtyLength);
             cache[_cleanArrayCount++] = array;
         }
+    }
+
+    // Above this the buffer is comparable to L1, so zeroing it evicts the block's warm working set
+    // (bytecode, state, trie nodes). Non-temporal stores bypass cache and avoid that collateral eviction.
+    private const int NonTemporalClearThreshold = 32 * 1024;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ClearBuffer(byte[] array, int length)
+    {
+        if (length >= NonTemporalClearThreshold && Avx.IsSupported)
+        {
+            ClearNonTemporal(array, length);
+        }
+        else
+        {
+            Array.Clear(array, 0, length);
+        }
+    }
+
+    // Zeroes [0, length) with non-temporal (cache-bypassing) AVX stores. length >= 32 is guaranteed by
+    // the caller's threshold. Unaligned head/tail stores cover the ends; the fence orders the weakly
+    // ordered non-temporal writes before the buffer is handed out and read again.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static unsafe void ClearNonTemporal(byte[] array, int length)
+    {
+        fixed (byte* p = array)
+        {
+            Vector256<byte> zero = default;
+            Avx.Store(p, zero);
+            byte* cur = (byte*)(((nuint)p + 31) & ~(nuint)31);
+            byte* tail = p + length - Vector256<byte>.Count;
+            for (; cur <= tail; cur += Vector256<byte>.Count)
+            {
+                Avx.StoreAlignedNonTemporal(cur, zero);
+            }
+            Avx.Store(tail, zero);
+        }
+        Sse.StoreFence();
     }
 
 #if ZK_EVM
