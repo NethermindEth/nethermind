@@ -1342,7 +1342,26 @@
         // ---------- balance refresh ----------
         let refreshing = false;
 
-        async function refreshNode(node, addresses) {
+        // The FX rate (CCY/USD) is chain-agnostic, so it is resolved once from the first
+        // enabled chain that has a fresh feed for the selected currency (mainnet-first
+        // order). This lets chains cover each other's currencies — e.g. GBP (mainnet-only
+        // feed) converts Gnosis rows and MXN (Gnosis-only feed) converts mainnet rows.
+        async function resolveFxRate() {
+            if (currency === 'USD') return PRICE_SCALE;
+            for (const node of enabledNodes()) {
+                if (!fiatEnabled(node.meta)) continue;
+                const calls = fxCalls(node.meta);
+                if (!calls) continue;
+                try {
+                    const results = await rpcBatch(calls, node.rpcPath);
+                    const rate = normalizeFxRate(parseRoundAnswer(results[0]), results[1]);
+                    if (rate) return rate;
+                } catch { /* try the next chain's feed */ }
+            }
+            return null;
+        }
+
+        async function refreshNode(node, addresses, fxRate) {
             const meta = node.meta;
             const chainState = stateOf(node.chainId);
             const fiat = fiatEnabled(meta);
@@ -1350,18 +1369,15 @@
                 .concat(chainState.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
                 .concat(chainState.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, isNft: true })));
 
-            // one batched request per node: prices (+ FX) first, then all balances
+            // one batched request per node: prices first, then all balances
             const calls = [];
             const priceIndex = new Map();
-            let fxIndex = -1;
             if (fiat) {
                 for (const asset of assets) {
                     if (asset.isNft) continue;
                     const call = priceCall(meta, asset.key);
                     if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
                 }
-                const fx = fxCalls(meta);
-                if (fx) { fxIndex = calls.length; calls.push(...fx); }
             }
             const balanceStart = calls.length;
             for (const entry of addresses) {
@@ -1377,10 +1393,6 @@
 
             const prices = new Map();
             for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
-            // FX feeds quote CCY/USD; token values are computed in USD then divided by it
-            const fxRate = currency === 'USD'
-                ? PRICE_SCALE
-                : (fxIndex >= 0 ? normalizeFxRate(parseRoundAnswer(results[fxIndex]), results[fxIndex + 1]) : null);
 
             let i = balanceStart;
             for (const entry of addresses) {
@@ -1423,8 +1435,9 @@
             }
             refreshing = true;
             try {
+                const fxRate = await resolveFxRate();
                 await Promise.all(enabledNodes().map((node) =>
-                    refreshNode(node, addresses).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
+                    refreshNode(node, addresses, fxRate).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
                 recomputeTotals();
                 refreshNftThumbs();
             } finally {
