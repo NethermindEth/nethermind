@@ -11,19 +11,22 @@ namespace Nethermind.Stateless.Execution.IO;
 
 internal static class InputDecoder
 {
+    private const ushort AmsterdamRevision1SchemaId = ((ushort)ProtocolFork.Amsterdam << 8) | 0x01;
+
     internal static StatelessPayload Decode(ReadOnlySpan<byte> data)
     {
-        ushort schemaVersion = BinaryPrimitives.ReadUInt16BigEndian(data);
+        ushort schemaId = BinaryPrimitives.ReadUInt16BigEndian(data);
 
-        return schemaVersion switch
+        return schemaId switch
         {
-            0 => DecodeV1<SszExecutionPayloadV3>(data[sizeof(ushort)..]),
-            1 => DecodeV1<SszExecutionPayloadV4>(data[sizeof(ushort)..]),
-            _ => throw new ArgumentException($"Unsupported schema version: {schemaVersion}", nameof(data))
+            AmsterdamRevision1SchemaId => DecodeRevision1<SszExecutionPayloadV4>(
+                data[sizeof(ushort)..],
+                ProtocolFork.Amsterdam),
+            _ => throw new ArgumentException($"Unsupported schema id: 0x{schemaId:x4}", nameof(data))
         };
     }
 
-    private static StatelessPayload DecodeV1<TExecutionPayload>(ReadOnlySpan<byte> data)
+    private static StatelessPayload DecodeRevision1<TExecutionPayload>(ReadOnlySpan<byte> data, ProtocolFork protocolFork)
         where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
     {
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
@@ -34,7 +37,8 @@ internal static class InputDecoder
             Witness: input.Witness,
             ChainConfig: input.ChainConfig,
             PublicKeys: input.PublicKeys,
-            NewPayloadRequestRoot: new Hash256(root.ToLittleEndian())
+            NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
+            ProtocolFork: protocolFork
         );
     }
 }
