@@ -75,6 +75,10 @@ on:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
         default: false
         type: boolean
+      multi_chain:
+        description: "If checked, the node image also runs a second Nethermind (gnosis by default) on the same machine, reachable on localhost:8546, for the multi-chain balance viewer."
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       smoke_tests_ref:
@@ -191,7 +195,11 @@ jobs:
       - name: Extract dockerfile from additional_options
         id: extract_dockerfile
         run: |
-          echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.multi_chain }}" = "true" ]; then
+            echo "dockerfile=Dockerfile.multichain" >> $GITHUB_OUTPUT
+          else
+            echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
+          fi
           echo "build-config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Set Repo and Org Variables

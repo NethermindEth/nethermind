@@ -20,5 +20,6 @@ public class BalanceViewerPlugin(IBalanceViewerConfig config) : INethermindPlugi
 public class BalanceViewerModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>()
         .AddSingleton<IJsonRpcServiceConfigurer, BalanceViewerConfigurer>();
 }

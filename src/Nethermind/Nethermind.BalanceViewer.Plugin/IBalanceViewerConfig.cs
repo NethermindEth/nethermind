@@ -9,4 +9,7 @@ public interface IBalanceViewerConfig : IConfig
 {
     [ConfigItem(Description = "Whether to serve the balance viewer UI at the `/balances` path of the JSON-RPC HTTP endpoint.", DefaultValue = "true")]
     bool Enabled { get; set; }
+
+    [ConfigItem(Description = "Comma-separated localhost ports probed to discover sibling Nethermind nodes on other chains for the multi-chain balance view.", DefaultValue = "8545,8546,8547,8548,8549,8550")]
+    string SiblingProbePorts { get; set; }
 }

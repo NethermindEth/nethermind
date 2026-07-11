@@ -96,6 +96,26 @@
 
         header .total .number { font-size: 15px; color: var(--c-total); }
 
+        /* chain toggles replace the chain/head text when sibling nodes are detected */
+        #chainToggles { display: none; gap: 8px; align-items: center; }
+
+        button.chain-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            opacity: 0.35;
+        }
+
+        button.chain-btn.on { opacity: 1; border-color: var(--accent); }
+        button.chain-btn img { width: 20px; height: 20px; }
+        button.chain-btn .sync { display: none; color: var(--c-total); animation: spin 1.6s linear infinite; }
+        button.chain-btn.syncing .sync { display: inline-block; }
+
+        @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+        sup.suptag { color: var(--muted); font-size: 9px; margin-left: 1px; }
+
         select {
             background: #0a0a0a;
             border: 1px solid var(--border);
@@ -325,9 +345,12 @@
 <body>
     <header>
         <div class="brand"><img src="nethermind.svg" alt="NETHERMIND" onerror="this.replaceWith('NETHERMIND')"><span>/ BALANCES</span></div>
-        <div class="net">network <span id="netName" class="number">…</span></div>
-        <div class="net">chain <span id="chainId" class="number">…</span></div>
-        <div class="net">head <span id="headBlock" class="number">…</span></div>
+        <div id="singleNet" style="display: contents">
+            <div class="net">network <span id="netName" class="number">…</span></div>
+            <div class="net">chain <span id="chainId" class="number">…</span></div>
+            <div class="net">head <span id="headBlock" class="number">…</span></div>
+        </div>
+        <div id="chainToggles"></div>
         <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
         <div class="total" id="totalBox">
             <span class="net">total ≈</span>
@@ -347,6 +370,7 @@
                 <option value="token">token</option>
                 <option value="nft">NFT</option>
             </select>
+            <select id="tokChain" title="Chain" style="display: none"></select>
             <input id="tokAddr" class="number addr" placeholder="token contract 0x address" spellcheck="false" />
             <input id="tokTicker" class="number sm" placeholder="ticker" spellcheck="false" />
             <input id="tokDecimals" class="number sm" placeholder="decimals" inputmode="numeric" />
@@ -437,11 +461,14 @@
             return out;
         }
 
-        // ---------- JSON-RPC (same origin — data comes only from this node) ----------
+        // ---------- JSON-RPC ----------
+        // rpcPath '/' talks to the node serving this page; sibling nodes discovered by the
+        // plugin are reached through its same-origin proxy at /balances-rpc/{port}, so all
+        // data still flows exclusively through local Nethermind nodes.
         let rpcId = 1;
 
-        async function rpc(method, params) {
-            const res = await fetch('/', {
+        async function rpc(method, params, rpcPath = '/') {
+            const res = await fetch(rpcPath, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params })
@@ -451,10 +478,10 @@
             return json.result;
         }
 
-        async function rpcBatch(calls) {
+        async function rpcBatch(calls, rpcPath = '/') {
             if (calls.length === 0) return [];
             const body = calls.map(([method, params]) => ({ jsonrpc: '2.0', id: rpcId++, method, params }));
-            const res = await fetch('/', {
+            const res = await fetch(rpcPath, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -523,7 +550,7 @@
 
         const CHAINS = {
             1: {
-                name: 'Ethereum', ticker: 'ETH', ens: true,
+                name: 'Ethereum', ticker: 'ETH', ens: true, tag: '', logo: 'logos/ethereum-logo.svg',
                 registry: FEED_REGISTRY,
                 // no direct registry feeds for wrapped assets — price via the underlying
                 alias: {
@@ -534,17 +561,17 @@
                 currencies: ['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'KRW', 'SGD', 'NZD', 'BRL', 'PHP'],
                 defaults: MAINNET_DEFAULT_TOKENS,
             },
-            11155111: { name: 'Sepolia', ticker: 'ETH', ens: true },
-            17000: { name: 'Holesky', ticker: 'ETH', ens: true },
-            560048: { name: 'Hoodi', ticker: 'ETH', ens: true },
+            11155111: { name: 'Sepolia', ticker: 'ETH', ens: true, tag: 'SEP', logo: 'logos/ethereum-logo.svg' },
+            17000: { name: 'Holesky', ticker: 'ETH', ens: true, tag: 'HOL', logo: 'logos/ethereum-logo.svg' },
+            560048: { name: 'Hoodi', ticker: 'ETH', ens: true, tag: 'HOO', logo: 'logos/ethereum-logo.svg' },
             100: {
-                name: 'Gnosis', ticker: 'xDAI', ens: false,
+                name: 'Gnosis', ticker: 'xDAI', ens: false, tag: 'GNO', logo: 'logos/gnosis.png',
                 feeds: GNOSIS_FEEDS,
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
             },
-            10200: { name: 'Chiado', ticker: 'xDAI', ens: false },
+            10200: { name: 'Chiado', ticker: 'xDAI', ens: false, tag: 'CHI', logo: 'logos/gnosis.png' },
         };
         const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
         const SEL_RESOLVER = '0x0178b8bf';         // resolver(bytes32)
@@ -566,28 +593,68 @@
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
         const PRICE_STALE_SECONDS = 48 * 3600;
 
-        let chain = { id: 0, name: '…', ticker: 'NATIVE', ens: false };
+        function chainMeta(id) {
+            return CHAINS[id] ?? { name: 'chain ' + id, ticker: 'NATIVE', ens: false, tag: 'C' + id, logo: 'logos/unknown.png' };
+        }
+
+        // ---------- nodes (the serving node + siblings discovered by the plugin) ----------
+        let nodes = [];
+        let ownNode = null;
+
+        const own = () => ownNode;
+        const multi = () => nodes.length > 1;
+        const enabledNodes = () => nodes.filter((n) => n.enabled);
+
+        // Ethereum mainnet first, then its testnets, then Gnosis and its testnet
+        function chainOrder(id) {
+            if (id === 1) return 0;
+            if (chainMeta(id).ticker === 'ETH') return 1;
+            if (id === 100) return 2;
+            if (id === 10200) return 3;
+            return 4;
+        }
+
+        const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
+
+        function makeNode(rpcPath, chainId) {
+            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, head: null, syncing: false, lastScanned: null, scanning: false, button: null };
+        }
 
         // ---------- persistence (per chain) ----------
         const store = {
-            key: () => 'nethermind.balances.' + chain.id,
-            load() {
+            key: (chainId) => 'nethermind.balances.' + chainId,
+            load(node) {
                 try {
-                    const raw = localStorage.getItem(this.key());
+                    const raw = localStorage.getItem(this.key(node.chainId));
                     if (raw === null) {
                         // first visit on this chain — seed the popular tokens (still removable)
-                        return { addresses: [], tokens: (chain.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [] };
+                        return { addresses: [], tokens: (node.meta.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [] };
                     }
                     const data = JSON.parse(raw);
                     return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [], watched: data.watched || [] };
                 } catch { return { addresses: [], tokens: [], nfts: [], watched: [] }; }
             },
-            save(data) { localStorage.setItem(this.key(), JSON.stringify(data)); }
+            save(chainId) { localStorage.setItem(this.key(chainId), JSON.stringify(states.get(chainId))); }
         };
 
         const CURRENCY_KEY = 'nethermind.balances.currency';
-        let state = { addresses: [], tokens: [], nfts: [], watched: [] };
+        const ENABLED_KEY = 'nethermind.balances.enabledChains';
+        const states = new Map(); // chainId -> { addresses, tokens, nfts, watched }
+        const stateOf = (chainId) => states.get(chainId);
         let currency = 'USD';
+
+        // pinned addresses merged across enabled chains
+        function mergedAddresses() {
+            const merged = new Map();
+            for (const node of enabledNodes()) {
+                for (const entry of stateOf(node.chainId).addresses) {
+                    const existing = merged.get(entry.address);
+                    if (!existing) merged.set(entry.address, { address: entry.address, label: entry.label });
+                    else if (!existing.label && entry.label) existing.label = entry.label;
+                }
+            }
+            return [...merged.values()];
+        }
 
         // ---------- helpers ----------
         const $ = (id) => document.getElementById(id);
@@ -647,6 +714,13 @@
             return TOKEN_COLORS[hash % TOKEN_COLORS.length];
         }
 
+        // ticker cell content: superscript chain tag on non-mainnet chains when several nodes are shown
+        function tickerLabel(ticker, node) {
+            const holder = el('span', 'number', ticker);
+            if (multi() && node.chainId !== 1 && node.meta.tag) holder.append(el('sup', 'suptag', node.meta.tag));
+            return holder;
+        }
+
         function formatUnits(hexValue, decimals) {
             if (hexValue === null) return null;
             let value;
@@ -675,8 +749,9 @@
 
         const pad32 = (addr) => addr.toLowerCase().replace('0x', '').padStart(64, '0');
 
-        // ---------- Chainlink prices (read from this node only) ----------
-        const fiatEnabled = () => Boolean(chain.registry || chain.feeds);
+        // ---------- Chainlink prices (read from the nodes only) ----------
+        const fiatEnabled = (meta) => Boolean(meta.registry || meta.feeds);
+        const anyFiat = () => enabledNodes().some((n) => fiatEnabled(n.meta));
 
         function parseRoundAnswer(hexValue) {
             if (!hexValue || hexValue.length < 2 + 64 * 5) return null;
@@ -689,26 +764,26 @@
         }
 
         // assetKey: 'native' or a lowercase token address
-        function priceCall(assetKey) {
-            if (chain.registry) {
-                const base = assetKey === 'native' ? PSEUDO_ETH : (chain.alias?.[assetKey] ?? assetKey);
-                return ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']];
+        function priceCall(meta, assetKey) {
+            if (meta.registry) {
+                const base = assetKey === 'native' ? PSEUDO_ETH : (meta.alias?.[assetKey] ?? assetKey);
+                return ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']];
             }
-            const feed = assetKey === 'native' ? chain.feeds?.native : chain.feeds?.[assetKey];
+            const feed = assetKey === 'native' ? meta.feeds?.native : meta.feeds?.[assetKey];
             return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
         }
 
         // FX feeds mostly use 8 decimals, but not all (e.g. PHP/USD is 18),
         // so the rate is fetched together with its decimals and normalized
-        function fxCalls() {
+        function fxCalls(meta) {
             if (currency === 'USD') return null;
-            if (chain.registry) {
+            if (meta.registry && DENOM[currency]) {
                 return [
-                    ['eth_call', [{ to: chain.registry, data: SEL_LATEST_ROUND_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
-                    ['eth_call', [{ to: chain.registry, data: SEL_FEED_DECIMALS_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
+                    ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
+                    ['eth_call', [{ to: meta.registry, data: SEL_FEED_DECIMALS_REG + pad32(DENOM[currency]) + pad32(DENOM.USD) }, 'latest']],
                 ];
             }
-            const feed = chain.fx?.[currency];
+            const feed = meta.fx?.[currency];
             return feed ? [
                 ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']],
                 ['eth_call', [{ to: feed, data: SEL_DECIMALS }, 'latest']],
@@ -740,27 +815,29 @@
             $('totalFiat').textContent = text;
         }
 
-        // last fetched values per `${address}|${assetKey}`, so re-rendering
+        // last fetched values per `${address}|${chainId}:${assetKey}`, so re-rendering
         // (e.g. after unpinning) never blanks cells while waiting for a refetch
         const cache = new Map();
-        const assetKeys = () => ['native'].concat(state.tokens.map((t) => t.address.toLowerCase()));
+        const assetKeysFor = (chainId) => ['native'].concat(stateOf(chainId).tokens.map((t) => t.address.toLowerCase()));
 
         function recomputeTotals() {
-            if (!fiatEnabled()) return;
+            if (!anyFiat()) return;
             let grand = 0n;
             let any = false;
-            for (const entry of state.addresses) {
+            for (const entry of mergedAddresses()) {
                 let cardTotal = 0n;
                 let cardAny = false;
-                for (const key of assetKeys()) {
-                    const cached = cache.get(entry.address + '|' + key);
-                    if (cached?.value8 !== null && cached?.value8 !== undefined) { cardTotal += cached.value8; cardAny = true; }
+                for (const node of enabledNodes()) {
+                    for (const key of assetKeysFor(node.chainId)) {
+                        const cached = cache.get(entry.address + '|' + node.chainId + ':' + key);
+                        if (cached?.value8 !== null && cached?.value8 !== undefined) { cardTotal += cached.value8; cardAny = true; }
+                    }
                 }
                 const cell = document.querySelector(`td[data-cardtotal="${entry.address}"]`);
                 if (cell) cell.textContent = cardAny ? formatFiat(cardTotal) : '—';
                 if (cardAny) { grand += cardTotal; any = true; }
             }
-            setTotal(any ? formatFiat(grand) : (state.addresses.length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
+            setTotal(any ? formatFiat(grand) : (mergedAddresses().length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
         }
 
         // ---------- NFTs (ERC-721, node-data only) ----------
@@ -768,8 +845,8 @@
         // few token ids are enumerated and their tokenURI decoded; only fully on-chain
         // metadata (data: URIs, e.g. Nouns or Loot) is rendered — external URIs are
         // never fetched, so no request leaves the node.
-        const nftCache = new Map();       // `${address}|${collection}` -> { count, thumbs: [{src, title}] }
-        const enumerableCache = new Map(); // collection -> bool
+        const nftCache = new Map();       // `${address}|${chainId}|${collection}` -> { count, thumbs: [{src, title}] }
+        const enumerableCache = new Map(); // `${chainId}|${collection}` -> bool
         const NFT_PAGE = 24;
         let nftRefreshing = false;
 
@@ -782,13 +859,13 @@
         }
 
         // enumerates owned token ids [start, end) and decodes their on-chain metadata
-        async function fetchThumbRange(collection, owner, start, end) {
+        async function fetchThumbRange(node, collection, owner, start, end) {
             const idCalls = [];
             for (let index = start; index < end; index++) {
                 idCalls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_OF_OWNER + pad32(owner) + pad32(index.toString(16)) }, 'latest']]);
             }
-            const ids = (await rpcBatch(idCalls)).filter((id) => id !== null).map((id) => BigInt(id));
-            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_TOKEN_URI + pad32(id.toString(16)) }, 'latest']]));
+            const ids = (await rpcBatch(idCalls, node.rpcPath)).filter((id) => id !== null).map((id) => BigInt(id));
+            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_TOKEN_URI + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
             const thumbs = [];
             for (let index = 0; index < ids.length; index++) {
                 const metadata = parseOnChainMetadata(decodeAbiString(uris[index]));
@@ -813,7 +890,7 @@
             } catch { setStatus('Could not open artwork', true); }
         }
 
-        function fillThumbs(box, cached, owner, collection) {
+        function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
             for (const thumb of cached.thumbs) {
@@ -836,9 +913,9 @@
                     more.onclick = null;
                     try {
                         const start = cached.thumbs.length;
-                        cached.thumbs.push(...await fetchThumbRange(collection, owner, start, Math.min(cached.count, start + NFT_PAGE)));
+                        cached.thumbs.push(...await fetchThumbRange(node, collection, owner, start, Math.min(cached.count, start + NFT_PAGE)));
                     } catch { /* keep what we have */ }
-                    fillThumbs(box, cached, owner, collection);
+                    fillThumbs(box, cached, node, owner, collection);
                 };
                 box.append(more);
             }
@@ -846,37 +923,40 @@
                 const less = el('span', 'more expand', 'show less');
                 less.onclick = () => {
                     cached.thumbs.length = MAX_NFT_THUMBS;
-                    fillThumbs(box, cached, owner, collection);
+                    fillThumbs(box, cached, node, owner, collection);
                 };
                 box.append(less);
             }
         }
 
         async function refreshNftThumbs() {
-            if (nftRefreshing || state.nfts.length === 0) return;
+            if (nftRefreshing) return;
             nftRefreshing = true;
             try {
-                for (const entry of state.addresses) {
-                    for (const collection of state.nfts) {
-                        const colKey = collection.address.toLowerCase();
-                        const key = entry.address + '|' + colKey;
-                        const countCached = cache.get(entry.address + '|nft:' + colKey);
-                        const count = countCached?.bal === null || countCached === undefined ? 0 : Number(countCached.bal.replace(/,/g, ''));
-                        const box = document.querySelector(`[data-thumbs="${entry.address}|${colKey}"]`);
-                        if (nftCache.get(key)?.count === count) continue;
+                for (const node of enabledNodes()) {
+                    for (const entry of mergedAddresses()) {
+                        for (const collection of stateOf(node.chainId).nfts) {
+                            const colKey = collection.address.toLowerCase();
+                            const key = entry.address + '|' + node.chainId + '|' + colKey;
+                            const countCached = cache.get(entry.address + '|' + node.chainId + ':nft:' + colKey);
+                            const count = countCached?.bal === null || countCached === undefined ? 0 : Number(countCached.bal.replace(/,/g, ''));
+                            const box = document.querySelector(`[data-thumbs="${key}"]`);
+                            if (nftCache.get(key)?.count === count) continue;
 
-                        let thumbs = [];
-                        if (count > 0) {
-                            if (!enumerableCache.has(colKey)) {
-                                const supports = await rpc('eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + IFACE_ERC721_ENUMERABLE.padEnd(64, '0') }, 'latest']).catch(() => null);
-                                enumerableCache.set(colKey, supports !== null && BigInt(supports) === 1n);
+                            let thumbs = [];
+                            if (count > 0) {
+                                const enumKey = node.chainId + '|' + colKey;
+                                if (!enumerableCache.has(enumKey)) {
+                                    const supports = await rpc('eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + IFACE_ERC721_ENUMERABLE.padEnd(64, '0') }, 'latest'], node.rpcPath).catch(() => null);
+                                    enumerableCache.set(enumKey, supports !== null && BigInt(supports) === 1n);
+                                }
+                                if (enumerableCache.get(node.chainId + '|' + colKey)) {
+                                    thumbs = await fetchThumbRange(node, collection, entry.address, 0, Math.min(count, MAX_NFT_THUMBS));
+                                }
                             }
-                            if (enumerableCache.get(colKey)) {
-                                thumbs = await fetchThumbRange(collection, entry.address, 0, Math.min(count, MAX_NFT_THUMBS));
-                            }
+                            nftCache.set(key, { count, thumbs });
+                            if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
                         }
-                        nftCache.set(key, { count, thumbs });
-                        if (box) fillThumbs(box, nftCache.get(key), entry.address, collection);
                     }
                 }
             } catch { /* thumbnails are cosmetic — leave whatever is displayed */ }
@@ -884,22 +964,24 @@
         }
 
         // ---------- notifications (activity derived from node data only) ----------
-        // A bell on each card watches the address: new blocks are scanned for its
-        // transactions and ERC-20 Transfer logs, and events (sent/received, swaps,
-        // contract interactions) surface as system notifications via the service
-        // worker. No push service is involved — data never leaves the node.
+        // A bell on each card watches the address: new blocks on every enabled chain are
+        // scanned for its transactions and ERC-20 Transfer logs, and events (sent/received,
+        // swaps, contract interactions) surface as system notifications via the service
+        // worker. No push service is involved — data never leaves the nodes.
         const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
         const MAX_BLOCKS_PER_POLL = 4;
-        let lastScannedBlock = null;
-        let scanning = false;
 
-        const isWatched = (address) => state.watched.includes(address.toLowerCase());
+        const isWatchedAny = (address) =>
+            enabledNodes().some((n) => stateOf(n.chainId).watched.includes(address.toLowerCase()));
 
         async function toggleWatch(entry, bell) {
             const key = entry.address.toLowerCase();
-            if (isWatched(key)) {
-                state.watched = state.watched.filter((w) => w !== key);
-                store.save(state);
+            if (isWatchedAny(key)) {
+                for (const node of enabledNodes()) {
+                    const state = stateOf(node.chainId);
+                    state.watched = state.watched.filter((w) => w !== key);
+                    store.save(node.chainId);
+                }
                 bell.classList.remove('on');
                 setStatus('Notifications off for ' + (entry.label || shortAddr(entry.address)));
                 return;
@@ -909,8 +991,11 @@
                 if (permission !== 'granted') setStatus('Notifications not permitted by the browser — activity will only show here', true);
             }
             try { await navigator.serviceWorker?.register('balances-sw.js'); } catch { }
-            state.watched.push(key);
-            store.save(state);
+            for (const node of enabledNodes()) {
+                const state = stateOf(node.chainId);
+                if (!state.watched.includes(key)) state.watched.push(key);
+                store.save(node.chainId);
+            }
             bell.classList.add('on');
             setStatus('Watching ' + (entry.label || shortAddr(entry.address)) + ' for activity');
         }
@@ -926,40 +1011,43 @@
         }
 
         function displayName(address) {
-            const entry = state.addresses.find((a) => a.address.toLowerCase() === address);
+            const entry = mergedAddresses().find((a) => a.address.toLowerCase() === address);
             return entry?.label || shortAddr(entry?.address || address);
         }
 
-        function tokenAmount(log) {
-            const token = state.tokens.find((t) => t.address.toLowerCase() === log.address.toLowerCase());
+        function tokenAmount(log, chainId) {
+            const token = stateOf(chainId).tokens.find((t) => t.address.toLowerCase() === log.address.toLowerCase());
             let amount = null;
             try { amount = BigInt(log.data); } catch { }
             if (token && amount !== null) return formatUnits('0x' + amount.toString(16), token.decimals) + ' ' + token.ticker;
             return 'tokens of ' + shortAddr(checksum(log.address));
         }
 
-        async function scanForActivity(headHex) {
-            if (scanning || state.watched.length === 0) { lastScannedBlock = BigInt(headHex); return; }
+        async function scanForActivity(node, headHex) {
+            const watched = stateOf(node.chainId).watched;
+            if (node.scanning || watched.length === 0) { node.lastScanned = BigInt(headHex); return; }
             const head = BigInt(headHex);
-            if (lastScannedBlock === null) { lastScannedBlock = head; return; }
-            if (head <= lastScannedBlock) return;
-            scanning = true;
+            if (node.lastScanned === null) { node.lastScanned = head; return; }
+            if (head <= node.lastScanned) return;
+            node.scanning = true;
             try {
-                const from = head - lastScannedBlock > BigInt(MAX_BLOCKS_PER_POLL) ? head - BigInt(MAX_BLOCKS_PER_POLL) + 1n : lastScannedBlock + 1n;
+                const from = head - node.lastScanned > BigInt(MAX_BLOCKS_PER_POLL) ? head - BigInt(MAX_BLOCKS_PER_POLL) + 1n : node.lastScanned + 1n;
                 const range = { fromBlock: '0x' + from.toString(16), toBlock: headHex };
-                const watchedTopics = state.watched.map((w) => '0x' + pad32(w));
+                const watchedTopics = watched.map((w) => '0x' + pad32(w));
                 const blockCalls = [];
                 for (let n = from; n <= head; n++) blockCalls.push(['eth_getBlockByNumber', ['0x' + n.toString(16), true]]);
                 const results = await rpcBatch(blockCalls.concat([
                     ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, watchedTopics] }]],
                     ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, watchedTopics] }]],
-                ]));
-                lastScannedBlock = head;
+                ]), node.rpcPath);
+                node.lastScanned = head;
+
+                const isWatched = (address) => watched.includes(address);
 
                 // facts per (watched address | tx hash) so one tx yields one notification
                 const facts = new Map();
-                const addFact = (watched, txHash, kind, text) => {
-                    const key = watched + '|' + txHash;
+                const addFact = (watchedAddr, txHash, kind, text) => {
+                    const key = watchedAddr + '|' + txHash;
                     if (!facts.has(key)) facts.set(key, { out: null, in: null, other: [] });
                     const f = facts.get(key);
                     if (kind === 'out' && f.out === null) f.out = text;
@@ -972,35 +1060,41 @@
                         const txFrom = tx.from?.toLowerCase(), txTo = tx.to?.toLowerCase();
                         const value = (() => { try { return BigInt(tx.value); } catch { return 0n; } })();
                         if (txFrom && isWatched(txFrom)) {
-                            if (value > 0n) addFact(txFrom, tx.hash, 'out', formatUnits(tx.value, 18) + ' ' + chain.ticker);
+                            if (value > 0n) addFact(txFrom, tx.hash, 'out', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
                             if (tx.input && tx.input !== '0x' && txTo) addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)));
                         }
-                        if (txTo && isWatched(txTo) && value > 0n) addFact(txTo, tx.hash, 'in', formatUnits(tx.value, 18) + ' ' + chain.ticker);
+                        if (txTo && isWatched(txTo) && value > 0n) addFact(txTo, tx.hash, 'in', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
                     }
                 }
-                for (const log of results[blockCalls.length] ?? []) addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'out', tokenAmount(log));
-                for (const log of results[blockCalls.length + 1] ?? []) addFact('0x' + log.topics[2].slice(-40), log.transactionHash, 'in', tokenAmount(log));
+                for (const log of results[blockCalls.length] ?? []) addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'out', tokenAmount(log, node.chainId));
+                for (const log of results[blockCalls.length + 1] ?? []) addFact('0x' + log.topics[2].slice(-40), log.transactionHash, 'in', tokenAmount(log, node.chainId));
 
                 for (const [key, f] of facts) {
-                    const watched = key.slice(0, 42);
-                    if (!isWatched(watched)) continue;
-                    const who = displayName(watched);
+                    const watchedAddr = key.slice(0, 42);
+                    if (!isWatched(watchedAddr)) continue;
+                    const who = displayName(watchedAddr);
                     if (f.out && f.in) notify(who, `swapped ${f.out} for ${f.in}`);
                     else if (f.out) notify(who, 'sent ' + f.out);
                     else if (f.in) notify(who, 'received ' + f.in);
                     else if (f.other.length) notify(who, f.other[0]);
                 }
             } catch { /* activity scan is best-effort; next poll retries from the new head */ }
-            finally { scanning = false; }
+            finally { node.scanning = false; }
         }
 
         // ---------- ENS (forward resolution, simple case) ----------
+        function ensNode() {
+            return enabledNodes().find((n) => n.chainId === 1) ?? enabledNodes().find((n) => n.meta.ens) ?? null;
+        }
+
         async function resolveEns(name) {
+            const via = ensNode();
+            if (!via) throw new Error('ENS is not available on ' + enabledNodes().map((n) => n.meta.name).join('/'));
             const node = namehash(name);
-            const resolverRaw = await rpc('eth_call', [{ to: ENS_REGISTRY, data: SEL_RESOLVER + node.slice(2) }, 'latest']);
+            const resolverRaw = await rpc('eth_call', [{ to: ENS_REGISTRY, data: SEL_RESOLVER + node.slice(2) }, 'latest'], via.rpcPath);
             const resolver = resolverRaw && resolverRaw.length >= 66 ? '0x' + resolverRaw.slice(-40) : null;
             if (!resolver || /^0x0{40}$/.test(resolver)) throw new Error(`ENS name '${name}' is not registered`);
-            const addrRaw = await rpc('eth_call', [{ to: resolver, data: SEL_ADDR + node.slice(2) }, 'latest']);
+            const addrRaw = await rpc('eth_call', [{ to: resolver, data: SEL_ADDR + node.slice(2) }, 'latest'], via.rpcPath);
             const addr = addrRaw && addrRaw.length >= 66 ? '0x' + addrRaw.slice(-40) : null;
             if (!addr || /^0x0{40}$/.test(addr)) throw new Error(`ENS name '${name}' has no address record`);
             return checksum(addr);
@@ -1010,18 +1104,19 @@
         function renderTokens() {
             const box = $('tokens');
             box.replaceChildren();
-            const addChip = (item, list, isNft) => {
+            const addChip = (node, item, list, isNft) => {
                 const chip = el('span', isNft ? 'chip nft' : 'chip');
-                const ticker = el('span', 'number', item.ticker);
+                const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
                 ticker.onclick = () => copyAddress(item.address);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
-                chip.title = `${item.name || item.ticker} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
+                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
+                    const state = stateOf(node.chainId);
                     state[list] = state[list].filter((t) => t !== item);
-                    store.save(state);
+                    store.save(node.chainId);
                     renderTokens();
                     renderCards();
                     recomputeTotals();
@@ -1029,8 +1124,10 @@
                 chip.append(x);
                 box.append(chip);
             };
-            for (const token of state.tokens) addChip(token, 'tokens', false);
-            for (const collection of state.nfts) addChip(collection, 'nfts', true);
+            for (const node of enabledNodes()) {
+                for (const token of stateOf(node.chainId).tokens) addChip(node, token, 'tokens', false);
+                for (const collection of stateOf(node.chainId).nfts) addChip(node, collection, 'nfts', true);
+            }
             const add = el('button', 'link chip-add', '+');
             add.title = 'Track token or NFT collection';
             add.onclick = () => $('tokenForm').classList.toggle('open');
@@ -1040,11 +1137,13 @@
         function renderCards() {
             const cards = $('cards');
             cards.replaceChildren();
-            if (state.addresses.length === 0) {
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) {
                 cards.append(el('div', 'empty', 'No pinned addresses yet — add one above to start watching balances.'));
                 return;
             }
-            for (const entry of state.addresses) {
+            const showFiat = anyFiat();
+            for (const entry of addresses) {
                 const card = el('div', 'card');
                 card.dataset.address = entry.address;
 
@@ -1060,15 +1159,18 @@
                 addr.title = entry.address + ' (click to copy)';
                 addr.onclick = () => copyAddress(entry.address);
                 head.append(addr);
-                const bell = el('button', isWatched(entry.address) ? 'link bell on' : 'link bell', '🔔');
+                const bell = el('button', isWatchedAny(entry.address) ? 'link bell on' : 'link bell', '🔔');
                 bell.title = 'Notify on activity (sent/received, swaps, contract calls)';
                 bell.onclick = () => toggleWatch(entry, bell);
                 head.append(bell);
                 const unpin = el('button', 'link danger', '−');
                 unpin.title = 'Unpin address';
                 unpin.onclick = () => {
-                    state.addresses = state.addresses.filter((a) => a !== entry);
-                    store.save(state);
+                    for (const node of enabledNodes()) {
+                        const state = stateOf(node.chainId);
+                        state.addresses = state.addresses.filter((a) => a.address !== entry.address);
+                        store.save(node.chainId);
+                    }
                     renderCards();
                     recomputeTotals();
                 };
@@ -1076,57 +1178,62 @@
                 card.append(head);
 
                 const table = el('table');
-                const rows = [{ ticker: chain.ticker, key: 'native' }].concat(
-                    state.tokens.map((t) => ({ ticker: t.ticker, key: t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address })));
-                const showFiat = fiatEnabled();
-                for (const row of rows) {
-                    const cached = cache.get(entry.address + '|' + row.key);
-                    const tr = el('tr');
-                    if (cached?.bal === '0') tr.classList.add('zero');
-                    const tick = el('td', 'tick number', row.ticker);
-                    if (row.color) tick.style.setProperty('--tcol', row.color);
-                    if (row.contract) {
-                        tick.classList.add('copyable');
-                        tick.title = row.contract + ' (click to copy)';
-                        tick.onclick = () => copyAddress(row.contract);
+                for (const node of enabledNodes()) {
+                    const chainState = stateOf(node.chainId);
+                    const rows = [{ ticker: node.meta.ticker, key: node.chainId + ':native' }].concat(
+                        chainState.tokens.map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address })));
+                    for (const row of rows) {
+                        const cached = cache.get(entry.address + '|' + row.key);
+                        const tr = el('tr');
+                        if (cached?.bal === '0') tr.classList.add('zero');
+                        const tick = el('td', 'tick');
+                        tick.append(tickerLabel(row.ticker, node));
+                        if (row.color) tick.style.setProperty('--tcol', row.color);
+                        if (row.contract) {
+                            tick.classList.add('copyable');
+                            tick.title = row.contract + ' (click to copy)';
+                            tick.onclick = () => copyAddress(row.contract);
+                        }
+                        tr.append(tick);
+                        const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
+                        bal.dataset.key = row.key;
+                        tr.append(bal);
+                        if (showFiat) {
+                            const fiat = el('td', 'fiat number', cached ? cached.fiat : '');
+                            fiat.dataset.fiatkey = row.key;
+                            tr.append(fiat);
+                        }
+                        table.append(tr);
                     }
-                    tr.append(tick);
-                    const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
-                    bal.dataset.key = row.key;
-                    tr.append(bal);
-                    if (showFiat) {
-                        const fiat = el('td', 'fiat number', cached ? cached.fiat : '');
-                        fiat.dataset.fiatkey = row.key;
-                        tr.append(fiat);
-                    }
-                    table.append(tr);
-                }
-                for (const collection of state.nfts) {
-                    const colKey = collection.address.toLowerCase();
-                    const cached = cache.get(entry.address + '|nft:' + colKey);
-                    const tr = el('tr');
-                    if (cached?.bal === '0') tr.classList.add('zero');
-                    const tick = el('td', 'tick number copyable', collection.ticker);
-                    tick.style.setProperty('--tcol', tokenColor(collection.ticker));
-                    tick.title = collection.address + ' (click to copy)';
-                    tick.onclick = () => copyAddress(collection.address);
-                    tr.append(tick);
-                    const count = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
-                    count.dataset.key = 'nft:' + colKey;
-                    tr.append(count);
-                    if (showFiat) tr.append(el('td', 'fiat'));
-                    table.append(tr);
+                    for (const collection of chainState.nfts) {
+                        const colKey = collection.address.toLowerCase();
+                        const cached = cache.get(entry.address + '|' + node.chainId + ':nft:' + colKey);
+                        const tr = el('tr');
+                        if (cached?.bal === '0') tr.classList.add('zero');
+                        const tick = el('td', 'tick copyable');
+                        tick.append(tickerLabel(collection.ticker, node));
+                        tick.style.setProperty('--tcol', tokenColor(collection.ticker));
+                        tick.title = collection.address + ' (click to copy)';
+                        tick.onclick = () => copyAddress(collection.address);
+                        tr.append(tick);
+                        const count = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
+                        count.dataset.key = node.chainId + ':nft:' + colKey;
+                        tr.append(count);
+                        if (showFiat) tr.append(el('td', 'fiat'));
+                        table.append(tr);
 
-                    const thumbsTr = el('tr');
-                    if (cached?.bal === '0') thumbsTr.classList.add('zero');
-                    const thumbsTd = el('td');
-                    thumbsTd.colSpan = showFiat ? 3 : 2;
-                    const thumbs = el('div', 'thumbs');
-                    thumbs.dataset.thumbs = entry.address + '|' + colKey;
-                    fillThumbs(thumbs, nftCache.get(entry.address + '|' + colKey), entry.address, collection);
-                    thumbsTd.append(thumbs);
-                    thumbsTr.append(thumbsTd);
-                    table.append(thumbsTr);
+                        const thumbsKey = entry.address + '|' + node.chainId + '|' + colKey;
+                        const thumbsTr = el('tr');
+                        if (cached?.bal === '0') thumbsTr.classList.add('zero');
+                        const thumbsTd = el('td');
+                        thumbsTd.colSpan = showFiat ? 3 : 2;
+                        const thumbs = el('div', 'thumbs');
+                        thumbs.dataset.thumbs = thumbsKey;
+                        fillThumbs(thumbs, nftCache.get(thumbsKey), node, entry.address, collection);
+                        thumbsTd.append(thumbs);
+                        thumbsTr.append(thumbsTd);
+                        table.append(thumbsTr);
+                    }
                 }
                 if (showFiat) {
                     const totalRow = el('tr', 'cardTotal');
@@ -1142,87 +1249,168 @@
             }
         }
 
+        // ---------- chain toggles (shown when sibling nodes are detected) ----------
+        function renderChainToggles() {
+            const box = $('chainToggles');
+            box.replaceChildren();
+            for (const node of nodes) {
+                const btn = el('button', node.enabled ? 'chain-btn on' : 'chain-btn');
+                const logo = el('img');
+                logo.src = node.meta.logo;
+                logo.alt = node.meta.name;
+                // when the logo isn't served (static files off) fall back to a text label
+                logo.onerror = () => logo.replaceWith(el('span', 'number', node.meta.tag || node.meta.name));
+                btn.append(logo);
+                if (node.meta.tag) btn.append(el('sup', 'suptag', node.meta.tag));
+                btn.append(el('span', 'sync', '⟳'));
+                btn.onclick = () => toggleChain(node, btn);
+                node.button = btn;
+                updateChainButton(node);
+                box.append(btn);
+            }
+        }
+
+        function updateChainButton(node) {
+            if (!node.button) return;
+            node.button.classList.toggle('syncing', Boolean(node.syncing));
+            const head = node.head ? BigInt(node.head).toLocaleString('en-US') : '?';
+            node.button.title = `${node.meta.name} · head ${head}${node.syncing ? ' · syncing' : ''}${node.enabled ? '' : ' · hidden (click to show)'}`;
+        }
+
+        function toggleChain(node, btn) {
+            if (node.enabled && enabledNodes().length === 1) {
+                setStatus('At least one chain must stay enabled', true);
+                return;
+            }
+            node.enabled = !node.enabled;
+            localStorage.setItem(ENABLED_KEY, JSON.stringify(enabledNodes().map((n) => n.chainId)));
+            btn.classList.toggle('on', node.enabled);
+            updateChainButton(node);
+            buildCurrencyOptions();
+            updateTokenFormChains();
+            renderTokens();
+            renderCards();
+            refreshBalances();
+        }
+
+        function buildCurrencyOptions() {
+            const select = $('currency');
+            const list = [];
+            for (const node of enabledNodes()) {
+                if (!fiatEnabled(node.meta)) continue;
+                for (const code of node.meta.currencies) if (!list.includes(code)) list.push(code);
+            }
+            if (list.length === 0) {
+                $('totalBox').style.display = 'none';
+                return;
+            }
+            select.replaceChildren();
+            for (const code of list) select.append(el('option', null, code));
+            const stored = localStorage.getItem(CURRENCY_KEY);
+            currency = list.includes(currency) ? currency : (list.includes(stored) ? stored : list[0]);
+            select.value = currency;
+            $('totalBox').style.display = 'flex';
+        }
+
+        function updateTokenFormChains() {
+            const select = $('tokChain');
+            select.replaceChildren();
+            for (const node of enabledNodes()) {
+                const option = el('option', null, node.meta.name);
+                option.value = node.chainId;
+                select.append(option);
+            }
+            select.style.display = enabledNodes().length > 1 ? '' : 'none';
+        }
+
         // ---------- balance refresh ----------
         let refreshing = false;
 
+        async function refreshNode(node, addresses) {
+            const meta = node.meta;
+            const chainState = stateOf(node.chainId);
+            const fiat = fiatEnabled(meta);
+            const assets = [{ key: 'native', decimals: 18 }]
+                .concat(chainState.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
+                .concat(chainState.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, isNft: true })));
+
+            // one batched request per node: prices (+ FX) first, then all balances
+            const calls = [];
+            const priceIndex = new Map();
+            let fxIndex = -1;
+            if (fiat) {
+                for (const asset of assets) {
+                    if (asset.isNft) continue;
+                    const call = priceCall(meta, asset.key);
+                    if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
+                }
+                const fx = fxCalls(meta);
+                if (fx) { fxIndex = calls.length; calls.push(...fx); }
+            }
+            const balanceStart = calls.length;
+            for (const entry of addresses) {
+                calls.push(['eth_getBalance', [entry.address, 'latest']]);
+                for (const token of chainState.tokens) {
+                    calls.push(['eth_call', [{ to: token.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
+                }
+                for (const collection of chainState.nfts) {
+                    calls.push(['eth_call', [{ to: collection.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
+                }
+            }
+            const results = await rpcBatch(calls, node.rpcPath);
+
+            const prices = new Map();
+            for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
+            // FX feeds quote CCY/USD; token values are computed in USD then divided by it
+            const fxRate = currency === 'USD'
+                ? PRICE_SCALE
+                : (fxIndex >= 0 ? normalizeFxRate(parseRoundAnswer(results[fxIndex]), results[fxIndex + 1]) : null);
+
+            let i = balanceStart;
+            for (const entry of addresses) {
+                const card = document.querySelector(`.card[data-address="${entry.address}"]`);
+                for (const asset of assets) {
+                    const raw = results[i++];
+                    const balText = formatUnits(raw, asset.decimals);
+                    const price = prices.get(asset.key);
+                    let value8 = null;
+                    if (fiat && !asset.isNft && balText !== null && price && fxRate) {
+                        try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
+                        if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
+                    }
+                    const fiatText = value8 !== null ? formatFiat(value8) : '';
+                    const rowKey = node.chainId + ':' + asset.key;
+                    cache.set(entry.address + '|' + rowKey, { bal: balText, fiat: fiatText, value8 });
+
+                    const balCell = card?.querySelector(`td[data-key="${rowKey}"]`);
+                    if (balCell) {
+                        balCell.textContent = balText ?? '—';
+                        balCell.classList.remove('spin');
+                        balCell.parentElement.classList.toggle('zero', balText === '0');
+                        if (asset.isNft) {
+                            const thumbsRow = card?.querySelector(`[data-thumbs="${entry.address}|${node.chainId}|${asset.key.slice(4)}"]`)?.closest('tr');
+                            thumbsRow?.classList.toggle('zero', balText === '0');
+                        }
+                    }
+                    const fiatCell = card?.querySelector(`td[data-fiatkey="${rowKey}"]`);
+                    if (fiatCell) fiatCell.textContent = fiatText;
+                }
+            }
+        }
+
         async function refreshBalances() {
             if (refreshing) return;
-            if (state.addresses.length === 0) {
-                recomputeTotals();
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) {
+                if (anyFiat()) setTotal(CURRENCY_SYMBOLS[currency] + '0.00');
                 return;
             }
             refreshing = true;
             try {
-                const fiat = fiatEnabled();
-                const assets = [{ key: 'native', decimals: 18 }]
-                    .concat(state.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
-                    .concat(state.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, contract: c.address, isNft: true })));
-
-                // one batched request: prices (+ FX) first, then all balances
-                const calls = [];
-                const priceIndex = new Map();
-                let fxIndex = -1;
-                if (fiat) {
-                    for (const asset of assets) {
-                        if (asset.isNft) continue;
-                        const call = priceCall(asset.key);
-                        if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
-                    }
-                    const fx = fxCalls();
-                    if (fx) { fxIndex = calls.length; calls.push(...fx); }
-                }
-                const balanceStart = calls.length;
-                for (const entry of state.addresses) {
-                    calls.push(['eth_getBalance', [entry.address, 'latest']]);
-                    for (const token of state.tokens) {
-                        calls.push(['eth_call', [{ to: token.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
-                    }
-                    for (const collection of state.nfts) {
-                        calls.push(['eth_call', [{ to: collection.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
-                    }
-                }
-                const results = await rpcBatch(calls);
-
-                const prices = new Map();
-                for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
-                // FX feeds quote CCY/USD; token values are computed in USD then divided by it
-                const fxRate = currency === 'USD'
-                    ? PRICE_SCALE
-                    : (fxIndex >= 0 ? normalizeFxRate(parseRoundAnswer(results[fxIndex]), results[fxIndex + 1]) : null);
-
-                let i = balanceStart;
-                for (const entry of state.addresses) {
-                    const card = document.querySelector(`.card[data-address="${entry.address}"]`);
-                    for (const asset of assets) {
-                        const raw = results[i++];
-                        const balText = formatUnits(raw, asset.decimals);
-                        const price = prices.get(asset.key);
-                        let value8 = null;
-                        if (fiat && !asset.isNft && balText !== null && price && fxRate) {
-                            try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
-                            if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
-                        }
-                        const fiatText = value8 !== null ? formatFiat(value8) : '';
-                        cache.set(entry.address + '|' + asset.key, { bal: balText, fiat: fiatText, value8 });
-
-                        const balCell = card?.querySelector(`td[data-key="${asset.key}"]`);
-                        if (balCell) {
-                            balCell.textContent = balText ?? '—';
-                            balCell.classList.remove('spin');
-                            balCell.parentElement.classList.toggle('zero', balText === '0');
-                            if (asset.isNft) {
-                                const thumbsRow = card?.querySelector(`[data-thumbs="${entry.address}|${asset.key.slice(4)}"]`)?.closest('tr');
-                                thumbsRow?.classList.toggle('zero', balText === '0');
-                            }
-                        }
-                        const fiatCell = card?.querySelector(`td[data-fiatkey="${asset.key}"]`);
-                        if (fiatCell) fiatCell.textContent = fiatText;
-                    }
-                }
+                await Promise.all(enabledNodes().map((node) =>
+                    refreshNode(node, addresses).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
                 recomputeTotals();
                 refreshNftThumbs();
-            } catch (e) {
-                setStatus('Balance refresh failed: ' + e.message, true);
             } finally {
                 refreshing = false;
             }
@@ -1238,16 +1426,18 @@
                 if (isAddress(value)) {
                     address = checksum(value);
                 } else if (value.includes('.')) {
-                    if (!chain.ens) throw new Error('ENS is not available on ' + chain.name);
                     setStatus(`Resolving ${value}…`);
                     address = await resolveEns(value);
                     label = value.toLowerCase();
                 } else {
                     throw new Error('Enter a 0x address or an ENS name like name.eth');
                 }
-                if (state.addresses.some((a) => a.address === address)) throw new Error(address + ' is already pinned');
-                state.addresses.push({ address, label });
-                store.save(state);
+                if (mergedAddresses().some((a) => a.address === address)) throw new Error(address + ' is already pinned');
+                for (const node of enabledNodes()) {
+                    const state = stateOf(node.chainId);
+                    if (!state.addresses.some((a) => a.address === address)) state.addresses.push({ address, label });
+                    store.save(node.chainId);
+                }
                 input.value = '';
                 setStatus(label ? `${label} → ${address}` : 'Pinned ' + address);
                 renderCards();
@@ -1257,6 +1447,11 @@
             }
         }
 
+        function tokenTargetNode() {
+            const selected = Number($('tokChain').value);
+            return enabledNodes().find((n) => n.chainId === selected) ?? enabledNodes()[0] ?? own();
+        }
+
         async function prefillTokenMeta() {
             const address = $('tokAddr').value.trim();
             if (!isAddress(address)) return;
@@ -1264,7 +1459,7 @@
                 ['eth_call', [{ to: address, data: SEL_SYMBOL }, 'latest']],
                 ['eth_call', [{ to: address, data: SEL_NAME }, 'latest']],
                 ['eth_call', [{ to: address, data: SEL_DECIMALS }, 'latest']],
-            ]);
+            ], tokenTargetNode().rpcPath);
             if (!$('tokTicker').value && symbol) $('tokTicker').value = decodeAbiString(symbol) || '';
             if (!$('tokName').value && name) $('tokName').value = decodeAbiString(name) || '';
             if (!$('tokDecimals').value && decimals && decimals !== '0x') {
@@ -1280,8 +1475,10 @@
                 const ticker = $('tokTicker').value.trim();
                 if (!ticker) throw new Error('Ticker is required');
                 const checksummed = checksum(address);
+                const target = tokenTargetNode();
+                const state = stateOf(target.chainId);
                 if (state.tokens.concat(state.nfts).some((t) => t.address.toLowerCase() === address.toLowerCase()))
-                    throw new Error(ticker + ' is already tracked');
+                    throw new Error(ticker + ' is already tracked on ' + target.meta.name);
                 const name = $('tokName').value.trim() || null;
                 if (isNft) {
                     state.nfts.push({ address: checksummed, ticker, name });
@@ -1290,9 +1487,9 @@
                     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) throw new Error('Decimals must be 0–77');
                     state.tokens.push({ address: checksummed, ticker, decimals, name });
                 }
-                store.save(state);
+                store.save(target.chainId);
                 for (const id of ['tokAddr', 'tokTicker', 'tokDecimals', 'tokName']) $(id).value = '';
-                setStatus('Tracking ' + ticker);
+                setStatus('Tracking ' + ticker + ' on ' + target.meta.name);
                 renderTokens();
                 renderCards();
                 refreshBalances();
@@ -1302,20 +1499,25 @@
         }
 
         // ---------- init + head polling ----------
-        let lastBlock = null;
-
         async function pollHead() {
-            try {
-                const head = await rpc('eth_blockNumber', []);
-                $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
-                if (head !== lastBlock) {
-                    lastBlock = head;
-                    refreshBalances();
-                    scanForActivity(head);
+            let changed = false;
+            for (const node of nodes) {
+                try {
+                    const [head, syncing] = await rpcBatch([['eth_blockNumber', []], ['eth_syncing', []]], node.rpcPath);
+                    // a node stuck at genesis (e.g. no consensus client yet) is presented as syncing too
+                    node.syncing = (syncing !== false && syncing !== null) || head === '0x0';
+                    if (node === own() && !multi() && head !== null) $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
+                    updateChainButton(node);
+                    if (node.enabled && head !== null && head !== node.head) {
+                        node.head = head;
+                        changed = true;
+                        scanForActivity(node, head);
+                    }
+                } catch (e) {
+                    if (node === own()) setStatus('Node unreachable: ' + e.message, true);
                 }
-            } catch (e) {
-                setStatus('Node unreachable: ' + e.message, true);
             }
+            if (changed) refreshBalances();
         }
 
         async function init() {
@@ -1339,32 +1541,54 @@
             };
 
             try {
-                const id = Number(BigInt(await rpc('eth_chainId', [])));
-                chain = CHAINS[id] ? { id, ...CHAINS[id] } : { id, name: 'chain ' + id, ticker: 'NATIVE', ens: false };
-                $('netName').textContent = chain.name;
-                $('chainId').textContent = chain.id;
-                if (!chain.ens) $('addrInput').placeholder = '0x address' + (chain.id === 100 || chain.id === 10200 ? ' (ENS unavailable on Gnosis)' : '');
-
-                if (fiatEnabled()) {
-                    const select = $('currency');
-                    for (const code of chain.currencies) select.append(el('option', null, code));
-                    const stored = localStorage.getItem(CURRENCY_KEY);
-                    currency = chain.currencies.includes(stored) ? stored : 'USD';
-                    select.value = currency;
-                    select.onchange = () => {
-                        currency = select.value;
-                        localStorage.setItem(CURRENCY_KEY, currency);
-                        lastBlock = null; // force a refetch on the next poll even without a new block
-                        refreshBalances();
-                    };
-                    $('totalBox').style.display = 'flex';
-                }
+                const ownId = Number(BigInt(await rpc('eth_chainId', [])));
+                ownNode = makeNode('/', ownId);
+                nodes = [ownNode];
             } catch (e) {
                 setStatus('Cannot reach JSON-RPC on this endpoint: ' + e.message, true);
                 return;
             }
 
-            state = store.load();
+            // sibling Nethermind nodes on this machine, discovered by the plugin
+            try {
+                const res = await fetch('balances-nodes');
+                if (res.ok) {
+                    for (const sibling of await res.json()) {
+                        const id = Number(BigInt(sibling.chainId));
+                        if (!nodes.some((n) => n.chainId === id)) nodes.push(makeNode('balances-rpc/' + sibling.port, id));
+                    }
+                }
+            } catch { /* discovery is optional — single-node view works without it */ }
+            sortNodes();
+
+            let storedEnabled = null;
+            try { storedEnabled = JSON.parse(localStorage.getItem(ENABLED_KEY) || 'null'); } catch { }
+            if (Array.isArray(storedEnabled)) for (const node of nodes) node.enabled = storedEnabled.includes(node.chainId);
+            if (enabledNodes().length === 0) own().enabled = true;
+
+            for (const node of nodes) states.set(node.chainId, store.load(node));
+
+            $('netName').textContent = own().meta.name;
+            $('chainId').textContent = own().chainId;
+            if (multi()) {
+                $('singleNet').style.display = 'none';
+                $('chainToggles').style.display = 'flex';
+                renderChainToggles();
+            } else if (!own().meta.ens) {
+                $('addrInput').placeholder = '0x address' + (own().chainId === 100 || own().chainId === 10200 ? ' (ENS unavailable on Gnosis)' : '');
+            }
+            updateTokenFormChains();
+
+            const stored = localStorage.getItem(CURRENCY_KEY);
+            if (stored) currency = stored;
+            buildCurrencyOptions();
+            $('currency').onchange = () => {
+                currency = $('currency').value;
+                localStorage.setItem(CURRENCY_KEY, currency);
+                for (const node of nodes) node.head = null; // force a refetch on the next poll
+                refreshBalances();
+            };
+
             renderTokens();
             renderCards();
             pollHead();
