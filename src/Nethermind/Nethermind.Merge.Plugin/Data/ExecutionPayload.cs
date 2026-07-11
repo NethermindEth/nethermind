@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -156,6 +157,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
+        // The tx root needs only the raw encoded bytes, so it can overlap with transaction decoding.
+        Task<Hash256>? txRootTask = encodedTransactions.Length >= MinTxsForParallelDecoding
+            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
+            : null;
+
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
         {
@@ -183,7 +189,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 

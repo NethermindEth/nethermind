@@ -374,9 +374,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         return Task.Run(() =>
         {
+            long recoverStartTimestamp = Stopwatch.GetTimestamp();
             try
             {
                 _senderRecovery.RecoverData(txs, spec);
+                if (_logger.IsDebug)
+                    _logger.Debug($"newPayload ecrecover blk={request.BlockNumber} txs={txs.Length} " +
+                        $"took={Stopwatch.GetElapsedTime(recoverStartTimestamp).TotalMilliseconds:F2}ms");
             }
             catch (Exception e)
             {
@@ -426,9 +430,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
+            long suggestStartTimestamp = Stopwatch.GetTimestamp();
             AddBlockResult addResult = await _blockTree
                 .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
                 .AsTask().TimeoutOn(timeoutTask);
+            long suggestEndTimestamp = Stopwatch.GetTimestamp();
 
             result = addResult switch
             {
@@ -467,6 +473,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
                 if (_logger.IsDebug)
                     _logger.Debug($"newPayload inner blk={block.Number} " +
+                        $"suggest={Stopwatch.GetElapsedTime(suggestStartTimestamp, suggestEndTimestamp).TotalMilliseconds:F2}ms " +
                         $"recWait={Stopwatch.GetElapsedTime(recStartTimestamp, enqueueStartTimestamp).TotalMilliseconds:F2}ms " +
                         $"enqueue={Stopwatch.GetElapsedTime(enqueueStartTimestamp, waitStartTimestamp).TotalMilliseconds:F2}ms " +
                         $"wait={Stopwatch.GetElapsedTime(waitStartTimestamp).TotalMilliseconds:F2}ms");
