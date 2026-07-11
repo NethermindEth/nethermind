@@ -1425,7 +1425,7 @@
 
             // balances read from a syncing (or genesis-stuck) chain would be stale or
             // misleading zeros, so they display as '—' until the node is at head
-            const syncing = (results[0] !== false && results[0] !== null) || results[1] === '0x0';
+            const syncing = isNodeSyncing(results[0], results[1]);
             node.syncing = syncing;
             updateChainButton(node);
 
@@ -1609,6 +1609,16 @@
 
         let pollTick = 0;
 
+        // Nethermind can keep returning a sync object while already processing at head
+        // (background stages like state heal); treat "at head" as synced so balances show
+        function isNodeSyncing(syncingResult, headHex) {
+            if (headHex === '0x0') return true;
+            if (syncingResult === false || syncingResult === null) return false;
+            try {
+                return BigInt(syncingResult.highestBlock) - BigInt(syncingResult.currentBlock) > 16n;
+            } catch { return true; }
+        }
+
         async function pollHead() {
             if (pollTick++ % 5 === 0 && pollTick > 1) await discoverSiblings();
             let changed = false;
@@ -1616,8 +1626,7 @@
                 try {
                     const [head, syncing] = await rpcBatch([['eth_blockNumber', []], ['eth_syncing', []]], node.rpcPath);
                     node.unreachable = head === null && syncing === null;
-                    // a node stuck at genesis (e.g. no consensus client yet) is presented as syncing too
-                    node.syncing = !node.unreachable && ((syncing !== false && syncing !== null) || head === '0x0');
+                    node.syncing = !node.unreachable && isNodeSyncing(syncing, head);
                     if (node === own() && !multi() && head !== null) $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
                     updateChainButton(node);
                     if (node.enabled && head !== null && head !== node.head) {
