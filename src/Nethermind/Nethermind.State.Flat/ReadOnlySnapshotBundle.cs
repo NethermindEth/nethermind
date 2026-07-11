@@ -137,8 +137,26 @@ public sealed class ReadOnlySnapshotBundle(
         return slotResult;
     }
 
-    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStateNodes(path, out node);
+    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        GuardDispose();
+
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        HashedKey<TreePath> key = new(path);
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStateNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
+                node = candidate;
+                return true;
+            }
+        }
+
+        node = null;
+        return false;
+    }
 
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -161,8 +179,26 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStorageNodes((address, path), out node);
+    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        GuardDispose();
+
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStorageNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
+                node = candidate;
+                return true;
+            }
+        }
+
+        node = null;
+        return false;
+    }
 
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -198,6 +234,21 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
+    internal byte[]? TryLoadStateRlpMatching(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, hash, out byte[]? persistedRlp))
+            return persistedRlp;
+
+        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
+
+        return value is not null && Keccak.Compute(value) == hash ? value : null;
+    }
+
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
@@ -211,6 +262,21 @@ public sealed class ReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
+    }
+
+    internal byte[]? TryLoadStorageRlpMatching(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, hash, out byte[]? persistedRlp))
+            return persistedRlp;
+
+        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+
+        return value is not null && Keccak.Compute(value) == hash ? value : null;
     }
 
     private void GuardDispose()

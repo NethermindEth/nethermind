@@ -48,15 +48,11 @@ public sealed class ParentStateTrieNodeReader(SnapshotBundle snapshotBundle) : I
     private byte[] LoadFromPersistence(in TreePath path, Hash256 hash, ReadFlags flags, Hash256? address)
     {
         byte[] rlp = (address is null
-            ? snapshotBundle.TryLoadStateRlp(path, hash, flags)
-            : snapshotBundle.TryLoadStorageRlp(address, path, hash, flags))
+            ? snapshotBundle.TryLoadCommittedStateRlp(path, hash, flags)
+            : snapshotBundle.TryLoadCommittedStorageRlp(address, path, hash, flags))
             ?? throw new MissingTrieNodeException(
                 $"Trie node not found in snapshots or persistence at path {path}",
                 address, path, hash);
-
-        Hash256 actual = Keccak.Compute(rlp);
-        if (actual != hash)
-            throw new TrieNodeHashMismatchException(path, hash, actual, address);
 
         return rlp;
     }

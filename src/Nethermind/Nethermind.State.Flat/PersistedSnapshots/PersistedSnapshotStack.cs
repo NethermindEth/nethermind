@@ -164,6 +164,27 @@ public sealed class PersistedSnapshotStack(
         return false;
     }
 
+    internal bool TryLoadStateRlp(in TreePath path, Hash256 hash, out byte[]? rlp)
+    {
+        long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        ulong statePathBloomKey = PersistedSnapshotBloomBuilder.StatePathKey(in path);
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            PersistedSnapshot snap = _snapshots[i];
+            if (!snap.Bloom.MightContain(statePathBloomKey)) continue;
+            if (snap.TryLoadStateNodeRlp(in path, out byte[]? candidate) && Keccak.Compute(candidate) == hash)
+            {
+                if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
+                rlp = candidate;
+                return true;
+            }
+        }
+        if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
+
+        rlp = null;
+        return false;
+    }
+
     public bool TryLoadStorageRlp(Hash256 address, in TreePath path, out byte[]? rlp)
     {
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -178,6 +199,28 @@ public sealed class PersistedSnapshotStack(
             if (snap.TryLoadStorageNodeRlp(in addressHash, in path, out rlp))
             {
                 if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
+                return true;
+            }
+        }
+        if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
+
+        rlp = null;
+        return false;
+    }
+
+    internal bool TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, out byte[]? rlp)
+    {
+        long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        ValueHash256 addressHash = address.ValueHash256;
+        ulong storageBloomKey = PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path);
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            PersistedSnapshot snap = _snapshots[i];
+            if (!snap.Bloom.MightContain(storageBloomKey)) continue;
+            if (snap.TryLoadStorageNodeRlp(in addressHash, in path, out byte[]? candidate) && Keccak.Compute(candidate) == hash)
+            {
+                if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
+                rlp = candidate;
                 return true;
             }
         }

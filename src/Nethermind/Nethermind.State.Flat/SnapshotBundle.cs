@@ -187,16 +187,30 @@ public sealed class SnapshotBundle : IDisposable
 
     internal bool TryFindCommittedStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
-        // P1: check the transient (warmer) cache before the committed snapshot chain so
-        // sparse proof reads benefit from TrieWarmer's prefetched nodes. Without this hit
-        // the warmer only helps via OS/DB page cache side effects, not by directly handing
-        // proof nodes to sparse.
         if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return true;
         }
-        return DoFindStateNodeExternal(path, hash, out node);
+
+        if (_trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return true;
+        }
+
+        HashedKey<TreePath> key = new(path);
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStateNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                node = candidate;
+                return true;
+            }
+        }
+
+        return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
     }
 
     internal bool TryFindCommittedStorageNode(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -206,7 +220,25 @@ public sealed class SnapshotBundle : IDisposable
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return true;
         }
-        return DoTryFindStorageNodeExternal(address, path, hash, out node);
+
+        if (_trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return true;
+        }
+
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorageNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                node = candidate;
+                return true;
+            }
+        }
+
+        return _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -311,6 +343,18 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    internal byte[]? TryLoadCommittedStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+        return _readOnlySnapshotBundle.TryLoadStateRlpMatching(path, hash, flags);
+    }
+
+    internal byte[]? TryLoadCommittedStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+        return _readOnlySnapshotBundle.TryLoadStorageRlpMatching(address, path, hash, flags);
     }
 
     // This is called only during trie commit

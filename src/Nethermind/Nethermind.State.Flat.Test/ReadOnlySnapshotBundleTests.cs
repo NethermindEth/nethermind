@@ -131,14 +131,34 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        byte[] rlp = [0xc1, 0x01];
+        Hash256 hash = Keccak.Compute(rlp);
+        TrieNode node = new(NodeType.Leaf, hash, rlp);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
+        Assert.That(bundle.TryFindStateNodes(path, hash, out TrieNode? found), Is.True);
         Assert.That(found, Is.SameAs(node));
+    }
+
+    [Test]
+    public void TryFindStateNodes_SkipsNewerNodeWithDifferentHash()
+    {
+        TreePath path = TreePath.FromHexString("12");
+        byte[] requestedRlp = [0xc1, 0x01];
+        Hash256 requestedHash = Keccak.Compute(requestedRlp);
+        TrieNode requested = new(NodeType.Leaf, requestedHash, requestedRlp);
+        byte[] newerRlp = [0xc1, 0x02];
+        TrieNode newer = new(NodeType.Leaf, Keccak.Compute(newerRlp), newerRlp);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = requested),
+            MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = newer)));
+
+        Assert.That(bundle.TryFindStateNodes(path, requestedHash, out TrieNode? found), Is.True);
+        Assert.That(found, Is.SameAs(requested));
     }
 
     [Test]
@@ -155,14 +175,35 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x02]);
+        byte[] rlp = [0xc1, 0x02];
+        Hash256 hash = Keccak.Compute(rlp);
+        TrieNode node = new(NodeType.Leaf, hash, rlp);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
+        Assert.That(bundle.TryFindStorageNodes(address, path, hash, out TrieNode? found), Is.True);
         Assert.That(found, Is.SameAs(node));
+    }
+
+    [Test]
+    public void TryFindStorageNodes_SkipsNewerNodeWithDifferentHash()
+    {
+        Hash256 address = TestItem.KeccakA;
+        TreePath path = TreePath.FromHexString("ab");
+        byte[] requestedRlp = [0xc1, 0x01];
+        Hash256 requestedHash = Keccak.Compute(requestedRlp);
+        TrieNode requested = new(NodeType.Leaf, requestedHash, requestedRlp);
+        byte[] newerRlp = [0xc1, 0x02];
+        TrieNode newer = new(NodeType.Leaf, Keccak.Compute(newerRlp), newerRlp);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = requested),
+            MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = newer)));
+
+        Assert.That(bundle.TryFindStorageNodes(address, path, requestedHash, out TrieNode? found), Is.True);
+        Assert.That(found, Is.SameAs(requested));
     }
 
     [TestCase(true)]
