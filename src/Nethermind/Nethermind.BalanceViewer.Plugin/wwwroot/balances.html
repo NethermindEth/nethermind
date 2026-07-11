@@ -1394,8 +1394,8 @@
                 .concat(chainState.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
                 .concat(chainState.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, isNft: true })));
 
-            // one batched request per node: prices first, then all balances
-            const calls = [];
+            // one batched request per node: sync state, then prices, then all balances
+            const calls = [['eth_syncing', []], ['eth_blockNumber', []]];
             const priceIndex = new Map();
             if (fiat) {
                 for (const asset of assets) {
@@ -1416,6 +1416,12 @@
             }
             const results = await rpcBatch(calls, node.rpcPath);
 
+            // balances read from a syncing (or genesis-stuck) chain would be stale or
+            // misleading zeros, so they display as '—' until the node is at head
+            const syncing = (results[0] !== false && results[0] !== null) || results[1] === '0x0';
+            node.syncing = syncing;
+            updateChainButton(node);
+
             const prices = new Map();
             for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
 
@@ -1424,7 +1430,7 @@
                 const card = document.querySelector(`.card[data-address="${entry.address}"]`);
                 for (const asset of assets) {
                     const raw = results[i++];
-                    const balText = formatUnits(raw, asset.decimals);
+                    const balText = syncing ? null : formatUnits(raw, asset.decimals);
                     const price = prices.get(asset.key);
                     let value8 = null;
                     if (fiat && !asset.isNft && balText !== null && price && fxRate) {
