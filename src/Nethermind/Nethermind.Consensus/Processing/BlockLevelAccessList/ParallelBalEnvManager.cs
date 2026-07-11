@@ -8,6 +8,7 @@ using System.Threading;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -311,6 +312,7 @@ public class ParallelBalEnvManager : IParallelBalEnvManager
         ITransactionProcessor txProcessor,
         ITransactionProcessorAdapter txProcessorAdapter,
         IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
         ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
     {
         private readonly BlockAccessListBasedWorldState _balWorldState = balWorldState;
@@ -320,6 +322,7 @@ public class ParallelBalEnvManager : IParallelBalEnvManager
         public ITransactionProcessor TxProcessor { get; } = txProcessor;
         public ITransactionProcessorAdapter TxProcessorAdapter { get; } = txProcessorAdapter;
         public IWithdrawalProcessor WithdrawalProcessor { get; } = withdrawalProcessor;
+        public IExecutionRequestsProcessor ExecutionRequestsProcessor { get; } = executionRequestsProcessor;
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
         {

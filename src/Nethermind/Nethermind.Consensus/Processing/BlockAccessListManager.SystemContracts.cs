@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -50,8 +49,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         IBalProcessingEnv postExecution = _balEnvManager.GetPostExecution();
-        IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
-        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        postExecution.ExecutionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

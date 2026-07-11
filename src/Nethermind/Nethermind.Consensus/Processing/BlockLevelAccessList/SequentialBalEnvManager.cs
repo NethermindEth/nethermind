@@ -3,6 +3,7 @@
 
 using System;
 using Autofac;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -55,12 +56,14 @@ public class SequentialBalEnvManager : ISequentialBalEnvManager
         ITransactionProcessor txProcessor,
         ITransactionProcessorAdapter txProcessorAdapter,
         IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
         ILifetimeScope? lifetimeScope = null) : IBalProcessingEnv
     {
         public TracedAccessWorldState WorldState { get; } = worldState;
         public ITransactionProcessor TxProcessor { get; } = txProcessor;
         public ITransactionProcessorAdapter TxProcessorAdapter { get; } = txProcessorAdapter;
         public IWithdrawalProcessor WithdrawalProcessor { get; } = withdrawalProcessor;
+        public IExecutionRequestsProcessor ExecutionRequestsProcessor { get; } = executionRequestsProcessor;
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParallelBalEnvManager.ParentReaderLease? parentReader)
         {
