@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 
 namespace Nethermind.BalanceViewer.Plugin;
 
@@ -17,12 +17,17 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// <remarks>
 /// Registered in Autofac by <see cref="BalanceViewerModule"/>; called by
 /// <c>JsonRpcRunner</c> during web-host startup via <see cref="IJsonRpcServiceConfigurer"/>.
+/// The registry is built in the web host's MS DI container because
+/// <see cref="IJsonRpcUrlCollection"/> only exists there (it is created by the StartRpc step,
+/// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
-public sealed class BalanceViewerConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer
+public sealed class BalanceViewerConfigurer(IBalanceViewerConfig config, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
-        services.AddSingleton<ISiblingNodeRegistry>(_ => ctx.Resolve<ISiblingNodeRegistry>());
+        services.AddSingleton(config);
+        services.AddSingleton(logManager);
+        services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
         services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
     }
 }
