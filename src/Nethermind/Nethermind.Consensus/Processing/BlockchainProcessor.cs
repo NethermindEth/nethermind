@@ -121,8 +121,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void Preprocess(Block block)
     {
-        if (block.SendersRecoveryTask is not null) return;
-
         for (int i = 0; i < _preprocessorSteps.Count; i++)
         {
             _preprocessorSteps[i].RecoverData(block);

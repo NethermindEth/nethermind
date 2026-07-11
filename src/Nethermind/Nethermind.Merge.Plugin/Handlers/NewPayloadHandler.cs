@@ -54,7 +54,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxPool _txPool;
-    private readonly RecoverSignatures _senderRecovery;
+    private readonly IStreamedSenderRecovery _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -80,9 +80,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
         ITxPool txPool,
+        IStreamedSenderRecovery senderRecovery,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -98,7 +98,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txPool = txPool;
-        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
+        _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -124,12 +124,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         long handleStartTimestamp = Stopwatch.GetTimestamp();
-        // Senders stream in concurrently with everything that follows — root computation, hash
-        // validation, block tree insertion, and execution itself: nothing awaits the recovery task
-        // as a whole. The preprocessor skips streamed blocks and the transaction executors gate on
-        // the individual sender (or the task's completion).
-        Task? senderRecoveryTask = StartSenderRecovery(request);
-
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -137,7 +131,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-        block.SendersRecoveryTask = senderRecoveryTask;
+        TryBeginSenderRecovery(block);
         if (_logger.IsDebug)
             _logger.Debug($"newPayload decode blk={block.Number} getBlock={Stopwatch.GetElapsedTime(handleStartTimestamp).TotalMilliseconds:F2}ms");
 
@@ -364,58 +358,38 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task? StartSenderRecovery(ExecutionPayload request)
+    private void TryBeginSenderRecovery(Block block)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; returning null keeps the processing-queue preprocessor responsible for
-        // their recovery. On rejected payloads the task is fire-and-forget — see the catch below.
-        if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return null;
+        // the senders; not beginning here keeps the processing-queue preprocessor responsible
+        // for their recovery.
+        if (block.Number > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return;
 
-        Result<Transaction[]> transactions = request.TryGetTransactions();
-        if (transactions.IsError || transactions.Data.Length == 0)
-            // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return null;
+        Transaction[] txs = block.Transactions;
+        if (txs.Length == 0) return;
 
-        Transaction[] txs = transactions.Data;
-        IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        // Most of a payload's transactions were already recovered when they entered the pool;
+        // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
+        // needs ecrecover. The pool lookups take the TxPool lock, so they belong here: work
+        // handed to Begin must be pure computation (see <see cref="IStreamedSenderRecovery"/>).
+        long poolCopyStartTimestamp = Stopwatch.GetTimestamp();
+        int reused = 0;
+        foreach (Transaction tx in txs)
         {
-            long recoverStartTimestamp = Stopwatch.GetTimestamp();
-            try
+            if (tx.SenderAddress is null
+                && tx.Hash is not null
+                && _txPool.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
+                && pooled.SenderAddress is not null)
             {
-                // Most of a payload's transactions were already recovered when they entered the pool;
-                // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
-                // needs ecrecover here.
-                int reused = 0;
-                foreach (Transaction tx in txs)
-                {
-                    if (tx.SenderAddress is null
-                        && tx.Hash is not null
-                        && _txPool.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
-                        && pooled.SenderAddress is not null)
-                    {
-                        tx.SenderAddress = pooled.SenderAddress;
-                        reused++;
-                    }
-                }
-                if (_logger.IsDebug) _logger.Debug($"senderReuse blk={request.BlockNumber} reused={reused}/{txs.Length}");
-                long poolCopyEndTimestamp = Stopwatch.GetTimestamp();
+                tx.SenderAddress = pooled.SenderAddress;
+                reused++;
+            }
+        }
+        if (_logger.IsDebug)
+            _logger.Debug($"senderReuse blk={block.Number} reused={reused}/{txs.Length} " +
+                $"poolCopy={Stopwatch.GetElapsedTime(poolCopyStartTimestamp).TotalMilliseconds:F2}ms");
 
-                _senderRecovery.RecoverData(txs, spec);
-                if (_logger.IsDebug)
-                    _logger.Debug($"newPayload ecrecover blk={request.BlockNumber} txs={txs.Length} " +
-                        $"poolCopy={Stopwatch.GetElapsedTime(recoverStartTimestamp, poolCopyEndTimestamp).TotalMilliseconds:F2}ms " +
-                        $"recover={Stopwatch.GetElapsedTime(poolCopyEndTimestamp).TotalMilliseconds:F2}ms");
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
-                // The preprocessor skips streamed blocks, so this task is the only recovery point;
-                // retry once and let the executors reject the block if senders are still missing.
-                try { _senderRecovery.RecoverData(txs, spec); } catch { }
-            }
-        });
+        _senderRecovery.Begin(block);
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)

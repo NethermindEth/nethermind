@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -22,7 +23,8 @@ public partial class BlockProcessor
     public class BlockValidationTransactionsExecutor(
         ITransactionProcessorAdapter transactionProcessor,
         IWorldState stateProvider,
-        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
+        IStreamedSenderRecovery? senderRecovery = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         protected IWorldState _stateProvider = stateProvider;
@@ -46,7 +48,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                if (currentTx.SenderAddress is null) WaitForStreamedSender(block, currentTx);
+                if (currentTx.SenderAddress is null) senderRecovery?.EnsureSenderRecovered(block, currentTx);
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
@@ -109,24 +111,6 @@ public partial class BlockProcessor
             if (_enableTxTimingMetrics)
             {
                 PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
-            }
-        }
-
-        /// <summary>
-        /// Senders stream in concurrently on the engine newPayload path; execution normally runs
-        /// well behind recovery, so this spin is rare and short. Once the recovery task completes,
-        /// a still-null sender means recovery genuinely failed and the transaction is rejected as
-        /// <c>SenderNotSpecified</c>, same as the non-streamed path.
-        /// </summary>
-        private static void WaitForStreamedSender(Block block, Transaction tx)
-        {
-            if (block.SendersRecoveryTask is not Task recovery) return;
-
-            SpinWait spinner = default;
-            // tx.SenderAddress is re-read every iteration; the opaque SpinOnce call prevents hoisting.
-            while (tx.SenderAddress is null && !recovery.IsCompleted)
-            {
-                spinner.SpinOnce();
             }
         }
 

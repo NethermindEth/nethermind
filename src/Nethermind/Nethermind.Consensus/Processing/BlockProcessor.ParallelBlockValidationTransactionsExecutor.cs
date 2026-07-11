@@ -28,7 +28,8 @@ public partial class BlockProcessor
         ISpecProvider specProvider,
         IBlockAccessListManager balManager,
         ILogManager logManager,
-        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
+        IStreamedSenderRecovery? senderRecovery = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
@@ -52,9 +53,8 @@ public partial class BlockProcessor
             }
 
             // BAL validation and parallel scheduling read senders up front, so streamed recovery
-            // (engine newPayload path) must be joined before dispatch; the serial executor above
-            // gates per transaction instead.
-            block.SendersRecoveryTask?.Wait(token);
+            // must be joined before dispatch; the serial executor gates per transaction instead.
+            senderRecovery?.EnsureSendersRecovered(block, token);
 
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
