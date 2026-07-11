@@ -110,6 +110,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IMetricsConfig, string>(configWildcard, static c => c.NodeName.ToUpperInvariant(), static (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, static c => c.IntervalSeconds, 5);
         Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUrl, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUsername, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayPassword, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]

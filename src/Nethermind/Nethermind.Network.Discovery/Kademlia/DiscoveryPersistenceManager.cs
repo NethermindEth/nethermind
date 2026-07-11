@@ -55,6 +55,10 @@ public sealed class DiscoveryPersistenceManager(
             try
             {
                 node = new Node(networkNode);
+                if (!node.HasDiscoveryEndpoint)
+                {
+                    continue;
+                }
             }
             catch (Exception e)
             {
@@ -130,6 +134,6 @@ public sealed class DiscoveryPersistenceManager(
             return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
         }
 
-        return new NetworkNode(node.Id, node.Host, node.Port, reputation);
+        return new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort)) { Reputation = reputation };
     }
 }

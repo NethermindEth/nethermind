@@ -98,8 +98,8 @@ public class ColumnsDbTests
         IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
         IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
-        colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
-        colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());
+        colA.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakA.Bytes);
+        colB.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
 
         batch.Dispose();
 

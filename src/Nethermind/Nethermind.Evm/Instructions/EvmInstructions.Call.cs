@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -137,12 +138,18 @@ public static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
-        // Add extra gas cost if value is transferred.
-        if (hasValueTransfer && !TGasPolicy.ConsumeCallValueTransfer(ref gas))
-            goto OutOfGas;
-
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
+
+        if (hasValueTransfer)
+        {
+            // EIP-2780 charges a flat value-move cost with no state read: the spec performs the
+            // static gas check before any target access, so an OOG here must not touch the BAL.
+            bool valueOutOfGas = spec.IsEip2780Enabled
+                ? !TGasPolicy.ConsumeCallValueTransferEip2780(ref gas)
+                : !TGasPolicy.ConsumeCallValueTransfer(ref gas);
+            if (valueOutOfGas) goto OutOfGas;
+        }
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.ConsumeCallBaseGas(ref gas, spec) ||
@@ -162,11 +169,15 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.
-        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
-        {
-            false => !state.AccountExists(target),
-            true => hasValueTransfer && state.IsDeadAccount(target),
-        };
+        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
+        // from the flat CALL_VALUE above; standalone EIP-2780 adds nothing extra here.
+        bool chargesNewAccount = spec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !spec.IsEip2780Enabled && (spec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
@@ -219,6 +230,10 @@ public static partial class EvmInstructions
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            // EIP-8037: no account is created when the call cannot proceed (depth exceeded or
+            // balance too low), so refund the up-front NEW_ACCOUNT state charge.
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund(ref gas, TGasPolicy.GetNewAccountStateCost());
             if (TTracingInst.IsActive)
             {
                 vm.TxTracer.ReportGasUpdateForVmTrace(gasLimitUl, TGasPolicy.GetRemainingGas(in gas));
@@ -252,7 +267,15 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl);
+        if (TOpCall.ExecutionType == ExecutionType.STATICCALL && codeInfo.IsPrecompile &&
+            TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+                vm, ref stack, ref gas, in dataOffset, dataLength, in outputOffset, outputLength,
+                codeInfo.Precompile!, target, codeSource, gasLimitUl, out EvmExceptionType inlineResult))
+        {
+            return inlineResult;
+        }
+
+        return CreateFullCallFrame(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
         // has no icache and counts instructions, so the NoInlining call and its wide argument
@@ -276,7 +299,8 @@ public static partial class EvmInstructions
             Address codeSource,
             ExecutionEnvironment env,
             in UInt256 callValue,
-            ulong gasLimitUl)
+            ulong gasLimitUl,
+            bool newAccountCharged)
         {
             IWorldState state = vm.WorldState;
             // Take a snapshot of the state for potential rollback.
@@ -319,7 +343,8 @@ public static partial class EvmInstructions
                     TOpCall.ExecutionType,
                     TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
                     in snapshot,
-                    ref stack);
+                    ref stack,
+                    newAccountCharged);
             }
 #endif
 
@@ -333,7 +358,8 @@ public static partial class EvmInstructions
                 isCreateOnPreExistingAccount: false,
                 env: callEnv,
                 stateForAccessLists: in vm.VmState.AccessTracker,
-                snapshot: in snapshot);
+                snapshot: in snapshot,
+                newAccountCharged: newAccountCharged);
 
             return EvmExceptionType.None;
         }
@@ -344,6 +370,30 @@ public static partial class EvmInstructions
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
+
+    /// <summary>
+    /// Attempts to execute a STATICCALL into a precompile inline, without renting a full child call frame.
+    /// </summary>
+    /// <remarks>
+    /// The implementation is build-specific: mainline runs the precompile directly, while the zkEVM guest
+    /// declines (returns <c>false</c>) so the call flows through its dedicated <c>InlinePrecompileCall</c> path.
+    /// </remarks>
+    /// <returns><c>true</c> when the call was handled inline (with the outcome in <paramref name="result"/>); otherwise <c>false</c>.</returns>
+    private static partial bool TryInlineStaticPrecompileCall<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        in UInt256 dataOffset,
+        UInt256 dataLength,
+        in UInt256 outputOffset,
+        UInt256 outputLength,
+        IPrecompile precompile,
+        Address target,
+        Address codeSource,
+        ulong gasLimitUl,
+        out EvmExceptionType result)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag;
 
     /// <summary>
     /// Executes the RETURN opcode.

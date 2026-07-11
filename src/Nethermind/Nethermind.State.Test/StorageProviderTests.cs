@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Evm.Tracing.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -488,6 +489,140 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Destroy_only_round_does_not_leak_into_next_transaction()
+    {
+        // tx1 destroys a contract without touching any storage cell; tx2 (same block)
+        // revives the address and writes — a leaked mark would drop tx2's write at commit.
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        provider.MarkStorageDestroyed(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(cell, _values[7]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(_values[7]), "revived contract's write must survive the previous round's destroy mark");
+    }
+
+    [Test]
+    public void Destroy_of_committed_storage_reads_zero()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(new byte[] { 7 }), "precondition: committed value visible");
+
+            provider.MarkStorageDestroyed(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "committed prior-block storage must read zero after destroy");
+        }
+    }
+
+    [Test]
+    public void Same_block_revival_reads_zero_for_unrewritten_slots()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell rewritten = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+
+        provider.Set(rewritten, _values[1]);
+        provider.Set(untouched, _values[2]);
+        provider.MarkStorageDestroyed(ctx.Address1);
+        provider.Commit(Frontier.Instance);
+
+        provider.Set(rewritten, _values[3]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "revived contract's rewritten slot must hold the new value");
+        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of a destroyed contract must read zero, not the pre-destroy write");
+    }
+
+    [Test]
+    public void Destroyed_storage_propagates_to_database_across_blocks()
+    {
+        // Pre-6780 shape: contract with committed prior-block storage is destroyed via the
+        // mark path; a later block must read zero FROM THE DATABASE (the in-block marker is gone).
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        BlockHeader baseBlock = null;
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            provider.Set(cell, [7]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.MarkStorageDestroyed(TestItem.AddressA);
+            provider.DeleteAccount(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(baseBlock.Number + 1);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        // Advance past the flat snapshot retention so the destroy-block diff is pruned
+        // from memory and the final read can only be served by the persisted store.
+        for (int i = 0; i < 4; i++)
+        {
+            using (provider.BeginScope(baseBlock))
+            {
+                provider.Commit(Frontier.Instance);
+                provider.CommitTree(baseBlock.Number + 1);
+                baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+            }
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "destroyed storage must be gone from the persisted store, not only from the in-block marker");
+        }
+    }
+
+    [Test]
+    public void Buildup_round_destroy_keeps_later_redeploy_writes()
+    {
+        // Block production spans the whole block in one round (no per-tx Commit), so the
+        // journaled clear must be used there: a redeploy after the destroy writes on top of
+        // the zeroing and must survive, while un-rewritten slots stay zero.
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell rewritten = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+
+        provider.Set(rewritten, _values[1]);
+        provider.Set(untouched, _values[2]);
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(rewritten, _values[3]);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(provider.Get(rewritten).ToArray(), Is.EqualTo(_values[3]), "redeploy write after in-round destroy must survive the commit");
+        Assert.That(provider.Get(untouched).ToArray(), Is.EqualTo(StorageTree.ZeroBytes), "un-rewritten slot of the destroyed contract must stay zero");
+    }
+
+    [Test]
     public void Selfdestruct_works_across_blocks()
     {
         using Context ctx = new(useFlat, setInitialState: false, trackWrittenData: true);
@@ -799,6 +934,24 @@ public class StorageProviderTests(bool useFlat)
         Hash256 clearedHash = worldState.StateRoot;
 
         Assert.That(clearedHash, Is.EqualTo(emptyHash));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Set_pushes_slot_trie_warm_hint_only_from_populator(bool populator)
+    {
+        PreBlockCaches caches = new();
+        IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        caches.MainScope = mainScope;
+
+        using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
+        caches.MainScope = null;
+        ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), _values[1]);
+
+        if (populator)
+            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+        else
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
     }
 
     private class Context : IDisposable
