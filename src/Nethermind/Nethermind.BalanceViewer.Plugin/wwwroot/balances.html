@@ -103,7 +103,7 @@
             position: relative;
             display: inline-flex;
             align-items: center;
-            padding: 6px 10px 4px;
+            padding: 5px 10px;
             opacity: 0.35;
         }
 
@@ -114,11 +114,12 @@
         button.chain-btn .sync {
             display: none;
             position: absolute;
-            top: 1px;
+            top: 50%;
             left: 50%;
-            margin-left: -4px;
-            width: 7px;
-            height: 7px;
+            box-sizing: border-box;
+            width: 10px;
+            height: 10px;
+            margin: -5px 0 0 -5px;
             border: 1.5px solid var(--muted);
             border-top-color: transparent;
             border-radius: 50%;
