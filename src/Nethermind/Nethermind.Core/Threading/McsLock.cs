@@ -48,7 +48,7 @@ public class McsLock
     /// spins or sleeps until the lock becomes available.
     /// </summary>
     /// <exception cref="InvalidOperationException">The current thread already holds this lock.</exception>
-    public Disposable Acquire()
+    public Disposable EnterScope()
     {
         ThreadNode node = _node.Value!;
 
@@ -75,6 +75,11 @@ public class McsLock
         static void ThrowInvalidOperationException()
             => throw new InvalidOperationException("Lock is not reentrant and is already held by this thread.");
     }
+
+    /// <summary>
+    /// Acquires the lock using the legacy method name.
+    /// </summary>
+    public Disposable Acquire() => EnterScope();
 
     private static void WaitForUnlock(ThreadNode node, ThreadNode predecessor)
     {

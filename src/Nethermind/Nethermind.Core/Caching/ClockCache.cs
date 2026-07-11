@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
@@ -21,7 +22,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     private readonly MockLock _lock = new();
 #else
     private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
-    private readonly McsLock _lock = new();
+    private readonly Lock _lock = new();
 #endif
 
     public TValue Get(TKey key)
@@ -77,7 +78,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     private bool SetSlow(TKey key, TValue val)
     {
 #pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
-        using var lockRelease = _lock.Acquire();
+        using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
         // Recheck under lock
@@ -151,7 +152,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         }
 
 #pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
-        using var lockRelease = _lock.Acquire();
+        using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
         if (_cacheMap.Remove(key, out LruCacheItem ov))
@@ -173,7 +174,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         if (MaxCapacity == 0) return;
 
 #pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
-        using var lockRelease = _lock.Acquire();
+        using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
         base.Clear();

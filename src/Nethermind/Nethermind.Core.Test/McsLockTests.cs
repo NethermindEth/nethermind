@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core.Test;
 
-public class MCSLockTests
+public class McsLockTests
 {
     private McsLock mcsLock;
 
@@ -22,7 +22,7 @@ public class MCSLockTests
     [Test]
     public void SingleThreadAcquireRelease()
     {
-        using (McsLock.Disposable handle = mcsLock.Acquire())
+        using (McsLock.Disposable handle = mcsLock.EnterScope())
         {
             Thread.Sleep(10);
         }
