@@ -43,10 +43,10 @@ public sealed class StreamedSenderRecovery(
 
     public void EnsureSendersRecovered(Block block, CancellationToken token)
     {
-        if (_inFlight.TryGetValue(block, out Task? recovery) && !recovery.Wait(RecoveryTimeout, token))
-        {
-            ThrowRecoveryIncomplete(block);
-        }
+        if (!_inFlight.TryGetValue(block, out Task? recovery)) return;
+
+        AwaitRecovery(block, recovery, token);
+        RecoverAnythingMissing(block);
     }
 
     public void EnsureSenderRecovered(Block block, Transaction transaction)
@@ -61,12 +61,14 @@ public sealed class StreamedSenderRecovery(
         {
             if (spinner.NextSpinWillYield)
             {
-                if (!recovery.Wait(RecoveryTimeout)) ThrowRecoveryIncomplete(block);
+                AwaitRecovery(block, recovery, CancellationToken.None);
                 break;
             }
 
             spinner.SpinOnce();
         }
+
+        if (transaction.SenderAddress is null) RecoverAnythingMissing(block);
     }
 
     public void RecoverData(Block block)
@@ -81,30 +83,40 @@ public sealed class StreamedSenderRecovery(
     private void Recover(Block block)
     {
         long startTimestamp = Stopwatch.GetTimestamp();
-        IReleaseSpec spec = specProvider.GetSpec(block.Header);
         try
         {
-            recoverSignatures.RecoverData(block.Transactions, spec);
+            recoverSignatures.RecoverData(block.Transactions, specProvider.GetSpec(block.Header));
             if (_logger.IsDebug)
                 _logger.Debug($"newPayload ecrecover blk={block.Number} txs={block.Transactions.Length} " +
                     $"recover={Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds:F2}ms");
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Sender recovery failed for block {block.ToString(Block.Format.FullHashAndNumber)}, retrying once: {e}");
-            // This task is the block's only recovery point (the preprocessor skips in-flight
-            // blocks); transactions still missing a sender after the retry are rejected by the
-            // transaction processor as SenderNotSpecified.
-            try
-            {
-                recoverSignatures.RecoverData(block.Transactions, spec);
-            }
-            catch (Exception retryException)
-            {
-                if (_logger.IsError) _logger.Error($"Sender recovery retry failed for block {block.ToString(Block.Format.FullHashAndNumber)}.", retryException);
-            }
+            // The executors' Ensure* joins recover anything this task left behind, so a failure
+            // here degrades to synchronous recovery at execution time, never to a wrong verdict.
+            if (_logger.IsWarn) _logger.Warn($"Streamed sender recovery failed for block {block.ToString(Block.Format.FullHashAndNumber)}: {e}");
         }
     }
+
+    private void AwaitRecovery(Block block, Task recovery, CancellationToken token)
+    {
+        try
+        {
+            if (!recovery.Wait(RecoveryTimeout, token)) ThrowRecoveryIncomplete(block);
+        }
+        catch (AggregateException)
+        {
+            // Already logged by Recover; the caller falls back to synchronous recovery.
+        }
+    }
+
+    /// <summary>
+    /// The fail-closed backstop: whatever happened to the streamed task — faulted, timed out
+    /// wiring gaps, anything unforeseen — execution must see the exact senders a non-streamed
+    /// block would, so any transaction still missing one is recovered synchronously here.
+    /// Truly invalid signatures still end up with a null sender and are rejected as before.
+    /// </summary>
+    private void RecoverAnythingMissing(Block block) => recoverSignatures.RecoverData(block);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowRecoveryIncomplete(Block block) =>
