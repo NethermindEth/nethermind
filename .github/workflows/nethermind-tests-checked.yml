@@ -95,12 +95,6 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
-        # The no-intrinsics variant exercises the scalar fallback of SIMD/intrinsic-accelerated
-        # code. Skip it for pure plumbing/config/orchestration projects that do not exercise any
-        # intrinsic-sensitive path (hashing, big-integer, serialization, EVM/state). Kept
-        # conservative: projects that can transitively touch crypto/state (Wallet, Hive, Runner)
-        # still run it. The *no_intrinsics alias must resolve to the matrix variant object above
-        # for the exclude to match. Extend only after confirming a project has no divergent path.
         exclude:
           - { variant: *no_intrinsics, project: Nethermind.Api.Test }
           - { variant: *no_intrinsics, project: Nethermind.Config.Test }
