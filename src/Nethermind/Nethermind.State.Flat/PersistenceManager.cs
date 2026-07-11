@@ -33,6 +33,7 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
+    IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager,
     IPersistedSnapshotCompactor compactor,
     IPersistedSnapshotLoader loader,
@@ -453,6 +454,19 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
+        // Make this block's deferred block-data durable before its state (see IStatePersistenceBarrier).
+        // A throw must abort the persist (state not yet written, so the invariant holds); log first because
+        // the background persistence loop that unwinds this does not otherwise report it.
+        try
+        {
+            persistenceBarrier.FlushDeferred();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Block-data flush failed before persisting state {snapshot.To}; aborting this persist.", e);
+            throw;
+        }
+
         // From == PreGenesis (ulong.MaxValue) wraps so the span is To.BlockNumber + 1 (a genesis-spanning snapshot).
         ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
