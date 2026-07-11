@@ -5,13 +5,10 @@
   lib,
   buildDotnetModule,
   dotnetCorePackages,
-  # Commit hash embedded into the `--version` output, like COMMIT_HASH in the Dockerfile.
   sourceRevision ? null,
 }:
 let
   buildProps = builtins.readFile ../src/Nethermind/Directory.Build.props;
-  # Captures the first occurrence, so later ones (e.g. in a conditioned
-  # PropertyGroup) cannot shadow the value.
   getXmlValue =
     name:
     let
@@ -19,7 +16,6 @@ let
     in
     if builtins.length matches < 2 then null else builtins.head (builtins.elemAt matches 1);
   versionPrefix = getXmlValue "VersionPrefix";
-  # Absent on release branches, where the version is just the prefix.
   versionSuffix = getXmlValue "VersionSuffix";
 in
 assert lib.assertMsg (
@@ -29,7 +25,6 @@ buildDotnetModule {
   pname = "nethermind";
   version = versionPrefix + lib.optionalString (versionSuffix != null) "-${versionSuffix}";
 
-  # Mirrors the build context of the Dockerfile.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -44,23 +39,12 @@ buildDotnetModule {
 
   projectFile = "src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj";
 
-  # Locks the full NuGet restore closure, which is a superset of
-  # src/Nethermind/Nethermind.Runner/packages.lock.json (it also covers packages
-  # private to referenced projects). Regenerate after NuGet dependency changes:
-  #   nix build .#nethermind.fetch-deps --out-link result && ./result nix/nuget-deps.json
-  # The "Nix" CI workflow fails with instructions when this file is out of date.
   nugetDeps = ./nuget-deps.json;
 
-  # The Microsoft-built SDK and ASP.NET Core runtime, matching the
-  # mcr.microsoft.com/dotnet images used by the Dockerfile.
   dotnet-sdk = dotnetCorePackages.sdk_10_0-bin;
   dotnet-runtime = dotnetCorePackages.aspnetcore_10_0-bin;
 
   dotnetFlags = lib.optionals (sourceRevision != null) [ "-p:SourceRevisionId=${sourceRevision}" ];
-
-  # No buildInputs/runtimeDeps: every bundled native library (rocksdb, secp256k1,
-  # blst, c-kzg, mcl, gmp) links only glibc/libstdc++/libgcc, which nixpkgs'
-  # patch-nupkgs already covers via its fixed RPATH.
 
   executables = [ "nethermind" ];
 

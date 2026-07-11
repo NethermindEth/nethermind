@@ -1,14 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-# Starts the packaged node peerless with the mainnet config and asserts that
-# JSON-RPC answers with the mainnet chain id and that SIGTERM shuts it down
-# cleanly. Unlike the version check, this exercises chainspec parsing, genesis
-# processing (with Init.GenesisHash validation), the bundled native libraries
-# (rocksdb, secp256k1), plugin loading, and the dotnet-runtime wrapper.
-#
-# Readiness is defined as an answered RPC call, not a bound port: the listener
-# accepts connections before the JSON-RPC handlers respond.
 {
   runCommand,
   curl,
@@ -20,7 +12,6 @@ runCommand "nethermind-smoke-check"
       curl
       nethermind
     ];
-    # The probe talks to loopback, which the darwin sandbox blocks by default.
     __darwinAllowLocalNetworking = true;
   }
   ''
@@ -54,9 +45,6 @@ runCommand "nethermind-smoke-check"
     echo "eth_chainId response: $response"
     echo "$response" | grep -qF '"result":"0x1"' || fail "unexpected eth_chainId response"
 
-    # SIGTERM, not SIGINT: POSIX starts `&` background jobs of non-interactive
-    # shells with SIGINT ignored, and the ignored disposition survives exec,
-    # so the node would never see a SIGINT.
     kill -TERM "$pid" || fail "node was gone before the shutdown request"
     for _ in $(seq 1 120); do
       kill -0 "$pid" 2>/dev/null || break
@@ -65,9 +53,6 @@ runCommand "nethermind-smoke-check"
     kill -0 "$pid" 2>/dev/null && fail "node did not shut down within 120s of SIGTERM"
     status=0
     wait "$pid" || status=$?
-    # Graceful shutdown deliberately exits 130 or 143 depending on whether
-    # System.CommandLine's signal handling or AppDomain.ProcessExit reacts
-    # first, see ExitCodes.SigInt/SigTerm.
     { [ "$status" -eq 130 ] || [ "$status" -eq 143 ]; } \
       || fail "expected exit code 130 or 143 after SIGTERM, got $status"
 

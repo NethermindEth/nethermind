@@ -48,9 +48,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest # x86_64-linux
-          - os: ubuntu-24.04-arm # aarch64-linux
-          - os: macos-latest # aarch64-darwin, best-effort
+          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
             experimental: true
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental == true }}
@@ -59,7 +59,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
       - name: Install Nix
-        # Third-party action: installs upstream Nix; SHA-pinned as it runs with repo contents
         uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
       - name: Check flake
         run: nix flake check --print-build-logs
@@ -72,11 +71,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
       - name: Install Nix
-        # Third-party action: installs upstream Nix; SHA-pinned as it runs with repo contents
         uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
       - name: Disable non-nuget.org feeds
-        # fetch-deps probes every enabled feed's service index; these two feeds serve only
-        # packages outside the Nethermind.Runner graph, and nugettest.org has no availability SLA
         run: |
           dotnet nuget disable source dotnet-tools --configfile nuget.config
           dotnet nuget disable source nugettest.org --configfile nuget.config
