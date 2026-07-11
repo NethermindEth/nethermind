@@ -97,7 +97,11 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
 
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
+    public void Test(GeneralStateTest test)
+    {
+        EthereumTestResult result = RunTest(test);
+        Assert.That(result.Pass, Is.True, result.Error);
+    }
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<GeneralStateTest, TSelf>("state_tests", "StateTests");

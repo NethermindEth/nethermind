@@ -16,6 +16,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     // 30MB should be good enough for 300MGas block just filled with call data
     private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB, nameof(Transaction.Data));
+    private static readonly RlpLimit _nonceRlpLimit = RlpLimit.For<Transaction>(32, nameof(Transaction.Nonce));
 
     public TxType Type => txType;
 
@@ -88,12 +89,40 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = decoderContext.DecodeULong();
+        transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
         transaction.GasLimit = decoderContext.DecodeULong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+    }
+
+    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    {
+        int position = decoderContext.Position;
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(_nonceRlpLimit);
+        if (nonceBytes.Length == 0)
+        {
+            return 0;
+        }
+
+        if (nonceBytes[0] == 0)
+        {
+            RlpHelpers.ThrowNonCanonicalInteger(position);
+        }
+
+        if (nonceBytes.Length > sizeof(ulong))
+        {
+            return ulong.MaxValue;
+        }
+
+        ulong result = 0;
+        for (int i = 0; i < nonceBytes.Length; i++)
+        {
+            result = (result << 8) | nonceBytes[i];
+        }
+
+        return result;
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

@@ -47,6 +47,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     private static readonly UInt256 _accountBalance = 10.Ether;
     private static readonly UInt256 _testAccountBalance = 1.Ether;
     private static readonly ulong _gasLimit = 150000;
+    private const ulong TopLevelCreateStateGas = (ulong)GasCostOf.CreateState;
     private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
     private static readonly Address _callTargetAddress = TestItem.AddressC;
     private static readonly Address _delegationTargetAddress = TestItem.AddressD;
@@ -94,13 +95,23 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(value)
             .TestObject;
-        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, header.GasLimit).MinimalGas;
+        ulong gasLimit = CalculateCreateTxGasLimit(templateTx, executionGas, header);
 
         return Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(intrinsicGas + executionGas)
+            .WithGasLimit(gasLimit)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+    }
+
+    private static ulong CalculateCreateTxGasLimit(Transaction templateTx, ulong executionGas, BlockHeader header)
+    {
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(templateTx, Amsterdam.Instance, header.GasLimit);
+        // CREATE state gas is charged during execution, outside intrinsic gas.
+        return intrinsicGas.Standard.Value
+            + (ulong)intrinsicGas.Standard.StateReservoir
+            + TopLevelCreateStateGas
+            + executionGas;
     }
 
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) SetupPrecompileBalScenario(
@@ -154,14 +165,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Assert.That(actual.StorageReads, Is.EquivalentTo(expected.StorageReads));
     }
 
-    private Transaction BuildSetCodeCallTx(Address to, params AuthorizationTuple[] authorizationList)
+    private Transaction BuildSetCodeCallTx(Address to, params AuthorizationTuple[] authorizationList) =>
+        BuildSetCodeCallTx(to, 1_000_000, authorizationList);
+
+    private Transaction BuildSetCodeCallTx(Address to, ulong gasLimit, params AuthorizationTuple[] authorizationList)
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
 
         return Build.A.Transaction
             .WithType(TxType.SetCode)
             .To(to)
-            .WithGasLimit(1_000_000)
+            .WithGasLimit(gasLimit)
             .WithMaxFeePerGas(1)
             .WithMaxPriorityFeePerGas(1)
             .WithValue(UInt256.Zero)
@@ -355,11 +369,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
     }
 
-    private static Transaction BuildCallTx(Address to, UInt256 value = default, ulong nonce = default) =>
+    private static Transaction BuildCallTx(Address to, UInt256 value = default, ulong nonce = default, ulong gasLimit = 1_000_000) =>
         Build.A.Transaction
             .To(to)
             .WithNonce(nonce)
-            .WithGasLimit(1_000_000)
+            .WithGasLimit(gasLimit)
             .WithGasPrice(1)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
@@ -430,7 +444,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(value)
             .TestObject;
-        ulong gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas + _gasLimit;
+        ulong gasLimit = CalculateCreateTxGasLimit(templateTx, _gasLimit, block.Header);
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
@@ -494,8 +508,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
-        ulong gasLimit = intrinsicGas + executionGas;
+        ulong gasLimit = CalculateCreateTxGasLimit(templateTx, executionGas, block.Header);
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
@@ -718,6 +731,42 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip7702_authorization_oog_before_recipient_load_keeps_recipient_out_of_BAL()
+    {
+        byte[] recipientCode = [(byte)Instruction.STOP];
+        Address authority = TestItem.AddressB;
+
+        InitWorldState(TestState, recipientCode);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, _delegationTargetAddress);
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(120_000_000)
+            .WithBaseFee(1)
+            .TestObject;
+        Transaction templateTx = BuildSetCodeCallTx(_callTargetAddress, 0, authorization);
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(templateTx, Amsterdam.Instance, header.GasLimit);
+        ulong gasLimit = intrinsicGas.Standard.Value
+            + (ulong)intrinsicGas.Standard.StateReservoir
+            + (ulong)GasCostOf.NewAccountState
+            - 1;
+        Transaction tx = BuildSetCodeCallTx(_callTargetAddress, gasLimit, authorization);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+            AssertPureAccountRead(bal.GetAccountChanges(authority));
+            Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Null);
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+        }
+    }
+
     [TestCase(true, TestName = "EIP7702_authorization_valid_nonce_records_signer_target_and_entry_change")]
     [TestCase(false, TestName = "EIP7702_authorization_invalid_nonce_records_signer_read_and_noop_sstore_read")]
     public void Eip7702_authorization_nonce_validity_records_bal(bool validAuthorizationNonce)
@@ -926,6 +975,42 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(beneficiaryChanges, Is.Not.Null);
             Assert.That(beneficiaryChanges!.BalanceChange, Is.Not.Null);
             Assert.That(beneficiaryChanges.BalanceChange!.Value.Value, Is.EqualTo(createdBalance));
+        }
+    }
+
+    [TestCase(Instruction.CREATE, TestName = "EIP7928_failed_create_on_balance_only_target_records_storage_read_CREATE")]
+    [TestCase(Instruction.CREATE2, TestName = "EIP7928_failed_create_on_balance_only_target_records_storage_read_CREATE2")]
+    public void Eip7928_failed_create_on_balance_only_target_records_storage_read(Instruction createOpcode)
+    {
+        UInt256 slot = UInt256.One;
+        byte[] childInitCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(slot)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] salt = [0x01];
+        Address createdAddress = createOpcode == Instruction.CREATE2
+            ? ContractAddress.From(_callTargetAddress, salt.PadLeft(32), childInitCode)
+            : ContractAddress.From(_callTargetAddress, 0);
+        byte[] factoryCode = BuildCreateThenPopCode(createOpcode, childInitCode, salt, UInt256.Zero);
+
+        InitWorldState(TestState, factoryCode);
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        BlockAccessListAtIndex bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: 33_000));
+        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges, Is.Not.Null);
+            Assert.That(createdChanges!.StorageReads, Does.Contain(slot));
+            Assert.That(createdChanges.StorageChangeCount, Is.Zero);
+            Assert.That(createdChanges.BalanceChange, Is.Null);
+            Assert.That(TestState.GetBalance(createdAddress), Is.EqualTo(UInt256.One));
         }
     }
 
@@ -1198,7 +1283,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         Transaction tx = Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(intrinsicGas + executionGas)
+            .WithGasLimit(intrinsicGas + TopLevelCreateStateGas + executionGas)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
@@ -1391,7 +1476,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Build.An.AccountChanges
                     .WithAddress(_testAddress)
                     .WithStorageReads(slot)
-                    .TestObject
+                    .TestObject,
+                new(ContractAddress.From(_testAddress, UInt256.One))
             ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
@@ -1523,9 +1609,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create(createInitCode, 0)
                 .Done;
-            // Under EIP-8037's higher state-gas cost the nested CREATE runs out of state gas;
-            // nothing beyond the outer contract being touched persists on the BAL.
-            changes = [new ReadOnlyAccountChanges(_testAddress)];
+            // The nested CREATE reaches its target account before running out of state gas.
+            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, UInt256.One))];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create" };
 
             byte[] create2Salt = new byte[32];
@@ -1533,7 +1618,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             code = Prepare.EvmCode
                 .Create2(createInitCode, create2Salt, 0)
                 .Done;
-            changes = [new ReadOnlyAccountChanges(_testAddress)];
+            changes = [new ReadOnlyAccountChanges(_testAddress), new ReadOnlyAccountChanges(ContractAddress.From(_testAddress, create2Salt, createInitCode))];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create2" };
 
             code = Prepare.EvmCode
@@ -1886,6 +1971,23 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 GasCostOf.CallStipend - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sstore_oog_pre_state_access" };
+
+            code = Prepare.EvmCode
+                .PushData(6)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Done;
+            changes = [testAccount];
+            yield return new TestCaseData(
+                changes,
+                code,
+                null,
+                2 * GasCostOf.VeryLow + Eip8038Constants.ColdStorageAccess - 1,
+                EvmExceptionType.OutOfGas)
+            { TestName = "sstore_oog_after_stipend_before_state_access" };
 
             code = Prepare.EvmCode
                 .PushData(6)

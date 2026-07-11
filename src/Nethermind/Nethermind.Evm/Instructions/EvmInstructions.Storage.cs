@@ -484,17 +484,16 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        // The spec reads the slot before charging gas, so the read is BAL-recorded even when
-        // the access or write charge below runs out of gas.
+        // Charge gas based on whether this is a cold or warm storage access before reading
+        // the slot; BAL records the read only once the access cost is covered.
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+            goto OutOfGas;
+
         ReadOnlySpan<byte> currentValue = vm.WorldState.Get(in storageCell);
         bool currentIsZero = currentValue.IsZero();
 
         // Determine whether the new value is identical to the current stored value.
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
-
-        // Charge gas based on whether this is a cold or warm storage access.
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
-            goto OutOfGas;
 
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = (long)gasCosts.SClearRefund;

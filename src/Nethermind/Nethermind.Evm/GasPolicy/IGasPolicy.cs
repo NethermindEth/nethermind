@@ -24,6 +24,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
+    /// <summary>Gets the regular gas that may be returned to the parent frame or transaction sender.</summary>
+    /// <remarks>EIP-8037 policies exclude regular gas marked as burned by a reverted state-gas spill.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual ulong GetRefundableRemainingGas(in TSelf gas) => TSelf.GetRemainingGas(in gas);
+
+    /// <summary>Marks regular gas as burned so it cannot be returned by a later frame unwind.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void MarkGasNonRefundable(ref TSelf gas, ulong amount) { }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
@@ -35,9 +44,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
     {
-        Debug.Assert((long)txGasLimit - (long)TSelf.GetRemainingGas(in gas) - TSelf.GetStateReservoir(in gas) >= 0,
-            $"Gas invariant violated: remaining ({TSelf.GetRemainingGas(in gas)}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
-        return txGasLimit - TSelf.GetRemainingGas(in gas) - (ulong)TSelf.GetStateReservoir(in gas);
+        ulong refundableGas = TSelf.GetRefundableRemainingGas(in gas);
+        Debug.Assert((long)txGasLimit - (long)refundableGas - TSelf.GetStateReservoir(in gas) >= 0,
+            $"Gas invariant violated: refundable remaining ({refundableGas}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
+        return txGasLimit - refundableGas - (ulong)TSelf.GetStateReservoir(in gas);
     }
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -247,6 +257,11 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // post-reset StateGasUsed feeds SpentGas so the user doesn't pay for uncommitted state.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
+
+    /// <summary>Folds EIP-8037 top-frame state gas into the rollback baseline.</summary>
+    /// <remarks>Used for preparation charges, such as EIP-7702 authorization writes, that survive execution rollback.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual void FoldTopFrameStateGas(ref TSelf gas, ref TSelf baseline, long stateGasUsed) { }
 
     // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

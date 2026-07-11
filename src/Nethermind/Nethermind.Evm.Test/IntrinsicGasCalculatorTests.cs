@@ -234,29 +234,28 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
-            // Recipient touch: COLD + TRANSFER_LOG + TX_VALUE; authorization: ACCOUNT_WRITE + base.
+            // Recipient touch: COLD + TRANSFER_LOG + TX_VALUE; authorization: state-independent base.
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular));
-            Assert.That(intrinsicGas.Standard.StateReservoir, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+            Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
         }
 
         [Test]
-        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_create()
+        public void Eip8037_nongeneric_intrinsic_gas_excludes_top_frame_state_gas_for_create()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithCode(Array.Empty<byte>())
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Create regular = CREATE_ACCESS + TRANSFER_LOG (value endowment); state = NEW_ACCOUNT.
+            // Create regular = CREATE_ACCESS + TRANSFER_LOG (value endowment); NEW_ACCOUNT is top-frame state gas.
             ulong expectedRegular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
-            ulong expectedState = GasCostOf.CreateState;
-            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular));
             Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
         }
 
         [Test]
-        public void Eip8037_nongeneric_intrinsic_gas_includes_state_gas_for_setcode()
+        public void Eip8037_nongeneric_intrinsic_gas_excludes_top_frame_state_gas_for_setcode()
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
@@ -265,21 +264,20 @@ namespace Nethermind.Evm.Test
 
             ulong recipientRegular = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
             ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + Eip8038Constants.PerAuthBaseRegular;
-            ulong expectedState = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
-            Assert.That(gas.Standard, Is.EqualTo(expectedRegular + expectedState));
+            Assert.That(gas.Standard, Is.EqualTo(expectedRegular));
         }
 
         [Test]
-        public void Eip8037_nongeneric_minimal_gas_is_at_least_regular_plus_state()
+        public void Eip8037_nongeneric_minimal_gas_is_at_least_regular_intrinsic()
         {
-            // A create tx with no calldata: floor gas is low, Standard = regular + state
+            // A create tx with no calldata: floor gas is low, Standard = regular intrinsic.
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithCode(Array.Empty<byte>())
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            ulong regularPlusState = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780 + GasCostOf.CreateState;
-            Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regularPlusState));
+            ulong regular = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
+            Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(regular));
         }
 
         // EIP-2780 fixed-cost vectors: the intrinsic is state-independent, so the recipient
@@ -345,8 +343,8 @@ namespace Nethermind.Evm.Test
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
 
-            // Same per-token floor as Prague (DataTestCaseSource maps [1] to 21,040), rebased to 4,500.
-            Assert.That(gas.FloorGas, Is.EqualTo(TxBaseEip2780 + (21040 - GasCostOf.Transaction)));
+            // EIP-2780 uses its reduced transaction base plus the non-self recipient touch in the floor base.
+            Assert.That(gas.FloorGas, Is.EqualTo(TxBaseEip2780 + ColdAccess + 6_040));
         }
 
         [Test]
