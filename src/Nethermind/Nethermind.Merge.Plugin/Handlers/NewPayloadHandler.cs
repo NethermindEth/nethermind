@@ -420,7 +420,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ValidationCompletion blockProcessed =
             _blockValidationTasks.GetOrAdd(
                 block.Hash!,
-                static (k) => new(TaskCreationOptions.RunContinuationsAsynchronously));
+                static (k) => new(TaskCreationOptions.None));
 
         try
         {
