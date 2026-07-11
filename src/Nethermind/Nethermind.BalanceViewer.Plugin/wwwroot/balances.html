@@ -576,8 +576,15 @@
                     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': PSEUDO_ETH, // WETH
                     '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': PSEUDO_BTC, // WBTC
                 },
+                // beyond the registry, some fiats only have standalone mainnet aggregators
+                fx: {
+                    MXN: '0xdb4881Ab0ad6b8423f76dd8C9d65542749a1dB77',
+                    TRY: '0xB09fC5fD3f11Cf9eb5E1C5Dba43114e3C9f477b5',
+                    IDR: '0x91b99C9b75aF469a71eE1AB528e8da994A5D7030',
+                    ARS: '0xE41cD2DcC63EB63A9D9e62f2a3D9b49e6d0C0A1d',
+                },
                 // ordered by global currency popularity (forex turnover)
-                currencies: ['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'KRW', 'SGD', 'NZD', 'BRL', 'PHP'],
+                currencies: ['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'KRW', 'SGD', 'NZD', 'MXN', 'TRY', 'BRL', 'PHP', 'IDR', 'ARS'],
                 defaults: MAINNET_DEFAULT_TOKENS,
             },
             11155111: { name: 'Sepolia', ticker: 'ETH', ens: true, tag: 'SEP', logo: 'logos/ethereum-logo.svg' },
@@ -821,8 +828,8 @@
         }
 
         const CURRENCY_SYMBOLS = {
-            USD: '$', AUD: 'A$', BRL: 'R$', CAD: 'C$', CHF: 'CHF ', CNY: 'CN¥', EUR: '€',
-            GBP: '£', JPY: '¥', KRW: '₩', MXN: 'MX$', NZD: 'NZ$', PHP: '₱', SGD: 'S$',
+            USD: '$', ARS: 'AR$', AUD: 'A$', BRL: 'R$', CAD: 'C$', CHF: 'CHF ', CNY: 'CN¥', EUR: '€',
+            GBP: '£', IDR: 'Rp ', JPY: '¥', KRW: '₩', MXN: 'MX$', NZD: 'NZ$', PHP: '₱', SGD: 'S$', TRY: '₺',
         };
 
         // value scaled by PRICE_SCALE (1e8) in the selected currency, prefixed with its symbol
