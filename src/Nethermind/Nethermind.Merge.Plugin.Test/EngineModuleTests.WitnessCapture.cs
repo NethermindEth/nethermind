@@ -610,6 +610,7 @@ public partial class EngineModuleTests
             Withdrawals = [],
             ParentBeaconBlockRoot = TestItem.KeccakE,
             SlotNumber = (ulong?)(head.Number + 1),
+            TargetGasLimit = head.GasLimit,
         };
 
         Hash256 headHash = head.Hash!;
@@ -642,6 +643,12 @@ public partial class EngineModuleTests
         {
             add => inner.BlocksProcessing += value;
             remove => inner.BlocksProcessing -= value;
+        }
+
+        public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
+        {
+            add => inner.BranchProcessingCompleted += value;
+            remove => inner.BranchProcessingCompleted -= value;
         }
 
         public event EventHandler<BlockEventArgs>? BlockProcessing

@@ -49,17 +49,21 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     }
 
-    public bool ShouldPrewarm(Address address, UInt256? slot)
+    public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);
+
+    public bool ShouldPrewarm(in ValueAddress address, UInt256? slot) => ShouldPrewarm(address.AsSpan, slot);
+
+    private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {
         ulong hash;
         if (slot is null)
         {
-            hash = XxHash64.HashToUInt64(address.Bytes);
+            hash = XxHash64.HashToUInt64(addressBytes);
         }
         else
         {
             Span<byte> buffer = stackalloc byte[20 + 32];
-            address.Bytes.CopyTo(buffer);
+            addressBytes.CopyTo(buffer);
             slot.Value.ToBigEndian(buffer[20..]);
             hash = XxHash64.HashToUInt64(buffer);
         }
