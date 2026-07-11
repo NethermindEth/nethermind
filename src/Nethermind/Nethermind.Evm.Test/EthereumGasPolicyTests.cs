@@ -46,4 +46,16 @@ public class EthereumGasPolicyTests
 
         Assert.That(defaultImplementations, Is.GreaterThan(0));
     }
+
+    [Test]
+    public void CreateAvailableFromIntrinsic_returns_out_of_gas_when_gas_limit_below_intrinsic()
+    {
+        EthereumGasPolicy intrinsic = new() { Value = 30_000, StateReservoir = 183_600 };
+
+        EthereumGasPolicy available = EthereumGasPolicy.CreateAvailableFromIntrinsic(30_000, in intrinsic, Amsterdam.Instance);
+
+        Assert.That(EthereumGasPolicy.IsOutOfGas(in available), Is.True);
+        Assert.That(EthereumGasPolicy.GetRemainingGas(in available), Is.EqualTo(0UL));
+        Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.EqualTo(0L));
+    }
 }
