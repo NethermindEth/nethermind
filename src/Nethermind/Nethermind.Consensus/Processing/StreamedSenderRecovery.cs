@@ -16,9 +16,13 @@ namespace Nethermind.Consensus.Processing;
 /// <summary>
 /// The single owner of streamed sender recovery: starts it, lets executors join it, and keeps
 /// the pipeline preprocessor from re-recovering blocks whose recovery is already in flight.
-/// In-flight recoveries are tracked per block instance, so duplicate payloads (distinct
-/// <see cref="Block"/> instances for the same hash) each recover their own transactions, and
-/// entries vanish with their blocks.
+/// In-flight recoveries are tracked per <see cref="BlockBody"/> — the object recovery actually
+/// operates on — because the pipeline does not preserve block identity: the executors receive a
+/// header-replaced processing copy (<c>BlockProcessor.PrepareBlockForProcessing</c>) that shares
+/// the suggested block's body. Keying by block instance made the executor joins silent no-ops on
+/// that copy, which falsely invalidated a valid block once recovery lost the race to execution.
+/// Duplicate payloads still recover independently (each decode owns its body), and entries
+/// vanish with their bodies.
 /// </summary>
 public sealed class StreamedSenderRecovery(
     RecoverSignatures recoverSignatures,
@@ -31,19 +35,19 @@ public sealed class StreamedSenderRecovery(
     /// </summary>
     private static readonly TimeSpan RecoveryTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly ConditionalWeakTable<Block, Task> _inFlight = [];
+    private readonly ConditionalWeakTable<BlockBody, Task> _inFlight = [];
     private readonly ILogger _logger = logManager.GetClassLogger<StreamedSenderRecovery>();
 
     public void Begin(Block block)
     {
         if (block.Transactions.Length == 0) return;
 
-        _inFlight.Add(block, Task.Run(() => Recover(block)));
+        _inFlight.Add(block.Body, Task.Run(() => Recover(block)));
     }
 
     public void EnsureSendersRecovered(Block block, CancellationToken token)
     {
-        if (!_inFlight.TryGetValue(block, out Task? recovery)) return;
+        if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
 
         AwaitRecovery(block, recovery, token);
         RecoverAnythingMissing(block);
@@ -52,7 +56,7 @@ public sealed class StreamedSenderRecovery(
     public void EnsureSenderRecovered(Block block, Transaction transaction)
     {
         if (transaction.SenderAddress is not null) return;
-        if (!_inFlight.TryGetValue(block, out Task? recovery)) return;
+        if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
 
         // Execution normally runs well behind recovery, so the spin is rare and short; past it,
         // the sender is genuinely behind and blocking on the whole task is cheaper than yielding.
@@ -75,7 +79,7 @@ public sealed class StreamedSenderRecovery(
     {
         // A block with recovery in flight is completed by the executors' Ensure* calls;
         // recovering here would re-create the pipeline barrier the streaming removes.
-        if (_inFlight.TryGetValue(block, out _)) return;
+        if (_inFlight.TryGetValue(block.Body, out _)) return;
 
         recoverSignatures.RecoverData(block);
     }
@@ -130,7 +134,7 @@ public sealed class StreamedSenderRecovery(
 
         if (_logger.IsWarn)
         {
-            string taskState = _inFlight.TryGetValue(block, out Task? recovery)
+            string taskState = _inFlight.TryGetValue(block.Body, out Task? recovery)
                 ? $"tracked, status={recovery.Status}, exception={recovery.Exception?.GetBaseException().Message ?? "none"}"
                 : "not tracked";
             _logger.Warn($"Streamed recovery left {missing}/{block.Transactions.Length} senders missing for block " +

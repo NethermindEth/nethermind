@@ -60,6 +60,44 @@ public class StreamedSenderRecoveryTests
         }
     }
 
+    // Regression for the falsely-invalidated mainnet block 25508945: BlockProcessor executes a
+    // header-replaced processing copy of the suggested block (PrepareBlockForProcessing), so a
+    // per-Block-instance registry made every executor join a silent no-op and execution raced
+    // the recovery task. Tracking is keyed by the shared BlockBody, so joins on the copy must
+    // behave exactly like joins on the original.
+    [Test]
+    public void EnsureSendersRecovered_OnHeaderReplacedProcessingCopy_JoinsTheOriginalRecovery()
+    {
+        Block suggested = BuildBlockWithUnrecoveredSenders();
+        Block processingCopy = suggested.WithReplacedHeader(suggested.Header.Clone());
+        Assert.That(ReferenceEquals(processingCopy.Body, suggested.Body), Is.True,
+            "precondition: the processing copy shares the suggested block's body");
+
+        _recovery.Begin(suggested);
+        _recovery.EnsureSendersRecovered(processingCopy, CancellationToken.None);
+
+        foreach (Transaction tx in processingCopy.Transactions)
+        {
+            Assert.That(tx.SenderAddress, Is.Not.Null, "a join on the processing copy must not return before the senders are recovered");
+        }
+    }
+
+    [Test]
+    public void RecoverData_OnHeaderReplacedCopyWithRecoveryInFlight_LeavesRecoveryToExecutors()
+    {
+        Block suggested = BuildBlockWithUnrecoveredSenders();
+        Block processingCopy = suggested.WithReplacedHeader(suggested.Header.Clone());
+
+        _recovery.Begin(suggested);
+        _recovery.RecoverData(processingCopy);
+        _recovery.EnsureSendersRecovered(processingCopy, CancellationToken.None);
+
+        foreach (Transaction tx in processingCopy.Transactions)
+        {
+            Assert.That(tx.SenderAddress, Is.Not.Null, "the preprocessor skip and the executor join must agree on the same in-flight recovery");
+        }
+    }
+
     [Test]
     public void Begin_WithEmptyBlock_TracksNothing()
     {
