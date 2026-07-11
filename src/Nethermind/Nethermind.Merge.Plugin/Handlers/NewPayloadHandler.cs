@@ -419,8 +419,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         ValidationCompletion blockProcessed =
             _blockValidationTasks.GetOrAdd(
-                block.Hash!,
-                static (k) => new(TaskCreationOptions.None));
+                block.Hash!, new ValidationCompletion(TaskCreationOptions.None));
 
         try
         {
