@@ -111,12 +111,34 @@ public sealed class StreamedSenderRecovery(
     }
 
     /// <summary>
-    /// The fail-closed backstop: whatever happened to the streamed task — faulted, timed out
+    /// The fail-closed backstop: whatever happened to the streamed task — faulted, timed out,
     /// wiring gaps, anything unforeseen — execution must see the exact senders a non-streamed
     /// block would, so any transaction still missing one is recovered synchronously here.
     /// Truly invalid signatures still end up with a null sender and are rejected as before.
+    /// A warn with the full context makes any such occurrence diagnosable after the fact:
+    /// the backstop engaging at all means an invariant of the streaming design was broken.
     /// </summary>
-    private void RecoverAnythingMissing(Block block) => recoverSignatures.RecoverData(block);
+    private void RecoverAnythingMissing(Block block)
+    {
+        int missing = 0;
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.SenderAddress is null) missing++;
+        }
+
+        if (missing == 0) return;
+
+        if (_logger.IsWarn)
+        {
+            string taskState = _inFlight.TryGetValue(block, out Task? recovery)
+                ? $"tracked, status={recovery.Status}, exception={recovery.Exception?.GetBaseException().Message ?? "none"}"
+                : "not tracked";
+            _logger.Warn($"Streamed recovery left {missing}/{block.Transactions.Length} senders missing for block " +
+                $"{block.ToString(Block.Format.FullHashAndNumber)} (recovery task: {taskState}); recovering synchronously.");
+        }
+
+        recoverSignatures.RecoverData(block);
+    }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowRecoveryIncomplete(Block block) =>
