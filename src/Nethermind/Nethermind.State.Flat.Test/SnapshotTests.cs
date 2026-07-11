@@ -23,8 +23,11 @@ public class SnapshotTests
         using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
         snapshot.Content.Accounts[new(TestItem.AddressA)] = new(1, 100);
 
-        Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
-        Assert.That(snapshot.EstimateMemory(), Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
+            Assert.That(snapshot.EstimateMemory(), Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -42,15 +45,21 @@ public class SnapshotTests
 
         long estimate = snapshot.EstimateMemory();
         long compactedEstimate = snapshot.EstimateCompactedMemory();
-        Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
-        Assert.That(snapshot.StoragesCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
+            Assert.That(snapshot.StoragesCount, Is.EqualTo(1));
+        }
 
         // A write landing after the first observation must not move the sealed values.
         snapshot.Content.Accounts[new(TestItem.AddressB)] = new(2, 200);
 
-        Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
-        Assert.That(snapshot.EstimateMemory(), Is.EqualTo(estimate));
-        Assert.That(snapshot.EstimateCompactedMemory(), Is.EqualTo(compactedEstimate));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.AccountsCount, Is.EqualTo(1));
+            Assert.That(snapshot.EstimateMemory(), Is.EqualTo(estimate));
+            Assert.That(snapshot.EstimateCompactedMemory(), Is.EqualTo(compactedEstimate));
+        }
     }
 
     [Test]
@@ -62,8 +71,11 @@ public class SnapshotTests
             content.SelfDestructedStorageAddresses[new(TestItem.AddressB)] = true;
         });
 
-        Assert.That(snapshot.EstimateMemory(), Is.EqualTo(snapshot.Content.EstimateMemory()));
-        Assert.That(snapshot.EstimateCompactedMemory(), Is.EqualTo(snapshot.Content.EstimateCompactedMemory()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.EstimateMemory(), Is.EqualTo(snapshot.Content.EstimateMemory()));
+            Assert.That(snapshot.EstimateCompactedMemory(), Is.EqualTo(snapshot.Content.EstimateCompactedMemory()));
+        }
     }
 
     [Test]
@@ -74,11 +86,15 @@ public class SnapshotTests
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
             content.Accounts[new(TestItem.AddressA)] = new(1, 100));
 
-        long sealedEstimate = snapshot.EstimateMemory();
+        long sealedEstimate = snapshot.EstimateMemory(); // seals the ledger value
+        long sizeBeforeMutation = PersistedSnapshotBuilder.EstimateSize(snapshot);
         snapshot.Content.Accounts[new(TestItem.AddressB)] = new(2, 200);
 
-        Assert.That(snapshot.EstimateMemory(), Is.EqualTo(sealedEstimate), "ledger value must stay sealed");
-        Assert.That(PersistedSnapshotBuilder.EstimateSize(snapshot), Is.GreaterThan(sealedEstimate),
-            "arena sizing must see the post-seal write");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.EstimateMemory(), Is.EqualTo(sealedEstimate), "ledger value must stay sealed");
+            Assert.That(PersistedSnapshotBuilder.EstimateSize(snapshot), Is.GreaterThan(sizeBeforeMutation),
+                "arena sizing must see the post-seal write");
+        }
     }
 }
