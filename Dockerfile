@@ -12,9 +12,6 @@ ARG TARGETARCH
 
 WORKDIR /nethermind
 
-# Restore as its own layer: copy only the inputs that affect `dotnet restore` (project
-# files, build props, the lock file) before the sources, so a source-only change reuses
-# the cached restore instead of re-resolving and re-downloading every NuGet package.
 COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
 COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
