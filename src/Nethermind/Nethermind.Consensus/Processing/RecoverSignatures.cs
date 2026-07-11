@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -72,7 +73,11 @@ namespace Nethermind.Consensus.Processing
         /// </remarks>
         /// <param name="txs">The transactions to recover senders and authorities for.</param>
         /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
+        /// <param name="workerPriority">
+        /// When set, recovery runs on dedicated threads at this priority instead of the shared
+        /// thread pool, so a saturated pool cannot delay latency-critical recovery.
+        /// </param>
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, ThreadPriority? workerPriority = null)
         {
             if (txs.Length == 0)
                 return;
@@ -80,26 +85,17 @@ namespace Nethermind.Consensus.Processing
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
-                // Recover ecdsa in Parallel
-                ParallelUnbalancedWork.For(
-                    0,
-                    txs.Length,
-                    ParallelUnbalancedWork.DefaultOptions,
-                    (recover: this, txs, releaseSpec, useSignatureChainId),
-                    static (i, state) =>
+                (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state =
+                    (this, txs, releaseSpec, useSignatureChainId);
+
+                if (workerPriority is ThreadPriority priority)
                 {
-                    Transaction tx = state.txs[i];
-
-                    // Materialize the lazily-deferred keccak here so the hash is computed on this
-                    // worker rather than later on the (serial) processing path. Typed txs already
-                    // force it via the sender-cache key; this also covers the legacy case.
-                    _ = tx.Hash;
-                    tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
-                    state.recover.RecoverAuthorities(tx, state.releaseSpec);
-                    if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-
-                    return state;
-                });
+                    ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, state, RecoverSingle, priority);
+                }
+                else
+                {
+                    ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, state, RecoverSingle);
+                }
             }
             else
             {
@@ -111,6 +107,23 @@ namespace Nethermind.Consensus.Processing
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
             }
+        }
+
+        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) RecoverSingle(
+            int i,
+            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state)
+        {
+            Transaction tx = state.txs[i];
+
+            // Materialize the lazily-deferred keccak here so the hash is computed on this
+            // worker rather than later on the (serial) processing path. Typed txs already
+            // force it via the sender-cache key; this also covers the legacy case.
+            _ = tx.Hash;
+            tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
+            state.recover.RecoverAuthorities(tx, state.releaseSpec);
+            if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+
+            return state;
         }
 
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)

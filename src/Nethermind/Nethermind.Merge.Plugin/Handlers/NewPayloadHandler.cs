@@ -376,8 +376,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        return Task.Run(() =>
+        // Dedicated above-normal thread: recovery gates enqueue, so it must not queue behind
+        // thread-pool load (compactions, prewarming) — measured 5-15ms scheduling stalls otherwise.
+        return Task.Factory.StartNew(() =>
         {
+            Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
             long recoverStartTimestamp = Stopwatch.GetTimestamp();
             try
             {
@@ -398,7 +401,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 }
                 if (_logger.IsDebug) _logger.Debug($"senderReuse blk={request.BlockNumber} reused={reused}/{txs.Length}");
 
-                _senderRecovery.RecoverData(txs, spec);
+                _senderRecovery.RecoverData(txs, spec, ThreadPriority.AboveNormal);
                 if (_logger.IsDebug)
                     _logger.Debug($"newPayload ecrecover blk={request.BlockNumber} txs={txs.Length} " +
                         $"took={Stopwatch.GetElapsedTime(recoverStartTimestamp).TotalMilliseconds:F2}ms");
@@ -408,7 +411,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Best-effort: the processing-queue preprocessor recovers anything still missing.
                 if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
             }
-        });
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
