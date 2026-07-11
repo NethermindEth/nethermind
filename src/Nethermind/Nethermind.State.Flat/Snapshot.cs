@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,10 +27,12 @@ public class Snapshot : RefCountingDisposable
     private readonly SnapshotContent? _mutable;
     private readonly SortedSnapshotContent? _sorted;
     private readonly bool _isSorted;
-    // Sealed at construction (the publication boundary, after commit writers join): ConcurrentDictionary.Count
-    // acquires every stripe lock, so live counts would stall concurrent writers on each estimate, and the
-    // repository's add/remove memory ledger needs the same value on both sides even if stragglers still write.
-    private readonly SnapshotContentCounts _counts;
+    // Boxed SnapshotContentCounts, sealed on first observation: ConcurrentDictionary.Count acquires every
+    // stripe lock, so serving live counts would stall concurrent writers on each estimate, and the
+    // repository's add/remove memory ledger needs the same value on both sides even if stragglers still
+    // write. Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
+    // construct-then-populate contract working: population always precedes the first count observation.
+    private object? _sealedCounts;
 
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
     {
@@ -39,7 +42,6 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = false;
-        _counts = content.CaptureCounts();
     }
 
     public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
@@ -52,8 +54,28 @@ public class Snapshot : RefCountingDisposable
         _isSorted = true;
     }
 
-    public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : _counts.EstimateMemory();
-    public long EstimateCompactedMemory() => _isSorted ? _sorted!.EstimateCompactedMemory() : _counts.EstimateCompactedMemory();
+    public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
+    public long EstimateCompactedMemory() => _isSorted ? _sorted!.EstimateCompactedMemory() : Counts.EstimateCompactedMemory();
+
+    /// <summary>
+    /// The mutable content's counts, captured once on first access and immutable afterwards. Racing
+    /// first observers may compute different candidates, but CompareExchange publishes exactly one,
+    /// so every reader (including the repository's add and remove ledger sides) sees the same value.
+    /// </summary>
+    private SnapshotContentCounts Counts
+    {
+        get
+        {
+            object? sealedCounts = Volatile.Read(ref _sealedCounts);
+            if (sealedCounts is null)
+            {
+                object candidate = _mutable!.CaptureCounts();
+                sealedCounts = Interlocked.CompareExchange(ref _sealedCounts, candidate, null) ?? candidate;
+            }
+
+            return (SnapshotContentCounts)sealedCounts;
+        }
+    }
     // Test-only observability (SnapshotCompactorTests); not consumed by production.
     internal ResourcePool.Usage Usage => _usage;
 
@@ -66,10 +88,10 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
-    public int AccountsCount => _isSorted ? _sorted!.AccountsCount : _counts.Accounts;
-    public int StoragesCount => _isSorted ? _sorted!.StoragesCount : _counts.Storages;
-    public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : _counts.StateNodes;
-    public int StorageNodesCount => _isSorted ? _sorted!.StorageNodesCount : _counts.StorageNodes;
+    public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
+    public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
+    public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : Counts.StateNodes;
+    public int StorageNodesCount => _isSorted ? _sorted!.StorageNodesCount : Counts.StorageNodes;
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
