@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -332,8 +333,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
-            Substitute.For<IEthereumEcdsa>(),
             Substitute.For<ISpecProvider>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IStreamedSenderRecovery>(),
             LimboLogs.Instance);
     }
 }
