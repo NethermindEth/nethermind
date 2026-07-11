@@ -108,8 +108,18 @@
         }
 
         button.chain-btn.on { opacity: 1; border-color: var(--accent); }
-        button.chain-btn img { width: 20px; height: 20px; }
-        button.chain-btn .sync { display: none; color: var(--c-total); animation: spin 1.6s linear infinite; }
+        button.chain-btn img { width: 20px; height: 20px; display: block; }
+
+        button.chain-btn .sync {
+            display: none;
+            width: 9px;
+            height: 9px;
+            border: 2px solid var(--c-total);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
         button.chain-btn.syncing .sync { display: inline-block; }
 
         @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -638,7 +648,8 @@
         };
 
         const CURRENCY_KEY = 'nethermind.balances.currency';
-        const ENABLED_KEY = 'nethermind.balances.enabledChains';
+        // disabled ids are stored (not enabled ones) so newly discovered chains default to visible
+        const DISABLED_KEY = 'nethermind.balances.disabledChains';
         const states = new Map(); // chainId -> { addresses, tokens, nfts, watched }
         const stateOf = (chainId) => states.get(chainId);
         let currency = 'USD';
@@ -1261,8 +1272,7 @@
                 // when the logo isn't served (static files off) fall back to a text label
                 logo.onerror = () => logo.replaceWith(el('span', 'number', node.meta.tag || node.meta.name));
                 btn.append(logo);
-                if (node.meta.tag) btn.append(el('sup', 'suptag', node.meta.tag));
-                btn.append(el('span', 'sync', '⟳'));
+                btn.append(el('span', 'sync'));
                 btn.onclick = () => toggleChain(node, btn);
                 node.button = btn;
                 updateChainButton(node);
@@ -1283,7 +1293,7 @@
                 return;
             }
             node.enabled = !node.enabled;
-            localStorage.setItem(ENABLED_KEY, JSON.stringify(enabledNodes().map((n) => n.chainId)));
+            localStorage.setItem(DISABLED_KEY, JSON.stringify(nodes.filter((n) => !n.enabled).map((n) => n.chainId)));
             btn.classList.toggle('on', node.enabled);
             updateChainButton(node);
             buildCurrencyOptions();
@@ -1561,9 +1571,9 @@
             } catch { /* discovery is optional — single-node view works without it */ }
             sortNodes();
 
-            let storedEnabled = null;
-            try { storedEnabled = JSON.parse(localStorage.getItem(ENABLED_KEY) || 'null'); } catch { }
-            if (Array.isArray(storedEnabled)) for (const node of nodes) node.enabled = storedEnabled.includes(node.chainId);
+            let storedDisabled = null;
+            try { storedDisabled = JSON.parse(localStorage.getItem(DISABLED_KEY) || 'null'); } catch { }
+            if (Array.isArray(storedDisabled)) for (const node of nodes) node.enabled = !storedDisabled.includes(node.chainId);
             if (enabledNodes().length === 0) own().enabled = true;
 
             for (const node of nodes) states.set(node.chainId, store.load(node));
