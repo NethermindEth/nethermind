@@ -493,11 +493,35 @@ public struct EvmPooledMemory
         }
     }
 
-    // Zeroes [start, start + length) of the buffer. Span.Clear lowers to a vectorized memset
-    // (AVX/rep-stosb by size), the optimal way to clear the exposed gaps.
+    // Small gaps (word padding, head gaps below jump/sparse writes) beyond which Span.Clear's memset
+    // (rep-stosb / non-temporal, cache-friendly at size) wins over inline vector stores.
+    private const int InlineClearThreshold = 512;
+
+    // Zeroes [start, start + length). Clears up to InlineClearThreshold with inline vector stores to dodge
+    // Span.Clear's call/dispatch overhead on the many small gaps; larger clears defer to Span.Clear.
+    // Vector<byte> lowers to the widest SIMD available (128/256/512-bit), so no per-width paths are needed.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly void ClearRange(int start, int length)
-        => _memory.AsSpan(start, length).Clear();
+    {
+        int width = Vector<byte>.Count;
+        // Branchless range check: width <= length <= InlineClearThreshold.
+        if (Vector.IsHardwareAccelerated && (uint)(length - width) <= (uint)(InlineClearThreshold - width))
+        {
+            ref byte d = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), (nint)(uint)start);
+            Vector<byte> zero = default;
+            int last = length - width;
+            for (int i = 0; i < last; i += width)
+            {
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref d, (nint)i), zero);
+            }
+            // Final (possibly overlapping) store covers the tail shorter than one vector.
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref d, (nint)last), zero);
+        }
+        else
+        {
+            _memory.AsSpan(start, length).Clear();
+        }
+    }
 
     private const int MinRentSize = 1_024;
     private const int MaxCachedArrayLength = 1 << 16;
