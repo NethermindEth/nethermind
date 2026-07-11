@@ -15,8 +15,7 @@ internal class XdcRewardCalculatorSource(
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
-    ISigningTxCache signingTxCache,
-    IRewardsStore rewardsStore) : IRewardCalculatorSource
+    ISigningTxCache signingTxCache) : IRewardCalculatorSource
 {
     protected IEpochSwitchManager EpochSwitchManager { get; } = epochSwitchManager;
     protected ISpecProvider SpecProvider { get; } = specProvider;
@@ -24,7 +23,6 @@ internal class XdcRewardCalculatorSource(
     protected IMasternodeVotingContract MasternodeVotingContract { get; } = masternodeVotingContract;
     protected IMintedRecordContract MintedRecordContract { get; } = mintedRecordContract;
     protected ISigningTxCache SigningTxCache { get; } = signingTxCache;
-    protected IRewardsStore RewardsStore { get; } = rewardsStore;
 
     public virtual IRewardCalculator Get(ITransactionProcessor processor) => new XdcRewardCalculator(
         EpochSwitchManager,
@@ -33,6 +31,5 @@ internal class XdcRewardCalculatorSource(
         MasternodeVotingContract,
         MintedRecordContract,
         SigningTxCache,
-        processor,
-        RewardsStore);
+        processor);
 }

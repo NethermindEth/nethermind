@@ -50,6 +50,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
+        public void State_ahead_of_headers_after_unclean_shutdown_does_not_throw_and_continues_full_sync() =>
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeRecoveredWithStateAheadOfHeaders()
+                .AndGoodPeersAreKnown()
+                .WhenFullArchiveSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.Full);
+
+        [Test]
         public void Simple_fast_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
                 .AndGoodPeersAreKnown()

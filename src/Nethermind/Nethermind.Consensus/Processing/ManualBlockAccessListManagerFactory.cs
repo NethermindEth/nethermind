@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing.BlockLevelAccessList;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
@@ -32,7 +33,8 @@ public static class ManualBlockAccessListManagerFactory
         CodeInfoRepositoryFactory codeInfoRepositoryFactory,
         PrewarmerEnvFactory? prewarmerEnvFactory = null,
         PreBlockCaches? preBlockCaches = null,
-        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+        IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+        IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
     {
         ManualMainnetBalProcessingEnvFactory envFactory = new(
             blockHashProvider, specProvider, stateProvider, logManager, codeInfoRepositoryFactory);
@@ -44,7 +46,8 @@ public static class ManualBlockAccessListManagerFactory
             new Lazy<ISequentialBalEnvManager>(() => new SequentialBalEnvManager(envFactory)),
             prewarmerEnvFactory,
             preBlockCaches,
-            readOnlyTxProcessingEnvFactory);
+            readOnlyTxProcessingEnvFactory,
+            executionRequestsProcessorFactory);
     }
 
     /// <summary>

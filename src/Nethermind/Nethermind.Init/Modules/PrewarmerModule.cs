@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -19,7 +20,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        if (blocksConfig.PreWarmStateOnBlockProcessing)
+        if (blocksConfig.PreWarming != PreWarmMode.None)
         {
             builder
 
@@ -36,9 +37,11 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
@@ -67,6 +70,18 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
                         blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
-                });
+                })
+
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+
+            if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
+            {
+                // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved
+                // when the prewarmer is activated so it subscribes to head updates as soon as processing is wired up.
+                builder
+                    .AddScoped<MempoolStatePrewarmer>()
+                    .ResolveOnServiceActivation<MempoolStatePrewarmer, IBlockCachePreWarmer>();
+            }
+        }
     }
 }

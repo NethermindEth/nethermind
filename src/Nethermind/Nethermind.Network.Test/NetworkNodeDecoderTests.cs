@@ -53,8 +53,20 @@ namespace Nethermind.Network.Test
                 Assert.That(decoded.Host, Is.EqualTo(node.Host));
                 Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
                 Assert.That(decoded.Port, Is.EqualTo(node.Port));
+                Assert.That(decoded.DiscoveryPort, Is.EqualTo(node.DiscoveryPort));
                 Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
             }
+        }
+
+        [Test]
+        public void Can_do_enode_with_discovery_port_roundtrip()
+        {
+            NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304))
+            {
+                Reputation = 100L
+            };
+
+            AssertRoundtripPreservesFields(node);
         }
 
         [Test]
@@ -80,6 +92,7 @@ namespace Nethermind.Network.Test
                 Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
                 Assert.That(decoded.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(decoded.Port, Is.EqualTo(30303));
+                Assert.That(decoded.DiscoveryPort, Is.EqualTo(30304));
                 Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
             }
         }

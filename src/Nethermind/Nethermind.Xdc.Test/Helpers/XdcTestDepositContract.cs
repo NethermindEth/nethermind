@@ -20,8 +20,14 @@ internal class XdcTestDepositContract(CandidateContainer candidateContainer) : I
     public Address[] GetCandidates(BlockHeader blockHeader) =>
         candidateContainer.MasternodeCandidates.Select(m => m.Address).ToArray();
 
+    public Address[] GetCandidates(ITransactionProcessor transactionProcessor, BlockHeader blockHeader) =>
+        GetCandidates(blockHeader);
+
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate) =>
         10_000_000.Ether;
+
+    public UInt256 GetCandidateStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate) =>
+        GetCandidateStake(blockHeader, candidate);
 
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate) =>
         throw new System.NotImplementedException();
