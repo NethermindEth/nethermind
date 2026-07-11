@@ -32,7 +32,8 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
-          - label: no-intrinsics
+          - &no_intrinsics
+            label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
         project:
@@ -95,30 +96,19 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         # The no-intrinsics variant exercises the scalar fallback of SIMD/intrinsic-accelerated
-        # code. Skip it for plumbing/config/orchestration projects that do not exercise any
-        # intrinsic-sensitive path (hashing, big-integer, serialization, EVM/state). Extend this
-        # list only after confirming a project has no divergent scalar path.
+        # code. Skip it for pure plumbing/config/orchestration projects that do not exercise any
+        # intrinsic-sensitive path (hashing, big-integer, serialization, EVM/state). Kept
+        # conservative: projects that can transitively touch crypto/state (Wallet, Hive, Runner)
+        # still run it. The *no_intrinsics alias must resolve to the matrix variant object above
+        # for the exclude to match. Extend only after confirming a project has no divergent path.
         exclude:
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Api.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Config.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.EthStats.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.HealthChecks.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Logging.NLog.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Monitoring.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Sockets.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Wallet.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Hive.Test
-          - variant: { label: no-intrinsics, dotnet-args: '', hw-intrinsic: 0 }
-            project: Nethermind.Runner.Test
+          - { variant: *no_intrinsics, project: Nethermind.Api.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Config.Test }
+          - { variant: *no_intrinsics, project: Nethermind.EthStats.Test }
+          - { variant: *no_intrinsics, project: Nethermind.HealthChecks.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Logging.NLog.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Monitoring.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Sockets.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
