@@ -100,27 +100,32 @@
         #chainToggles { display: none; gap: 8px; align-items: center; }
 
         button.chain-btn {
+            position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
+            padding: 6px 10px 4px;
             opacity: 0.35;
         }
 
         button.chain-btn.on { opacity: 1; border-color: var(--accent); }
         button.chain-btn img { width: 20px; height: 20px; display: block; }
 
+        /* overlaid above the logo so the button keeps its size when syncing finishes */
         button.chain-btn .sync {
             display: none;
-            width: 9px;
-            height: 9px;
-            border: 2px solid var(--c-total);
+            position: absolute;
+            top: 1px;
+            left: 50%;
+            margin-left: -4px;
+            width: 7px;
+            height: 7px;
+            border: 1.5px solid var(--muted);
             border-top-color: transparent;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 2.4s linear infinite;
         }
 
-        button.chain-btn.syncing .sync { display: inline-block; }
+        button.chain-btn.syncing .sync { display: block; }
 
         @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
