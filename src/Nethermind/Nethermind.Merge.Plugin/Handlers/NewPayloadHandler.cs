@@ -27,7 +27,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
-using Nethermind.TxPool;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -53,7 +52,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
-    private readonly ITxPool _txPool;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
@@ -82,7 +80,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IStateReader stateReader,
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
-        ITxPool txPool,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -97,7 +94,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
         _specProvider = specProvider;
-        _txPool = txPool;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -380,20 +376,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             try
             {
-                // Most of a payload's transactions were already recovered when they entered the pool;
-                // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
-                // needs ecrecover here.
-                foreach (Transaction tx in txs)
-                {
-                    if (tx.SenderAddress is null
-                        && tx.Hash is not null
-                        && _txPool.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
-                        && pooled.SenderAddress is not null)
-                    {
-                        tx.SenderAddress = pooled.SenderAddress;
-                    }
-                }
-
                 _senderRecovery.RecoverData(txs, spec);
             }
             catch (Exception e)
