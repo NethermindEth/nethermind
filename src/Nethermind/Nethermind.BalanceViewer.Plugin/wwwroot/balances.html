@@ -352,6 +352,32 @@
 
         #status.error { color: var(--danger); }
 
+        #feed { margin-top: 4px; }
+
+        .feed-item {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--muted);
+            padding: 3px 0;
+            border-top: 1px dashed var(--border-soft);
+        }
+
+        .feed-item .when { color: var(--border); min-width: 72px; }
+        .feed-item .what { flex: 1; color: #b9c0de; }
+        .feed-item .x { cursor: pointer; padding: 0 4px; }
+        .feed-item .x:hover { color: var(--danger); }
+
+        button.chain-btn .chain-dot {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
         .empty {
             color: var(--muted);
             padding: 24px 0;
@@ -398,6 +424,7 @@
         </div>
         <div id="tokens"></div>
         <div id="status"></div>
+        <div id="feed"></div>
     </div>
 
     <div id="cards"></div>
@@ -741,10 +768,20 @@
             return TOKEN_COLORS[hash % TOKEN_COLORS.length];
         }
 
+        // each non-mainnet chain gets a stable color for its tag, so rows of two
+        // chains sharing a ticker (e.g. ETH on Hoodi and Sepolia) stay distinguishable
+        function chainColor(node) {
+            return tokenColor(node.meta.tag || node.meta.name);
+        }
+
         // ticker cell content: superscript chain tag on non-mainnet chains when several nodes are shown
         function tickerLabel(ticker, node) {
             const holder = el('span', 'number', ticker);
-            if (multi() && node.chainId !== 1 && node.meta.tag) holder.append(el('sup', 'suptag', node.meta.tag));
+            if (multi() && node.chainId !== 1 && node.meta.tag) {
+                const tag = el('sup', 'suptag', node.meta.tag);
+                tag.style.color = chainColor(node);
+                holder.append(tag);
+            }
             return holder;
         }
 
@@ -996,7 +1033,29 @@
         // swaps, contract interactions) surface as system notifications via the service
         // worker. No push service is involved — data never leaves the nodes.
         const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        const APPROVAL_TOPIC = '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925';
         const MAX_BLOCKS_PER_POLL = 4;
+
+        // symbol/decimals of tokens seen in activity logs, resolved on demand so
+        // notifications can say "sent 250 USDC" even for untracked tokens
+        const tokenMetaCache = new Map(); // `${chainId}|${address}` -> { ticker, decimals } | null
+
+        async function resolveTokenMetas(node, addresses) {
+            const unknown = [...new Set(addresses)].filter((a) => !tokenMetaCache.has(node.chainId + '|' + a));
+            if (unknown.length === 0) return;
+            const calls = [];
+            for (const address of unknown) {
+                calls.push(['eth_call', [{ to: address, data: SEL_SYMBOL }, 'latest']]);
+                calls.push(['eth_call', [{ to: address, data: SEL_DECIMALS }, 'latest']]);
+            }
+            const results = await rpcBatch(calls, node.rpcPath);
+            for (let i = 0; i < unknown.length; i++) {
+                const ticker = decodeAbiString(results[i * 2]);
+                let decimals = null;
+                try { if (results[i * 2 + 1] && results[i * 2 + 1] !== '0x') decimals = Number(BigInt(results[i * 2 + 1])); } catch { }
+                tokenMetaCache.set(node.chainId + '|' + unknown[i], ticker ? { ticker, decimals } : null);
+            }
+        }
 
         const isWatchedAny = (address) =>
             enabledNodes().some((n) => stateOf(n.chainId).watched.includes(address.toLowerCase()));
@@ -1047,8 +1106,44 @@
             }
         }
 
+        // ---------- in-page notification feed (persisted, dismissable) ----------
+        const FEED_KEY = 'nethermind.balances.feed';
+        const FEED_LIMIT = 30;
+        let feed = [];
+        try { feed = JSON.parse(localStorage.getItem(FEED_KEY) || '[]'); } catch { }
+
+        function timeAgo(t) {
+            const s = Math.max(0, (Date.now() - t) / 1000);
+            if (s < 60) return 'just now';
+            if (s < 3600) return Math.floor(s / 60) + 'm ago';
+            if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+            return Math.floor(s / 86400) + 'd ago';
+        }
+
+        function renderFeed() {
+            const box = $('feed');
+            box.replaceChildren();
+            for (const item of feed) {
+                const row = el('div', 'feed-item');
+                row.append(el('span', 'when number', timeAgo(item.t)));
+                row.append(el('span', 'what', '🔔 ' + item.title + ' ' + item.body));
+                const x = el('span', 'x', '×');
+                x.title = 'Dismiss';
+                x.onclick = () => {
+                    feed = feed.filter((f) => f !== item);
+                    localStorage.setItem(FEED_KEY, JSON.stringify(feed));
+                    renderFeed();
+                };
+                row.append(x);
+                box.append(row);
+            }
+        }
+
         async function notify(title, body) {
-            setStatus('🔔 ' + title + ': ' + body);
+            feed.unshift({ t: Date.now(), title, body });
+            feed.length = Math.min(feed.length, FEED_LIMIT);
+            localStorage.setItem(FEED_KEY, JSON.stringify(feed));
+            renderFeed();
             if (!('Notification' in window) || Notification.permission !== 'granted') return;
             try {
                 const registration = await navigator.serviceWorker?.getRegistration();
@@ -1062,12 +1157,24 @@
             return entry?.label || shortAddr(entry?.address || address);
         }
 
-        function tokenAmount(log, chainId) {
-            const token = stateOf(chainId).tokens.find((t) => t.address.toLowerCase() === log.address.toLowerCase());
+        // describes a Transfer log: ERC-20 amounts with symbol/decimals (tracked tokens
+        // first, then the on-demand meta cache), ERC-721 transfers by token id
+        function describeTransfer(log, node) {
+            const address = log.address.toLowerCase();
+            const tracked = stateOf(node.chainId).tokens.find((t) => t.address.toLowerCase() === address);
+            const meta = tracked ?? tokenMetaCache.get(node.chainId + '|' + address);
+            const name = meta?.ticker ?? shortAddr(checksum(log.address));
+            if (log.topics.length === 4) {
+                let id = null;
+                try { id = BigInt(log.topics[3]); } catch { }
+                return name + (id !== null ? ' #' + id : '') + ' (NFT)';
+            }
             let amount = null;
             try { amount = BigInt(log.data); } catch { }
-            if (token && amount !== null) return formatUnits('0x' + amount.toString(16), token.decimals) + ' ' + token.ticker;
-            return 'tokens of ' + shortAddr(checksum(log.address));
+            if (amount === null) return 'tokens of ' + name;
+            return meta?.decimals !== null && meta?.decimals !== undefined
+                ? formatUnits('0x' + amount.toString(16), meta.decimals) + ' ' + name
+                : amount + ' units of ' + name;
         }
 
         async function scanForActivity(node, headHex) {
@@ -1086,8 +1193,14 @@
                 const results = await rpcBatch(blockCalls.concat([
                     ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, watchedTopics] }]],
                     ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, watchedTopics] }]],
+                    ['eth_getLogs', [{ ...range, topics: [APPROVAL_TOPIC, watchedTopics] }]],
                 ]), node.rpcPath);
                 node.lastScanned = head;
+
+                const outLogs = results[blockCalls.length] ?? [];
+                const inLogs = results[blockCalls.length + 1] ?? [];
+                const approvalLogs = results[blockCalls.length + 2] ?? [];
+                await resolveTokenMetas(node, outLogs.concat(inLogs, approvalLogs).map((log) => log.address.toLowerCase()));
 
                 const isWatched = (address) => watched.includes(address);
 
@@ -1099,6 +1212,7 @@
                     const f = facts.get(key);
                     if (kind === 'out' && f.out === null) f.out = text;
                     else if (kind === 'in' && f.in === null) f.in = text;
+                    else if (kind === 'approval') f.other.unshift(text);
                     else if (kind === 'other') f.other.push(text);
                 };
 
@@ -1108,22 +1222,30 @@
                         const value = (() => { try { return BigInt(tx.value); } catch { return 0n; } })();
                         if (txFrom && isWatched(txFrom)) {
                             if (value > 0n) addFact(txFrom, tx.hash, 'out', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
-                            if (tx.input && tx.input !== '0x' && txTo) addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)));
+                            if (!txTo) addFact(txFrom, tx.hash, 'other', 'deployed a contract');
+                            else if (tx.input && tx.input !== '0x') addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)));
                         }
                         if (txTo && isWatched(txTo) && value > 0n) addFact(txTo, tx.hash, 'in', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
                     }
                 }
-                for (const log of results[blockCalls.length] ?? []) addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'out', tokenAmount(log, node.chainId));
-                for (const log of results[blockCalls.length + 1] ?? []) addFact('0x' + log.topics[2].slice(-40), log.transactionHash, 'in', tokenAmount(log, node.chainId));
+                for (const log of outLogs) addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'out', describeTransfer(log, node));
+                for (const log of inLogs) addFact('0x' + log.topics[2].slice(-40), log.transactionHash, 'in', describeTransfer(log, node));
+                for (const log of approvalLogs) {
+                    const spender = shortAddr(checksum('0x' + log.topics[2].slice(-40)));
+                    const meta = tokenMetaCache.get(node.chainId + '|' + log.address.toLowerCase());
+                    addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'approval',
+                        'approved ' + spender + ' for ' + (meta?.ticker ?? shortAddr(checksum(log.address))));
+                }
 
+                const chainSuffix = multi() ? ' · ' + node.meta.name : '';
                 for (const [key, f] of facts) {
                     const watchedAddr = key.slice(0, 42);
                     if (!isWatched(watchedAddr)) continue;
                     const who = displayName(watchedAddr);
-                    if (f.out && f.in) notify(who, `swapped ${f.out} for ${f.in}`);
-                    else if (f.out) notify(who, 'sent ' + f.out);
-                    else if (f.in) notify(who, 'received ' + f.in);
-                    else if (f.other.length) notify(who, f.other[0]);
+                    if (f.out && f.in) notify(who, `swapped ${f.out} for ${f.in}` + chainSuffix);
+                    else if (f.out) notify(who, 'sent ' + f.out + chainSuffix);
+                    else if (f.in) notify(who, 'received ' + f.in + chainSuffix);
+                    else if (f.other.length) notify(who, f.other[0] + chainSuffix);
                 }
             } catch { /* activity scan is best-effort; next poll retries from the new head */ }
             finally { node.scanning = false; }
@@ -1206,6 +1328,19 @@
                 addr.title = entry.address + ' (click to copy)';
                 addr.onclick = () => copyAddress(entry.address);
                 head.append(addr);
+                const rename = el('button', 'link', '✎');
+                rename.title = 'Name this account';
+                rename.onclick = () => {
+                    const name = window.prompt('Name for ' + shortAddr(entry.address), entry.label || '');
+                    if (name === null) return;
+                    for (const node of enabledNodes()) {
+                        const state = stateOf(node.chainId);
+                        const stored = state.addresses.find((a) => a.address === entry.address);
+                        if (stored) { stored.label = name.trim() || null; store.save(node.chainId); }
+                    }
+                    renderCards();
+                };
+                head.append(rename);
                 const bell = el('button', isWatchedAny(entry.address) ? 'link bell on' : 'link bell', '🔔');
                 bell.title = 'Notify on activity (sent/received, swaps, contract calls)';
                 bell.onclick = () => toggleWatch(entry, bell);
@@ -1308,6 +1443,11 @@
                 // when the logo isn't served (static files off) fall back to a text label
                 logo.onerror = () => logo.replaceWith(el('span', 'number', node.meta.tag || node.meta.name));
                 btn.append(logo);
+                if (node.meta.tag) {
+                    const dot = el('span', 'chain-dot');
+                    dot.style.background = chainColor(node);
+                    btn.append(dot);
+                }
                 btn.append(el('span', 'sync'));
                 btn.onclick = () => toggleChain(node, btn);
                 node.button = btn;
@@ -1620,6 +1760,7 @@
         }
 
         async function pollHead() {
+            renderFeed(); // keep relative timestamps fresh
             if (pollTick++ % 5 === 0 && pollTick > 1) await discoverSiblings();
             let changed = false;
             for (const node of nodes) {
@@ -1696,6 +1837,7 @@
                 $('addrInput').placeholder = '0x address' + (own().chainId === 100 || own().chainId === 10200 ? ' (ENS unavailable on Gnosis)' : '');
             }
             applyNodeLayout();
+            renderFeed();
             pollHead();
             setInterval(pollHead, 12000);
         }
