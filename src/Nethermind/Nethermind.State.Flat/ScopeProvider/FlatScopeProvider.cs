@@ -20,8 +20,12 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
-    private readonly PreservedSparseTrie _preservedSparseTrie = new();
-    private readonly SparseAuthoritativeTracker _sparseTracker = new();
+    private readonly SparseTrieWorker? _sparseTrieWorker = configuration.UseSparseRootComputation && !isReadOnly
+        ? new SparseTrieWorker(
+            logManager.GetClassLogger<SparseTrieWorker>(),
+            CancellationToken.None,
+            configuration.SparseTrieMaxRetainedNodes)
+        : null;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -44,8 +48,7 @@ public class FlatScopeProvider(
             flatDbManager,
             configuration,
             trieWarmer,
-            _preservedSparseTrie,
-            _sparseTracker,
+            _sparseTrieWorker,
             logManager,
             warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
@@ -54,5 +57,6 @@ public class FlatScopeProvider(
     public void Dispose()
     {
         if (_warmReadPool is { IsValueCreated: true }) _warmReadPool.Value.Dispose();
+        _sparseTrieWorker?.Dispose();
     }
 }

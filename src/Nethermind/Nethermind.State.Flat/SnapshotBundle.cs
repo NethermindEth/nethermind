@@ -19,10 +19,6 @@ public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
-    /// <summary>Exposes the immutable snapshot chain for proof reading (sparse trie M2+).</summary>
-    internal ReadOnlySnapshotBundle ReadOnlyBundle => _readOnlySnapshotBundle;
-
-
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;

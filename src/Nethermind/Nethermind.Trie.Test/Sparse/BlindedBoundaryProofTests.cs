@@ -228,6 +228,38 @@ public class BlindedBoundaryProofTests
         Assert.That(sparseRoot, Is.Not.EqualTo(originalRoot), "if delete was silently dropped, sparse would still produce the original root");
     }
 
+    [Test]
+    public void ExtensionOnlyReveal_ThenTouch_RequestsProof()
+    {
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256 k0 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0011");
+        Hash256 k1 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0022");
+        Hash256 k2 = new("0x0000000000000000aabbccddeeff00112233445566778899aabbccddeeff0033");
+        tree.Set(k0.Bytes, TestItem.GenerateIndexedAccountRlp(0));
+        tree.Set(k1.Bytes, TestItem.GenerateIndexedAccountRlp(1));
+        tree.Set(k2.Bytes, TestItem.GenerateIndexedAccountRlp(2));
+        tree.UpdateRootHash();
+        tree.Commit();
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(
+            reader,
+            tree.RootHash,
+            [k0],
+            new byte[] { 0 });
+        Assert.That(proof.AccountNodes[0].Kind, Is.EqualTo(ProofNodeKind.Extension));
+
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes([proof.AccountNodes[0]]);
+        List<ValueHash256> targets = [];
+        sparse.UpdateLeaves(
+            new Dictionary<ValueHash256, LeafUpdate> { [k0] = LeafUpdate.Touched() },
+            (key, _) => targets.Add(key));
+
+        Assert.That(targets, Is.EqualTo(new[] { k0.ValueHash256 }));
+    }
+
     /// <summary>
     /// Multi-block cross-reuse: simulate a sparse trie that has been used for several
     /// consecutive blocks (always retaining revealed structure). For each block's update,

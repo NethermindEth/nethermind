@@ -10,8 +10,7 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Persists sparse trie nodes to <see cref="SnapshotBundle"/> after root computation.
-/// Replaces <c>PatriciaTree.Commit()</c> in M3. Walks the arena depth-first, writing
-/// nodes with <c>FullRlp.Length >= 32</c> to the snapshot bundle.
+/// Walks the arena depth-first, writing nodes with <c>FullRlp.Length >= 32</c> to the snapshot bundle.
 /// For branch-with-ShortKey (folded extension+branch), persists BOTH the extension
 /// wrapper and the inner branch at their respective paths.
 /// </summary>

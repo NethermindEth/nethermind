@@ -10,6 +10,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -21,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -372,6 +374,75 @@ public class BlockProcessorTests
         processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
+    }
+
+    [TestCase(ProcessingOptions.None, 2, true,
+        TestName = "ProcessOne_retries_state_root_before_validation")]
+    [TestCase(ProcessingOptions.NoValidation, 1, false,
+        TestName = "ProcessOne_does_not_retry_state_root_without_validation")]
+    public void ProcessOne_retries_state_root_with_fallback_when_validation_requires_it(
+        ProcessingOptions options,
+        int expectedRootCalculations,
+        bool expectsFallback)
+    {
+        Hash256 firstRoot = TestItem.KeccakA;
+        Hash256 suggestedRoot = TestItem.KeccakB;
+        List<string> callOrder = [];
+        int rootCalculations = 0;
+
+        IWorldState stateProvider = Substitute.For<IWorldState>();
+        stateProvider.StateRoot.Returns(firstRoot, suggestedRoot);
+        stateProvider.When(static state => state.RecalculateStateRoot())
+            .Do(_ =>
+            {
+                rootCalculations++;
+                callOrder.Add("root");
+            });
+
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator
+            .ValidateProcessedBlock(
+                Arg.Any<Block>(),
+                Arg.Any<TxReceipt[]>(),
+                Arg.Any<Block>(),
+                out Arg.Any<string?>())
+            .Returns(callInfo =>
+            {
+                callOrder.Add("validate");
+                callInfo[3] = null;
+                Block processedBlock = callInfo.ArgAt<Block>(0);
+                Block expectedBlock = callInfo.ArgAt<Block>(2);
+                return processedBlock.Header.StateRoot == suggestedRoot
+                    && processedBlock.Header.Hash == expectedBlock.Header.Hash
+                    && processedBlock.Header.Hash == processedBlock.Header.CalculateHash();
+            });
+
+        StateRootRetryBlockProcessor processor = new(blockValidator, stateProvider);
+        BlockHeader suggestedHeader = Build.A.BlockHeader
+            .WithStateRoot(suggestedRoot)
+            .WithAuthor(TestItem.AddressD)
+            .TestObject;
+        suggestedHeader.Hash = suggestedHeader.CalculateHash();
+        Block suggestedBlock = Build.A.Block.WithHeader(suggestedHeader).TestObject;
+        IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(suggestedBlock.Header);
+
+        (Block processedBlock, _) = processor.ProcessOne(
+            suggestedBlock,
+            options,
+            NullBlockTracer.Instance,
+            spec,
+            CancellationToken.None);
+
+        Hash256 expectedProcessedRoot = expectsFallback ? suggestedRoot : firstRoot;
+        string[] expectedCallOrder = expectsFallback ? ["root", "root", "validate"] : ["root"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOrder, Is.EqualTo(expectedCallOrder));
+            Assert.That(processedBlock.Header.StateRoot, Is.EqualTo(expectedProcessedRoot));
+            Assert.That(processedBlock.Header.Hash, Is.EqualTo(processedBlock.Header.CalculateHash()));
+            Assert.That(processedBlock.Header.Hash == suggestedBlock.Header.Hash, Is.EqualTo(expectsFallback));
+            Assert.That(rootCalculations, Is.EqualTo(expectedRootCalculations));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1434,6 +1505,37 @@ public class BlockProcessorTests
 
             public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
                 blockTracer.RecordOpcode();
+        }
+    }
+
+    private sealed class StateRootRetryBlockProcessor(
+        IBlockValidator blockValidator,
+        IWorldState stateProvider)
+        : BlockProcessor(
+            HoodiSpecProvider.Instance,
+            blockValidator,
+            NoBlockRewards.Instance,
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            NullReceiptStorage.Instance,
+            Substitute.For<IBeaconBlockRootHandler>(),
+            Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance,
+            Substitute.For<IWithdrawalProcessor>(),
+            Substitute.For<IExecutionRequestsProcessor>(),
+            Substitute.For<IBlockAccessListManager>())
+    {
+        protected override TxReceipt[] ProcessBlock(
+            Block block,
+            IBlockTracer blockTracer,
+            ProcessingOptions options,
+            IReleaseSpec spec,
+            CancellationToken token)
+        {
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
+            block.Header.Hash = block.Header.CalculateHash();
+            return [];
         }
     }
 }

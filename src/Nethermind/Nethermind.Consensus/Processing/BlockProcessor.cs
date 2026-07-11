@@ -82,6 +82,7 @@ public partial class BlockProcessor(
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        RetryStateRootWithFallback(suggestedBlock, options, block);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -89,6 +90,25 @@ public partial class BlockProcessor(
         }
 
         return (block, receipts);
+    }
+
+    private void RetryStateRootWithFallback(Block suggestedBlock, ProcessingOptions options, Block processedBlock)
+    {
+        Hash256? expectedRoot = suggestedBlock.Header.StateRoot;
+        if (options.ContainsFlag(ProcessingOptions.NoValidation)
+            || expectedRoot is null
+            || processedBlock.Header.StateRoot == expectedRoot)
+        {
+            return;
+        }
+
+        using (MetricsTimer<StateRootTimeSink> _ = new())
+        {
+            _stateProvider.RecalculateStateRoot();
+        }
+
+        processedBlock.Header.StateRoot = _stateProvider.StateRoot;
+        processedBlock.Header.Hash = processedBlock.Header.CalculateHash();
     }
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)

@@ -25,24 +25,25 @@ public interface IWorldStateScopeProvider
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     /// <summary>
-    /// Optional capability a scope implements to receive committed state deltas during execution
-    /// (M4 streaming sparse-trie pipeline). WorldState attaches its provider sinks to this when the
-    /// active scope supports it, so each commit phase streams account/storage leaf updates to a
-    /// background root-computation task. A scope that does not implement it gets no sinks attached
-    /// and behaves exactly as before. Keys are raw (Address / StorageCell) + final value; the
-    /// consumer hashes them off the execution thread.
+    /// Optional capability for receiving committed account and storage deltas while execution is
+    /// still running. Implementations can hash raw keys and update an incremental root off-thread.
     /// </summary>
     public interface ISparseDeltaSink
     {
-        /// <summary>True only when the scope wants delta streaming this block (sparse-parallel
-        /// mode active). When false WorldState skips sink attachment entirely.</summary>
+        /// <summary>True while this scope wants committed deltas for the active block.</summary>
         bool WantsCommittedDeltas { get; }
 
-        /// <summary>Reports a committed account leaf (post commit-phase). account==null = deleted.</summary>
+        /// <summary>Reports a committed account leaf. A null account is deleted.</summary>
         void OnCommittedAccount(Address address, Account? account);
 
         /// <summary>Reports a committed storage write (post commit-phase).</summary>
         void OnCommittedStorage(in StorageCell cell, byte[] value);
+
+        /// <summary>
+        /// Publishes the committed account/storage notifications accumulated for one commit phase.
+        /// The final phase is followed by the exact write-batch reconciliation barrier.
+        /// </summary>
+        void OnCommitPhaseCompleted(bool isFinal);
     }
 
     public interface IScope : IDisposable
@@ -222,6 +223,13 @@ public interface IWorldStateScopeProvider
     public interface IStorageWriteBatch : IDisposable
     {
         void Set(in UInt256 index, byte[] value);
+
+        /// <summary>
+        /// Reports the exact final value of a slot which was touched during the block but returned
+        /// to its original value. Most backends can ignore it; incremental root builders use it to
+        /// reconcile provisional per-transaction updates before final hashing.
+        /// </summary>
+        void ObserveFinalValue(in UInt256 index, byte[] value) { }
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

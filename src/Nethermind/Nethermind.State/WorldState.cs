@@ -256,9 +256,6 @@ namespace Nethermind.State
                 throw;
             }
 
-            // M4 streaming: if the scope wants committed deltas (sparse-parallel mode), attach the
-            // provider sinks so each commit phase streams account/storage leaf updates to its
-            // background root-computation task. Inert for every other scope (sinks stay null).
             if (_currentScope is IWorldStateScopeProvider.ISparseDeltaSink sink && sink.WantsCommittedDeltas)
             {
                 _stateProvider.CommittedAccountSink = sink.OnCommittedAccount;
@@ -362,6 +359,12 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
+
+            if (_currentScope is IWorldStateScopeProvider.ISparseDeltaSink sparseDeltaSink
+                && sparseDeltaSink.WantsCommittedDeltas)
+            {
+                sparseDeltaSink.OnCommitPhaseCompleted(commitRoots);
+            }
 
             if (commitRoots)
             {

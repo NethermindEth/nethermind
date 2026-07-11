@@ -33,6 +33,7 @@ public class FlatWorldStateScopeProviderTests
     {
         private readonly ContainerBuilder _containerBuilder;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly SparseTrieWorker? _sparseTrieWorker;
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
@@ -46,6 +47,12 @@ public class FlatWorldStateScopeProviderTests
         public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
             config ??= new FlatDbConfig();
+            if (config.UseSparseRootComputation)
+            {
+                _sparseTrieWorker = new SparseTrieWorker(
+                    LimboLogs.Instance.GetClassLogger<SparseTrieWorker>(),
+                    _cancellationTokenSource.Token);
+            }
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
@@ -108,8 +115,7 @@ public class FlatWorldStateScopeProviderTests
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
-                .WithParameter(TypedParameter.From<PreservedSparseTrie?>(null))
-                .WithParameter(TypedParameter.From(new SparseAuthoritativeTracker()))
+                .WithParameter(TypedParameter.From(_sparseTrieWorker))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -122,6 +128,7 @@ public class FlatWorldStateScopeProviderTests
             if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
             _container?.Dispose();
+            _sparseTrieWorker?.Dispose();
             _cancellationTokenSource.Dispose();
         }
 
@@ -882,8 +889,7 @@ public class FlatWorldStateScopeProviderTests
             commitTarget: Substitute.For<IFlatCommitTarget>(),
             configuration: config,
             trieCacheWarmer: warmer,
-            preservedSparseTrie: null,
-            sparseTracker: new SparseAuthoritativeTracker(),
+            sparseTrieWorker: null,
             logManager: LimboLogs.Instance);
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
@@ -929,6 +935,95 @@ public class FlatWorldStateScopeProviderTests
         if (slotRingAccepts || mpmcAccepts) scope.DecrementOutstandingWarmups();
         scope.Dispose();
         Assert.That(enteredWaitLoop, Is.False);
+    }
+
+    [Test]
+    public void SparseWriteBatch_MatchesPatriciaBeforeAndAfterFallback()
+    {
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true },
+            new NoopTrieWarmer());
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
+
+        Address address = TestItem.AddressA;
+        UInt256 slot = 1;
+        byte[] value = [0x12, 0x34];
+        Account account = new(1, (UInt256)1_000);
+
+        Hash256 storageRoot = CalculateStorageRoot(address, slot, value);
+        StateTree expectedState = new();
+        expectedState.Set(address, account.WithChangedStorageRoot(storageRoot));
+        expectedState.UpdateRootHash();
+
+        sink.OnCommittedAccount(address, account);
+        StorageCell cell = new(address, in slot);
+        sink.OnCommittedStorage(in cell, value);
+        sink.OnCommitPhaseCompleted(isFinal: true);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                   writeBatch.CreateStorageWriteBatch(address, 1))
+            {
+                storageBatch.Clear();
+                storageBatch.Set(in slot, value);
+            }
+            writeBatch.Set(address, account);
+        }
+
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash), "sparse root");
+
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash), "Patricia fallback root");
+    }
+
+    [Test]
+    public void SparseAcceptedRoot_IsReusedByNextBlock()
+    {
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true },
+            new NoopTrieWarmer());
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
+        StateTree expectedState = new();
+
+        Address firstAddress = TestItem.AddressA;
+        Account firstAccount = new(1, (UInt256)1_000);
+        sink.OnCommittedAccount(firstAddress, firstAccount);
+        sink.OnCommitPhaseCompleted(isFinal: true);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            writeBatch.Set(firstAddress, firstAccount);
+
+        expectedState.Set(firstAddress, firstAccount);
+        expectedState.UpdateRootHash();
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+        scope.Commit(1);
+
+        Address secondAddress = TestItem.AddressB;
+        Account secondAccount = new(2, (UInt256)2_000);
+        sink.OnCommittedAccount(secondAddress, secondAccount);
+        sink.OnCommitPhaseCompleted(isFinal: true);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            writeBatch.Set(secondAddress, secondAccount);
+
+        expectedState.Set(secondAddress, secondAccount);
+        expectedState.UpdateRootHash();
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+    }
+
+    private static Hash256 CalculateStorageRoot(Address address, in UInt256 slot, byte[] value)
+    {
+        RawTrieStore store = new(new MemDb());
+        StorageTree storageTree = new(
+            store.GetTrieStore(address.ToAccountPath.ToCommitment()),
+            LimboLogs.Instance);
+        storageTree.Set(in slot, value);
+        storageTree.UpdateRootHash();
+        return storageTree.RootHash;
     }
 
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer

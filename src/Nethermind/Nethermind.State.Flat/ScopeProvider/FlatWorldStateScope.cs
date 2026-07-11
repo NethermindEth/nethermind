@@ -15,58 +15,37 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
+public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer,
+    IWorldStateScopeProvider.ISparseDeltaSink
 {
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
     private readonly Lazy<WarmReadPool>? _warmReadPool;
-    internal readonly ILogManager _logManager;
+    private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
-    private readonly PreservedSparseTrie? _preservedSparseTrie;
+    private readonly SparseTrieWorker? _sparseTrieWorker;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    // Constructed only when the configured warmer actually walks the warmup tree
-    // (SparseTrieWarmer == Legacy). Other variants (None â†’ DI returns NoopTrieWarmer;
-    // SparseProof â†’ uses the proof reader) never touch this field, so allocating a fresh
-    // PatriciaTree per scope was pure waste under sparse mode.
-    private readonly PatriciaTree? _warmupStateTree;
+    private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
-    private SparseRootComputer? _sparseRootComputer;
 
-    /// <summary>
-    /// Internal accessor for the sparse computer. Storage write batches use this to
-    /// route per-contract slot changes when sparse storage is authoritative.
-    /// </summary>
-    internal SparseRootComputer? SparseRootComputerInternal => _sparseRootComputer;
-
-    /// <summary>Exposes the proof reader so storage trees can issue sparse-aware warmup reads.</summary>
-    internal ParentStateTrieNodeReader? SparseProofReader => _proofReader;
-
-    /// <summary>
-    /// True when sparse storage roots should replace Patricia's: sparse trie is
-    /// authoritative for accounts AND SkipPatricia is configured AND not in verification mode
-    /// AND the explicit storage-authoritative flag is set. Decoupled from SkipPatricia so we
-    /// can isolate sparse storage bugs without disabling sparse account computation.
-    /// </summary>
-    internal bool UseSparseStorageRoot => _sparseRootComputer is not null
-        && _sparseIsAuthoritative
-        && _configuration.SparseTrieSkipPatricia
-        && _configuration.SparseTrieAuthoritativeStorage
-        && !_configuration.SparseTrieVerificationMode;
-    private SparseStateTrie? _sparseStateTrie;
+    private readonly Dictionary<AddressAsKey, Account?> _pendingSparseAccounts = new(AddressAsKey.EqualityComparer);
+    private readonly HashSet<AddressAsKey> _provisionalSparseAccounts = new(AddressAsKey.EqualityComparer);
+    private readonly List<SparseTrieStorageDelta> _pendingSparseStorage = [];
+    private SparseTrieBlockHandle? _sparseBlock;
+    private WriteBatch? _activeWriteBatch;
+    private WriteBatch? _fallbackJournal;
     private Hash256? _sparseComputedRoot;
-    private bool _sparseIsAuthoritative;
-    // Stored for the SparseProof warmer variant: ReadAccountProofs needs both.
-    private ParentStateTrieNodeReader? _proofReader;
-    private Hash256? _prevStateRoot;
+    private bool _acceptSparseDeltas;
+    private bool _sparseEnabled;
+    private bool _sparseRootReturned;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -81,8 +60,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
-    private readonly SparseAuthoritativeTracker _sparseTracker;
-
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -90,20 +67,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
-        PreservedSparseTrie? preservedSparseTrie,
-        SparseAuthoritativeTracker sparseTracker,
+        SparseTrieWorker? sparseTrieWorker,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
         bool isReadOnly = false)
     {
-        _sparseTracker = sparseTracker;
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
-        _preservedSparseTrie = preservedSparseTrie;
+        _sparseTrieWorker = sparseTrieWorker;
+        _sparseEnabled = sparseTrieWorker is not null;
 
-        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount);
+        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager
@@ -112,80 +88,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
 
-        // Legacy is the only warmer variant that walks _warmupStateTree (see WarmUpStateTrie).
-        // For None the DI module substitutes NoopTrieWarmer; for SparseProof we issue proof
-        // reads directly. In those cases the warmup tree is dead weight.
-        if (configuration.SparseTrieWarmer == SparseTrieWarmerVariant.Legacy
-            && configuration.TrieWarmerWorkerCount != 0)
+        _warmupStateTree = new(
+            new StateTrieStoreWarmerAdapter(snapshotBundle),
+            logManager
+        )
         {
-            _warmupStateTree = new(
-                new StateTrieStoreWarmerAdapter(snapshotBundle),
-                logManager
-            )
-            {
-                RootHash = currentStateId.StateRoot.ToCommitment()
-            };
-        }
+            RootHash = currentStateId.StateRoot.ToCommitment()
+        };
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
-        if (configuration.UseSparseRootComputation && !isReadOnly)
-        {
-            Hash256 prevRoot = currentStateId.StateRoot.ToCommitment();
-            ParentStateTrieNodeReader proofReader = new(snapshotBundle);
-            _proofReader = proofReader;
-            _prevStateRoot = prevRoot;
-            if (configuration.SparseTrieShadowStorageCompare && preservedSparseTrie is not null)
-            {
-                preservedSparseTrie.DiagLogger = logManager.GetClassLogger<PreservedSparseTrie>();
-                // Hardcoded: dump diagnostics for USDT, the contract that diverges at block 22360025.
-                SparseRootComputer.DiagDumpForContract ??= new Hash256("0xab14d68802a763f7db875346d03fbf86f137de55814b191c069e721f47474733");
-            }
-
-            // M3: cross-block sparse trie reuse via PreservedSparseTrie. Combined with
-            // dirty-path-only HashNode and minLen-aware proof reading, the next block
-            // skips proof reads for hot paths already revealed in the trie.
-            if (preservedSparseTrie is not null)
-            {
-                _sparseStateTrie = preservedSparseTrie.Take(prevRoot);
-                _sparseRootComputer = new SparseRootComputer(_sparseStateTrie, proofReader, prevRoot);
-            }
-            else
-            {
-                _sparseRootComputer = new SparseRootComputer(proofReader, prevRoot);
-            }
-
-            // M3 LFU retention. Caps come from config; touches happen inside SparseRootComputer
-            // before each update batch; the actual collapse runs in Commit before StoreAnchored.
-            // Pass the retained-storage-tries budget too: when only THAT is set (the production
-            // memory-bound path), the LFUs must still be created so the triggered prune has
-            // frequency data to evict by â€” otherwise storage eviction silently no-ops.
-            _sparseRootComputer.Trie.SetHotCacheCapacities(
-                configuration.SparseTrieMaxHotAccounts,
-                configuration.SparseTrieMaxHotSlots,
-                configuration.SparseTrieMaxRetainedStorageTries);
-
-            // Sparse drives commit/root only when explicitly opted-in via SparseTrieSkipPatricia
-            // AND we've seen 10 consecutive matching roots from this provider (or shadow-compare
-            // is off, meaning we have no observed matches but the operator has chosen to trust
-            // sparse anyway). Promoting to authoritative when Patricia still runs would silently
-            // waste BulkSet work on every block.
-            //
-            // SparseTrieForceAuthoritative bypasses the 10-block warmup entirely (benchmark-only,
-            // see config docs). dotTrace showed the realblocks profile is dominated by the
-            // Patricia work that runs ALONGSIDE sparse until promotion; without this switch the
-            // benchmark can never observe true sparse-only processing.
-            _sparseIsAuthoritative = !configuration.SparseTrieVerificationMode
-                && configuration.SparseTrieSkipPatricia
-                && (configuration.SparseTrieForceAuthoritative
-                    || _sparseTracker.ConsecutiveMatches >= 10);
-        }
-
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+        StartSparseBlock(currentStateId.StateRoot.ToCommitment());
     }
 
     public void Dispose()
@@ -193,17 +111,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
         WaitForOutstandingWarmups();
-
-        // Return the sparse trie to the preserved store if it was checked out but never
-        // stored back (e.g., scope disposed without Commit due to reorg or exception).
-        // TryStoreCleared is a no-op if Commit already returned ownership.
-        if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
-        {
-            _preservedSparseTrie.TryStoreCleared(_sparseStateTrie);
-            _sparseStateTrie = null;
-        }
-
-        _sparseRootComputer?.Dispose();
+        AbortSparseBlock();
+        _fallbackJournal?.Release();
+        _fallbackJournal = null;
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
     }
@@ -250,91 +160,160 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
-        if (_sparseRootComputer is not null)
-        {
-            try
-            {
-                Stopwatch sw = Stopwatch.StartNew();
-                _sparseComputedRoot = _sparseRootComputer.ComputeStateRoot();
-                sw.Stop();
-
-                // Observability (cheap, set once per block): root compute time + proof activity.
-                Metrics.SparseRootComputeTime.Observe(sw.ElapsedMilliseconds);
-                Metrics.SparseProofNodesRead += _sparseRootComputer.LastProofNodeCount;
-                if (_sparseRootComputer.LastRetryCount > 0)
-                    Metrics.SparseProofRetries += _sparseRootComputer.LastRetryCount;
-
-                if (!_sparseIsAuthoritative)
-                {
-                    // Validation mode: run Patricia too and compare
-                    _stateTree.UpdateRootHash();
-
-                    if (_sparseComputedRoot == _stateTree.RootHash)
-                    {
-                        int matchCount = _sparseTracker.RecordMatch();
-                        int consecutive = _sparseTracker.ConsecutiveMatches;
-                        if (matchCount % 100 == 1 || matchCount <= 5)
-                        {
-                            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                            if (logger.IsInfo) logger.Info(
-                                $"SPARSE ROOT MATCH #{matchCount}! Root={_sparseComputedRoot}, " +
-                                $"SparseTime={sw.ElapsedMilliseconds}ms (proof={_sparseRootComputer.LastProofReadMs}ms " +
-                                $"reveal={_sparseRootComputer.LastRevealMs}ms update={_sparseRootComputer.LastUpdateLeavesMs}ms " +
-                                $"compute={_sparseRootComputer.LastComputeRootMs}ms, retries={_sparseRootComputer.LastRetryCount}, " +
-                                $"proofNodes={_sparseRootComputer.LastProofNodeCount}, accounts={_sparseRootComputer.AccountChangeCount}), " +
-                                $"Consecutive={consecutive}, " +
-                                $"Totals: match={matchCount} mismatch={_sparseTracker.MismatchCount} fail={_sparseTracker.FailCount}");
-                        }
-                    }
-                    else
-                    {
-                        int mismatchCount = _sparseTracker.RecordMismatch();
-                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                        if (logger.IsWarn) logger.Warn(
-                            $"SPARSE ROOT MISMATCH #{mismatchCount}! Patricia={_stateTree.RootHash}, Sparse={_sparseComputedRoot}, " +
-                            $"SparseTime={sw.ElapsedMilliseconds}ms, Accounts={_sparseRootComputer.AccountChangeCount}, " +
-                            $"ProofNodes={_sparseRootComputer.LastProofNodeCount}, PrevRoot={_sparseRootComputer.PreviousRoot}. " +
-                            $"Falling back to Patricia.");
-
-                        _sparseComputedRoot = null;
-                    }
-                }
-                else
-                {
-                    // Authoritative mode: sparse root is the answer, skip Patricia UpdateRootHash
-                    int matchCount = _sparseTracker.RecordMatch();
-                    if (matchCount % 500 == 1)
-                    {
-                        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                        if (logger.IsInfo) logger.Info(
-                            $"SPARSE ROOT (authoritative) #{matchCount}: Root={_sparseComputedRoot}, " +
-                            $"SparseTime={sw.ElapsedMilliseconds}ms");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                int failCount = _sparseTracker.RecordFail();
-                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn(
-                    $"SPARSE ROOT FAIL #{failCount}! Exception={ex.GetType().Name}: {ex.Message}, " +
-                    $"Totals: match={_sparseTracker.MatchCount} mismatch={_sparseTracker.MismatchCount} fail={failCount}");
-                _sparseComputedRoot = null;
-                _sparseIsAuthoritative = false;
-
-                // In SkipPatricia (M3) mode, Patricia BulkSet was never called, so falling back
-                // to Patricia would produce a stale/empty root. Propagate the exception.
-                if (_configuration.SparseTrieSkipPatricia)
-                    throw;
-
-                // Fallback: run Patricia
-                _stateTree.UpdateRootHash();
-            }
-        }
-        else
+        if (_sparseComputedRoot is null || _fallbackJournal is null)
         {
             _stateTree.UpdateRootHash();
+            return;
         }
+
+        if (!_sparseRootReturned)
+        {
+            _sparseRootReturned = true;
+            return;
+        }
+
+        ReplayPatriciaFallback(disableSparse: true);
+    }
+
+    public bool WantsCommittedDeltas => _sparseBlock is not null && _acceptSparseDeltas;
+
+    public void OnCommittedAccount(Address address, Account? account)
+    {
+        if (_sparseBlock is not null && _acceptSparseDeltas)
+        {
+            _pendingSparseAccounts[address] = account;
+            _provisionalSparseAccounts.Add(address);
+        }
+    }
+
+    public void OnCommittedStorage(in StorageCell cell, byte[] value)
+    {
+        if (_sparseBlock is null || !_acceptSparseDeltas)
+            return;
+
+        FlatStorageTree storage = CreateStorageTreeImpl(cell.Address);
+        _pendingSparseStorage.Add(new SparseTrieStorageDelta(
+            cell.Address,
+            storage.ParentRootHash,
+            cell.Index,
+            value));
+    }
+
+    public void OnCommitPhaseCompleted(bool isFinal)
+    {
+        SparseTrieBlockHandle? block = _sparseBlock;
+        if (block is null || !_acceptSparseDeltas)
+            return;
+
+        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0)
+        {
+            List<SparseTrieAccountDelta> accounts = new(_pendingSparseAccounts.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in _pendingSparseAccounts)
+                accounts.Add(new SparseTrieAccountDelta(entry.Key.Value, entry.Value));
+
+            List<SparseTrieStorageDelta> storage = [.. _pendingSparseStorage];
+            _pendingSparseAccounts.Clear();
+            _pendingSparseStorage.Clear();
+
+            try
+            {
+                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage));
+            }
+            catch (Exception exception)
+            {
+                DisableSparse(exception, "Failed to publish a sparse trie execution delta.");
+            }
+        }
+
+        if (isFinal)
+            _acceptSparseDeltas = false;
+    }
+
+    internal bool CollectSparseStorageBatches =>
+        _sparseBlock is not null && _activeWriteBatch?.UsesSparse == true;
+
+    internal void RegisterSparseStorageBatch(FlatStorageTree.SparseStorageBatch batch)
+    {
+        WriteBatch? writeBatch = _activeWriteBatch;
+        if (writeBatch is null || !writeBatch.UsesSparse)
+            throw new InvalidOperationException("Sparse storage batch has no active world-state write batch.");
+
+        writeBatch.RegisterSparseStorageBatch(batch);
+    }
+
+    private void StartSparseBlock(Hash256 parentRoot)
+    {
+        if (!_sparseEnabled || _sparseTrieWorker is null)
+            return;
+
+        try
+        {
+            _sparseBlock = _sparseTrieWorker.BeginBlock(parentRoot, _snapshotBundle);
+            _acceptSparseDeltas = true;
+        }
+        catch (Exception exception)
+        {
+            _sparseEnabled = false;
+            LogSparseFailure("Failed to start sparse trie block processing.", exception);
+        }
+    }
+
+    private void DisableSparse(Exception exception, string message)
+    {
+        Metrics.SparseFailures++;
+        LogSparseFailure(message, exception);
+        _sparseEnabled = false;
+        _acceptSparseDeltas = false;
+        _pendingSparseAccounts.Clear();
+        _provisionalSparseAccounts.Clear();
+        _pendingSparseStorage.Clear();
+        AbortSparseBlock();
+    }
+
+    private void AbortSparseBlock()
+    {
+        SparseTrieBlockHandle? block = _sparseBlock;
+        _sparseBlock = null;
+        _acceptSparseDeltas = false;
+        if (block is null)
+            return;
+
+        try
+        {
+            block.AbortAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            LogSparseFailure("Failed to abort sparse trie block processing.", exception);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogSparseFailure(string message, Exception exception)
+    {
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (logger.IsWarn)
+            logger.Warn($"{message} {exception.Message}");
+    }
+
+    private void ReplayPatriciaFallback(bool disableSparse)
+    {
+        WriteBatch? journal = _fallbackJournal;
+        if (journal is null)
+            return;
+
+        Metrics.SparseFallbacks++;
+        AbortSparseBlock();
+        journal.ReplayPatricia();
+        _stateTree.UpdateRootHash();
+        journal.Release();
+
+        _fallbackJournal = null;
+        _sparseComputedRoot = null;
+        _sparseRootReturned = false;
+        _provisionalSparseAccounts.Clear();
+        if (disableSparse)
+            _sparseEnabled = false;
     }
 
     public Account? Get(Address address)
@@ -510,7 +489,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
-    public int HintSequenceId => _hintSequenceId;
+    public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
@@ -521,40 +500,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                // Variant selection:
-                //   Legacy â€” walks Patricia and warms the transient cache via the adapter.
-                //   SparseProof â€” EXPERIMENTAL. Runs a full root-to-leaf proof read for a single
-                //     target and DISCARDS the decoded result, keeping only the DB/OS page-cache
-                //     warming side effect. The discard is REQUIRED, not laziness: this method runs on
-                //     trie-warmer WORKER threads, while the block-processing thread mutates the same
-                //     preserved SparseStateTrie during ComputeStateRoot. SparsePatriciaTree.RevealNodes
-                //     is single-writer with no locking, so revealing the fetched proof here would race
-                //     the main reveal/update and corrupt the arena (intermittent wrong roots). A real
-                //     sparse-native prefetcher must therefore route proofs to a SINGLE consumer that
-                //     owns all reveals â€” i.e. the M4 SparseTrieTask. Finding 6 is thus blocked on M4;
-                //     they are coupled, not independent. Until then SparseProof is only a DB warmer and
-                //     the prewarm-off benchmark (+69% without any warmer) shows the Legacy Patricia
-                //     warmer remains load-bearing, so it stays the default.
-                //   None â€” gated at DI by NoopTrieWarmer (never reaches this method).
-                // Flat-native warmer: warm the actual account read path (SnapshotBundle -> persistence
-                // -> RocksDB) the EVM will hit, with no Patricia decode. Mirrors the storage-side Flat
-                // variant in FlatStorageTree.WarmUpStorageTrie.
-                if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.Flat)
-                {
-                    _ = _snapshotBundle.GetAccount(address);
-                    return true;
-                }
+                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+                // this is just for warming up
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-                if (_configuration.SparseTrieWarmer == SparseTrieWarmerVariant.SparseProof
-                    && _proofReader is not null && _prevStateRoot is not null)
-                {
-                    _ = Nethermind.Trie.Sparse.MultiProofReader.ReadAccountProofs(
-                        _proofReader, _prevStateRoot, [Keccak.Compute(address.Bytes)]);
-                }
-                else if (_warmupStateTree is not null)
-                {
-                    _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
-                }
                 return true;
             }
             finally
@@ -647,196 +596,132 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
-        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+
+        if (_fallbackJournal is not null)
+            ReplayPatriciaFallback(disableSparse: true);
+
+        WriteBatch writeBatch = new(
+            this,
+            estimatedAccountNum,
+            _logManager.GetClassLogger<WriteBatch>(),
+            useSparse: _sparseBlock is not null);
+
+        if (Interlocked.CompareExchange(ref _activeWriteBatch, writeBatch, null) is not null)
+            throw new InvalidOperationException("A world-state write batch is already active.");
+
+        return writeBatch;
+    }
+
+    private void CompleteWriteBatch(WriteBatch writeBatch)
+    {
+        if (!ReferenceEquals(Interlocked.CompareExchange(ref _activeWriteBatch, null, writeBatch), writeBatch))
+            throw new InvalidOperationException("The active world-state write batch changed unexpectedly.");
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        bool sparsePrepared = false;
 
-        bool usedSparseCommit = false;
-        if (_sparseIsAuthoritative && _sparseComputedRoot is not null && _sparseRootComputer is not null)
+        try
         {
-            try
+            if (_sparseBlock is not null && _sparseComputedRoot is not null && _fallbackJournal is not null)
             {
-                SparseStateTrie trie = _sparseRootComputer.Trie;
-                SparseTrieSnapshotCommitter.CommitAccountTrie(trie.AccountTrie.Subtrie, _snapshotBundle);
-
-                // P1: persist sparse storage trie nodes. Walk only contracts whose storage
-                // changed this block (DirtyStorageAccountHashes), not every retained storage
-                // trie â€” preserved-trie state across blocks grows the StorageTries dictionary
-                // without bound until pruning is added (M3+), so iterating it on every commit
-                // is O(retained contracts). Block N+1's proof reader needs the persisted nodes
-                // only for the contracts block N actually touched.
-                foreach (Hash256 dirtyAccount in _sparseRootComputer.DirtyStorageAccountHashes())
+                Hash256 sparseRoot = _sparseComputedRoot;
+                try
                 {
-                    if (trie.StorageTries.TryGetValue(dirtyAccount, out SparsePatriciaTree? dirtyTrie))
+                    _sparseBlock.PrepareCommitAsync().GetAwaiter().GetResult();
+                    _stateTree.SetRootHash(sparseRoot, resetObjects: true);
+                    _warmupStateTree.SetRootHash(sparseRoot, resetObjects: true);
+                    sparsePrepared = true;
+                }
+                catch (Exception exception)
+                {
+                    LogSparseFailure("Sparse trie snapshot preparation failed; replaying Patricia.", exception);
+                    ReplayPatriciaFallback(disableSparse: true);
+                    if (_stateTree.RootHash != sparseRoot)
                     {
-                        SparseTrieSnapshotCommitter.CommitStorageTrie(dirtyTrie.Subtrie, _snapshotBundle, dirtyAccount);
+                        throw new TrieException(
+                            $"Patricia fallback root {_stateTree.RootHash} differs from the validated sparse root {sparseRoot}.",
+                            exception);
                     }
                 }
-                usedSparseCommit = true;
             }
-            catch (Exception ex)
+
+            if (!sparsePrepared)
+                _stateTree.Commit();
+
+            _storages.Clear();
+            _hintWarmStorages?.Clear();
+
+            StateId newStateId = new(blockNumber, RootHash);
+            bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
+            (Snapshot? newSnapshot, TransientResource? cachedResource) =
+                _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+
+            if (shouldAddSnapshot)
             {
-                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn($"SparseTrieSnapshotCommitter failed: {ex.Message}.");
-                _sparseTracker.ResetConsecutive();
-
-                // CRITICAL: in SkipPatricia mode, the Patricia tree was never populated via BulkSet,
-                // so falling back to Patricia.Commit() would persist STALE state under the sparse
-                // root. Mirrors the UpdateRootHash skip-mode rethrow contract.
-                if (_configuration.SparseTrieSkipPatricia) throw;
-            }
-        }
-
-        if (!usedSparseCommit)
-        {
-            _stateTree.Commit();
-        }
-
-        _storages.Clear();
-        _hintWarmStorages?.Clear();
-
-        StateId newStateId = new(blockNumber, RootHash);
-        bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
-
-        if (shouldAddSnapshot)
-        {
-            if (_currentStateId != newStateId)
-            {
-                _commitTarget.AddSnapshot(newSnapshot!, cachedResource!);
-            }
-            else
-            {
-                newSnapshot?.Dispose();
-                cachedResource?.Dispose();
-            }
-        }
-
-        _currentStateId = newStateId;
-
-        // M3: anchor the sparse trie for cross-block reuse if the computed root matches.
-        if (_sparseRootComputer is not null)
-        {
-            Hash256 newRoot = newStateId.StateRoot.ToCommitment();
-
-            if (_preservedSparseTrie is not null && _sparseStateTrie is not null)
-            {
-                if (_sparseComputedRoot is not null && _sparseComputedRoot == newRoot)
+                if (_currentStateId != newStateId)
                 {
-                    // Prune policy â€” two independent triggers, both off by default (caps =
-                    // int.MaxValue), evaluated against the trie we are about to anchor:
-                    //
-                    //   1. LFU per-block prune: fires every commit when either hot-cap is finite.
-                    //      Aggressive; only sensible for workloads with strong hot-key locality.
-                    //      Measured 7.5x slower on realblocks (evicts the working set), so it
-                    //      stays opt-in.
-                    //
-                    //   2. Triggered memory-bound prune: fires only on commits where the retained
-                    //      storage-trie count exceeds SparseTrieMaxRetainedStorageTries. This is
-                    //      the production-safe bound â€” warm steady state pays nothing because the
-                    //      check is a single int compare and the prune body runs only under real
-                    //      memory pressure. When it does fire it uses the LFU caps to decide what
-                    //      to retain; if those are left at int.MaxValue we fall back to retaining
-                    //      the budget itself so the prune actually frees memory.
-                    bool lfuPruneEnabled = _configuration.SparseTrieMaxHotAccounts < int.MaxValue
-                                        || _configuration.SparseTrieMaxHotSlots < int.MaxValue;
-
-                    int retainedStorageTries = _sparseStateTrie.StorageTries.Count;
-                    bool overMemoryBudget = retainedStorageTries > _configuration.SparseTrieMaxRetainedStorageTries;
-
-                    bool shouldPrune = lfuPruneEnabled || overMemoryBudget;
-                    int evictedStorageTries = 0;
-                    if (shouldPrune)
-                    {
-                        // When only the memory-budget trigger fired, the operator may not have set
-                        // finite LFU caps. Derive retention from the budget so the prune is
-                        // meaningful: keep at most budget accounts/contracts and a generous
-                        // per-contract slot allowance, rather than pruning to int.MaxValue (a no-op).
-                        int hotAccounts = _configuration.SparseTrieMaxHotAccounts;
-                        int hotSlots = _configuration.SparseTrieMaxHotSlots;
-                        if (overMemoryBudget && !lfuPruneEnabled)
-                        {
-                            hotAccounts = _configuration.SparseTrieMaxRetainedStorageTries;
-                            hotSlots = _configuration.SparseTrieMaxRetainedStorageTries;
-                        }
-
-                        try
-                        {
-                            evictedStorageTries = _sparseStateTrie.Prune(hotAccounts, hotSlots);
-                        }
-                        catch (Exception ex)
-                        {
-                            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                            if (logger.IsWarn) logger.Warn($"Sparse trie prune failed: {ex.Message}. " +
-                                $"Falling back to Cleared store â€” next block starts cold.");
-                            _preservedSparseTrie.StoreCleared(_sparseStateTrie);
-                            _sparseStateTrie = null;
-                            _sparseRootComputer.Dispose();
-                            _sparseRootComputer = null;
-                            _sparseComputedRoot = null;
-                            return;
-                        }
-                    }
-
-                    // Observability for the cross-block cache. With pruning off the retained
-                    // storage-trie count grows unbounded (one arena per contract ever touched).
-                    // Logged at Debug every commit, plus an Info sample every 250 blocks so the
-                    // natural working-set high-water is visible in benchmark/operator logs (where
-                    // Debug is usually off) without per-block spam â€” this is the number that tells
-                    // you how to size SparseTrieMaxRetainedStorageTries.
-                    if (evictedStorageTries > 0) Metrics.SparseEvictedStorageTries += evictedStorageTries;
-
-                    ILogger sizeLogger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                    bool sample = blockNumber % 250 == 0;
-                    // Refresh the cross-block cache gauges once per sample (cheap arena-count walk;
-                    // avoid doing it every block). These let operators watch retained memory grow
-                    // and size SparseTrieMaxRetainedStorageTries against a budget.
-                    if (sample)
-                    {
-                        SparseStateTrie.CacheSize gauge = _sparseStateTrie.GetCacheSize();
-                        Metrics.SparseRetainedStorageTries = gauge.StorageTrieCount;
-                        Metrics.SparseAccountArenaNodes = gauge.AccountArenaNodes;
-                        Metrics.SparseStorageArenaNodes = gauge.StorageArenaNodes;
-                    }
-                    if (sizeLogger.IsDebug || (sample && sizeLogger.IsInfo))
-                    {
-                        SparseStateTrie.CacheSize cs = _sparseStateTrie.GetCacheSize();
-                        string msg =
-                            $"Sparse cross-block cache @ block {blockNumber}: storageTries={cs.StorageTrieCount}, " +
-                            $"accountArenaNodes={cs.AccountArenaNodes}, storageArenaNodes={cs.StorageArenaNodes}, " +
-                            $"lfuPrune={(lfuPruneEnabled ? "on" : "off")}, " +
-                            $"memTrigger={(overMemoryBudget ? "FIRED" : "idle")}, " +
-                            $"evictedStorageTries={evictedStorageTries}";
-                        if (sample && sizeLogger.IsInfo) sizeLogger.Info(msg);
-                        else sizeLogger.Debug(msg);
-                    }
-
-                    _preservedSparseTrie.StoreAnchored(_sparseStateTrie, newRoot);
+                    _commitTarget.AddSnapshot(newSnapshot!, cachedResource!);
                 }
                 else
-                    _preservedSparseTrie.StoreCleared(_sparseStateTrie);
-                _sparseStateTrie = null;
+                {
+                    newSnapshot?.Dispose();
+                    cachedResource?.Dispose();
+                }
             }
 
-            _sparseRootComputer.Dispose();
-            _sparseRootComputer = null;
-            _sparseComputedRoot = null;
-        }
+            _currentStateId = newStateId;
 
-        _pausePrewarmer = false;
+            if (sparsePrepared)
+            {
+                SparseTrieBlockHandle block = _sparseBlock!;
+                try
+                {
+                    block.AcceptAsync().GetAwaiter().GetResult();
+                    _sparseBlock = null;
+                }
+                catch (Exception exception)
+                {
+                    DisableSparse(exception, "Failed to retain the accepted sparse trie.");
+                }
+            }
+
+            _fallbackJournal?.Release();
+            _fallbackJournal = null;
+            _sparseComputedRoot = null;
+            _sparseRootReturned = false;
+            _provisionalSparseAccounts.Clear();
+            StartSparseBlock(newStateId.StateRoot.ToCommitment());
+        }
+        catch
+        {
+            AbortSparseBlock();
+            throw;
+        }
+        finally
+        {
+            _pausePrewarmer = false;
+        }
     }
 
-    private class WriteBatch(
+    // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
+    // So I just leave it here.
+    private sealed class WriteBatch(
         FlatWorldStateScope scope,
         int estimatedAccountCount,
-        ILogger logger
+        ILogger logger,
+        bool useSparse
     ) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly ConcurrentQueue<FlatStorageTree.SparseStorageBatch> _sparseStorageBatches = new();
+        private bool _disposed;
+        private bool _released;
+
+        public bool UsesSparse { get; } = useSparse;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -847,6 +732,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             if (account is null)
             {
+                // This may not get called by the storage write batch as the worldstate does not try to update storage
+                // at all if the end account is null. This is not a problem for trie, but is a problem for flat.
                 scope.CreateStorageTreeImpl(key).SelfDestruct();
             }
         }
@@ -858,80 +745,163 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     estimatedEntries: estimatedEntries,
                     onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
 
+        public void RegisterSparseStorageBatch(FlatStorageTree.SparseStorageBatch batch) =>
+            _sparseStorageBatches.Enqueue(batch);
+
         private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
         {
+            if (_disposed)
+                return;
+            _disposed = true;
+
             try
             {
-                while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
+                if (UsesSparse)
+                    FinishSparse();
+                else
                 {
-                    (AddressAsKey key, Hash256 storageRoot) = entry;
-                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = scope.Get(key);
-                    if (account is null)
-                    {
-                        if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(key.Value, 0);
-                        wb.Clear();
-                        continue;
-                    }
-                    account = account.WithChangedStorageRoot(storageRoot);
-                    _dirtyAccounts[key] = account;
-
-                    scope._snapshotBundle.SetAccount(key, account);
-
-                    Address address = key.Value;
-                    OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
-                    if (logger.IsTrace) Trace(address, storageRoot, account);
-                }
-
-                // Feed Patricia BulkSet UNLESS authoritative + SkipPatricia configured (M3 mode).
-                // In M3 mode, sparse is the only computation; Patricia BulkSet is skipped for perf.
-                bool skipPatriciaBulkSet = scope._configuration.SparseTrieSkipPatricia
-                    && scope._sparseIsAuthoritative
-                    && !scope._configuration.SparseTrieVerificationMode;
-                if (!skipPatriciaBulkSet)
-                {
-                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                    {
-                        stateSetter.Set(kv.Key, kv.Value);
-                    }
-                }
-
-                // Feed account changes to SparseRootComputer. ValueKeccak.Compute returns the
-                // value-type hash directly so the per-account hash never allocates a Hash256
-                // (class). At 10k+ accounts/block this is one of the dominant alloc sources.
-                if (scope._sparseRootComputer is not null)
-                {
-                    Dictionary<ValueHash256, LeafUpdate> sparseAccountUpdates = new(_dirtyAccounts.Count);
-                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                    {
-                        ValueHash256 hashedAddr = ValueKeccak.Compute(kv.Key.Value.Bytes);
-                        if (kv.Value is null)
-                        {
-                            sparseAccountUpdates[hashedAddr] = LeafUpdate.Deleted();
-                        }
-                        else
-                        {
-                            byte[] rlp = Nethermind.Serialization.Rlp.AccountDecoder.Instance.Encode(kv.Value).Bytes;
-                            sparseAccountUpdates[hashedAddr] = LeafUpdate.Changed(rlp);
-                        }
-                    }
-                    scope._sparseRootComputer.SetAccountChanges(sparseAccountUpdates);
+                    ApplyDirtyStorageRoots(sparseMode: false);
+                    ApplyPatriciaAccounts();
                 }
             }
             finally
             {
-                _dirtyAccounts.Clear();
-
+                scope.CompleteWriteBatch(this);
                 Interlocked.Increment(ref scope._hintSequenceId);
+                if (!ReferenceEquals(scope._fallbackJournal, this))
+                    Release();
+            }
+        }
+
+        private void FinishSparse()
+        {
+            SparseTrieBlockHandle block = scope._sparseBlock
+                ?? throw new InvalidOperationException("Sparse write batch lost its block session.");
+
+            List<FlatStorageTree.SparseStorageBatch> storageBatches = [.. _sparseStorageBatches];
+            foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+            {
+                AddressAsKey address = storageBatch.FinalState.Address;
+                if (!_dirtyAccounts.ContainsKey(address))
+                    _dirtyAccounts[address] = scope.Get(address.Value);
+            }
+            foreach (AddressAsKey address in scope._provisionalSparseAccounts)
+            {
+                if (!_dirtyAccounts.ContainsKey(address))
+                    _dirtyAccounts[address] = scope.Get(address.Value);
             }
 
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(Address address, Hash256 storageRoot, Account? account) =>
-                logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+            List<SparseTrieFinalStorageBatch> finalStorage = new(storageBatches.Count);
+            foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                finalStorage.Add(storageBatch.FinalState);
+
+            List<SparseTrieFinalAccount> finalAccounts = new(_dirtyAccounts.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in _dirtyAccounts)
+                finalAccounts.Add(new SparseTrieFinalAccount(entry.Key.Value, entry.Value));
+
+            try
+            {
+                long waitStartedAt = Stopwatch.GetTimestamp();
+                SparseTrieBlockResult result;
+                try
+                {
+                    result = block
+                        .FinishAsync(new SparseTrieFinalState(finalStorage, finalAccounts))
+                        .GetAwaiter()
+                        .GetResult();
+                }
+                finally
+                {
+                    Metrics.SparseForegroundWaitTime.Observe(Stopwatch.GetTimestamp() - waitStartedAt);
+                }
+
+                foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                {
+                    AddressAsKey address = storageBatch.FinalState.Address;
+                    if (!result.StorageRoots.TryGetValue(address, out Hash256? storageRoot) || storageRoot is null)
+                        throw new TrieException($"Sparse result omitted storage root for {address}.");
+
+                    storageBatch.ApplySparseRoot(storageRoot);
+                }
+
+                ApplyDirtyStorageRoots(sparseMode: true);
+                scope._sparseComputedRoot = result.StateRoot;
+                scope._sparseRootReturned = false;
+                scope._fallbackJournal = this;
+            }
+            catch (Exception exception)
+            {
+                scope.DisableSparse(exception, "Sparse trie finalization failed; replaying Patricia.");
+                Metrics.SparseFallbacks++;
+                ReplayPatricia();
+                scope._sparseComputedRoot = null;
+                scope._sparseRootReturned = false;
+            }
         }
+
+        public void ReplayPatricia()
+        {
+            foreach (FlatStorageTree.SparseStorageBatch storageBatch in _sparseStorageBatches)
+                storageBatch.ReplayFallback();
+
+            ApplyDirtyStorageRoots(sparseMode: false);
+            ApplyPatriciaAccounts();
+        }
+
+        private void ApplyPatriciaAccounts()
+        {
+            using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+            foreach (KeyValuePair<AddressAsKey, Account?> entry in _dirtyAccounts)
+                stateSetter.Set(entry.Key, entry.Value);
+        }
+
+        private void ApplyDirtyStorageRoots(bool sparseMode)
+        {
+            while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
+            {
+                (AddressAsKey key, Hash256 storageRoot) = entry;
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
+                    account = scope.Get(key);
+
+                if (account is null)
+                {
+                    if (!sparseMode && storageRoot != Keccak.EmptyTreeHash)
+                    {
+                        using IWorldStateScopeProvider.IStorageWriteBatch writeBatch =
+                            CreateStorageWriteBatch(key.Value, 0);
+                        writeBatch.Clear();
+                    }
+                    continue;
+                }
+
+                account = account.WithChangedStorageRoot(storageRoot);
+                _dirtyAccounts[key] = account;
+                scope._snapshotBundle.SetAccount(key, account);
+
+                Address address = key.Value;
+                OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
+                if (logger.IsTrace)
+                    Trace(address, storageRoot, account);
+            }
+        }
+
+        public void Release()
+        {
+            if (_released)
+                return;
+            _released = true;
+            _dirtyAccounts.Clear();
+            while (_dirtyStorageTree.TryDequeue(out _)) { }
+            while (_sparseStorageBatches.TryDequeue(out _)) { }
+            OnAccountUpdated = null;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void Trace(Address address, Hash256 storageRoot, Account? account) =>
+            logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
     }
+
 }

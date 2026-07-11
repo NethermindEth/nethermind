@@ -35,32 +35,5 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public bool UseSparseRootComputation { get; set; } = false;
-    public bool SparseTrieVerificationMode { get; set; } = false;
-    public bool SparseTrieSkipPatricia { get; set; } = false;
-    public bool SparseTrieForceAuthoritative { get; set; } = false;
-    public bool SparseTrieParallelRoot { get; set; } = false;
-    public bool SparseTrieAuthoritativeStorage { get; set; } = true;
-    public bool SparseTrieShadowStorageCompare { get; set; } = false;
-    // Prune defaults match the IFlatDbConfig docs (now both int.MaxValue = disabled).
-    // EXPB 26637010048 showed that on realblocks (1000 consecutive recent blocks) the LFU
-    // hit rate is too low for Prune to pay for itself â€” p95 regresses ~50 ms when enabled.
-    // F1's "never blind the root" fix makes Prune SAFE; this default just keeps it OFF
-    // until either (a) M5's sparse-aware prefetcher closes the proof-read overhead, or
-    // (b) a workload with stronger hot-account locality is targeted. Set lower values
-    // explicitly to opt in.
-    public int SparseTrieMaxHotAccounts { get; set; } = int.MaxValue;
-    public int SparseTrieMaxHotSlots { get; set; } = int.MaxValue;
-    // Triggered (not per-block) memory bound for the preserved trie: prune only fires on a
-    // commit where retained storage-trie count exceeds this. int.MaxValue = no bound, matching
-    // historical behaviour. See IFlatDbConfig for why per-block evict-to-cap was abandoned
-    // (7.5x regression on realblocks â€” it discards the working set).
-    public int SparseTrieMaxRetainedStorageTries { get; set; } = int.MaxValue;
-    // Default Legacy. NOTE: there is intentionally NO DI override forcing this to None under
-    // sparse mode â€” an earlier attempt to do that (treating the Legacy warmer as redundant once
-    // sparse is authoritative) regressed realblocks badly (MIN 0.5ms -> 35ms) because the Legacy
-    // Patricia warmer also primes the OS/RocksDB page cache that the sparse proof reads hit. It
-    // was reverted; FlatWorldStateModule only substitutes NoopTrieWarmer when the warmer is
-    // explicitly None or TrieWarmerWorkerCount == 0. The warmer stays Legacy in sparse mode until
-    // a sparse-native prewarmer (feeds proofs back into the trie) replaces it.
-    public SparseTrieWarmerVariant SparseTrieWarmer { get; set; } = SparseTrieWarmerVariant.Legacy;
+    public long SparseTrieMaxRetainedNodes { get; set; } = 4_000_000;
 }

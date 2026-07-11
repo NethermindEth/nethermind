@@ -776,5 +776,32 @@ public class SparsePatriciaTreeTests
         Assert.That(update.Kind, Is.EqualTo(LeafUpdateKind.Touched));
     }
 
+    [Test]
+    public void ClearedTrie_CanRevealNonEmptyRoot()
+    {
+        MemDb db = new();
+        RawTrieStore store = new(db);
+        PatriciaTree tree = new(store.GetTrieStore(null), LimboLogs.Instance);
+        tree.Set(TestItem.KeccakA.Bytes, MakeValue(1));
+        tree.Set(TestItem.KeccakB.Bytes, MakeValue(2));
+        tree.UpdateRootHash();
+        tree.Commit();
+
+        byte[] rootRlp = store.LoadRlp(
+            address: null,
+            TreePath.Empty,
+            tree.RootHash,
+            Nethermind.Core.ReadFlags.None)!;
+        ProofNode rootProof = MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty);
+
+        using SparsePatriciaTree sparse = new();
+        sparse.Clear();
+        Assert.That(sparse.Subtrie.IsEmpty, Is.True);
+
+        sparse.RevealNodes([rootProof]);
+
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(tree.RootHash));
+    }
+
     #endregion
 }

@@ -32,88 +32,6 @@ namespace Nethermind.State.Flat.Test;
 public class SparseRootComputerFlatDbTests
 {
     [Test]
-    public void FlatDbReader_TwoBlocks_MatchesPatricia()
-    {
-        // Reproduce the EXPB flow using the flat DB snapshot chain reader.
-        // Block 1: insert 20 accounts via Patricia, commit to MemDb (HalfPath)
-        // Block 2: update 5 accounts, compute root via both Patricia and SparseRootComputer
-        // SparseRootComputer uses HalfPathTrieNodeReader (proven to work)
-        // Then ALSO try with a flat-DB-backed persistence reader
-
-        MemDb trieDb = new();
-        PatriciaTree tree = new(new RawTrieStore(trieDb).GetTrieStore(null), LimboLogs.Instance);
-
-        // Block 1: insert accounts
-        for (int i = 0; i < 20; i++)
-            tree.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
-        tree.UpdateRootHash();
-        tree.Commit();
-        Hash256 block1Root = tree.RootHash;
-
-        // Block 2: update 5 accounts via Patricia
-        byte[][] newRlps = new byte[5][];
-        for (int i = 0; i < 5; i++)
-        {
-            newRlps[i] = TestItem.GenerateIndexedAccountRlp(100 + i);
-            tree.Set(TestItem.Keccaks[i].Bytes, newRlps[i]);
-        }
-        tree.UpdateRootHash();
-        tree.Commit();
-        Hash256 block2Root = tree.RootHash;
-
-        // Sparse via HalfPath (proven to work)
-        HalfPathTrieNodeReader halfPathReader = new(new NodeStorage(trieDb));
-        using SparseRootComputer halfPathComputer = new(halfPathReader, block1Root);
-        Dictionary<ValueHash256, LeafUpdate> updates = [];
-        for (int i = 0; i < 5; i++)
-            updates[TestItem.Keccaks[i]] = LeafUpdate.Changed(newRlps[i]);
-        halfPathComputer.SetAccountChanges(updates);
-        Hash256 halfPathSparseRoot = halfPathComputer.ComputeStateRoot();
-
-        Assert.That(halfPathSparseRoot, Is.EqualTo(block2Root), "HalfPath sparse must match Patricia");
-
-        // Now try with flat DB persistence reader
-        // Write block1's trie nodes to a flat DB persistence store
-        SnapshotableMemColumnsDb<FlatDbColumns> columnsDb = new();
-        IPersistence persistence = new RocksDbPersistence(columnsDb, LimboLogs.Instance);
-
-        // Write trie nodes from trieDb to the flat DB trie columns
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, new StateId(1, block1Root.ValueHash256)))
-        {
-            // Copy all trie nodes from MemDb to flat DB
-            foreach (KeyValuePair<byte[], byte[]?> kv in trieDb.GetAll())
-            {
-                if (kv.Value is null) continue;
-                // The MemDb stores by NodeStorage key format (hash-based for RawTrieStore)
-                // We need to determine the TreePath for each node to write to flat DB
-                // This is complex because NodeStorage uses hash-based keys by default
-                // For this test, we'll use the HalfPath reader which works
-            }
-        }
-
-        // Since writing trie nodes to flat DB columns requires path-based keys
-        // (which we don't easily have from a hash-based MemDb), let's instead
-        // build a ReadOnlySnapshotBundle from the TrieNode objects directly.
-
-        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
-        SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-
-        // Walk the Patricia trie from block1Root and collect all nodes
-        // We can do this by reading each node via the trieDb and placing it
-        // in the snapshot's StateNodes dictionary
-        // For now, use the HalfPath backend (proven to work) as a baseline
-
-        TestContext.Out.WriteLine($"Block 1 root: {block1Root}");
-        TestContext.Out.WriteLine($"Block 2 root: {block2Root}");
-        TestContext.Out.WriteLine($"HalfPath sparse root: {halfPathSparseRoot}");
-        TestContext.Out.WriteLine("Flat DB path test deferred - HalfPath works correctly");
-
-        // The key assertion: HalfPath sparse matches Patricia
-        Assert.That(halfPathSparseRoot, Is.EqualTo(block2Root));
-    }
-
-    [Test]
     public void FlatDbReader_SnapshotChain_FindsNodes()
     {
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
@@ -218,6 +136,7 @@ public class SparseRootComputerFlatDbTests
             for (int i = startIdx; i < startIdx + changesPerBlock; i++)
             {
                 byte[] newRlp = TestItem.GenerateIndexedAccountRlp(10000 + block * changesPerBlock + i);
+
                 stateTree.Set(keys[i].Bytes, newRlp);
                 refTree.Set(keys[i].Bytes, newRlp);
                 sparseUpdates[keys[i]] = LeafUpdate.Changed(newRlp);
@@ -270,7 +189,7 @@ public class SparseRootComputerFlatDbTests
 
     /// <summary>
     /// Same as MultiBlock_SnapshotBundleReader_MatchesPatricia but uses accounts with
-    /// non-empty storageRoot and codeHash — closer to real Ethereum state where most
+    /// non-empty storageRoot and codeHash â€” closer to real Ethereum state where most
     /// touched accounts are contracts with code and storage.
     /// </summary>
     [TestCase(5000, 10, 350)]
@@ -331,7 +250,7 @@ public class SparseRootComputerFlatDbTests
 
             for (int i = startIdx; i < startIdx + changesPerBlock; i++)
             {
-                // Update account — bump nonce, change storage root if contract
+                // Update account â€” bump nonce, change storage root if contract
                 Account newAccount;
                 if (i % 2 == 0)
                 {

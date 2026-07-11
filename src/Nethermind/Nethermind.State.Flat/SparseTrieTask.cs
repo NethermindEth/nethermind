@@ -3,237 +3,876 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
 
 namespace Nethermind.State.Flat;
 
+internal readonly record struct SparseTrieStorageDelta(
+    Address Address,
+    Hash256 ParentStorageRoot,
+    UInt256 Slot,
+    byte[] Value);
+
+internal readonly record struct SparseTrieAccountDelta(Address Address, Account? Account);
+
 /// <summary>
-/// M4 (EXPERIMENTAL, shadow-only). Background task that consumes hashed state-change deltas
-/// streamed from <c>WorldState.Commit(commitRoots:false)</c> during EVM execution, applies them
-/// to a sparse trie, and computes the state root concurrently with execution rather than
-/// synchronously at <c>RecalculateStateRoot</c>.
+/// One execution-phase message. Ownership of both lists and their elements transfers to the
+/// worker when the message is enqueued.
 /// </summary>
-/// <remarks>
-/// This runs in SHADOW mode: the root it produces is compared against the authoritative
-/// synchronous root but never trusted, so a bug here cannot affect consensus. Its only jobs are
-/// (1) prove the streaming pipeline applies deltas in the right order and reaches the same root,
-/// and (2) measure how much of the (already small, ~1-3ms warm) root computation can be hidden
-/// behind execution.
-///
-/// Design follows the plan's M4.3 event loop but deliberately starts minimal: a single channel
-/// of pre-hashed account/storage deltas, drained on a dedicated task, feeding the existing
-/// <see cref="SparseRootComputer"/> M3 logic. Proof workers (M4.4) and a separate keccak thread
-/// (M4.2) are layered on later once this shadow path is proven equal to sequential.
-///
-/// Thread-safety: the task owns its <see cref="SparseStateTrie"/> exclusively while running. The
-/// producer (execution thread) only writes to the channel; it never touches the trie. Completion
-/// is signalled by <see cref="Finish"/>, after which <see cref="GetRootAsync"/> returns the
-/// computed root (or faults, which the caller treats as "fall back to synchronous").
-///
-/// WIRING STATUS (read before extending): this class is built, root-equivalence-tested against
-/// the synchronous M3 path and Patricia, and gated behind SparseTrieParallelRoot â€” but it is NOT
-/// yet constructed in FlatWorldStateScope, because the only place that would yield real overlap is
-/// a per-tx hook inside WorldState.Commit(commitRoots:false), and that requires a non-destructive
-/// "changed-since-last-commit-phase" delta cursor that PartialStorageProviderBase /
-/// PersistentStorageProvider do not currently expose. Adding that cursor touches core state code
-/// shared by ALL world-state modes (hash, halfpath, flat), so it is a wide-blast-radius change.
-/// Profiling (this branch, realblocks) showed synchronous root compute is ~1-3 ms warm and root is
-/// ~4% of block time, so the achievable overlap is &lt;=~3 ms best case â€” below run-to-run noise.
-/// The decision was therefore to land the proven streaming core (this file) and DEFER the invasive
-/// per-tx hook until either the cursor is needed for another reason or the root cost grows. Wiring
-/// it at UpdateRootHash instead (after execution finishes) would add threading overhead with zero
-/// overlap, so that shortcut was explicitly rejected.
-/// </remarks>
-public sealed class SparseTrieTask : IAsyncDisposable
+internal sealed record SparseTriePhaseDelta(
+    IReadOnlyList<SparseTrieAccountDelta> Accounts,
+    IReadOnlyList<SparseTrieStorageDelta> StorageDeltas);
+
+internal readonly record struct SparseTrieFinalSlot(UInt256 Slot, byte[] Value);
+
+internal sealed record SparseTrieFinalStorageBatch(
+    Address Address,
+    Hash256 ParentStorageRoot,
+    bool Clear,
+    IReadOnlyList<SparseTrieFinalSlot> Slots);
+
+internal readonly record struct SparseTrieFinalAccount(Address Address, Account? Account);
+
+/// <summary>
+/// Authoritative final block state. The worker reads but never mutates these collections or their
+/// values, allowing the caller to retain the same data for a Patricia fallback.
+/// </summary>
+internal sealed record SparseTrieFinalState(
+    IReadOnlyList<SparseTrieFinalStorageBatch> StorageBatches,
+    IReadOnlyList<SparseTrieFinalAccount> Accounts);
+
+internal sealed record SparseTrieBlockResult(
+    Hash256 StateRoot,
+    IReadOnlyDictionary<AddressAsKey, Hash256> StorageRoots);
+
+/// <summary>
+/// Persistent single-owner sparse trie worker. Sequential block sessions reuse the trie only when
+/// the next parent root exactly matches the accepted anchor.
+/// </summary>
+public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 {
-    /// <summary>
-    /// A single pre-hashed delta batch for one commit phase.
-    /// </summary>
-    /// <param name="AccountUpdates">Account leaf updates (last-writer-wins per address-hash).</param>
-    /// <param name="StorageUpdates">Per-slot leaf updates.</param>
-    /// <param name="WipedStorageAccounts">
-    /// Address-hashes whose storage was cleared (self-destruct / account deletion) in this phase.
-    /// The synchronous path calls <c>WipeStorage</c> on clear; the streamed path MUST do the same
-    /// before applying any same-phase slot writes, otherwise writes land on top of stale retained
-    /// storage from a previous block and produce a wrong storage root. Order within a delta is:
-    /// wipe first, then slot writes (a self-destruct-then-redeploy in one block).
-    /// </param>
-    public readonly record struct HashedDelta(
-        IReadOnlyList<(ValueHash256 AccountPath, LeafUpdate Update)> AccountUpdates,
-        IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath, LeafUpdate Update)> StorageUpdates,
-        IReadOnlyList<Hash256>? WipedStorageAccounts = null,
-        IReadOnlyList<ValueHash256>? PrefetchAccounts = null,
-        IReadOnlyList<(Hash256 AccountPath, Hash256 PreviousStorageRoot, ValueHash256 SlotPath)>? PrefetchSlots = null);
-
-    private readonly Channel<HashedDelta> _channel;
-    private readonly SparseRootComputer _computer;
-    private readonly ILogger _logger;
-    private readonly CancellationToken _ct;
-    private readonly Task _drainTask;
-
-    // Set if the drain loop hit cancellation or any fault. Once poisoned, GetRootAsync refuses to
-    // return a root computed from a partial/inconsistent accumulation â€” the caller must fall back
-    // to the synchronous path. This matters the moment this task stops being shadow-only.
-    private volatile bool _poisoned;
-
-    // Accumulated per-block changes, applied to the computer when Finish() is signalled.
-    // Account updates are last-writer-wins per key (a later commit phase supersedes an earlier
-    // one for the same account); storage is grouped per contract. This mirrors how the
-    // synchronous path builds its update dictionaries before ComputeStateRoot.
-    private readonly Dictionary<ValueHash256, LeafUpdate> _accounts = [];
-    private readonly Dictionary<Hash256, (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots)> _storage = [];
-    // Contracts wiped this block, in case a wipe arrives before this contract's first slot write
-    // (or with no later writes at all). Applied in GetRootAsync before the slot dictionaries.
-    private readonly HashSet<Hash256> _wiped = [];
-
-    public SparseTrieTask(SparseRootComputer computer, ILogger logger, CancellationToken ct)
-    {
-        _computer = computer;
-        _logger = logger;
-        _ct = ct;
-        _channel = Channel.CreateUnbounded<HashedDelta>(new UnboundedChannelOptions
+    private readonly Channel<Command> _commands = Channel.CreateUnbounded<Command>(
+        new UnboundedChannelOptions
         {
             SingleReader = true,
-            SingleWriter = false, // multiple commit phases may enqueue; execution is still serial per block
+            SingleWriter = false,
+            AllowSynchronousContinuations = false,
         });
-        _drainTask = Task.Run(DrainLoopAsync);
+    private readonly object _gate = new();
+    private readonly ILogger _logger;
+    private readonly Task _workerTask;
+    private readonly CancellationTokenRegistration _cancellationRegistration;
+    private readonly long _maxRetainedNodes;
+    private readonly Dictionary<Hash256, int> _storageArenaHighWater = [];
+
+    private SparseStateTrie _trie = new();
+    private long _storageArenaNodes;
+    private Hash256? _anchorStateRoot;
+    private WorkerSession? _activeSession;
+    private bool _stopRequested;
+    private bool _disposed;
+    private bool _resourcesDisposed;
+
+    /// <summary>
+    /// Creates a worker whose background owner stops when <paramref name="cancellationToken"/>
+    /// is cancelled or the worker is disposed.
+    /// </summary>
+    public SparseTrieWorker(
+        ILogger logger,
+        CancellationToken cancellationToken,
+        long maxRetainedNodes = 4_000_000)
+    {
+        _logger = logger;
+        _maxRetainedNodes = Math.Max(0, maxRetainedNodes);
+        _workerTask = Task.Factory.StartNew(
+            WorkerLoop,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        _cancellationRegistration = cancellationToken.Register(
+            static state => ((SparseTrieWorker)state!).RequestStop(),
+            this);
     }
 
-    /// <summary>Producer side: enqueue a pre-hashed delta batch. Non-blocking (unbounded channel).</summary>
-    public void Enqueue(in HashedDelta delta) => _channel.Writer.TryWrite(delta);
+    internal SparseTrieBlockHandle BeginBlock(Hash256 parentStateRoot, SnapshotBundle bundle) =>
+        BeginBlock(parentStateRoot, new ParentStateTrieNodeReader(bundle), bundle);
 
-    /// <summary>Signals that no further deltas will arrive for this block.</summary>
-    public void Finish() => _channel.Writer.TryComplete();
+    internal SparseTrieBlockHandle BeginBlock(Hash256 parentStateRoot, ITrieNodeReader reader) =>
+        BeginBlock(parentStateRoot, reader, bundle: null);
 
-    private async Task DrainLoopAsync()
+    private SparseTrieBlockHandle BeginBlock(
+        Hash256 parentStateRoot,
+        ITrieNodeReader reader,
+        SnapshotBundle? bundle)
+    {
+        WorkerSession session;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed || _stopRequested, this);
+            if (_activeSession is not null)
+                throw new InvalidOperationException("A sparse trie block session is already active.");
+
+            session = new WorkerSession(parentStateRoot, reader, bundle);
+            _activeSession = session;
+        }
+
+        if (!_commands.Writer.TryWrite(new BeginCommand(session)))
+        {
+            session.Poison(new ObjectDisposedException(nameof(SparseTrieWorker)));
+            ReleaseSession(session);
+            throw new ObjectDisposedException(nameof(SparseTrieWorker));
+        }
+
+        return new SparseTrieBlockHandle(this, session);
+    }
+
+    internal void EnqueueDelta(WorkerSession session, SparseTriePhaseDelta delta)
+    {
+        if (!_commands.Writer.TryWrite(new DeltaCommand(session, delta)))
+        {
+            ObjectDisposedException exception = new(nameof(SparseTrieWorker));
+            session.Poison(exception);
+            throw exception;
+        }
+    }
+
+    internal Task<SparseTrieBlockResult> FinishAsync(
+        WorkerSession session,
+        SparseTrieFinalState finalState)
+    {
+        TaskCompletionSource<SparseTrieBlockResult> completion = NewCompletion<SparseTrieBlockResult>();
+        session.FinishCompletion = completion;
+        if (!_commands.Writer.TryWrite(new FinishCommand(session, finalState, completion)))
+        {
+            ObjectDisposedException exception = new(nameof(SparseTrieWorker));
+            session.Poison(exception);
+            completion.TrySetException(exception);
+        }
+        return completion.Task;
+    }
+
+    internal Task PrepareCommitAsync(WorkerSession session) =>
+        QueueCompletion(session, static (worker, active) => worker.PrepareCommit(active));
+
+    internal Task AcceptAsync(WorkerSession session) =>
+        QueueCompletion(session, static (worker, active) => worker.Accept(active));
+
+    internal Task RejectAsync(WorkerSession session) =>
+        QueueCompletion(session, static (worker, active) => worker.Reject(active));
+
+    internal Task AbortAsync(WorkerSession session) =>
+        QueueCompletion(session, static (worker, active) => worker.Abort(active));
+
+    private Task QueueCompletion(
+        WorkerSession session,
+        Action<SparseTrieWorker, WorkerSession> action)
+    {
+        TaskCompletionSource completion = NewCompletion();
+        if (!_commands.Writer.TryWrite(new CompletionCommand(session, action, completion)))
+            completion.TrySetException(new ObjectDisposedException(nameof(SparseTrieWorker)));
+        return completion.Task;
+    }
+
+    private void WorkerLoop()
     {
         try
         {
-            // Accumulate every streamed delta. We deliberately do NOT apply to the trie
-            // incrementally yet: the M3 computer's reveal-update-retry loop expects the full
-            // change set so it can batch proof reads. The win here is that hashing + channel
-            // transfer overlap execution; the actual root compute still happens once at the end.
-            // Incremental apply (true overlap of reveal/update with execution) is the next layer.
-            await foreach (HashedDelta delta in _channel.Reader.ReadAllAsync(_ct))
+            while (_commands.Reader.WaitToReadAsync().AsTask().GetAwaiter().GetResult())
             {
-                foreach ((ValueHash256 acc, LeafUpdate upd) in delta.AccountUpdates)
-                    _accounts[acc] = upd;
-
-                // Wipes first: a contract cleared this phase must drop any slot writes accumulated
-                // for it from EARLIER phases (self-destruct mid-block), and be marked so the
-                // pre-existing retained storage trie is wiped before same/later-phase writes apply.
-                if (delta.WipedStorageAccounts is { Count: > 0 } wipes)
+                while (_commands.Reader.TryRead(out Command? command))
                 {
-                    foreach (Hash256 wiped in wipes)
+                    if (command is StopCommand stop)
                     {
-                        _wiped.Add(wiped);
-                        if (_storage.TryGetValue(wiped, out (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) e))
-                            e.Slots.Clear();
+                        StopActiveSession();
+                        stop.Completion?.TrySetResult();
+                        return;
                     }
-                }
 
-                foreach ((Hash256 accPath, Hash256 prevRoot, ValueHash256 slot, LeafUpdate upd) in delta.StorageUpdates)
-                {
-                    ref (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) entry =
-                        ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_storage, accPath, out bool exists);
-                    if (!exists)
-                    {
-                        entry.PrevRoot = prevRoot;
-                        entry.Slots = [];
-                    }
-                    entry.Slots[slot] = upd;
-                }
-
-                // Prefetch targets (Reth on_prewarm_targets): insert a Touched marker ONLY where no
-                // real update exists yet, so the key's proof is fetched+revealed in the normal flow
-                // without overriding an actual write. A Touched leaf is a no-op on the root (neither
-                // changes nor deletes a value), so prefetch can never alter the result - it only
-                // warms the trie. TryAdd ensures a real write already present is never clobbered; a
-                // real update arriving in a LATER delta overwrites the Touched via the branches
-                // above (last-writer-wins).
-                if (delta.PrefetchAccounts is { Count: > 0 } pAccts)
-                {
-                    foreach (ValueHash256 acc in pAccts)
-                        _accounts.TryAdd(acc, LeafUpdate.Touched());
-                }
-                if (delta.PrefetchSlots is { Count: > 0 } pSlots)
-                {
-                    foreach ((Hash256 accPath, Hash256 prevRoot, ValueHash256 slot) in pSlots)
-                    {
-                        ref (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots) entry =
-                            ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_storage, accPath, out bool exists);
-                        if (!exists)
-                        {
-                            entry.PrevRoot = prevRoot;
-                            entry.Slots = [];
-                        }
-                        entry.Slots.TryAdd(slot, LeafUpdate.Touched());
-                        // Touch the account leaf too so its path is revealed for the storage-root
-                        // update, mirroring Reth's "touch corresponding account leaf".
-                        _accounts.TryAdd(accPath.ValueHash256, LeafUpdate.Touched());
-                    }
+                    ProcessCommand(command);
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception exception)
         {
-            // Cancellation => caller is falling back to the synchronous path. Poison so a
-            // subsequent GetRootAsync cannot hand back a root from a partially-drained stream.
-            _poisoned = true;
+            _activeSession?.Poison(exception);
+            if (_logger.IsError)
+                _logger.Error("Sparse trie worker terminated unexpectedly.", exception);
         }
-        catch (Exception ex)
+        finally
         {
-            // Any drain fault leaves the accumulation inconsistent; poison and let the caller fall
-            // back. Logged because once this is more than shadow-only, a silent fault would be a
-            // consensus hazard.
-            _poisoned = true;
-            if (_logger.IsWarn) _logger.Warn($"SparseTrieTask drain faulted, root poisoned: {ex.GetType().Name}: {ex.Message}");
+            StopActiveSession();
+            _commands.Writer.TryComplete();
         }
     }
 
-    /// <summary>
-    /// Awaits all streamed deltas, applies them through the M3 <see cref="SparseRootComputer"/>,
-    /// and returns the computed state root.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if the drain loop was cancelled or faulted (the accumulation is then incomplete and
-    /// any root computed from it would be wrong). Callers MUST treat this as "fall back to the
-    /// synchronous root" â€” never trust a poisoned result.
-    /// </exception>
-    public async Task<Hash256> GetRootAsync()
+    private void ProcessCommand(Command command)
     {
-        await _drainTask; // ensures all deltas accumulated (or poisoned)
-
-        if (_poisoned)
-            throw new InvalidOperationException(
-                "SparseTrieTask result is poisoned (drain cancelled or faulted); caller must use the synchronous root.");
-
-        // Apply self-destruct/clear wipes before any slot writes, mirroring the synchronous
-        // FlatStorageTree path. Without this, slot writes land on stale cross-block retained
-        // storage and produce a wrong storage root.
-        foreach (Hash256 wiped in _wiped)
-            _computer.Trie.WipeStorage(wiped);
-
-        foreach (KeyValuePair<Hash256, (Hash256 PrevRoot, Dictionary<ValueHash256, LeafUpdate> Slots)> kvp in _storage)
+        try
         {
-            _computer.AddStorageChanges(kvp.Key, kvp.Value.PrevRoot, kvp.Value.Slots);
-            _computer.ComputeStorageRoot(kvp.Key);
+            switch (command)
+            {
+                case BeginCommand begin:
+                    Begin(begin.Session!);
+                    break;
+                case DeltaCommand delta:
+                    EnsureActive(delta.Session!);
+                    if (delta.Session!.Error is null)
+                        ProcessDelta(delta.Session!, delta.Delta);
+                    break;
+                case FinishCommand finish:
+                    Finish(finish);
+                    break;
+                case CompletionCommand completion:
+                    EnsureActive(completion.Session!);
+                    completion.Action(this, completion.Session!);
+                    completion.Completion.TrySetResult();
+                    break;
+            }
         }
-        _computer.SetAccountChanges(_accounts);
-        return _computer.ComputeStateRoot();
+        catch (Exception exception)
+        {
+            command.Session?.Poison(exception);
+            switch (command)
+            {
+                case FinishCommand finish:
+                    finish.Completion.TrySetException(exception);
+                    break;
+                case CompletionCommand completion:
+                    completion.Completion.TrySetException(exception);
+                    break;
+            }
+
+            if (_logger.IsWarn)
+                _logger.Warn($"Sparse trie worker session faulted: {exception.Message}");
+        }
     }
 
+    private void Begin(WorkerSession session)
+    {
+        EnsureActive(session);
+        if (_anchorStateRoot != session.ParentStateRoot)
+        {
+            ClearTrie();
+        }
+
+        session.Computer = new SparseRootComputer(_trie, session.Reader, session.ParentStateRoot);
+    }
+
+    private static void ProcessDelta(WorkerSession session, SparseTriePhaseDelta delta)
+    {
+        SparseRootComputer computer = session.GetComputer();
+        Dictionary<ValueHash256, LeafUpdate> accountUpdates = [];
+        Dictionary<Hash256, Dictionary<ValueHash256, LeafUpdate>> storageUpdates = [];
+
+        foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
+        {
+            ValueHash256 accountPath = accountDelta.Address.ToAccountPath;
+            session.RevealedAccounts.Add(accountPath);
+            session.ProvisionalAccounts.Add(accountDelta.Address);
+            accountUpdates[accountPath] = accountDelta.Account is null
+                ? LeafUpdate.Deleted()
+                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(accountDelta.Account).Bytes);
+        }
+
+        foreach (SparseTrieStorageDelta storageDelta in delta.StorageDeltas)
+        {
+            ValueHash256 accountPath = storageDelta.Address.ToAccountPath;
+            Hash256 accountHash = accountPath.ToCommitment();
+            AddAccountTouch(session, accountUpdates, accountPath);
+
+            ref ProvisionalStorage? provisional = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
+                session.ProvisionalStorage,
+                accountHash,
+                out bool exists);
+            if (!exists)
+            {
+                provisional = new ProvisionalStorage(storageDelta.Address, storageDelta.ParentStorageRoot);
+            }
+            else if (provisional!.ParentStorageRoot != storageDelta.ParentStorageRoot)
+            {
+                throw new InvalidOperationException(
+                    $"Conflicting parent storage roots for {storageDelta.Address}.");
+            }
+
+            ValueHash256 slotPath = default;
+            StorageTree.ComputeKeyWithLookup(storageDelta.Slot, ref slotPath);
+            provisional!.TouchedSlots.Add(slotPath);
+
+            if (!storageUpdates.TryGetValue(accountHash, out Dictionary<ValueHash256, LeafUpdate>? updates))
+            {
+                updates = [];
+                storageUpdates.Add(accountHash, updates);
+            }
+            updates[slotPath] = EncodeStorageValue(storageDelta.Value);
+        }
+
+        computer.ApplyAccountChanges(accountUpdates);
+        foreach (KeyValuePair<Hash256, Dictionary<ValueHash256, LeafUpdate>> entry in storageUpdates)
+        {
+            ProvisionalStorage provisional = session.ProvisionalStorage[entry.Key];
+            computer.ApplyStorageChanges(entry.Key, provisional.ParentStorageRoot, entry.Value);
+        }
+    }
+
+    private static void AddAccountTouch(
+        WorkerSession session,
+        Dictionary<ValueHash256, LeafUpdate> touches,
+        ValueHash256 accountPath)
+    {
+        if (session.RevealedAccounts.Add(accountPath))
+            touches.Add(accountPath, LeafUpdate.Touched());
+    }
+
+    private void Finish(FinishCommand command)
+    {
+        WorkerSession session = command.Session!;
+        EnsureActive(session);
+        if (session.FinishRequested)
+            throw new InvalidOperationException("Sparse trie block session was already finalized.");
+        session.FinishRequested = true;
+
+        if (session.Error is not null)
+        {
+            command.Completion.TrySetException(session.Error);
+            return;
+        }
+
+        SparseTrieBlockResult result = ComputeFinalResult(session, command.FinalState);
+        session.Result = result;
+        SparseRootComputer computer = session.GetComputer();
+        Metrics.SparseProofNodesRead += computer.LastProofNodeCount;
+        Metrics.SparseProofRetries += computer.LastRetryCount;
+        command.Completion.TrySetResult(result);
+    }
+
+    private SparseTrieBlockResult ComputeFinalResult(
+        WorkerSession session,
+        SparseTrieFinalState finalState)
+    {
+        SparseRootComputer computer = session.GetComputer();
+        int storageCount = finalState.StorageBatches.Count;
+        StorageRootJob[] storageJobs = new StorageRootJob[storageCount];
+        HashSet<Hash256> finalizedStorage = [];
+
+        for (int i = 0; i < storageCount; i++)
+        {
+            SparseTrieFinalStorageBatch batch = finalState.StorageBatches[i];
+            ValueHash256 accountPath = batch.Address.ToAccountPath;
+            Hash256 accountHash = accountPath.ToCommitment();
+            if (!finalizedStorage.Add(accountHash))
+                throw new InvalidOperationException($"Duplicate final storage batch for {batch.Address}.");
+
+            session.DirtyStorageHashes.Add(accountHash);
+
+            if (session.ProvisionalStorage.TryGetValue(accountHash, out ProvisionalStorage? provisional) &&
+                provisional.ParentStorageRoot != batch.ParentStorageRoot)
+            {
+                throw new InvalidOperationException(
+                    $"Final parent storage root differs from provisional root for {batch.Address}.");
+            }
+
+            Dictionary<ValueHash256, LeafUpdate> updates = new(batch.Slots.Count);
+            HashSet<ValueHash256> finalSlots = new(batch.Slots.Count);
+            foreach (SparseTrieFinalSlot slot in batch.Slots)
+            {
+                ValueHash256 slotPath = default;
+                StorageTree.ComputeKeyWithLookup(slot.Slot, ref slotPath);
+                if (!finalSlots.Add(slotPath))
+                    throw new InvalidOperationException($"Duplicate final storage slot for {batch.Address}.");
+                updates[slotPath] = EncodeStorageValue(slot.Value);
+            }
+
+            if (!batch.Clear && provisional is not null &&
+                !finalSlots.IsSupersetOf(provisional.TouchedSlots))
+            {
+                throw new InvalidOperationException(
+                    $"Final storage batch for {batch.Address} omits a provisionally changed slot.");
+            }
+
+            Hash256 effectiveParentRoot = batch.ParentStorageRoot;
+            if (batch.Clear)
+            {
+                computer.WipeStorage(accountHash);
+                effectiveParentRoot = Keccak.EmptyTreeHash;
+            }
+
+            if (updates.Count > 0)
+                computer.ApplyStorageChanges(accountHash, effectiveParentRoot, updates);
+            else
+                computer.AddStorageChanges(accountHash, effectiveParentRoot, updates);
+
+            storageJobs[i] = new StorageRootJob(
+                batch.Address,
+                accountHash,
+                updates.Count == 0 ? effectiveParentRoot : null);
+        }
+
+        foreach (KeyValuePair<Hash256, ProvisionalStorage> provisional in session.ProvisionalStorage)
+        {
+            if (!finalizedStorage.Contains(provisional.Key))
+            {
+                throw new InvalidOperationException(
+                    $"Final state omits provisionally changed storage for {provisional.Value.Address}.");
+            }
+        }
+
+        Hash256[] storageRoots = new Hash256[storageCount];
+        if (storageCount == 1)
+        {
+            storageRoots[0] = ComputeStorageRoot(computer, storageJobs[0]);
+        }
+        else if (storageCount > 1)
+        {
+            Parallel.For(
+                0,
+                storageCount,
+                new ParallelOptions { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, storageCount) },
+                i => storageRoots[i] = ComputeStorageRoot(computer, storageJobs[i]));
+        }
+
+        Dictionary<AddressAsKey, Hash256> mutableStorageRoots = new(
+            storageCount,
+            AddressAsKey.EqualityComparer);
+        for (int i = 0; i < storageCount; i++)
+            mutableStorageRoots.Add(storageJobs[i].Address, storageRoots[i]);
+
+        Dictionary<ValueHash256, LeafUpdate> accountUpdates = new(finalState.Accounts.Count);
+        HashSet<AddressAsKey> finalAccounts = new(AddressAsKey.EqualityComparer);
+        foreach (SparseTrieFinalAccount finalAccount in finalState.Accounts)
+        {
+            AddressAsKey address = finalAccount.Address;
+            if (!finalAccounts.Add(address))
+                throw new InvalidOperationException($"Duplicate final account for {finalAccount.Address}.");
+
+            ValueHash256 accountPath = finalAccount.Address.ToAccountPath;
+            Account? account = finalAccount.Account;
+            if (account is null)
+            {
+                Hash256 accountHash = accountPath.ToCommitment();
+                computer.WipeStorage(accountHash);
+                session.DirtyStorageHashes.Add(accountHash);
+            }
+            if (account is not null &&
+                mutableStorageRoots.TryGetValue(address, out Hash256? storageRoot) &&
+                storageRoot is not null)
+                account = account.WithChangedStorageRoot(storageRoot);
+
+            accountUpdates[accountPath] = account is null
+                ? LeafUpdate.Deleted()
+                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
+        }
+
+        foreach (AddressAsKey storageAddress in mutableStorageRoots.Keys)
+        {
+            if (!finalAccounts.Contains(storageAddress))
+                throw new InvalidOperationException($"Final accounts omit storage owner {storageAddress}.");
+        }
+
+        foreach (AddressAsKey provisionalAddress in session.ProvisionalAccounts)
+        {
+            if (!finalAccounts.Contains(provisionalAddress))
+                throw new InvalidOperationException(
+                    $"Final accounts omit provisionally updated account {provisionalAddress}.");
+        }
+
+        Hash256 stateRoot;
+        if (accountUpdates.Count == 0)
+        {
+            if (storageCount != 0)
+                throw new InvalidOperationException("Storage changed without a final account leaf.");
+            stateRoot = session.ParentStateRoot;
+        }
+        else
+        {
+            computer.SetAccountChanges(accountUpdates);
+            computer.ApplyAccountChanges(accountUpdates);
+            stateRoot = computer.ComputeAppliedStateRoot();
+        }
+
+        return new SparseTrieBlockResult(
+            stateRoot,
+            new ReadOnlyDictionary<AddressAsKey, Hash256>(mutableStorageRoots));
+    }
+
+    private static Hash256 ComputeStorageRoot(SparseRootComputer computer, StorageRootJob job) =>
+        job.KnownRoot ?? computer.ComputeAppliedStorageRoot(job.AccountHash, allowParallel: false);
+
+    private static LeafUpdate EncodeStorageValue(byte[] value)
+    {
+        if (value.IsZero())
+            return LeafUpdate.Deleted();
+
+        byte[] encoded = Rlp.Encode(value).Bytes;
+        return encoded.Length == 0 ? LeafUpdate.Deleted() : LeafUpdate.Changed(encoded);
+    }
+
+    private void PrepareCommit(WorkerSession session)
+    {
+        if (session.Result is null)
+            throw new InvalidOperationException("Finish the sparse trie block before preparing its commit.");
+        if (session.Prepared)
+            return;
+        if (session.Bundle is null)
+        {
+            session.Prepared = true;
+            return;
+        }
+
+        SparseTrieSnapshotCommitter.CommitAccountTrie(_trie.AccountTrie.Subtrie, session.Bundle);
+        foreach (Hash256 accountHash in session.DirtyStorageHashes)
+        {
+            if (_trie.StorageTries.TryGetValue(accountHash, out SparsePatriciaTree? storageTrie))
+            {
+                SparseTrieSnapshotCommitter.CommitStorageTrie(
+                    storageTrie.Subtrie,
+                    session.Bundle,
+                    accountHash);
+            }
+        }
+        session.Prepared = true;
+    }
+
+    private void Accept(WorkerSession session)
+    {
+        if (session.Result is null)
+            throw new InvalidOperationException("Cannot accept a sparse trie block without a result.");
+        if (!session.Prepared)
+            throw new InvalidOperationException("Prepare the sparse trie snapshot commit before accepting the block.");
+
+        _anchorStateRoot = session.Result.StateRoot;
+        UpdateRetainedSize(session);
+        if (Metrics.SparseAccountArenaNodes + _storageArenaNodes > _maxRetainedNodes)
+        {
+            if (_logger.IsInfo)
+            {
+                _logger.Info(
+                    $"Sparse trie retained-node limit {_maxRetainedNodes} exceeded; " +
+                    "the next block will rebuild from persisted proofs.");
+            }
+            Metrics.SparseCacheResets++;
+            ClearTrie();
+        }
+        CompleteSession(session);
+    }
+
+    private void Reject(WorkerSession session)
+    {
+        if (session.Prepared)
+            throw new InvalidOperationException("Cannot reject after sparse trie nodes were prepared for commit.");
+        ClearAndCompleteSession(session);
+    }
+
+    private void Abort(WorkerSession session) => ClearAndCompleteSession(session);
+
+    private void ClearAndCompleteSession(WorkerSession session)
+    {
+        ClearTrie();
+        CompleteSession(session);
+    }
+
+    private void UpdateRetainedSize(WorkerSession session)
+    {
+        foreach (Hash256 accountHash in session.DirtyStorageHashes)
+        {
+            _storageArenaHighWater.TryGetValue(accountHash, out int previous);
+            int current = _trie.StorageTries.TryGetValue(accountHash, out SparsePatriciaTree? storageTrie)
+                ? storageTrie.ArenaHighWater
+                : 0;
+            _storageArenaNodes += current - previous;
+            if (current == 0)
+                _storageArenaHighWater.Remove(accountHash);
+            else
+                _storageArenaHighWater[accountHash] = current;
+        }
+
+        Metrics.SparseRetainedStorageTries = _trie.StorageTries.Count;
+        Metrics.SparseAccountArenaNodes = _trie.IsRevealed ? _trie.AccountTrie.ArenaHighWater : 0;
+        Metrics.SparseStorageArenaNodes = _storageArenaNodes;
+    }
+
+    private void ClearTrie()
+    {
+        _trie.Clear();
+        _anchorStateRoot = null;
+        _storageArenaHighWater.Clear();
+        _storageArenaNodes = 0;
+        Metrics.SparseRetainedStorageTries = 0;
+        Metrics.SparseAccountArenaNodes = 0;
+        Metrics.SparseStorageArenaNodes = 0;
+    }
+
+    private void CompleteSession(WorkerSession session)
+    {
+        EnsureActive(session);
+        session.Completed = true;
+        ReleaseSession(session);
+    }
+
+    private void EnsureActive(WorkerSession session)
+    {
+        if (!ReferenceEquals(_activeSession, session))
+            throw new InvalidOperationException("Sparse trie command belongs to an inactive block session.");
+    }
+
+    private void ReleaseSession(WorkerSession session)
+    {
+        lock (_gate)
+        {
+            if (ReferenceEquals(_activeSession, session))
+                _activeSession = null;
+        }
+    }
+
+    private void StopActiveSession()
+    {
+        WorkerSession? session = _activeSession;
+        if (session is null)
+            return;
+
+        ObjectDisposedException exception = new(nameof(SparseTrieWorker));
+        session.Poison(exception);
+        ClearTrie();
+        ReleaseSession(session);
+    }
+
+    private void RequestStop()
+    {
+        lock (_gate)
+        {
+            if (_stopRequested)
+                return;
+            _stopRequested = true;
+        }
+
+        _commands.Writer.TryWrite(new StopCommand(Completion: null));
+        _commands.Writer.TryComplete();
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_resourcesDisposed)
+                return;
+            _resourcesDisposed = true;
+        }
+
+        Task stopTask = StopAsync();
+        stopTask.GetAwaiter().GetResult();
+        _workerTask.GetAwaiter().GetResult();
+        _cancellationRegistration.Dispose();
+        _trie.Dispose();
+    }
+
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        _channel.Writer.TryComplete();
-        // Best-effort drain on dispose; any fault is already reflected in _poisoned (set by the
-        // drain loop's catch blocks), so GetRootAsync would reject the result. Swallowing here is
-        // safe precisely because the poison flag, not this await, gates result validity.
-        try { await _drainTask; } catch { /* poison flag already set by drain loop */ }
+        lock (_gate)
+        {
+            if (_resourcesDisposed)
+                return;
+            _resourcesDisposed = true;
+        }
+
+        await StopAsync();
+        await _workerTask;
+        _cancellationRegistration.Dispose();
+        _trie.Dispose();
     }
+
+    private Task StopAsync()
+    {
+        TaskCompletionSource? completion = null;
+        lock (_gate)
+        {
+            if (_disposed)
+                return _workerTask;
+            _disposed = true;
+
+            if (!_stopRequested)
+            {
+                _stopRequested = true;
+                completion = NewCompletion();
+            }
+        }
+
+        if (completion is null)
+            return _workerTask;
+
+        if (!_commands.Writer.TryWrite(new StopCommand(completion)))
+            completion.TrySetResult();
+        _commands.Writer.TryComplete();
+        return completion.Task;
+    }
+
+    private static TaskCompletionSource NewCompletion() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static TaskCompletionSource<T> NewCompletion<T>() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal sealed class WorkerSession(
+        Hash256 parentStateRoot,
+        ITrieNodeReader reader,
+        SnapshotBundle? bundle)
+    {
+        private Exception? _error;
+
+        public Hash256 ParentStateRoot { get; } = parentStateRoot;
+        public ITrieNodeReader Reader { get; } = reader;
+        public SnapshotBundle? Bundle { get; } = bundle;
+        public SparseRootComputer? Computer { get; set; }
+        public Dictionary<Hash256, ProvisionalStorage> ProvisionalStorage { get; } = [];
+        public HashSet<ValueHash256> RevealedAccounts { get; } = [];
+        public HashSet<AddressAsKey> ProvisionalAccounts { get; } = new(AddressAsKey.EqualityComparer);
+        public HashSet<Hash256> DirtyStorageHashes { get; } = [];
+        public SparseTrieBlockResult? Result { get; set; }
+        public TaskCompletionSource<SparseTrieBlockResult>? FinishCompletion { get; set; }
+        public Exception? Error => Volatile.Read(ref _error);
+        public bool FinishRequested { get; set; }
+        public bool Prepared { get; set; }
+        public bool Completed { get; set; }
+
+        public SparseRootComputer GetComputer() =>
+            Computer ?? throw new InvalidOperationException("Sparse trie block has not started.");
+
+        public void Poison(Exception exception)
+        {
+            if (Interlocked.CompareExchange(ref _error, exception, comparand: null) is null)
+                FinishCompletion?.TrySetException(exception);
+        }
+    }
+
+    internal sealed class ProvisionalStorage(Address address, Hash256 parentStorageRoot)
+    {
+        public Address Address { get; } = address;
+        public Hash256 ParentStorageRoot { get; } = parentStorageRoot;
+        public HashSet<ValueHash256> TouchedSlots { get; } = [];
+    }
+
+    private readonly record struct StorageRootJob(
+        AddressAsKey Address,
+        Hash256 AccountHash,
+        Hash256? KnownRoot);
+
+    private abstract record Command(WorkerSession? Session);
+    private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);
+    private sealed record DeltaCommand(WorkerSession BlockSession, SparseTriePhaseDelta Delta) : Command(BlockSession);
+    private sealed record FinishCommand(
+        WorkerSession BlockSession,
+        SparseTrieFinalState FinalState,
+        TaskCompletionSource<SparseTrieBlockResult> Completion) : Command(BlockSession);
+    private sealed record CompletionCommand(
+        WorkerSession BlockSession,
+        Action<SparseTrieWorker, WorkerSession> Action,
+        TaskCompletionSource Completion) : Command(BlockSession);
+    private sealed record StopCommand(TaskCompletionSource? Completion) : Command(Session: null);
+}
+
+/// <summary>
+/// Producer-side handle for one sequential block session.
+/// </summary>
+internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
+{
+    private readonly SparseTrieWorker _worker;
+    private readonly SparseTrieWorker.WorkerSession _session;
+    private readonly object _gate = new();
+    private Task<SparseTrieBlockResult>? _finishTask;
+    private Task? _completionTask;
+    private bool _terminal;
+
+    internal SparseTrieBlockHandle(
+        SparseTrieWorker worker,
+        SparseTrieWorker.WorkerSession session)
+    {
+        _worker = worker;
+        _session = session;
+    }
+
+    public void EnqueueDelta(SparseTriePhaseDelta delta)
+    {
+        lock (_gate)
+        {
+            if (_finishTask is not null || _completionTask is not null || _terminal)
+                throw new InvalidOperationException("The sparse trie block is already finalizing.");
+            _worker.EnqueueDelta(_session, delta);
+        }
+    }
+
+    public Task<SparseTrieBlockResult> FinishAsync(SparseTrieFinalState finalState)
+    {
+        lock (_gate)
+        {
+            if (_completionTask is not null || _terminal)
+                throw new InvalidOperationException("The sparse trie block is already complete.");
+            return _finishTask ??= _worker.FinishAsync(_session, finalState);
+        }
+    }
+
+    public Task PrepareCommitAsync()
+    {
+        lock (_gate)
+        {
+            if (_finishTask is null)
+                throw new InvalidOperationException("Finish the sparse trie block before preparing its commit.");
+            if (_terminal)
+                throw new InvalidOperationException("The sparse trie block is already complete.");
+            return _worker.PrepareCommitAsync(_session);
+        }
+    }
+
+    public Task AcceptAsync() => CompleteAsync(_worker.AcceptAsync);
+
+    public Task RejectAsync() => CompleteAsync(_worker.RejectAsync);
+
+    public Task AbortAsync() => CompleteAsync(_worker.AbortAsync);
+
+    private Task CompleteAsync(
+        Func<SparseTrieWorker.WorkerSession, Task> completion)
+    {
+        lock (_gate)
+        {
+            if (_terminal)
+                return Task.CompletedTask;
+            return _completionTask ??= CompleteCoreAsync(completion);
+        }
+    }
+
+    private async Task CompleteCoreAsync(
+        Func<SparseTrieWorker.WorkerSession, Task> completion)
+    {
+        try
+        {
+            await Task.Yield();
+            await completion(_session);
+            lock (_gate)
+            {
+                _terminal = true;
+                _completionTask = Task.CompletedTask;
+            }
+        }
+        catch
+        {
+            lock (_gate)
+                _completionTask = null;
+            throw;
+        }
+    }
+
+    public void Dispose() => AbortAsync().GetAwaiter().GetResult();
+
+    public ValueTask DisposeAsync() => new(AbortAsync());
 }

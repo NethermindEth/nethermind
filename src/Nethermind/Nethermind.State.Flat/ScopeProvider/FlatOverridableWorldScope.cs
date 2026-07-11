@@ -143,8 +143,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 flatOverrideScope,
                 configuration,
                 trieWarmer,
-                preservedSparseTrie: null,
-                sparseTracker: new SparseAuthoritativeTracker(),
+                sparseTrieWorker: null,
                 logManager);
         }
     }
@@ -191,4 +190,3 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);
     }
 }
-

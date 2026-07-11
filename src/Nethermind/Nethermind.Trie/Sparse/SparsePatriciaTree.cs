@@ -38,8 +38,10 @@ public sealed class SparsePatriciaTree : IDisposable
 
     private void RevealSingleNode(ProofNode proofNode)
     {
-        if (_subtrie.Root == -1)
+        if (_subtrie.Root == -1 || _subtrie.NodeAt(_subtrie.Root).IsEmpty())
         {
+            if (_subtrie.Root >= 0)
+                _subtrie.FreeNode(_subtrie.Root);
             _subtrie.Root = CreateNodeFromProof(_subtrie, proofNode);
             return;
         }
@@ -413,11 +415,6 @@ public sealed class SparsePatriciaTree : IDisposable
     /// <summary>Cheap proxy for this trie's retained memory footprint (arena high-water mark).
     /// Used by cross-block cache size reporting.</summary>
     public int ArenaHighWater => _subtrie.ArenaHighWater;
-
-    /// <summary>Calls <see cref="SparseSubtrie.Prune"/> on this trie. Cold paths whose full
-    /// keys are not in <paramref name="isRetained"/> collapse to Blinded entries, freeing
-    /// arena slots. Must be called after <see cref="ComputeRoot"/>.</summary>
-    public void Prune(Func<ReadOnlySpan<byte>, bool> isRetained) => _subtrie.Prune(isRetained);
 
     public void Dispose() => _subtrie.Dispose();
 }

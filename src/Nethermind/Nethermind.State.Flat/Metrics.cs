@@ -316,8 +316,16 @@ public static class Metrics
     public static long SparseStorageArenaNodes { get; set; }
 
     [CounterMetric]
-    [Description("Sparse: storage tries evicted (returned to pool) by memory-bound/LFU prune")]
-    public static long SparseEvictedStorageTries { get; set; }
+    [Description("Sparse: accepted cross-block tries discarded after exceeding the retained-node bound")]
+    public static long SparseCacheResets { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: blocks replayed through Patricia fallback")]
+    public static long SparseFallbacks { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: worker or integration failures which disabled sparse processing for the scope")]
+    public static long SparseFailures { get; set; }
 
     [CounterMetric]
     [Description("Sparse: proof nodes read from the backend during root computation")]
@@ -328,8 +336,8 @@ public static class Metrics
     public static long SparseProofRetries { get; set; }
 
     [DetailedMetric]
-    [Description("Sparse: per-block state root computation wall time (ms)")]
+    [Description("Sparse: foreground time waiting for final worker reconciliation")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
-    public static IMetricObserver SparseRootComputeTime { get; set; } = new NoopMetricObserver();
+    public static IMetricObserver SparseForegroundWaitTime { get; set; } = new NoopMetricObserver();
 
 }
