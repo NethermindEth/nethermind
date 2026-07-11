@@ -51,6 +51,11 @@ public partial class BlockProcessor
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
+            // BAL validation and parallel scheduling read senders up front, so streamed recovery
+            // (engine newPayload path) must be joined before dispatch; the serial executor above
+            // gates per transaction instead.
+            block.SendersRecoveryTask?.Wait(token);
+
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 

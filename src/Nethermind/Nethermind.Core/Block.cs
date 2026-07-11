@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using System.Text.Unicode;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -149,6 +150,15 @@ public class Block
     /// </summary>
     [JsonIgnore]
     public byte[][]? EncodedTransactions { get; set; }
+
+    /// <summary>
+    /// In-flight sender recovery for this block's transactions, set on the engine newPayload path.
+    /// When present, senders stream in concurrently with processing: the pipeline preprocessor must
+    /// not re-recover, and transaction executors gate on the individual sender (or this task's
+    /// completion) instead of expecting all senders up front.
+    /// </summary>
+    [JsonIgnore]
+    public Task? SendersRecoveryTask { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

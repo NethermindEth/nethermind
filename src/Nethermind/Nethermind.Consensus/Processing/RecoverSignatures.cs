@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -73,11 +72,7 @@ namespace Nethermind.Consensus.Processing
         /// </remarks>
         /// <param name="txs">The transactions to recover senders and authorities for.</param>
         /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
-        /// <param name="workerPriority">
-        /// When set, recovery runs on dedicated threads at this priority instead of the shared
-        /// thread pool, so a saturated pool cannot delay latency-critical recovery.
-        /// </param>
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, ThreadPriority? workerPriority = null)
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0)
                 return;
@@ -88,17 +83,12 @@ namespace Nethermind.Consensus.Processing
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
-                (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state =
-                    (this, txs, releaseSpec, useSignatureChainId);
-
-                if (workerPriority is ThreadPriority priority)
-                {
-                    ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, state, RecoverSingle, priority);
-                }
-                else
-                {
-                    ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, state, RecoverSingle);
-                }
+                ParallelUnbalancedWork.For(
+                    0,
+                    txs.Length,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (recover: this, txs, releaseSpec, useSignatureChainId),
+                    RecoverSingle);
             }
             else
             {

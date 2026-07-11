@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -125,27 +124,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, state, action);
 
     /// <summary>
-    /// Executes a parallel for loop over a range of integers on dedicated threads at the given priority.
-    /// Use for latency-critical work that must not queue behind thread-pool load (the shared pool
-    /// gives no scheduling guarantees, so a saturated pool can delay individual iterations arbitrarily).
-    /// </summary>
-    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
-    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
-    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
-    /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
-    /// <param name="state">The initial state of the thread-local data.</param>
-    /// <param name="action">The delegate that is invoked once per iteration.</param>
-    /// <param name="workerPriority">The priority the dedicated worker threads run at.</param>
-    public static void For<TLocal>(
-        int fromInclusive,
-        int toExclusive,
-        ParallelOptions parallelOptions,
-        TLocal state,
-        Func<int, TLocal, TLocal> action,
-        ThreadPriority workerPriority)
-        => InitProcessor<TLocal>.ForDedicated(fromInclusive, toExclusive, parallelOptions, null, state, action, null, workerPriority);
-
-    /// <summary>
     /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
     /// </summary>
     /// <param name="data">The shared data for the parallel work.</param>
@@ -180,64 +158,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         {
             // Signal that this thread has completed its work
             _data.MarkThreadCompleted();
-        }
-    }
-
-    /// <summary>
-    /// A small pool of persistent worker threads for <c>ForDedicated</c> bursts. Workers are
-    /// created once and parked on a semaphore, so a burst pays a wake-up (~tens of microseconds)
-    /// instead of thread creation (~milliseconds under load). Priority is applied per work item
-    /// and restored afterwards. Intended for short CPU-bound bursts only.
-    /// </summary>
-    private static class DedicatedWorkers
-    {
-        private static readonly ConcurrentQueue<(IThreadPoolWorkItem Item, ThreadPriority Priority)> _queue = new();
-        private static readonly SemaphoreSlim _signal = new(0);
-        private static int _started;
-
-        public static void Post(IThreadPoolWorkItem item, ThreadPriority priority)
-        {
-            EnsureStarted();
-            _queue.Enqueue((item, priority));
-            _signal.Release();
-        }
-
-        private static void EnsureStarted()
-        {
-            if (Volatile.Read(ref _started) != 0) return;
-            if (Interlocked.Exchange(ref _started, 1) != 0) return;
-
-            int workers = Math.Max(1, Cpu.RuntimeInformation.ProcessorCount - 1);
-            for (int i = 0; i < workers; i++)
-            {
-                Thread worker = new(Run)
-                {
-                    IsBackground = true,
-                    Name = $"{nameof(ParallelUnbalancedWork)}.{nameof(DedicatedWorkers)}",
-                };
-                worker.Start();
-            }
-        }
-
-        private static void Run()
-        {
-            Thread currentThread = Thread.CurrentThread;
-            while (true)
-            {
-                _signal.Wait();
-                if (!_queue.TryDequeue(out (IThreadPoolWorkItem Item, ThreadPriority Priority) work)) continue;
-
-                currentThread.Priority = work.Priority;
-                try
-                {
-                    // Work items capture their own exceptions (rethrown on the caller); nothing escapes here.
-                    work.Item.Execute();
-                }
-                finally
-                {
-                    currentThread.Priority = ThreadPriority.Normal;
-                }
-            }
         }
     }
 
@@ -384,62 +304,6 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             }
 
             // Rethrow the first captured worker exception, if any, on the calling thread
-            data.ThrowIfFaulted();
-
-            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
-        }
-
-        /// <summary>
-        /// Executes a parallel for loop over a range of integers on dedicated threads at the given
-        /// priority instead of the shared thread pool. The calling thread participates with its
-        /// priority temporarily raised to match.
-        /// </summary>
-        /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
-        /// <param name="toExclusive">The exclusive upper bound of the range.</param>
-        /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
-        /// <param name="init">The function to initialize the local data for each thread.</param>
-        /// <param name="initValue">The initial value of the local data.</param>
-        /// <param name="action">The delegate that is invoked once per iteration.</param>
-        /// <param name="finally">The function to finalize the local data for each thread.</param>
-        /// <param name="workerPriority">The priority the dedicated worker threads run at.</param>
-        public static void ForDedicated(
-            int fromInclusive,
-            int toExclusive,
-            ParallelOptions parallelOptions,
-            Func<TLocal>? init,
-            TLocal? initValue,
-            Func<int, TLocal, TLocal> action,
-            Action<TLocal>? @finally,
-            ThreadPriority workerPriority)
-        {
-            int threads = parallelOptions.MaxDegreeOfParallelism > 0
-                ? parallelOptions.MaxDegreeOfParallelism
-                : Environment.ProcessorCount;
-
-            Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
-
-            for (int i = 0; i < threads - 1; i++)
-            {
-                DedicatedWorkers.Post(new InitProcessor<TLocal>(data), workerPriority);
-            }
-
-            Thread currentThread = Thread.CurrentThread;
-            ThreadPriority previousPriority = currentThread.Priority;
-            currentThread.Priority = workerPriority;
-            try
-            {
-                new InitProcessor<TLocal>(data).Execute();
-
-                if (data.ActiveThreads > 0)
-                {
-                    data.Event.Wait();
-                }
-            }
-            finally
-            {
-                currentThread.Priority = previousPriority;
-            }
-
             data.ThrowIfFaulted();
 
             parallelOptions.CancellationToken.ThrowIfCancellationRequested();

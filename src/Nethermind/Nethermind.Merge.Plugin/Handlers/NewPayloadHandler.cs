@@ -124,9 +124,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         long handleStartTimestamp = Stopwatch.GetTimestamp();
-        // Overlap ecrecover with root computation, hash validation and block tree insertion;
-        // the processing queue's RecoverSignatures then short-circuits on recovered senders.
-        Task senderRecoveryTask = StartSenderRecovery(request);
+        // Senders stream in concurrently with everything that follows — root computation, hash
+        // validation, block tree insertion, and execution itself: nothing awaits the recovery task
+        // as a whole. The preprocessor skips streamed blocks and the transaction executors gate on
+        // the individual sender (or the task's completion).
+        Task? senderRecoveryTask = StartSenderRecovery(request);
 
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
@@ -135,6 +137,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        block.SendersRecoveryTask = senderRecoveryTask;
         if (_logger.IsDebug)
             _logger.Debug($"newPayload decode blk={block.Number} getBlock={Stopwatch.GetElapsedTime(handleStartTimestamp).TotalMilliseconds:F2}ms");
 
@@ -264,7 +267,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
         // Try to execute block
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, senderRecoveryTask);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions);
 
         if (result == ValidationResult.Invalid)
         {
@@ -361,24 +364,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private Task StartSenderRecovery(ExecutionPayload request)
+    private Task? StartSenderRecovery(ExecutionPayload request)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; they recover in the processing queue as before. On rejected payloads the
-        // task is deliberately fire-and-forget — see the catch below.
+        // the senders; returning null keeps the processing-queue preprocessor responsible for
+        // their recovery. On rejected payloads the task is fire-and-forget — see the catch below.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)
-            return Task.CompletedTask;
+            return null;
 
         Result<Transaction[]> transactions = request.TryGetTransactions();
         if (transactions.IsError || transactions.Data.Length == 0)
             // TryGetBlock reports the decoding error; nothing to recover otherwise.
-            return Task.CompletedTask;
+            return null;
 
         Transaction[] txs = transactions.Data;
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        // Dedicated thread + dedicated recovery workers: recovery gates enqueue, so it must not
-        // queue behind thread-pool load (compactions, prewarming) — measured 5-15ms stalls otherwise.
-        return Task.Factory.StartNew(() =>
+        return Task.Run(() =>
         {
             long recoverStartTimestamp = Stopwatch.GetTimestamp();
             try
@@ -401,7 +402,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_logger.IsDebug) _logger.Debug($"senderReuse blk={request.BlockNumber} reused={reused}/{txs.Length}");
                 long poolCopyEndTimestamp = Stopwatch.GetTimestamp();
 
-                _senderRecovery.RecoverData(txs, spec, ThreadPriority.Normal);
+                _senderRecovery.RecoverData(txs, spec);
                 if (_logger.IsDebug)
                     _logger.Debug($"newPayload ecrecover blk={request.BlockNumber} txs={txs.Length} " +
                         $"poolCopy={Stopwatch.GetElapsedTime(recoverStartTimestamp, poolCopyEndTimestamp).TotalMilliseconds:F2}ms " +
@@ -409,13 +410,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
             catch (Exception e)
             {
-                // Best-effort: the processing-queue preprocessor recovers anything still missing.
                 if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed for block {request.BlockNumber}: {e}");
+                // The preprocessor skips streamed blocks, so this task is the only recovery point;
+                // retry once and let the executors reject the block if senders are still missing.
+                try { _senderRecovery.RecoverData(txs, spec); } catch { }
             }
-        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        });
     }
 
-    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
+    private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
     {
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
@@ -488,10 +491,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // Invariant: recovery completes before the queue sees the block — the prewarmer
-                // groups txs by sender at ProcessBranch start, so it needs every sender up front.
-                long recStartTimestamp = Stopwatch.GetTimestamp();
-                await senderRecoveryTask;
+                // No recovery barrier: senders stream in while the block executes — the prewarmer
+                // skips not-yet-recovered txs and the executors gate per transaction.
                 long enqueueStartTimestamp = Stopwatch.GetTimestamp();
                 await _processingQueue.Enqueue(block, processingOptions);
                 long waitStartTimestamp = Stopwatch.GetTimestamp();
@@ -499,7 +500,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_logger.IsDebug)
                     _logger.Debug($"newPayload inner blk={block.Number} " +
                         $"suggest={Stopwatch.GetElapsedTime(suggestStartTimestamp, suggestEndTimestamp).TotalMilliseconds:F2}ms " +
-                        $"recWait={Stopwatch.GetElapsedTime(recStartTimestamp, enqueueStartTimestamp).TotalMilliseconds:F2}ms " +
                         $"enqueue={Stopwatch.GetElapsedTime(enqueueStartTimestamp, waitStartTimestamp).TotalMilliseconds:F2}ms " +
                         $"wait={Stopwatch.GetElapsedTime(waitStartTimestamp).TotalMilliseconds:F2}ms");
             }
