@@ -108,6 +108,8 @@ public class FlatWorldStateScopeProviderTests
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From<PreservedSparseTrie?>(null))
+                .WithParameter(TypedParameter.From(new SparseAuthoritativeTracker()))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -874,13 +876,15 @@ public class FlatWorldStateScopeProviderTests
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         FlatWorldStateScope scope = new(
-            new StateId(0, TestItem.KeccakA),
-            bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
-            Substitute.For<IFlatCommitTarget>(),
-            config,
-            warmer,
-            LimboLogs.Instance);
+            currentStateId: new StateId(0, TestItem.KeccakA),
+            snapshotBundle: bundle,
+            codeDb: new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            commitTarget: Substitute.For<IFlatCommitTarget>(),
+            configuration: config,
+            trieCacheWarmer: warmer,
+            preservedSparseTrie: null,
+            sparseTracker: new SparseAuthoritativeTracker(),
+            logManager: LimboLogs.Instance);
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.

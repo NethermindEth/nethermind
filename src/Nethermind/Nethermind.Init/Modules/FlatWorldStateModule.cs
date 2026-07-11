@@ -32,6 +32,21 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
+        // Warmer wiring:
+        //   â€¢ TrieWarmerWorkerCount == 0 â†’ user explicitly disabled warming.
+        //   â€¢ SparseTrieWarmer == None â†’ user explicitly disabled warming.
+        //   â€¢ Legacy / SparseProof / default â†’ run the warmer. Even in sparse-authoritative
+        //     mode the Legacy walker is NOT pure waste: it loads Patricia nodes through
+        //     ReadOnlySnapshotBundle / flat-DB columns and so primes the OS page cache for
+        //     the same byte ranges the sparse MultiProofReader will read milliseconds later.
+        //     EXPB 26636221404 proved removing it costs ~70 ms p95 on realblocks (MIN
+        //     jumps 0.5 â†’ 35 ms once every block pays full cold I/O). Drop the warmer only
+        //     after the sparse-aware prefetcher (M5) is in place; that one will warm the
+        //     same pages without the Patricia-side allocations.
+        bool useNoopWarmer =
+            flatDbConfig.TrieWarmerWorkerCount == 0
+            || flatDbConfig.SparseTrieWarmer == SparseTrieWarmerVariant.None;
+
         builder
 
             // Implementation of nethermind interfaces
@@ -75,7 +90,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
-            .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
+            .AddSingleton<ITrieWarmer>(useNoopWarmer
                 ? _ => new NoopTrieWarmer()
                 : ctx => ctx.Resolve<TrieWarmer>())
             .AddSingleton<TrieWarmer>()

@@ -42,6 +42,15 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
+    /// <summary>
+    /// Optional non-destructive sink for the M4 streaming sparse-trie pipeline. When set (only in
+    /// sparse-parallel mode), each account committed by a commit phase is reported as
+    /// (address, account-or-null) so the background task can stream the account leaf update
+    /// concurrently with execution. Null in every other mode â€” a single null-check per committed
+    /// account, no work when off. Does not affect the authoritative _blockChanges path.
+    /// </summary>
+    internal Action<Address, Account?>? CommittedAccountSink { get; set; }
+
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
     private Dictionary<Hash256AsKey, byte[]>? _codeBatch;
@@ -777,6 +786,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
+
+        // M4 streaming: SetState is the single point where a committed account leaf is decided
+        // (commit-phase resolution + FlushToTree storage-root rewrite). Report it so the
+        // background sparse task can stream the account update concurrently with execution.
+        // No-op when off.
+        CommittedAccountSink?.Invoke(address, account);
     }
 
     private Account? GetAndAddToCache(Address address)

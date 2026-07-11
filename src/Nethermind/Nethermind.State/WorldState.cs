@@ -256,6 +256,15 @@ namespace Nethermind.State
                 throw;
             }
 
+            // M4 streaming: if the scope wants committed deltas (sparse-parallel mode), attach the
+            // provider sinks so each commit phase streams account/storage leaf updates to its
+            // background root-computation task. Inert for every other scope (sinks stay null).
+            if (_currentScope is IWorldStateScopeProvider.ISparseDeltaSink sink && sink.WantsCommittedDeltas)
+            {
+                _stateProvider.CommittedAccountSink = sink.OnCommittedAccount;
+                _persistentStorageProvider.CommittedStorageSink = (in StorageCell cell, byte[] value) => sink.OnCommittedStorage(in cell, value);
+            }
+
             return new Reactive.AnonymousDisposable(() =>
             {
                 EndScope();
@@ -272,6 +281,8 @@ namespace Nethermind.State
                     // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
                     _localMetrics.Flush();
                     Reset();
+                    _stateProvider.CommittedAccountSink = null;
+                    _persistentStorageProvider.CommittedStorageSink = null;
                     _stateProvider.SetScope(null);
                     _currentScope.Dispose();
                 }

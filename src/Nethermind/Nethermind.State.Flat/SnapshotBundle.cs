@@ -19,6 +19,9 @@ public sealed class SnapshotBundle : IDisposable
 {
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
 
+    /// <summary>Exposes the immutable snapshot chain for proof reading (sparse trie M2+).</summary>
+    internal ReadOnlySnapshotBundle ReadOnlyBundle => _readOnlySnapshotBundle;
+
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
@@ -184,6 +187,30 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return node;
+    }
+
+    internal bool TryFindCommittedStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        // P1: check the transient (warmer) cache before the committed snapshot chain so
+        // sparse proof reads benefit from TrieWarmer's prefetched nodes. Without this hit
+        // the warmer only helps via OS/DB page cache side effects, not by directly handing
+        // proof nodes to sparse.
+        if (_transientResource.TryGetStateNode(path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return true;
+        }
+        return DoFindStateNodeExternal(path, hash, out node);
+    }
+
+    internal bool TryFindCommittedStorageNode(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        if (_transientResource.TryGetStorageNode(address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return true;
+        }
+        return DoTryFindStorageNodeExternal(address, path, hash, out node);
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)

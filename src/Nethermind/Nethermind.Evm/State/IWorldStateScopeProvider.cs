@@ -24,6 +24,27 @@ public interface IWorldStateScopeProvider
     /// </param>
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
+    /// <summary>
+    /// Optional capability a scope implements to receive committed state deltas during execution
+    /// (M4 streaming sparse-trie pipeline). WorldState attaches its provider sinks to this when the
+    /// active scope supports it, so each commit phase streams account/storage leaf updates to a
+    /// background root-computation task. A scope that does not implement it gets no sinks attached
+    /// and behaves exactly as before. Keys are raw (Address / StorageCell) + final value; the
+    /// consumer hashes them off the execution thread.
+    /// </summary>
+    public interface ISparseDeltaSink
+    {
+        /// <summary>True only when the scope wants delta streaming this block (sparse-parallel
+        /// mode active). When false WorldState skips sink attachment entirely.</summary>
+        bool WantsCommittedDeltas { get; }
+
+        /// <summary>Reports a committed account leaf (post commit-phase). account==null = deleted.</summary>
+        void OnCommittedAccount(Address address, Account? account);
+
+        /// <summary>Reports a committed storage write (post commit-phase).</summary>
+        void OnCommittedStorage(in StorageCell cell, byte[] value);
+    }
+
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }

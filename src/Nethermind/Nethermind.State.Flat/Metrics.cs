@@ -300,4 +300,36 @@ public static class Metrics
     [Description("Persisted-snapshot compaction wall-clock time, by compact size")]
     [ExponentialPowerHistogramMetric(LabelNames = ["size"], Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PersistedSnapshotCompactTime { get; set; } = new NoopMetricObserver();
+
+    // --- Sparse trie (cross-block cache + root computation) ---
+
+    [GaugeMetric]
+    [Description("Sparse cross-block cache: number of per-contract storage tries currently retained")]
+    public static long SparseRetainedStorageTries { get; set; }
+
+    [GaugeMetric]
+    [Description("Sparse cross-block cache: account trie arena high-water node count")]
+    public static long SparseAccountArenaNodes { get; set; }
+
+    [GaugeMetric]
+    [Description("Sparse cross-block cache: summed storage trie arena high-water node count")]
+    public static long SparseStorageArenaNodes { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: storage tries evicted (returned to pool) by memory-bound/LFU prune")]
+    public static long SparseEvictedStorageTries { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: proof nodes read from the backend during root computation")]
+    public static long SparseProofNodesRead { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: reveal-update-retry iterations beyond the first (blinded-node misses)")]
+    public static long SparseProofRetries { get; set; }
+
+    [DetailedMetric]
+    [Description("Sparse: per-block state root computation wall time (ms)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver SparseRootComputeTime { get; set; } = new NoopMetricObserver();
+
 }
