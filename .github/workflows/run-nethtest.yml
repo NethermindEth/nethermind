@@ -182,8 +182,9 @@ jobs:
                   # unfiltered, so the Amsterdam parallel/batch-read variant classes also
                   # ran under the default (patricia) layout — including parallel-full,
                   # which is the production configuration. Mirror that coverage here.
-                  # Chunk counts are sized to keep every job under ~8 min wall (measured):
-                  # engineTest fixtures run ~2x slower than blockTest, so engine gets more.
+                  # Chunk counts are sized per variant by measured wall-clock: the full-scope
+                  # sequential set is the largest so it gets the most chunks, and engineTest
+                  # fixtures run ~2x slower per test than blockTest.
                   if [ "$type" = "engineTest" ]; then
                     emit "$type" sequential   full      '' false false 4 5
                     emit "$type" parallel     amsterdam '' true  false 1 2
