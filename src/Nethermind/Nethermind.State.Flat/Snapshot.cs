@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -27,12 +28,13 @@ public class Snapshot : RefCountingDisposable
     private readonly SnapshotContent? _mutable;
     private readonly SortedSnapshotContent? _sorted;
     private readonly bool _isSorted;
-    // Boxed SnapshotContentCounts, sealed on first observation: ConcurrentDictionary.Count acquires every
-    // stripe lock, so serving live counts would stall concurrent writers on each estimate, and the
-    // repository's add/remove memory ledger needs the same value on both sides even if stragglers still
-    // write. Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
+    // Counts sealed on first observation: ConcurrentDictionary.Count acquires every stripe lock, so
+    // serving live counts would stall concurrent writers on each estimate, and the repository's
+    // add/remove memory ledger needs the same value on both sides even if stragglers still write.
+    // Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
     // construct-then-populate contract working: population always precedes the first count observation.
-    private object? _sealedCounts;
+    // Boxed so publication is a single reference CAS.
+    private StrongBox<SnapshotContentCounts>? _sealedCounts;
 
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
     {
@@ -66,14 +68,14 @@ public class Snapshot : RefCountingDisposable
     {
         get
         {
-            object? sealedCounts = Volatile.Read(ref _sealedCounts);
+            StrongBox<SnapshotContentCounts>? sealedCounts = Volatile.Read(ref _sealedCounts);
             if (sealedCounts is null)
             {
-                object candidate = _mutable!.CaptureCounts();
+                StrongBox<SnapshotContentCounts> candidate = new(_mutable!.CaptureCounts());
                 sealedCounts = Interlocked.CompareExchange(ref _sealedCounts, candidate, null) ?? candidate;
             }
 
-            return (SnapshotContentCounts)sealedCounts;
+            return sealedCounts.Value;
         }
     }
     // Test-only observability (SnapshotCompactorTests); not consumed by production.
