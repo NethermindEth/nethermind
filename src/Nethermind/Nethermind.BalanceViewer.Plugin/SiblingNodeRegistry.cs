@@ -26,6 +26,9 @@ public readonly record struct SiblingNode(int Port, string ChainId);
 public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
+    // a sibling that answered recently is kept through transient probe failures
+    // (e.g. timeouts while the host is saturated by sync) instead of flapping away
+    private static readonly TimeSpan SiblingGracePeriod = TimeSpan.FromMinutes(2);
     private static readonly byte[] ChainIdRequest = Encoding.UTF8.GetBytes(
         """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}""");
 
@@ -33,6 +36,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly int[] _probePorts;
     private readonly ILogger _logger;
+    private readonly Dictionary<int, (SiblingNode Node, DateTimeOffset LastSeen)> _lastSeen = [];
 
     private volatile IReadOnlyList<SiblingNode> _siblings = [];
     private DateTimeOffset _refreshedAt = DateTimeOffset.MinValue;
@@ -59,8 +63,19 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
             if (DateTimeOffset.UtcNow - _refreshedAt < CacheDuration) return _siblings;
 
             SiblingNode?[] probed = await Task.WhenAll(_probePorts.Select(p => ProbeAsync(p, cancellationToken)));
-            _siblings = probed.Where(s => s is not null).Select(s => s!.Value).ToArray();
-            _refreshedAt = DateTimeOffset.UtcNow;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            foreach (SiblingNode? sibling in probed)
+            {
+                if (sibling is not null) _lastSeen[sibling.Value.Port] = (sibling.Value, now);
+            }
+
+            foreach (int port in _lastSeen.Keys.Where(p => now - _lastSeen[p].LastSeen > SiblingGracePeriod).ToArray())
+            {
+                _lastSeen.Remove(port);
+            }
+
+            _siblings = _lastSeen.Values.Select(entry => entry.Node).OrderBy(s => s.Port).ToArray();
+            _refreshedAt = now;
             return _siblings;
         }
         finally

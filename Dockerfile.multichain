@@ -53,19 +53,29 @@ set -euo pipefail
 # Secondary node (a different chain, gnosis by default). Bound to 127.0.0.1 only,
 # so it is reachable exclusively from inside the container — used by the balance
 # viewer's sibling discovery on localhost:8546. It runs without a consensus client,
-# so it will sit unsynced; this is acceptable for UI testing.
+# so it will sit unsynced; this is acceptable for UI testing. It is supervised so a
+# crash (e.g. the OOM killer picking it under the primary's sync load) does not
+# permanently remove the chain, and its memory hint is kept small so it does not
+# compete with the primary.
 mkdir -p /nethermind/data-second
-./nethermind \
-  --config "${SECOND_NETWORK:-gnosis}" \
-  --datadir /nethermind/data-second \
-  --JsonRpc.Enabled true \
-  --JsonRpc.Host 127.0.0.1 \
-  --JsonRpc.Port 8546 \
-  --JsonRpc.EnginePort 8552 \
-  --Network.P2PPort 30313 \
-  --Network.DiscoveryPort 30313 \
-  --HealthChecks.Enabled false \
-  > /nethermind/data-second/nethermind.log 2>&1 &
+(
+  while true; do
+    ./nethermind \
+      --config "${SECOND_NETWORK:-gnosis}" \
+      --datadir /nethermind/data-second \
+      --Init.MemoryHint 2000000000 \
+      --JsonRpc.Enabled true \
+      --JsonRpc.Host 127.0.0.1 \
+      --JsonRpc.Port 8546 \
+      --JsonRpc.EnginePort 8552 \
+      --Network.P2PPort 30313 \
+      --Network.DiscoveryPort 30313 \
+      --HealthChecks.Enabled false \
+      >> /nethermind/data-second/nethermind.log 2>&1 || true
+    echo "$(date -u) secondary node exited; restarting in 30s" >> /nethermind/data-second/nethermind.log
+    sleep 30
+  done
+) &
 
 # Primary node in the foreground with all container args passed through.
 exec ./nethermind "$@"

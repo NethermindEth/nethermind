@@ -59,6 +59,8 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     {
         [new PathString("/balances")] = (FileProvider.GetFileInfo("balances.html"), "text/html; charset=utf-8"),
         [new PathString("/balances-sw.js")] = (FileProvider.GetFileInfo("balances-sw.js"), "text/javascript; charset=utf-8"),
+        [new PathString("/balances.webmanifest")] = (FileProvider.GetFileInfo("balances.webmanifest"), "application/manifest+json"),
+        [new PathString("/balances-icon.svg")] = (FileProvider.GetFileInfo("balances-icon.svg"), "image/svg+xml"),
     };
 
     public Task InvokeAsync(HttpContext context)

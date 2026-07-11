@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Nethermind Balances</title>
     <link rel="icon" href="favicon.webp" type="image/webp">
+    <link rel="manifest" href="balances.webmanifest">
+    <meta name="theme-color" content="#000000">
     <style>
         @font-face {
             font-family: 'DM Sans';
@@ -994,6 +996,7 @@
 
         async function toggleWatch(entry, bell) {
             const key = entry.address.toLowerCase();
+            const who = entry.label || shortAddr(entry.address);
             if (isWatchedAny(key)) {
                 for (const node of enabledNodes()) {
                     const state = stateOf(node.chainId);
@@ -1001,21 +1004,40 @@
                     store.save(node.chainId);
                 }
                 bell.classList.remove('on');
-                setStatus('Notifications off for ' + (entry.label || shortAddr(entry.address)));
+                setStatus('Notifications off for ' + who);
                 return;
             }
-            if ('Notification' in window && Notification.permission !== 'granted') {
-                const permission = await Notification.requestPermission();
-                if (permission !== 'granted') setStatus('Notifications not permitted by the browser — activity will only show here', true);
+
+            let systemNotifications = false;
+            if (!window.isSecureContext) {
+                // browsers refuse service workers and notification permission on plain
+                // HTTP (except localhost) — a tunnel or TLS proxy enables the real thing
+                setStatus('System notifications need HTTPS or localhost — activity will only show in this line', true);
+            } else if (!('Notification' in window)) {
+                setStatus('This browser has no Notification support — activity will only show in this line', true);
+            } else {
+                const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    setStatus('Notification permission was not granted — activity will only show in this line', true);
+                } else {
+                    try {
+                        await navigator.serviceWorker.register('balances-sw.js');
+                        await navigator.serviceWorker.ready;
+                        systemNotifications = true;
+                    } catch { setStatus('Service worker registration failed — activity will only show in this line', true); }
+                }
             }
-            try { await navigator.serviceWorker?.register('balances-sw.js'); } catch { }
+
             for (const node of enabledNodes()) {
                 const state = stateOf(node.chainId);
                 if (!state.watched.includes(key)) state.watched.push(key);
                 store.save(node.chainId);
             }
             bell.classList.add('on');
-            setStatus('Watching ' + (entry.label || shortAddr(entry.address)) + ' for activity');
+            if (systemNotifications) {
+                setStatus('Watching ' + who + ' for activity');
+                notify(who, 'Notifications enabled on this device'); // immediate proof it works
+            }
         }
 
         async function notify(title, body) {
@@ -1291,7 +1313,9 @@
             if (!node.button) return;
             node.button.classList.toggle('syncing', Boolean(node.syncing));
             const head = node.head ? BigInt(node.head).toLocaleString('en-US') : '?';
-            node.button.title = `${node.meta.name} · head ${head}${node.syncing ? ' · syncing' : ''}${node.enabled ? '' : ' · hidden (click to show)'}`;
+            node.button.title = `${node.meta.name} · head ${head}${node.syncing ? ' · syncing' : ''}`
+                + (node.unreachable ? ' · unreachable' : '')
+                + (node.enabled ? '' : ' · hidden (click to show)');
         }
 
         function toggleChain(node, btn) {
@@ -1529,13 +1553,58 @@
         }
 
         // ---------- init + head polling ----------
+        // siblings are re-discovered continuously so a node that starts (or restarts)
+        // after this page loaded still joins the multi-chain view without a reload
+        async function discoverSiblings() {
+            let added = false;
+            try {
+                const res = await fetch('balances-nodes');
+                if (!res.ok) return false;
+                let storedDisabled = [];
+                try { storedDisabled = JSON.parse(localStorage.getItem(DISABLED_KEY) || '[]'); } catch { }
+                for (const sibling of await res.json()) {
+                    const id = Number(BigInt(sibling.chainId));
+                    const existing = nodes.find((n) => n.chainId === id);
+                    if (existing) {
+                        if (existing !== own()) existing.rpcPath = 'balances-rpc/' + sibling.port;
+                        continue;
+                    }
+                    const node = makeNode('balances-rpc/' + sibling.port, id);
+                    node.enabled = !storedDisabled.includes(id);
+                    nodes.push(node);
+                    states.set(id, store.load(node));
+                    added = true;
+                }
+            } catch { /* discovery is optional — single-node view works without it */ }
+            if (added) {
+                sortNodes();
+                applyNodeLayout();
+            }
+            return added;
+        }
+
+        function applyNodeLayout() {
+            $('singleNet').style.display = multi() ? 'none' : 'contents';
+            $('chainToggles').style.display = multi() ? 'flex' : 'none';
+            if (multi()) renderChainToggles();
+            updateTokenFormChains();
+            buildCurrencyOptions();
+            renderTokens();
+            renderCards();
+            refreshBalances();
+        }
+
+        let pollTick = 0;
+
         async function pollHead() {
+            if (pollTick++ % 5 === 0 && pollTick > 1) await discoverSiblings();
             let changed = false;
             for (const node of nodes) {
                 try {
                     const [head, syncing] = await rpcBatch([['eth_blockNumber', []], ['eth_syncing', []]], node.rpcPath);
+                    node.unreachable = head === null && syncing === null;
                     // a node stuck at genesis (e.g. no consensus client yet) is presented as syncing too
-                    node.syncing = (syncing !== false && syncing !== null) || head === '0x0';
+                    node.syncing = !node.unreachable && ((syncing !== false && syncing !== null) || head === '0x0');
                     if (node === own() && !multi() && head !== null) $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
                     updateChainButton(node);
                     if (node.enabled && head !== null && head !== node.head) {
@@ -1544,6 +1613,9 @@
                         scanForActivity(node, head);
                     }
                 } catch (e) {
+                    node.unreachable = true;
+                    node.syncing = false;
+                    updateChainButton(node);
                     if (node === own()) setStatus('Node unreachable: ' + e.message, true);
                 }
             }
@@ -1574,44 +1646,18 @@
                 const ownId = Number(BigInt(await rpc('eth_chainId', [])));
                 ownNode = makeNode('/', ownId);
                 nodes = [ownNode];
+                states.set(ownId, store.load(ownNode));
             } catch (e) {
                 setStatus('Cannot reach JSON-RPC on this endpoint: ' + e.message, true);
                 return;
             }
 
-            // sibling Nethermind nodes on this machine, discovered by the plugin
-            try {
-                const res = await fetch('balances-nodes');
-                if (res.ok) {
-                    for (const sibling of await res.json()) {
-                        const id = Number(BigInt(sibling.chainId));
-                        if (!nodes.some((n) => n.chainId === id)) nodes.push(makeNode('balances-rpc/' + sibling.port, id));
-                    }
-                }
-            } catch { /* discovery is optional — single-node view works without it */ }
-            sortNodes();
+            let storedDisabled = [];
+            try { storedDisabled = JSON.parse(localStorage.getItem(DISABLED_KEY) || '[]'); } catch { }
+            ownNode.enabled = !storedDisabled.includes(ownNode.chainId);
 
-            let storedDisabled = null;
-            try { storedDisabled = JSON.parse(localStorage.getItem(DISABLED_KEY) || 'null'); } catch { }
-            if (Array.isArray(storedDisabled)) for (const node of nodes) node.enabled = !storedDisabled.includes(node.chainId);
-            if (enabledNodes().length === 0) own().enabled = true;
-
-            for (const node of nodes) states.set(node.chainId, store.load(node));
-
-            $('netName').textContent = own().meta.name;
-            $('chainId').textContent = own().chainId;
-            if (multi()) {
-                $('singleNet').style.display = 'none';
-                $('chainToggles').style.display = 'flex';
-                renderChainToggles();
-            } else if (!own().meta.ens) {
-                $('addrInput').placeholder = '0x address' + (own().chainId === 100 || own().chainId === 10200 ? ' (ENS unavailable on Gnosis)' : '');
-            }
-            updateTokenFormChains();
-
-            const stored = localStorage.getItem(CURRENCY_KEY);
-            if (stored) currency = stored;
-            buildCurrencyOptions();
+            const storedCurrency = localStorage.getItem(CURRENCY_KEY);
+            if (storedCurrency) currency = storedCurrency;
             $('currency').onchange = () => {
                 currency = $('currency').value;
                 localStorage.setItem(CURRENCY_KEY, currency);
@@ -1619,8 +1665,15 @@
                 refreshBalances();
             };
 
-            renderTokens();
-            renderCards();
+            await discoverSiblings();
+            if (enabledNodes().length === 0) own().enabled = true;
+
+            $('netName').textContent = own().meta.name;
+            $('chainId').textContent = own().chainId;
+            if (!multi() && !own().meta.ens) {
+                $('addrInput').placeholder = '0x address' + (own().chainId === 100 || own().chainId === 10200 ? ' (ENS unavailable on Gnosis)' : '');
+            }
+            applyNodeLayout();
             pollHead();
             setInterval(pollHead, 12000);
         }

@@ -40,16 +40,18 @@ public class BalanceViewerMiddlewareTests
         }
     }
 
-    [Test]
-    public async Task Serves_ServiceWorkerScript()
+    [TestCase("/balances-sw.js", "text/javascript", "notificationclick")]
+    [TestCase("/balances.webmanifest", "application/manifest+json", "Nethermind Balances")]
+    [TestCase("/balances-icon.svg", "image/svg+xml", "<svg")]
+    public async Task Serves_EmbeddedAssets(string path, string expectedContentType, string expectedContent)
     {
-        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: "/balances-sw.js");
+        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: path);
 
         await CreateMiddleware().InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.StartWith("text/javascript"));
-        Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("notificationclick"));
+        Assert.That(ctx.Response.ContentType, Does.StartWith(expectedContentType));
+        Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain(expectedContent));
     }
 
     [Test]
