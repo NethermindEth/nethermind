@@ -79,7 +79,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _sparseTrieWorker = sparseTrieWorker;
         _sparseEnabled = sparseTrieWorker is not null;
         _configuration = configuration;
-        _snapshotBundle.HashAwareTrieReads = configuration.VerifyWithTrie;
+        _snapshotBundle.HashAwareTrieReads = configuration.VerifyWithTrie || sparseTrieWorker is not null;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
@@ -97,6 +97,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
+        _snapshotBundle.HashAwareTrieReads = configuration.VerifyWithTrie;
 
         _warmReadPool = warmReadPool;
         _logManager = logManager;
