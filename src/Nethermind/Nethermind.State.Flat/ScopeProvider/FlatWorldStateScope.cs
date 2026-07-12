@@ -512,8 +512,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // this is just for warming up
                 ValueHash256 accountPath = address.ToAccountPath;
                 _warmupStateTree.WarmUpPath(accountPath.BytesAsSpan);
-                if (_hintSequenceId == sequenceId && !_pausePrewarmer)
-                    _sparseBlock?.TryEnqueueAccountTouch(accountPath);
 
                 return true;
             }
