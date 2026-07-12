@@ -45,11 +45,10 @@ namespace Nethermind.Trie.Pruning
         [Description("Nodes that have been removed from the cache during pruning because they were no longer needed.")]
         public static long PrunedTransientNodesCount { get; set; }
 
-        // Incremented once per resolved node on the flat/pruning read paths, concurrently from the
-        // block-processing thread, prewarm workers, the trie warmer, and parallel commit tasks - the
-        // main/other split on padded slots keeps the block thread's line private and the counters
-        // from false-sharing with their neighbours.
-
+        // The two Loaded* counters below are incremented once per resolved node on the flat/pruning
+        // read paths, concurrently from the block-processing thread, prewarm workers, the trie
+        // warmer, and parallel commit tasks - the main/other split on padded slots keeps the block
+        // thread's line private and the counters from false-sharing with their neighbours.
         [CounterMetric]
         [Description("Number of DB reads.")]
         public static long LoadedFromDbNodesCount => _mainLoadedFromDbNodesCount.Value + _otherLoadedFromDbNodesCount.Value;
