@@ -99,6 +99,35 @@ public class SstIngestionTests
     }
 
     [Test]
+    public void Ingest_zero_length_write_at_exact_slab_boundary_round_trips()
+    {
+        const int slabSize = 1 << 20;
+        const int entrySize = 1024;
+        const int keySize = 32;
+        IDb accountDb = _db.GetColumnDb(FlatDbColumns.Account);
+        byte[] probeKey = ValueKeccak.Compute("probe"u8).ToByteArray();
+        byte[] probeValue = new byte[entrySize - keySize];
+        probeValue[0] = 0x42;
+
+        using (IWriteBatch batch = ((ISstIngestible)accountDb).StartSstIngestBatch())
+        {
+            byte[] filler = new byte[entrySize - keySize];
+            Span<byte> key = stackalloc byte[keySize];
+            for (int i = 0; i < slabSize / entrySize - 1; i++)
+            {
+                BitConverter.TryWriteBytes(key, i);
+                key[8] = 0xee;
+                batch.Set(key, filler);
+            }
+
+            batch.Set(probeKey, probeValue);
+            batch.PutSpan(default, default);
+        }
+
+        Assert.That(accountDb.Get(probeKey), Is.EqualTo(probeValue));
+    }
+
+    [Test]
     public void Ingest_round_trips_and_advances_pointer()
     {
         StateId s1 = State(1, 1);
