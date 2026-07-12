@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing;
@@ -18,11 +17,6 @@ public interface IStreamedSenderRecovery
     /// so work like transaction-pool lookups belongs to the caller.
     /// </summary>
     void Begin(Block block);
-
-    /// <summary>
-    /// Blocks until every sender of the block is recovered; a no-op without recovery in flight.
-    /// </summary>
-    void EnsureSendersRecovered(Block block, CancellationToken token);
 
     /// <summary>
     /// Blocks until the block's in-flight recovery completes and the transaction is fully

@@ -52,10 +52,6 @@ public partial class BlockProcessor
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
-            // BAL validation and parallel scheduling read senders up front, so streamed recovery
-            // must be joined before dispatch; the serial executor gates per transaction instead.
-            senderRecovery?.EnsureSendersRecovered(block, token);
-
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
@@ -89,6 +85,7 @@ public partial class BlockProcessor
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
+                senderRecovery?.EnsureSenderRecovered(block, currentTx);
                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
@@ -149,7 +146,7 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner, senderRecovery),
                         static (i, state) =>
                         {
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -168,6 +165,7 @@ public partial class BlockProcessor
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
+                                state.senderRecovery?.EnsureSenderRecovered(state.block, tx);
                                 try
                                 {
                                     IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);

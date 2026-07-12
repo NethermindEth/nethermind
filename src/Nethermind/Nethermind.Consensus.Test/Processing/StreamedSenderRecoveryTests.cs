@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -28,8 +27,6 @@ public class StreamedSenderRecoveryTests
 
     // (in flight + preprocessor) is excluded: the skip leaves completion to the concurrent task,
     // so the observable outcome depends on timing.
-    [TestCase(true, JoinKind.EnsureSendersRecovered, true, TestName = "BlockJoin_WithRecoveryInFlight_RecoversAllSenders")]
-    [TestCase(false, JoinKind.EnsureSendersRecovered, false, TestName = "BlockJoin_WithoutRecoveryInFlight_IsNoOp")]
     [TestCase(true, JoinKind.EnsureSenderRecovered, true, TestName = "PerTxJoin_WithRecoveryInFlight_RecoversEachSender")]
     [TestCase(false, JoinKind.EnsureSenderRecovered, false, TestName = "PerTxJoin_WithoutRecoveryInFlight_IsNoOp")]
     [TestCase(false, JoinKind.RecoverData, true, TestName = "Preprocessor_WithoutRecoveryInFlight_RecoversAllSenders")]
@@ -61,7 +58,7 @@ public class StreamedSenderRecoveryTests
     // per-Block-instance registry made executor joins silent no-ops and falsely invalidated a
     // valid block. Joins on the copy must behave exactly like joins on the original.
     [Test]
-    public void EnsureSendersRecovered_OnHeaderReplacedProcessingCopy_JoinsTheOriginalRecovery()
+    public void EnsureSenderRecovered_OnHeaderReplacedProcessingCopy_JoinsTheOriginalRecovery()
     {
         Block suggested = BuildBlockWithUnrecoveredSenders();
         Block processingCopy = suggested.WithReplacedHeader(suggested.Header.Clone());
@@ -69,7 +66,10 @@ public class StreamedSenderRecoveryTests
             "precondition: the processing copy shares the suggested block's body");
 
         _recovery.Begin(suggested);
-        _recovery.EnsureSendersRecovered(processingCopy, CancellationToken.None);
+        foreach (Transaction tx in processingCopy.Transactions)
+        {
+            _recovery.EnsureSenderRecovered(processingCopy, tx);
+        }
 
         foreach (Transaction tx in processingCopy.Transactions)
         {
@@ -85,7 +85,10 @@ public class StreamedSenderRecoveryTests
 
         _recovery.Begin(suggested);
         _recovery.RecoverData(processingCopy);
-        _recovery.EnsureSendersRecovered(processingCopy, CancellationToken.None);
+        foreach (Transaction tx in processingCopy.Transactions)
+        {
+            _recovery.EnsureSenderRecovered(processingCopy, tx);
+        }
 
         foreach (Transaction tx in processingCopy.Transactions)
         {
@@ -126,16 +129,13 @@ public class StreamedSenderRecoveryTests
         Assert.That(block.Transactions, Is.Empty, "precondition: the block under test carries no transactions");
 
         _recovery.Begin(block);
-        _recovery.EnsureSendersRecovered(block, CancellationToken.None);
+        _recovery.RecoverData(block);
     }
 
     private void Join(Block block, JoinKind joinKind)
     {
         switch (joinKind)
         {
-            case JoinKind.EnsureSendersRecovered:
-                _recovery.EnsureSendersRecovered(block, CancellationToken.None);
-                break;
             case JoinKind.EnsureSenderRecovered:
                 foreach (Transaction tx in block.Transactions)
                 {
@@ -165,7 +165,6 @@ public class StreamedSenderRecoveryTests
 
     public enum JoinKind
     {
-        EnsureSendersRecovered,
         EnsureSenderRecovered,
         RecoverData,
     }

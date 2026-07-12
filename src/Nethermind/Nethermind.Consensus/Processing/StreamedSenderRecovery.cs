@@ -38,14 +38,6 @@ public sealed class StreamedSenderRecovery(
         _inFlight.AddOrUpdate(block.Body, Task.Run(() => Recover(block)));
     }
 
-    public void EnsureSendersRecovered(Block block, CancellationToken token)
-    {
-        if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
-
-        AwaitRecovery(block, recovery, token);
-        RecoverAnythingMissing(block);
-    }
-
     public void EnsureSenderRecovered(Block block, Transaction transaction)
     {
         if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
@@ -55,7 +47,7 @@ public sealed class StreamedSenderRecovery(
         {
             if (spinner.NextSpinWillYield)
             {
-                AwaitRecovery(block, recovery, CancellationToken.None);
+                AwaitRecovery(block, recovery);
                 break;
             }
 
@@ -104,13 +96,11 @@ public sealed class StreamedSenderRecovery(
         }
     }
 
-    // A cancelled token throws OperationCanceledException past the fallback: processing is
-    // being aborted and no verdict is produced, which is the correct fail mode.
-    private void AwaitRecovery(Block block, Task recovery, CancellationToken token)
+    private void AwaitRecovery(Block block, Task recovery)
     {
         try
         {
-            if (!recovery.Wait(RecoveryTimeout, token)) ThrowRecoveryIncomplete(block);
+            if (!recovery.Wait(RecoveryTimeout)) ThrowRecoveryIncomplete(block);
         }
         catch (AggregateException)
         {
