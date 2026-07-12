@@ -21,8 +21,9 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SparseTrieTaskTests
 {
-    [Test]
-    public async Task FinalAccountState_MatchesPatricia()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task FinalAccountState_MatchesPatricia(bool preReveal)
     {
         TestState state = BuildState(accountCount: 20);
         Address address = state.Addresses[3];
@@ -31,6 +32,8 @@ public class SparseTrieTaskTests
 
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, state.Reader);
+        if (preReveal)
+            Assert.That(block.TryEnqueueAccountTouch(address.ToAccountPath), Is.True);
         block.EnqueueDelta(new SparseTriePhaseDelta(
             [new SparseTrieAccountDelta(address, finalAccount)],
             []));

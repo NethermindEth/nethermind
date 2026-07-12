@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
@@ -148,6 +149,22 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
     }
 
+    internal bool TryEnqueueAccountTouch(WorkerSession session, ValueHash256 accountPath)
+    {
+        if (!session.HintedAccounts.TryAdd(accountPath, 0))
+            return true;
+
+        session.PendingAccountTouches.Enqueue(accountPath);
+        if (Interlocked.CompareExchange(ref session.AccountTouchCommandQueued, 1, 0) != 0)
+            return true;
+
+        if (_commands.Writer.TryWrite(new AccountTouchesCommand(session)))
+            return true;
+
+        session.Poison(new ObjectDisposedException(nameof(SparseTrieWorker)));
+        return false;
+    }
+
     internal Task<SparseTrieBlockResult> FinishAsync(
         WorkerSession session,
         SparseTrieFinalState finalState)
@@ -230,6 +247,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                     EnsureActive(delta.Session!);
                     if (delta.Session!.Error is null)
                         ProcessDelta(delta.Session!, delta.Delta);
+                    break;
+                case AccountTouchesCommand touches:
+                    EnsureActive(touches.Session!);
+                    if (touches.Session!.Error is null)
+                        ProcessAccountTouches(touches.Session!);
                     break;
                 case FinishCommand finish:
                     Finish(finish);
@@ -333,6 +355,26 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     {
         if (session.RevealedAccounts.Add(accountPath))
             touches.Add(accountPath, LeafUpdate.Touched());
+    }
+
+    private static void ProcessAccountTouches(WorkerSession session)
+    {
+        while (true)
+        {
+            Dictionary<ValueHash256, LeafUpdate> updates = [];
+            while (session.PendingAccountTouches.TryDequeue(out ValueHash256 accountPath))
+                AddAccountTouch(session, updates, accountPath);
+
+            if (updates.Count != 0)
+                session.GetComputer().ApplyAccountChanges(updates);
+
+            Volatile.Write(ref session.AccountTouchCommandQueued, 0);
+            if (session.PendingAccountTouches.IsEmpty ||
+                Interlocked.CompareExchange(ref session.AccountTouchCommandQueued, 1, 0) != 0)
+            {
+                return;
+            }
+        }
     }
 
     private void Finish(FinishCommand command)
@@ -744,6 +786,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public SparseRootComputer? Computer { get; set; }
         public Dictionary<Hash256, ProvisionalStorage> ProvisionalStorage { get; } = [];
         public HashSet<ValueHash256> RevealedAccounts { get; } = [];
+        public ConcurrentDictionary<ValueHash256, byte> HintedAccounts { get; } = [];
+        public ConcurrentQueue<ValueHash256> PendingAccountTouches { get; } = [];
         public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
         public SparseTrieBlockResult? Result { get; set; }
@@ -752,6 +796,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public bool FinishRequested { get; set; }
         public bool Prepared { get; set; }
         public bool Completed { get; set; }
+        public int AccountTouchCommandQueued;
 
         public SparseRootComputer GetComputer() =>
             Computer ?? throw new InvalidOperationException("Sparse trie block has not started.");
@@ -778,6 +823,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private abstract record Command(WorkerSession? Session);
     private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record DeltaCommand(WorkerSession BlockSession, SparseTriePhaseDelta Delta) : Command(BlockSession);
+    private sealed record AccountTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record FinishCommand(
         WorkerSession BlockSession,
         SparseTrieFinalState FinalState,
@@ -816,6 +862,16 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
             if (_finishTask is not null || _completionTask is not null || _terminal)
                 throw new InvalidOperationException("The sparse trie block is already finalizing.");
             _worker.EnqueueDelta(_session, delta);
+        }
+    }
+
+    public bool TryEnqueueAccountTouch(ValueHash256 accountPath)
+    {
+        lock (_gate)
+        {
+            if (_finishTask is not null || _completionTask is not null || _terminal)
+                return false;
+            return _worker.TryEnqueueAccountTouch(_session, accountPath);
         }
     }
 

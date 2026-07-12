@@ -473,7 +473,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                ValueHash256 accountPath = address.ToAccountPath;
+                _warmupStateTree.WarmUpPath(accountPath.BytesAsSpan);
+                if (_hintSequenceId == sequenceId && !_pausePrewarmer)
+                    _sparseBlock?.TryEnqueueAccountTouch(accountPath);
 
                 return true;
             }
