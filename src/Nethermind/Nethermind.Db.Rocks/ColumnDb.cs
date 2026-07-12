@@ -7,6 +7,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -294,8 +295,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                         ref Entry e = ref _index[i];
                         // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
                         if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
-                        fixed (byte* data = &_slabs[e.Slab][e.Offset])
+                        fixed (byte* slabPtr = &MemoryMarshal.GetArrayDataReference(_slabs[e.Slab]))
                         {
+                            byte* data = slabPtr + e.Offset;
                             if (e.ValLen < 0) Native.Instance.rocksdb_sstfilewriter_delete(writer, data, (UIntPtr)e.KeyLen);
                             else Native.Instance.rocksdb_sstfilewriter_put(writer, data, (UIntPtr)e.KeyLen, data + e.KeyLen, (UIntPtr)e.ValLen);
                         }
