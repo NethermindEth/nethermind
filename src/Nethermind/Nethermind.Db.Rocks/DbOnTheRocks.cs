@@ -91,14 +91,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    // Bumped on every Get/Set by the block-processing thread, prewarm/warm-read workers, and sync
-    // concurrently (all columns share this instance) - main/other split on padded slots keeps the
-    // block thread's line private and the counters from false-sharing with each other.
+    // Padded: bumped on every Get/Set from all threads across all column families.
     internal CacheLinePaddedLong _allocatedSpan;
-    private CacheLinePaddedLong _mainTotalReads;
-    private CacheLinePaddedLong _otherTotalReads;
-    private CacheLinePaddedLong _mainTotalWrites;
-    private CacheLinePaddedLong _otherTotalWrites;
+    private CacheLinePaddedLong _totalReads;
+    private CacheLinePaddedLong _totalWrites;
 
     private readonly IteratorManager _iteratorManager;
     private ulong _writeBufferSize;
@@ -345,11 +341,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() =>
-        Interlocked.Increment(ref ProcessingThread.IsBlockProcessingThread ? ref _mainTotalReads.Value : ref _otherTotalReads.Value);
+    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
 
-    protected internal void UpdateWriteMetrics() =>
-        Interlocked.Increment(ref ProcessingThread.IsBlockProcessingThread ? ref _mainTotalWrites.Value : ref _otherTotalWrites.Value);
+    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
         long.TryParse(_db.GetProperty(propertyName), out long parsedValue)
@@ -366,8 +360,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CacheSize = 0,
                 IndexSize = 0,
                 MemtableSize = 0,
-                TotalReads = _mainTotalReads.Value + _otherTotalReads.Value,
-                TotalWrites = _mainTotalWrites.Value + _otherTotalWrites.Value,
+                TotalReads = _totalReads.Value,
+                TotalWrites = _totalWrites.Value,
             };
         }
         return new IDbMeta.DbMetric()
@@ -376,8 +370,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
-            TotalReads = _mainTotalReads.Value + _otherTotalReads.Value,
-            TotalWrites = _mainTotalWrites.Value + _otherTotalWrites.Value,
+            TotalReads = _totalReads.Value,
+            TotalWrites = _totalWrites.Value,
         };
     }
 
