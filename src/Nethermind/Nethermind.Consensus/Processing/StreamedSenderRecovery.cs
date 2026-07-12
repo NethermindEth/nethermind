@@ -14,25 +14,18 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// The single owner of streamed sender recovery: starts it, lets executors join it, and keeps
-/// the pipeline preprocessor from re-recovering blocks whose recovery is already in flight.
-/// In-flight recoveries are tracked per <see cref="BlockBody"/> — the object recovery actually
-/// operates on — because the pipeline does not preserve block identity: the executors receive a
-/// header-replaced processing copy (<c>BlockProcessor.PrepareBlockForProcessing</c>) that shares
-/// the suggested block's body. Keying by block instance made the executor joins silent no-ops on
-/// that copy, which falsely invalidated a valid block once recovery lost the race to execution.
-/// Duplicate payloads still recover independently (each decode owns its body), and entries
-/// vanish with their bodies.
+/// Owns streamed sender recovery: starts it, lets executors join it, and keeps the pipeline
+/// preprocessor from re-recovering blocks already in flight. Tracked per <see cref="BlockBody"/>,
+/// not per block: executors receive a header-replaced copy of the suggested block
+/// (<c>BlockProcessor.PrepareBlockForProcessing</c>) that shares its body — keying by block
+/// instance made executor joins silent no-ops and falsely invalidated a valid block.
 /// </summary>
 public sealed class StreamedSenderRecovery(
     RecoverSignatures recoverSignatures,
     ISpecProvider specProvider,
     ILogManager logManager) : IStreamedSenderRecovery, IBlockPreprocessorStep
 {
-    /// <summary>
-    /// Defensive only: the recovery task is pure computation and always completes. A stuck task
-    /// must fail the block (the consensus client retries it), never hang the processing pipeline.
-    /// </summary>
+    // Defensive only: a stuck recovery must fail the block, never hang the processing pipeline.
     private static readonly TimeSpan RecoveryTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConditionalWeakTable<BlockBody, Task> _inFlight = [];
@@ -58,8 +51,7 @@ public sealed class StreamedSenderRecovery(
         if (IsFullyRecovered(transaction)) return;
         if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
 
-        // Execution normally runs well behind recovery, so the spin is rare and short; past it,
-        // the sender is genuinely behind and blocking on the whole task is cheaper than yielding.
+        // Recovery normally runs ahead of execution, so the spin is rare and short.
         SpinWait spinner = default;
         while (!IsFullyRecovered(transaction) && !recovery.IsCompleted)
         {
@@ -75,13 +67,9 @@ public sealed class StreamedSenderRecovery(
         if (!IsFullyRecovered(transaction)) RecoverAnythingMissing(block);
     }
 
-    /// <summary>
-    /// The gate condition for handing a transaction to execution. Checking the sender alone is
-    /// not enough: recovery writes the sender before the EIP-7702 authorities (and the pool-copy
-    /// fast path copies only senders), so a set-code transaction whose sender is already visible
-    /// may still be missing authorities — executing it then would silently skip valid tuples and
-    /// diverge the state root.
-    /// </summary>
+    // The sender alone is not enough: recovery writes it before the EIP-7702 authorities, so a
+    // set-code transaction with a visible sender may still be missing authorities — executing it
+    // then would silently skip valid tuples and diverge the state root.
     private static bool IsFullyRecovered(Transaction transaction)
     {
         if (transaction.SenderAddress is null) return false;
@@ -99,8 +87,7 @@ public sealed class StreamedSenderRecovery(
 
     public void RecoverData(Block block)
     {
-        // A block with recovery in flight is completed by the executors' Ensure* calls;
-        // recovering here would re-create the pipeline barrier the streaming removes.
+        // Recovering an in-flight block here would re-create the barrier the streaming removes.
         if (_inFlight.TryGetValue(block.Body, out _)) return;
 
         recoverSignatures.RecoverData(block);
@@ -114,8 +101,7 @@ public sealed class StreamedSenderRecovery(
         }
         catch (Exception e)
         {
-            // The executors' Ensure* joins recover anything this task left behind, so a failure
-            // here degrades to synchronous recovery at execution time, never to a wrong verdict.
+            // The joins recover anything left behind, degrading to synchronous recovery.
             if (_logger.IsWarn) _logger.Warn($"Streamed sender recovery failed for block {block.ToString(Block.Format.FullHashAndNumber)}: {e}");
         }
     }
@@ -132,14 +118,8 @@ public sealed class StreamedSenderRecovery(
         }
     }
 
-    /// <summary>
-    /// The fail-closed backstop: whatever happened to the streamed task — faulted, timed out,
-    /// wiring gaps, anything unforeseen — execution must see the exact senders a non-streamed
-    /// block would, so any transaction still missing one is recovered synchronously here.
-    /// Truly invalid signatures still end up with a null sender and are rejected as before.
-    /// A warn with the full context makes any such occurrence diagnosable after the fact:
-    /// the backstop engaging at all means an invariant of the streaming design was broken.
-    /// </summary>
+    // Fail-closed backstop: whatever happened to the streamed task, execution must see exactly
+    // what a non-streamed block would. The warn means a streaming invariant was broken.
     private void RecoverAnythingMissing(Block block)
     {
         int missing = 0;

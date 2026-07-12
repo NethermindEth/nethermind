@@ -356,24 +356,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private void TryBeginSenderRecovery(Block block)
     {
-        // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
-        // the senders; not beginning here keeps the processing-queue preprocessor responsible
-        // for their recovery.
+        // Far-from-tip payloads take Syncing/insert paths that never use the senders.
         if (block.Number > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return;
 
-        // Streaming trades idle cores for latency, which only exists at the tip: with a backlog
-        // (catch-up, replay benchmarks) the recovery fan-out steals cores from the block that is
-        // executing and the joins move inside processing, so throughput regresses. The pipelined
-        // preprocessor recovery is already optimal there — leave backlogged blocks to it.
+        // Streaming only helps at the tip, where cores are idle; with a backlog it steals cores
+        // from the executing block and regresses throughput, so those blocks keep the
+        // preprocessor's pipelined recovery.
         if (!_processingQueue.IsEmpty) return;
 
         Transaction[] txs = block.Transactions;
         if (txs.Length == 0) return;
 
-        // Most of a payload's transactions were already recovered when they entered the pool;
-        // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
-        // needs ecrecover. The pool lookups take the TxPool lock, so they belong here: work
-        // handed to Begin must be pure computation (see <see cref="IStreamedSenderRecovery"/>).
+        // Copy the senders the pool already recovered. This takes the pool lock, so it must
+        // stay out of Begin — an executor waiting on the recovery would deadlock against it.
         foreach (Transaction tx in txs)
         {
             if (tx.SenderAddress is null
@@ -460,8 +455,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                // No recovery barrier: senders stream in while the block executes — the prewarmer
-                // skips not-yet-recovered txs and the executors gate per transaction.
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }

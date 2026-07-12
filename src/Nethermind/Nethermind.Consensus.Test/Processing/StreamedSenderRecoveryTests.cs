@@ -26,9 +26,6 @@ public class StreamedSenderRecoveryTests
             LimboLogs.Instance);
     }
 
-    // The (join kind × recovery in flight) matrix. Joining an in-flight recovery must leave the
-    // senders recovered; without one, the Ensure* joins are no-ops (the preprocessor owns those
-    // blocks) while the preprocessor path itself recovers exactly as before streaming existed.
     // (in flight + preprocessor) is excluded: the skip leaves completion to the concurrent task,
     // so the observable outcome depends on timing.
     [TestCase(true, JoinKind.EnsureSendersRecovered, true, TestName = "BlockJoin_WithRecoveryInFlight_RecoversAllSenders")]
@@ -60,11 +57,9 @@ public class StreamedSenderRecoveryTests
         }
     }
 
-    // Regression for the falsely-invalidated mainnet block 25508945: BlockProcessor executes a
-    // header-replaced processing copy of the suggested block (PrepareBlockForProcessing), so a
-    // per-Block-instance registry made every executor join a silent no-op and execution raced
-    // the recovery task. Tracking is keyed by the shared BlockBody, so joins on the copy must
-    // behave exactly like joins on the original.
+    // Regression: BlockProcessor executes a header-replaced copy of the suggested block, so a
+    // per-Block-instance registry made executor joins silent no-ops and falsely invalidated a
+    // valid block. Joins on the copy must behave exactly like joins on the original.
     [Test]
     public void EnsureSendersRecovered_OnHeaderReplacedProcessingCopy_JoinsTheOriginalRecovery()
     {
@@ -98,10 +93,8 @@ public class StreamedSenderRecoveryTests
         }
     }
 
-    // The pool-copy fast path copies only senders, and recovery itself writes the sender before
-    // the authorities, so a set-code transaction can show a sender while its authorities are
-    // still missing. The per-tx gate must treat such a transaction as not yet recovered —
-    // executing it would silently skip valid tuples and diverge the state root.
+    // A set-code transaction can show a sender while its authorities are still missing; the
+    // per-tx gate must treat it as not yet recovered or execution would skip valid tuples.
     [Test]
     public void EnsureSenderRecovered_WithSenderVisibleButAuthorityMissing_WaitsForAuthorities()
     {

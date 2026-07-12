@@ -7,32 +7,26 @@ using Nethermind.Core;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Coordinates sender recovery that runs concurrently with a block's journey through the
-/// processing pipeline (the engine <c>newPayload</c> path), so that execution never waits for
-/// the whole block's senders up front.
+/// Sender recovery that runs concurrently with a block's journey through the processing
+/// pipeline, so execution never waits for the whole block's senders up front.
 /// </summary>
 public interface IStreamedSenderRecovery
 {
     /// <summary>
-    /// Starts recovering the senders of the block's transactions off the caller's thread.
-    /// The recovery is pure computation by contract: work that can block on a lock (for example
-    /// transaction-pool lookups) must be done by the caller beforehand, because an executor
-    /// waiting on this recovery deadlocks against anything the recovery itself waits on.
-    /// Senders already present on the transactions are kept.
+    /// Starts recovering the block's senders off the caller's thread. The recovery must stay
+    /// pure computation: an executor waiting on it deadlocks against anything it locks on,
+    /// so work like transaction-pool lookups belongs to the caller.
     /// </summary>
     void Begin(Block block);
 
     /// <summary>
-    /// Blocks until every sender of the block's transactions is recovered. A no-op for blocks
-    /// without recovery in flight. For executors that need all senders before dispatch.
+    /// Blocks until every sender of the block is recovered; a no-op without recovery in flight.
     /// </summary>
     void EnsureSendersRecovered(Block block, CancellationToken token);
 
     /// <summary>
-    /// Blocks until the transaction's sender is recovered or the block's recovery completes.
-    /// A no-op when the sender is already present or the block has no recovery in flight.
-    /// A sender still missing afterwards means recovery genuinely failed for that transaction,
-    /// and execution rejects it the same way as on the non-streamed path.
+    /// Blocks until the transaction is fully recovered or the block's recovery completes;
+    /// a no-op when already recovered or without recovery in flight.
     /// </summary>
     void EnsureSenderRecovered(Block block, Transaction transaction);
 }

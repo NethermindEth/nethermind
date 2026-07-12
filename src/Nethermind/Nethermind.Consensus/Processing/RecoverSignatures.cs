@@ -35,10 +35,7 @@ namespace Nethermind.Consensus.Processing
             RecoverData(txs, releaseSpec);
         }
 
-        /// <summary>
-        /// Exact per-tx check (senders and, when enabled, EIP-7702 authorities) so a partially
-        /// recovered block is completed rather than skipped by a first-tx heuristic.
-        /// </summary>
+        // Exact per-tx check so a partially recovered block is completed, not skipped.
         private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
@@ -62,16 +59,6 @@ namespace Nethermind.Consensus.Processing
             return true;
         }
 
-        /// <summary>
-        /// Recovers senders (and EIP-7702 authorities) for transactions that are not yet part of a
-        /// constructed <see cref="Block"/>.
-        /// </summary>
-        /// <remarks>
-        /// Lets callers overlap recovery with other block-assembly work (e.g. transaction-root
-        /// computation on the engine <c>newPayload</c> path). Already-recovered transactions are skipped.
-        /// </remarks>
-        /// <param name="txs">The transactions to recover senders and authorities for.</param>
-        /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0)
@@ -108,9 +95,7 @@ namespace Nethermind.Consensus.Processing
         {
             Transaction tx = state.txs[i];
 
-            // Materialize the lazily-deferred keccak here so the hash is computed on this
-            // worker rather than later on the (serial) processing path. Typed txs already
-            // force it via the sender-cache key; this also covers the legacy case.
+            // Compute the lazily-deferred keccak on this worker, not on the serial processing path.
             _ = tx.Hash;
             tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
             state.recover.RecoverAuthorities(tx, state.releaseSpec);
