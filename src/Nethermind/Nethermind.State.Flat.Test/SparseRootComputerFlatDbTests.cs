@@ -32,6 +32,40 @@ namespace Nethermind.State.Flat.Test;
 public class SparseRootComputerFlatDbTests
 {
     [Test]
+    public void CommittedLookup_PrefersMaterializedSnapshotNodeOverUnresolvedCacheEntry()
+    {
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
+        TreePath path = TreePath.Empty;
+        byte[] expectedRlp = new byte[40];
+        expectedRlp[0] = 0xf8;
+        expectedRlp[^1] = 0x01;
+        Hash256 hash = Keccak.Compute(expectedRlp);
+
+        SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        content.StateNodes[path] = new TrieNode(NodeType.Unknown, hash, expectedRlp);
+        Snapshot snapshot = new(
+            StateId.PreGenesis,
+            new StateId(1, hash.ValueHash256),
+            content,
+            pool,
+            ResourcePool.Usage.MainBlockProcessing);
+        ReadOnlySnapshotBundle readOnlyBundle = new(
+            FlatTestHelpers.SnapshotList(snapshot),
+            Substitute.For<IPersistence.IPersistenceReader>(),
+            recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
+        using SnapshotBundle bundle = new(
+            readOnlyBundle,
+            new UnresolvedTrieNodeCache(hash),
+            pool,
+            ResourcePool.Usage.MainBlockProcessing);
+
+        byte[] actualRlp = new ParentStateTrieNodeReader(bundle).LoadStateRlp(path, hash);
+
+        Assert.That(actualRlp, Is.EqualTo(expectedRlp));
+    }
+
+    [Test]
     public void FlatDbReader_SnapshotChain_FindsNodes()
     {
         ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
@@ -186,6 +220,31 @@ public class SparseRootComputerFlatDbTests
     }
 
     private static string Shorten(Hash256 h) => h.ToString()[..10] + "...";
+
+    private sealed class UnresolvedTrieNodeCache(Hash256 hash) : ITrieNodeCache
+    {
+        private readonly TrieNode _node = new(NodeType.Unknown, hash);
+
+        public bool TryGet(
+            Hash256? address,
+            in TreePath path,
+            Hash256 requestedHash,
+            [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+        {
+            if (address is null && requestedHash == hash)
+            {
+                node = _node;
+                return true;
+            }
+
+            node = null;
+            return false;
+        }
+
+        public void Add(TransientResource transientResource) { }
+
+        public void Clear() { }
+    }
 
     /// <summary>
     /// Same as MultiBlock_SnapshotBundleReader_MatchesPatricia but uses accounts with

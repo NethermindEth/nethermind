@@ -203,16 +203,21 @@ public sealed class SnapshotBundle : IDisposable
 
     internal bool TryFindCommittedStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        TrieNode? unresolved = null;
         if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
+            if (node.HasRlp)
+                return true;
+            unresolved = node;
         }
 
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
+            if (node.HasRlp)
+                return true;
+            unresolved ??= node;
         }
 
         HashedKey<TreePath> key = new(path);
@@ -221,26 +226,46 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStateNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                node = candidate;
-                return true;
+                if (candidate.HasRlp)
+                {
+                    node = candidate;
+                    return true;
+                }
+                unresolved ??= candidate;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
+        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out TrieNode? readOnlyCandidate))
+        {
+            if (readOnlyCandidate.HasRlp)
+            {
+                node = readOnlyCandidate;
+                return true;
+            }
+            unresolved ??= readOnlyCandidate;
+        }
+
+        node = unresolved;
+        return node is not null;
     }
 
     internal bool TryFindCommittedStorageNode(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        TrieNode? unresolved = null;
         if (_transientResource.TryGetStorageNode(address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
+            if (node.HasRlp)
+                return true;
+            unresolved = node;
         }
 
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return true;
+            if (node.HasRlp)
+                return true;
+            unresolved ??= node;
         }
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
@@ -249,12 +274,27 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStorageNode(key, out TrieNode? candidate) && candidate.Keccak == hash)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                node = candidate;
-                return true;
+                if (candidate.HasRlp)
+                {
+                    node = candidate;
+                    return true;
+                }
+                unresolved ??= candidate;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out TrieNode? readOnlyCandidate))
+        {
+            if (readOnlyCandidate.HasRlp)
+            {
+                node = readOnlyCandidate;
+                return true;
+            }
+            unresolved ??= readOnlyCandidate;
+        }
+
+        node = unresolved;
+        return node is not null;
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
