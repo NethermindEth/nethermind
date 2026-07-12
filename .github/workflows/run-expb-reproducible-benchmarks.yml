@@ -673,6 +673,15 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Recover stale EXPB overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          merged="${EXPB_DATA_DIR}/work/merged"
+          if mountpoint -q "${merged}"; then
+            umount "${merged}" || umount -l "${merged}"
+          fi
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -1751,6 +1760,15 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Recover stale EXPB overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          merged="${EXPB_DATA_DIR}/work/merged"
+          if mountpoint -q "${merged}"; then
+            umount "${merged}" || umount -l "${merged}"
+          fi
 
       - name: Run expb scenarios
         id: run-expb
