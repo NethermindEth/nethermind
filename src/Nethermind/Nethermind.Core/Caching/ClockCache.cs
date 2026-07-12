@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching;
 
@@ -18,10 +19,10 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 #if ZK_EVM
     private readonly int? _lockPartition = lockPartition;
     private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
-    private readonly Nethermind.Core.Threading.MockLock _lock = new();
+    private readonly MockLock _lock = new();
 #else
     private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
-    private readonly Lock _lock = new();
+    private readonly McsLock _lock = new();
 #endif
 
     public TValue Get(TKey key)
