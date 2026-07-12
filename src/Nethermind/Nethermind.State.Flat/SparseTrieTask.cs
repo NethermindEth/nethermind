@@ -165,16 +165,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         return false;
     }
 
-    internal void EnqueuePrehash(WorkerSession session)
-    {
-        if (!_commands.Writer.TryWrite(new PrehashCommand(session)))
-        {
-            ObjectDisposedException exception = new(nameof(SparseTrieWorker));
-            session.Poison(exception);
-            throw exception;
-        }
-    }
-
     internal Task<SparseTrieBlockResult> FinishAsync(
         WorkerSession session,
         SparseTrieFinalState finalState)
@@ -262,11 +252,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                     EnsureActive(touches.Session!);
                     if (touches.Session!.Error is null)
                         ProcessAccountTouches(touches.Session!);
-                    break;
-                case PrehashCommand prehash:
-                    EnsureActive(prehash.Session!);
-                    if (prehash.Session!.Error is null && prehash.Session.ProvisionalAccountValues.Count != 0)
-                        prehash.Session.GetComputer().ComputeAppliedStateRoot(allowParallel: false);
                     break;
                 case FinishCommand finish:
                     Finish(finish);
@@ -839,7 +824,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record DeltaCommand(WorkerSession BlockSession, SparseTriePhaseDelta Delta) : Command(BlockSession);
     private sealed record AccountTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
-    private sealed record PrehashCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record FinishCommand(
         WorkerSession BlockSession,
         SparseTrieFinalState FinalState,
@@ -888,16 +872,6 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
             if (_finishTask is not null || _completionTask is not null || _terminal)
                 return false;
             return _worker.TryEnqueueAccountTouch(_session, accountPath);
-        }
-    }
-
-    public void EnqueuePrehash()
-    {
-        lock (_gate)
-        {
-            if (_finishTask is not null || _completionTask is not null || _terminal)
-                throw new InvalidOperationException("The sparse trie block is already finalizing.");
-            _worker.EnqueuePrehash(_session);
         }
     }
 

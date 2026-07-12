@@ -700,7 +700,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Exception? _sparsePublishException;
-        private bool _sparsePrehashQueued;
         private bool _disposed;
         private bool _released;
 
@@ -732,21 +731,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 sparseAccount = scope._snapshotBundle.GetAccount(address);
             }
             if (UsesSparse)
-            {
                 _dirtyAccounts[address] = sparseAccount;
-                if (!_sparsePrehashQueued)
-                {
-                    _sparsePrehashQueued = true;
-                    try
-                    {
-                        scope._sparseBlock!.EnqueuePrehash();
-                    }
-                    catch (Exception exception)
-                    {
-                        _sparsePublishException = exception;
-                    }
-                }
-            }
 
             return scope
                 .CreateStorageTreeImpl(address)
