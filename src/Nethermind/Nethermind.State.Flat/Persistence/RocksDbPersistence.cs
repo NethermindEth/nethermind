@@ -57,11 +57,6 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         }
     }
 
-    // Persist by building sorted SST file(s) per column (from a byte-capped in-memory buffer) and ingesting them
-    // as a metadata-only add, instead of a single large WriteBatch. This bypasses the memtable, so persisting a
-    // compacted snapshot no longer triggers the flush -> L0 pile-up -> compaction burst that saturates I/O and
-    // stalls concurrent reads for seconds. Peak persist memory is higher than the streaming WriteBatch (the buffer
-    // holds up to the byte cap per column on the managed heap), which is why it is capped and default-off.
     private IPersistence.IWriteBatch CreateIngestWriteBatch(IColumnDbSnapshot<FlatDbColumns> dbSnap, StateId to)
     {
         IWriteBatch Ingest(FlatDbColumns column) => ((ISstIngestible)db.GetColumnDb(column)).StartSstIngestBatch();
@@ -100,12 +95,6 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
-                // Each batch Dispose builds sorted SST file(s) from its buffer and ingests them (metadata-only add,
-                // bypassing the memtable), then the pointer advances. Every batch Dispose does disk I/O and can
-                // throw; dispose all of them and the snapshot regardless of failure so nothing leaks, and surface
-                // the first failure so the currentState pointer is NOT advanced past a partial persist (recovery
-                // then re-executes from the previous pointer). NOTE: per-CF ingest is not yet crash-atomic with the
-                // pointer write; full atomicity needs the multi-CF rocksdb_ingest_external_files (follow-up).
                 try
                 {
                     IWriteBatch[] batches = [accountBatch, storageBatch, stateTopNodesBatch, stateNodesBatch, storageNodesBatch, fallbackNodesBatch];

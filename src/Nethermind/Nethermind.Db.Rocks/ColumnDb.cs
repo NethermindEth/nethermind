@@ -127,20 +127,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public IWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
 
-    // Buffers key/value bytes in pooled slabs indexed by unmanaged entry structs instead of a
-    // Dictionary<byte[], byte[]?>: the dictionary buffered 2-3M small arrays per 128 MB chunk plus
-    // multi-MB bucket/entry/List-copy arrays — ~1.5-2.5 GB of promoted + LOH garbage per persist
-    // that fed blocking gen2 GC pauses (measured 1.3-2.1 s read stalls). Dedup is deferred to the
-    // flush-time sort (stable by append order, keep-last), which is semantics-preserving: duplicate
-    // keys across chunk files are already resolved by ingest order via AllowGlobalSeqno.
     private sealed class SstIngestWriteBatch(ColumnDb columnDb) : IWriteBatch
     {
-        // Byte cap on the in-memory buffer. At the cap we flush+ingest one SST and free the buffer, so a large
-        // persist (e.g. 10x state) never holds the whole batch in managed memory — that transient spike, on top
-        // of the working set, OOM-kills the node. Overlapping chunks are fine: each ingest gets a higher global
-        // seqno, so the later (final) value wins, which also preserves last-write-wins across chunk boundaries.
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
-        // Throttle the persist thread when L0 files pile up, bounding the native compaction working set.
         private const int MaxL0FilesBeforeThrottle = 20;
         private const int SlabSize = 1 << 20;
 
@@ -218,7 +207,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         {
             if (length > SlabSize)
             {
-                // Oversized entries get a dedicated exact-size array; dropped (not pooled) at reset.
                 byte[] dedicated = new byte[length];
                 _slabs.Add(dedicated);
                 slab = _slabs.Count - 1;
@@ -315,13 +303,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                     Native.Instance.rocksdb_sstfilewriter_destroy(writer);
                 }
 
-                // SetMoveFiles(true): on success RocksDB moves (consumes) the file. Only a Finish/ingest failure
-                // leaves it staged, so delete it on failure to stop sst_ingest/ accumulating orphaned files.
                 _columnDb._rocksDb.IngestExternalFiles([file], _options, _columnDb._columnFamily);
             }
             catch
             {
-                try { if (File.Exists(file)) File.Delete(file); } catch { /* best effort */ }
+                try { if (File.Exists(file)) File.Delete(file); } catch { }
                 throw;
             }
 
@@ -329,12 +315,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             WaitForCompactionHeadroom();
         }
 
-        // Ingestion bypasses RocksDB's memtable write-stall, so back-to-back ingests pile up L0 files and the
-        // compaction working set grows without bound (native memory OOM at large state). Replicate the missing
-        // flow control: throttle the persist thread until L0 drains — exactly what the memtable write path does.
         private void WaitForCompactionHeadroom()
         {
-            for (int i = 0; i < 1500; i++) // ~30s safety cap
+            for (int i = 0; i < 1500; i++)
             {
                 string? v = _columnDb._rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnDb._columnFamily);
                 if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
