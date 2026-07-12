@@ -99,6 +99,16 @@ public partial class BlockAccessListManager
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
 
+        if (!ParallelExecutionEnabled && _validateBlockAccessList && block.BlockAccessList is not null)
+        {
+            uint lastIndex = (uint)(block.Transactions.Length + 1);
+            for (uint index = 0; index <= lastIndex; index++)
+            {
+                ValidateBlockAccessList(block, index, validateStorageReads: index == lastIndex);
+            }
+            ValidateStructuralEquivalence(block);
+        }
+
         if (VerifyOnly)
         {
             // IncrementalValidation only covered indices 0..txCount; the post-execution row

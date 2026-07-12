@@ -437,6 +437,51 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void BranchProcessor_retries_bal_failure_with_sequential_validation()
+    {
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        int attempts = 0;
+        processor.ProcessOne(block, Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                attempts++;
+                ProcessingOptions processingOptions = callInfo.ArgAt<ProcessingOptions>(1);
+                if (attempts == 1)
+                {
+                    stateProvider.CreateAccount(TestItem.AddressA, 1);
+                    stateProvider.Commit(HoodiSpecProvider.Instance.GetSpec(block.Header));
+                    throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL");
+                }
+
+                Assert.That(processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
+                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False);
+                return (block, Array.Empty<TxReceipt>());
+            });
+
+        BranchProcessor branchProcessor = new(
+            processor,
+            HoodiSpecProvider.Instance,
+            stateProvider,
+            Substitute.For<IBeaconBlockRootHandler>(),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance);
+
+        Block[] processedBlocks = branchProcessor.Process(
+            null,
+            [block],
+            ProcessingOptions.None,
+            NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Is.EqualTo(2));
+            Assert.That(processedBlocks, Is.EqualTo(new[] { block }));
+        }
+    }
+
+    [Test]
     public void NullBlockProcessor_TransactionsExecuted_subscribe_unsubscribe_is_safe()
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;

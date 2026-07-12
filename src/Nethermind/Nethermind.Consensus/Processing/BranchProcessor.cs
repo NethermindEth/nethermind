@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -136,7 +137,27 @@ public class BranchProcessor(
                     }
                 }
 
-                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                Block processedBlock;
+                TxReceipt[] receipts;
+                try
+                {
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                }
+                catch (Exception ex) when (
+                    worldStateCloser is not null &&
+                    !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList) &&
+                    IsBlockAccessListFailure(ex))
+                {
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                    QueueClearCaches(preWarmTask);
+                    WaitAndClear(ref preWarmTask);
+                    WaitForCacheClear();
+
+                    worldStateCloser.Dispose();
+                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
+                    ProcessingOptions retryOptions = options | ProcessingOptions.ForceSequentialBlockAccessList;
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
+                }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
@@ -218,6 +239,19 @@ public class BranchProcessor(
         {
             task?.GetAwaiter().GetResult();
             task = null;
+        }
+
+        static bool IsBlockAccessListFailure(Exception exception)
+        {
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (current is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 

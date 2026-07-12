@@ -67,6 +67,7 @@ public partial class BlockAccessListManager(
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;
+    private bool _validateBlockAccessList;
     private bool _blockAccessListsEnabled;
 
     // Parallel execution requires this pool (mirrors CreateParentReaderEnvPool); witness/stateless supply none.
@@ -135,6 +136,7 @@ public partial class BlockAccessListManager(
 
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
+            && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
@@ -147,6 +149,7 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+            _validateBlockAccessList = !options.ContainsFlag(ProcessingOptions.NoValidation) && !_isBuilding;
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -306,6 +309,7 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
+        _validateBlockAccessList = false;
         _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
