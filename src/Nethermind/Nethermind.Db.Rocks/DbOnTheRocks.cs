@@ -91,7 +91,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    // Padded: bumped on every Get/Set from all threads across all column families.
     internal CacheLinePaddedLong _allocatedSpan;
     private CacheLinePaddedLong _totalReads;
     private CacheLinePaddedLong _totalWrites;
