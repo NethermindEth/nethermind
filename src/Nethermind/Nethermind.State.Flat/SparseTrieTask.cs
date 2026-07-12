@@ -66,7 +66,6 @@ internal sealed record SparseTrieBlockResult(
 public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 {
     private const int MaxSpeculativeTouchesPerPass = 256;
-    private const int MaxStorageProofWorkers = 4;
 
     private readonly Channel<Command> _commands = Channel.CreateUnbounded<Command>(
         new UnboundedChannelOptions
@@ -80,7 +79,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private readonly Task _workerTask;
     private readonly CancellationTokenRegistration _cancellationRegistration;
     private readonly long _maxRetainedNodes;
-    private readonly int _storageProofWorkerCount;
     private readonly Dictionary<Hash256, int> _storageArenaHighWater = [];
 
     private SparseStateTrie _trie = new();
@@ -99,27 +97,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         ILogger logger,
         CancellationToken cancellationToken,
         long maxRetainedNodes = 4_000_000)
-        : this(
-            logger,
-            cancellationToken,
-            maxRetainedNodes,
-            Math.Min(
-                Math.Min(
-                    Math.Max(1, RuntimeInformation.ProcessorCount / 4),
-                    RuntimeInformation.PhysicalCoreCount),
-                MaxStorageProofWorkers))
-    {
-    }
-
-    internal SparseTrieWorker(
-        ILogger logger,
-        CancellationToken cancellationToken,
-        long maxRetainedNodes,
-        int storageProofWorkerCount)
     {
         _logger = logger;
         _maxRetainedNodes = Math.Max(0, maxRetainedNodes);
-        _storageProofWorkerCount = Math.Clamp(storageProofWorkerCount, 1, MaxStorageProofWorkers);
         _workerTask = Task.Factory.StartNew(
             WorkerLoop,
             CancellationToken.None,
@@ -303,9 +283,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 case StorageTouchesCommand touches:
                     Volatile.Write(ref touches.Session!.StorageTouchCommandQueued, 0);
                     break;
-                case StorageProofCompletedCommand completed:
-                    StorageProofCompleted(completed.Session!, completed.AccountHash);
-                    break;
                 case FinishCommand finish:
                     Finish(finish);
                     break;
@@ -426,12 +403,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             if (_commands.Reader.TryPeek(out _))
                 return true;
 
-            if (session.Bundle is not null && session.ActiveStorageProofs.Count != 0 &&
-                session.PendingAccountTouches.IsEmpty)
-            {
-                return false;
-            }
-
             return !session.PendingAccountTouches.IsEmpty || !session.PendingStorageTouches.IsEmpty;
         }
         catch (Exception exception)
@@ -458,145 +429,31 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             session.GetComputer().ApplyAccountChanges(updates);
     }
 
-    private void ProcessStorageTouches(WorkerSession session, ref int remaining)
-    {
-        if (session.Bundle is null)
-        {
-            ProcessStorageTouchesSynchronously(session, ref remaining);
-            return;
-        }
-
-        int capacity = _storageProofWorkerCount - session.ActiveStorageProofs.Count;
-        if (capacity <= 0)
-            return;
-
-        Dictionary<Hash256, StorageTouchGroup> groups = [];
-        while (remaining > 0 &&
-               session.PendingStorageTouches.TryDequeue(out StorageTouch touch))
-        {
-            remaining--;
-            if (session.ActiveStorageProofs.ContainsKey(touch.AccountHash))
-            {
-                AddStorageTouch(session.DeferredStorageProofs, touch);
-                continue;
-            }
-
-            if (groups.TryGetValue(touch.AccountHash, out StorageTouchGroup? group))
-            {
-                group.Add(touch);
-                continue;
-            }
-
-            if (groups.Count == capacity)
-            {
-                session.PendingStorageTouches.Enqueue(touch);
-                break;
-            }
-
-            group = new StorageTouchGroup(touch.ParentStorageRoot);
-            group.Add(touch);
-            groups.Add(touch.AccountHash, group);
-        }
-
-        foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in groups)
-            StartStorageProof(session, entry.Key, entry.Value);
-    }
-
-    private static void ProcessStorageTouchesSynchronously(WorkerSession session, ref int remaining)
+    private static void ProcessStorageTouches(WorkerSession session, ref int remaining)
     {
         Dictionary<Hash256, StorageTouchGroup> groups = [];
         while (remaining > 0 &&
                session.PendingStorageTouches.TryDequeue(out StorageTouch touch))
         {
             remaining--;
-            AddStorageTouch(groups, touch);
+            if (!groups.TryGetValue(touch.AccountHash, out StorageTouchGroup? group))
+            {
+                group = new StorageTouchGroup(touch.ParentStorageRoot);
+                groups.Add(touch.AccountHash, group);
+            }
+            else if (group.ParentStorageRoot != touch.ParentStorageRoot)
+            {
+                throw new InvalidOperationException(
+                    $"Conflicting hinted storage roots for account {touch.AccountHash}.");
+            }
+
+            group.Updates[touch.SlotPath] = LeafUpdate.Touched();
             session.RetainedStorageHashes.Add(touch.AccountHash);
         }
 
         SparseRootComputer computer = session.GetComputer();
         foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in groups)
             computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
-    }
-
-    private static void AddStorageTouch(
-        Dictionary<Hash256, StorageTouchGroup> groups,
-        StorageTouch touch)
-    {
-        if (!groups.TryGetValue(touch.AccountHash, out StorageTouchGroup? group))
-        {
-            group = new StorageTouchGroup(touch.ParentStorageRoot);
-            groups.Add(touch.AccountHash, group);
-        }
-
-        group.Add(touch);
-    }
-
-    private void StartStorageProof(
-        WorkerSession session,
-        Hash256 accountHash,
-        StorageTouchGroup group)
-    {
-        if (!session.Bundle!.TryLeaseReadOnlyBundle())
-        {
-            session.Poison(new ObjectDisposedException(nameof(SnapshotBundle)));
-            return;
-        }
-
-        session.RetainedStorageHashes.Add(accountHash);
-        Task proofTask = Task.Run(() =>
-        {
-            try
-            {
-                session.GetComputer().ApplyStorageChanges(
-                    accountHash,
-                    group.ParentStorageRoot,
-                    group.Updates);
-            }
-            catch (Exception exception)
-            {
-                session.Poison(exception, notifyFinish: false);
-            }
-            finally
-            {
-                session.Bundle.ReleaseReadOnlyBundleLease();
-                _commands.Writer.TryWrite(new StorageProofCompletedCommand(session, accountHash));
-            }
-        });
-        session.ActiveStorageProofs.Add(accountHash, proofTask);
-    }
-
-    private void StorageProofCompleted(WorkerSession session, Hash256 accountHash)
-    {
-        if (!session.ActiveStorageProofs.Remove(accountHash) ||
-            session.FinishRequested || session.Completed || session.Error is not null)
-        {
-            session.DeferredStorageProofs.Remove(accountHash);
-            return;
-        }
-
-        if (session.DeferredStorageProofs.Remove(accountHash, out StorageTouchGroup? deferred) &&
-            deferred is not null)
-        {
-            foreach (ValueHash256 slotPath in deferred.Updates.Keys)
-            {
-                session.PendingStorageTouches.Enqueue(new StorageTouch(
-                    accountHash,
-                    deferred.ParentStorageRoot,
-                    slotPath));
-            }
-        }
-    }
-
-    private static void DrainStorageProofs(WorkerSession session)
-    {
-        if (session.ActiveStorageProofs.Count == 0)
-            return;
-
-        Task[] tasks = new Task[session.ActiveStorageProofs.Count];
-        session.ActiveStorageProofs.Values.CopyTo(tasks, 0);
-        Task.WhenAll(tasks).GetAwaiter().GetResult();
-        session.ActiveStorageProofs.Clear();
-        session.DeferredStorageProofs.Clear();
     }
 
     private void Finish(FinishCommand command)
@@ -607,7 +464,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             throw new InvalidOperationException("Sparse trie block session was already finalized.");
         session.FinishRequested = true;
         DiscardSpeculativeTouches(session);
-        DrainStorageProofs(session);
 
         if (session.Error is not null)
         {
@@ -627,7 +483,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     {
         session.PendingAccountTouches.Clear();
         session.PendingStorageTouches.Clear();
-        session.DeferredStorageProofs.Clear();
         Volatile.Write(ref session.AccountTouchCommandQueued, 0);
         Volatile.Write(ref session.StorageTouchCommandQueued, 0);
     }
@@ -914,7 +769,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private void ClearAndCompleteSession(WorkerSession session)
     {
-        DrainStorageProofs(session);
         ClearTrie();
         CompleteSession(session);
     }
@@ -953,7 +807,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private void CompleteSession(WorkerSession session)
     {
         EnsureActive(session);
-        DrainStorageProofs(session);
         session.Completed = true;
         ReleaseSession(session);
     }
@@ -980,9 +833,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             return;
 
         ObjectDisposedException exception = new(nameof(SparseTrieWorker));
-        DrainStorageProofs(session);
         session.Poison(exception);
-        session.FinishCompletion?.TrySetException(session.Error ?? exception);
         ClearTrie();
         ReleaseSession(session);
     }
@@ -1081,8 +932,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public ConcurrentQueue<ValueHash256> PendingAccountTouches { get; } = [];
         public ConcurrentDictionary<(Hash256 AccountHash, ValueHash256 SlotPath), byte> HintedStorage { get; } = [];
         public ConcurrentQueue<StorageTouch> PendingStorageTouches { get; } = [];
-        internal Dictionary<Hash256, Task> ActiveStorageProofs { get; } = [];
-        internal Dictionary<Hash256, StorageTouchGroup> DeferredStorageProofs { get; } = [];
         public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
         public HashSet<Hash256> RetainedStorageHashes { get; } = [];
@@ -1098,13 +947,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public SparseRootComputer GetComputer() =>
             Computer ?? throw new InvalidOperationException("Sparse trie block has not started.");
 
-        public void Poison(Exception exception, bool notifyFinish = true)
+        public void Poison(Exception exception)
         {
             if (Interlocked.CompareExchange(ref _error, exception, comparand: null) is null)
-            {
-                if (notifyFinish)
-                    FinishCompletion?.TrySetException(exception);
-            }
+                FinishCompletion?.TrySetException(exception);
         }
     }
 
@@ -1120,21 +966,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         Hash256 ParentStorageRoot,
         ValueHash256 SlotPath);
 
-    internal sealed class StorageTouchGroup(Hash256 parentStorageRoot)
+    private sealed class StorageTouchGroup(Hash256 parentStorageRoot)
     {
         public Hash256 ParentStorageRoot { get; } = parentStorageRoot;
         public Dictionary<ValueHash256, LeafUpdate> Updates { get; } = [];
-
-        public void Add(StorageTouch touch)
-        {
-            if (ParentStorageRoot != touch.ParentStorageRoot)
-            {
-                throw new InvalidOperationException(
-                    $"Conflicting hinted storage roots for account {touch.AccountHash}.");
-            }
-
-            Updates[touch.SlotPath] = LeafUpdate.Touched();
-        }
     }
 
     private readonly record struct StorageRootJob(
@@ -1150,9 +985,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private sealed record DeltaCommand(WorkerSession BlockSession, SparseTriePhaseDelta Delta) : Command(BlockSession);
     private sealed record AccountTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record StorageTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
-    private sealed record StorageProofCompletedCommand(
-        WorkerSession BlockSession,
-        Hash256 AccountHash) : Command(BlockSession);
     private sealed record FinishCommand(
         WorkerSession BlockSession,
         SparseTrieFinalState FinalState,
