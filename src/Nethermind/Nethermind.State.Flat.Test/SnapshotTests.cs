@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -42,6 +43,103 @@ public class SnapshotTests
             Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressB, pathB)), out TrieNode? foundB), Is.True);
             Assert.That(foundB, Is.SameAs(otherAddress));
             Assert.That(snapshot.StorageNodesCount, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesRetainEligibleInnerCapacityAfterQuiescentClear()
+    {
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
+        original.EnsureAdditionalCapacity(256);
+        original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+        int capacity = original.Nodes.Capacity;
+
+        storageNodes.NoLockClear();
+        AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.Nodes, Is.Empty);
+            Assert.That(original.Nodes.Capacity, Is.EqualTo(capacity));
+            Assert.That(reused.Nodes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesSupportOverlappingAndReusedEnumerators()
+    {
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        storageNodes[(addressA, TreePath.FromHexString("12"))] = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
+        storageNodes[(addressA, TreePath.FromHexString("34"))] = new TrieNode(NodeType.Branch, TestItem.KeccakB);
+        storageNodes[(addressB, TreePath.FromHexString("56"))] = new TrieNode(NodeType.Extension, TestItem.KeccakC);
+
+        AddressStorageNodeDictionary.Enumerator first = storageNodes.GetEnumerator();
+        AddressStorageNodeDictionary.Enumerator second = storageNodes.GetEnumerator();
+        int firstCount = Count(ref first);
+        int secondCount = Count(ref second);
+        first.Dispose();
+        second.Dispose();
+
+        AddressStorageNodeDictionary.Enumerator reused = storageNodes.GetEnumerator();
+        int reusedCount = Count(ref reused);
+        reused.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(3));
+            Assert.That(secondCount, Is.EqualTo(3));
+            Assert.That(reusedCount, Is.EqualTo(3));
+        }
+
+        static int Count(ref AddressStorageNodeDictionary.Enumerator enumerator)
+        {
+            int count = 0;
+            while (enumerator.MoveNext()) count++;
+            return count;
+        }
+    }
+
+    [Test]
+    public void PublicTrieNodeSettersPreserveWriteBehavior()
+    {
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool),
+            Substitute.For<ITrieNodeCache>(),
+            _pool,
+            ResourcePool.Usage.MainBlockProcessing);
+        TreePath statePath = TreePath.FromHexString("12");
+        TreePath storagePath = TreePath.FromHexString("34");
+        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
+        TrieNode stateNode = new(NodeType.Unknown, TestItem.KeccakA);
+        TrieNode storageNode = new(NodeType.Unknown, TestItem.KeccakB);
+
+        bundle.SetStateNode(statePath, stateNode);
+        bundle.SetStorageNode(address, storagePath, storageNode);
+
+        MethodInfo? stateSetter = typeof(SnapshotBundle).GetMethod(
+            nameof(SnapshotBundle.SetStateNode),
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            [typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
+            modifiers: null);
+        MethodInfo? storageSetter = typeof(SnapshotBundle).GetMethod(
+            nameof(SnapshotBundle.SetStorageNode),
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            [typeof(Hash256), typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
+            modifiers: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateSetter, Is.Not.Null);
+            Assert.That(storageSetter, Is.Not.Null);
+            Assert.That(bundle.FindStateNodeOrUnknown(statePath, TestItem.KeccakA), Is.SameAs(stateNode));
+            Assert.That(bundle.FindStorageNodeOrUnknown(address, storagePath, TestItem.KeccakB), Is.SameAs(storageNode));
         }
     }
 
