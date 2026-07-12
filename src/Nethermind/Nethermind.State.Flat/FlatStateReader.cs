@@ -16,12 +16,12 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ) : IStateReader
 {
     // Content-addressed (node hash -> RLP): entries are immutable, so no invalidation is needed.
-    private const int TrieNodeRlpCacheCapacity = 1 << 18;
-    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(TrieNodeRlpCacheCapacity);
+    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(flatDbConfig.TrieNodeRlpCacheCapacity);
 
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {

@@ -25,6 +25,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
     public ulong TrieCacheMemoryBudget { get; set; } = 512UL.MiB;
+    public int TrieNodeRlpCacheCapacity { get; set; } = 1 << 18;
     public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;
