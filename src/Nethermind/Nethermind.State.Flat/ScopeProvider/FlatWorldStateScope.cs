@@ -97,6 +97,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _configuration = configuration;
+        _snapshotBundle.HashAwareTrieReads = configuration.VerifyWithTrie;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
