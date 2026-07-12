@@ -31,11 +31,56 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
-        public void Dispose() { }
+        private ThreadLocal<List<(TreePath Path, TrieNode Node)>>? _parallelBuffers;
 
-        public abstract TrieNode CommitNode(ref TreePath path, TrieNode node);
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            ThreadLocal<List<(TreePath Path, TrieNode Node)>>? parallelBuffers = Volatile.Read(ref _parallelBuffers);
+            if (parallelBuffers is null)
+            {
+                WriteNode(path, node);
+            }
+            else
+            {
+                parallelBuffers.Value!.Add((path, node));
+            }
+            return node;
+        }
 
-        bool ICommitter.TryRequestConcurrentQuota() => quota.TryRequestConcurrencyQuota();
+        protected abstract void WriteNode(in TreePath path, TrieNode node);
+
+        protected abstract void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers);
+
+        public void Dispose()
+        {
+            ThreadLocal<List<(TreePath Path, TrieNode Node)>>? parallelBuffers = _parallelBuffers;
+            if (parallelBuffers is null) return;
+
+            try
+            {
+                PublishNodes(parallelBuffers.Values);
+            }
+            finally
+            {
+                parallelBuffers.Dispose();
+            }
+        }
+
+        bool ICommitter.TryRequestConcurrentQuota()
+        {
+            if (!quota.TryRequestConcurrencyQuota()) return false;
+
+            if (Volatile.Read(ref _parallelBuffers) is null)
+            {
+                ThreadLocal<List<(TreePath Path, TrieNode Node)>> candidate = new(static () => [], trackAllValues: true);
+                ThreadLocal<List<(TreePath Path, TrieNode Node)>>? existing =
+                    Interlocked.CompareExchange(ref _parallelBuffers, candidate, null);
+                if (existing is not null) candidate.Dispose();
+            }
+
+            return true;
+        }
+
         void ICommitter.ReturnConcurrencyQuota() => quota.ReturnConcurrencyQuota();
     }
 

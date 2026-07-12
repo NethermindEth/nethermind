@@ -104,8 +104,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
+    public readonly AddressStorageNodeDictionary StorageNodes = new();
 
     public void Reset()
     {
@@ -115,8 +115,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Accounts.NoResizeClear();
         Storages.NoResizeClear();
         SelfDestructedStorageAddresses.NoResizeClear();
-        StateNodes.NoResizeClear();
-        StorageNodes.NoResizeClear();
+        StateNodes.Clear();
+        StorageNodes.Clear();
     }
 
     public long EstimateMemory() =>
