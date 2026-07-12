@@ -34,19 +34,25 @@ public class FlatWorldStateScopeProviderTests
         private readonly ContainerBuilder _containerBuilder;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SparseTrieWorker? _sparseTrieWorker;
+        private readonly StateId _currentStateId;
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public ITrieNodeCache TrieNodeCache => Container.Resolve<ITrieNodeCache>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
         public TransientResource? LastCreatedCachedResource { get; set; }
 
-        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(
+            FlatDbConfig? config = null,
+            ITrieWarmer? trieWarmer = null,
+            StateId? currentStateId = null)
         {
             config ??= new FlatDbConfig();
+            _currentStateId = currentStateId ?? new StateId(0, Keccak.EmptyTreeHash);
             if (config.UseSparseRootComputation)
             {
                 _sparseTrieWorker = new SparseTrieWorker(
@@ -114,7 +120,7 @@ public class FlatWorldStateScopeProviderTests
 
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From(_currentStateId))
                 .WithParameter(TypedParameter.From(_sparseTrieWorker))
                 ;
 
@@ -1073,6 +1079,134 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
     }
 
+    [Test]
+    public void SparseScope_MaterializedSnapshotRootWinsOverUnresolvedGlobalCache()
+    {
+        Address address = TestItem.AddressA;
+        Account account = new(1, (UInt256)1_000);
+        StateTree expectedState = new();
+        expectedState.Set(address, account);
+        expectedState.UpdateRootHash();
+        Hash256 root = expectedState.RootHash;
+        TrieNode materializedRoot = new(NodeType.Unknown, root, expectedState.RootRef!.FullRlp);
+
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true, VerifyWithTrie = true },
+            new NoopTrieWarmer(),
+            new StateId(1, root.ValueHash256));
+        ctx.AddSnapshot(content =>
+        {
+            content.Accounts[address] = account;
+            content.StateNodes[TreePath.Empty] = materializedRoot;
+        });
+
+        TransientResource cacheEntries = ctx.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        cacheEntries.UpdateStateNode(TreePath.Empty, new TrieNode(NodeType.Unknown, root));
+        ctx.TrieNodeCache.Add(cacheEntries);
+        ctx.ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, cacheEntries);
+        Assert.That(
+            ctx.TrieNodeCache.TryGet(null, TreePath.Empty, root, out TrieNode? cachedRoot),
+            Is.True,
+            "unresolved root must be present in the global cache");
+        Assert.That(cachedRoot!.HasRlp, Is.False);
+
+        FlatWorldStateScope scope = ctx.Scope;
+        Assert.That(cachedRoot.HasRlp, Is.False, "scope construction must not materialize the cache placeholder");
+        Account? actual = scope.Get(address);
+
+        Assert.That(actual, Is.EqualTo(account));
+    }
+
+    [Test]
+    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia()
+    {
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true, VerifyWithTrie = true },
+            new NoopTrieWarmer());
+        FlatWorldStateScope scope = ctx.Scope;
+        WorldState worldState = new(new ExistingScopeProvider(scope), LimboLogs.Instance);
+        using IDisposable worldStateScope = worldState.BeginScope(baseBlock: null);
+
+        Address firstAddress = TestItem.AddressA;
+        Address secondAddress = TestItem.AddressB;
+        UInt256 firstSlot = 1;
+        UInt256 secondSlot = 2;
+        StorageCell firstCell = new(firstAddress, in firstSlot);
+        StorageCell secondCell = new(secondAddress, in secondSlot);
+        byte[] firstInitialValue = [0x11];
+        byte[] firstFinalValue = [0x33];
+        byte[] secondValue = [0x22];
+
+        RawTrieStore referenceStore = new(new MemDb());
+        StorageTree firstStorage = new(
+            referenceStore.GetTrieStore(firstAddress.ToAccountPath.ToCommitment()),
+            LimboLogs.Instance);
+        StorageTree secondStorage = new(
+            referenceStore.GetTrieStore(secondAddress.ToAccountPath.ToCommitment()),
+            LimboLogs.Instance);
+        StateTree expectedState = new();
+
+        worldState.CreateAccount(firstAddress, (UInt256)1_000);
+        worldState.CreateAccount(secondAddress, (UInt256)2_000);
+        worldState.Set(in firstCell, firstInitialValue);
+        worldState.Set(in secondCell, secondValue);
+        worldState.Commit(
+            Nethermind.Specs.Forks.Cancun.Instance,
+            Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
+            commitRoots: false);
+
+        worldState.SetNonce(firstAddress, 1);
+        worldState.AddToBalance(secondAddress, (UInt256)100, Nethermind.Specs.Forks.Cancun.Instance);
+        worldState.Set(in firstCell, firstFinalValue);
+        worldState.Commit(
+            Nethermind.Specs.Forks.Cancun.Instance,
+            Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
+            commitRoots: false);
+        worldState.Commit(
+            Nethermind.Specs.Forks.Cancun.Instance,
+            Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
+            commitRoots: true);
+        worldState.RecalculateStateRoot();
+
+        firstStorage.Set(in firstSlot, firstFinalValue);
+        firstStorage.UpdateRootHash();
+        secondStorage.Set(in secondSlot, secondValue);
+        secondStorage.UpdateRootHash();
+        expectedState.Set(firstAddress, new Account(1, (UInt256)1_000, firstStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.Set(secondAddress, new Account(0, (UInt256)2_100, secondStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.UpdateRootHash();
+        Assert.That(worldState.StateRoot, Is.EqualTo(expectedState.RootHash), "block one");
+
+        worldState.CommitTree(1);
+        worldState.Reset();
+
+        UInt256 nextSlot = 3;
+        StorageCell nextCell = new(firstAddress, in nextSlot);
+        byte[] nextValue = [0x44];
+        worldState.Set(in nextCell, nextValue);
+        worldState.Set(in secondCell, StorageTree.ZeroBytes);
+        worldState.SetNonce(secondAddress, 2);
+        worldState.AddToBalance(firstAddress, (UInt256)50, Nethermind.Specs.Forks.Cancun.Instance);
+        worldState.Commit(
+            Nethermind.Specs.Forks.Cancun.Instance,
+            Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
+            commitRoots: false);
+        worldState.Commit(
+            Nethermind.Specs.Forks.Cancun.Instance,
+            Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
+            commitRoots: true);
+        worldState.RecalculateStateRoot();
+
+        firstStorage.Set(in nextSlot, nextValue);
+        firstStorage.UpdateRootHash();
+        secondStorage.Set(in secondSlot, StorageTree.ZeroBytes);
+        secondStorage.UpdateRootHash();
+        expectedState.Set(firstAddress, new Account(1, (UInt256)1_050, firstStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.Set(secondAddress, new Account(2, (UInt256)2_100, secondStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.UpdateRootHash();
+        Assert.That(worldState.StateRoot, Is.EqualTo(expectedState.RootHash), "block two");
+    }
+
     private static Hash256 CalculateStorageRoot(Address address, in UInt256 slot, byte[] value)
     {
         RawTrieStore store = new(new MemDb());
@@ -1082,6 +1216,13 @@ public class FlatWorldStateScopeProviderTests
         storageTree.Set(in slot, value);
         storageTree.UpdateRootHash();
         return storageTree.RootHash;
+    }
+
+    private sealed class ExistingScopeProvider(FlatWorldStateScope scope) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader? baseBlock) => true;
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => scope;
     }
 
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
