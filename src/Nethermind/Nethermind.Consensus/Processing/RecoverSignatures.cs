@@ -81,10 +81,7 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    _ = tx.Hash;
-                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                    RecoverAuthorities(tx, releaseSpec);
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    Recover(tx, releaseSpec);
                 }
             }
         }
@@ -97,7 +94,7 @@ namespace Nethermind.Consensus.Processing
             return state;
         }
 
-        public void Recover(Transaction tx, IReleaseSpec releaseSpec)
+        private void Recover(Transaction tx, IReleaseSpec releaseSpec)
         {
             // Compute the lazily-deferred keccak here, off the serial processing path.
             _ = tx.Hash;
