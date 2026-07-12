@@ -12,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
-using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
