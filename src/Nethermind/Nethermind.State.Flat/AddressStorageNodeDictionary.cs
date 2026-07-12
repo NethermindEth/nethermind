@@ -65,6 +65,9 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
     {
         internal Dictionary<HashedKey<TreePath>, TrieNode> Nodes { get; } = [];
 
+        internal void EnsureAdditionalCapacity(int additionalCapacity) =>
+            Nodes.EnsureCapacity(Nodes.Count + additionalCapacity);
+
         internal void Set(in TreePath path, TrieNode node) => Nodes[path] = node;
     }
 

@@ -303,6 +303,8 @@ public sealed class SnapshotBundle : IDisposable
 
     internal void PublishStateNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
     {
+        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + CountBufferedNodes(buffers));
+
         foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
         {
             foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
@@ -332,10 +334,19 @@ public sealed class SnapshotBundle : IDisposable
         Hash256 address,
         IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
     {
+        nodes.EnsureAdditionalCapacity(CountBufferedNodes(buffers));
+
         foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
         {
             foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
         }
+    }
+
+    private static int CountBufferedNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        int count = 0;
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers) count += buffer.Count;
+        return count;
     }
 
     public void SetAccount(Address address, Account? account) =>
