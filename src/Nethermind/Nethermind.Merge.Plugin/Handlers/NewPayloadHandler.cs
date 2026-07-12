@@ -376,9 +376,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             try
             {
-                // Most transactions were already recovered when they entered the pool; copying
-                // those senders by hash leaves only the remainder (e.g. never-gossiped
-                // transactions) for ecrecover.
                 foreach (Transaction tx in txs)
                 {
                     if (tx.SenderAddress is null

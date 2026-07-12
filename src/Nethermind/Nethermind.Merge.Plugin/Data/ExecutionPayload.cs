@@ -157,9 +157,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         byte[][] encodedTransactions = Transactions;
-        // The tx root needs only the raw encoded bytes, so it can overlap with transaction decoding.
-        // Single-threaded hosts (the stateless guest) have no worker to run the fork and blocking
-        // on it would deadlock, so the root is computed inline there.
         Task<Hash256>? txRootTask = encodedTransactions.Length >= MinTxsForParallelDecoding && Environment.ProcessorCount > 1
             ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
             : null;
