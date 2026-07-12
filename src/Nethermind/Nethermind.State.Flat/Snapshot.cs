@@ -112,9 +112,12 @@ public sealed class SnapshotContent : IDisposable, IResettable
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
 
-        Accounts.NoResizeClear();
-        Storages.NoResizeClear();
-        SelfDestructedStorageAddresses.NoResizeClear();
+        // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
+        // bundle returning its current content on disposal), so no writer can hold a stripe;
+        // the lock-free clear skips ~thousands of inflated Monitor acquisitions per return.
+        Accounts.NoLockClear();
+        Storages.NoLockClear();
+        SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
         StorageNodes.Clear();
     }
