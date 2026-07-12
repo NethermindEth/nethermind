@@ -205,6 +205,189 @@ public class SparseTrieTaskTests
         await block.AcceptAsync();
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task DeltaAndWarmerStorageTouch_ShareSessionDedupe(bool warmerFirst)
+    {
+        StorageTestState state = BuildStorageState();
+        byte[] finalValue = [0x55];
+        state.StorageTree.Set(state.ChangedSlot, finalValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedAccount = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, state.Address, expectedAccount);
+
+        using CountingTrieNodeReader reader = new(state.State.Reader);
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
+        Hash256 accountHash = state.Address.ToAccountPath.ToCommitment();
+        SparseTriePhaseDelta delta = new(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                finalValue)]);
+
+        if (warmerFirst)
+        {
+            Assert.That(
+                block.TryEnqueueStorageTouch(accountHash, state.ParentStorageRoot, slotPath),
+                Is.True);
+        }
+        else
+        {
+            block.EnqueueDelta(delta);
+        }
+
+        Assert.That(
+            SpinWait.SpinUntil(() => reader.StorageLoads > 0, TimeSpan.FromSeconds(5)),
+            Is.True,
+            "The worker did not process the first proof hint while idle.");
+
+        if (warmerFirst)
+        {
+            block.EnqueueDelta(delta);
+        }
+        else
+        {
+            Assert.That(
+                block.TryEnqueueStorageTouch(accountHash, state.ParentStorageRoot, slotPath),
+                Is.True);
+        }
+
+        SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+        }
+    }
+
+    [TestCase(PendingFinalStorageChange.Changed)]
+    [TestCase(PendingFinalStorageChange.Unchanged)]
+    [TestCase(PendingFinalStorageChange.Delete)]
+    [TestCase(PendingFinalStorageChange.Clear)]
+    public async Task FinishWithPendingDistinctPhaseTouches_MatchesPatricia(
+        PendingFinalStorageChange change)
+    {
+        StorageTestState state = BuildStorageState();
+        Address blockerAddress = state.State.Addresses[0];
+        Account blockerAccount = new(90, (UInt256)90_000);
+        byte[] changedValue = change switch
+        {
+            PendingFinalStorageChange.Changed => [0x55],
+            PendingFinalStorageChange.Delete => [0],
+            _ => [0x22],
+        };
+
+        if (change is PendingFinalStorageChange.Clear)
+            state.StorageTree.Clear();
+        else if (change is not PendingFinalStorageChange.Unchanged)
+            state.StorageTree.Set(state.ChangedSlot, changedValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedOwner = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        state.State.StateTree.Set(
+            blockerAddress.ToAccountPath.Bytes,
+            AccountDecoder.Instance.Encode(blockerAccount).Bytes);
+        state.State.StateTree.Set(
+            state.Address.ToAccountPath.Bytes,
+            AccountDecoder.Instance.Encode(expectedOwner).Bytes);
+        state.State.StateTree.UpdateRootHash();
+        state.State.StateTree.Commit();
+        Hash256 expectedStateRoot = state.State.StateTree.RootHash;
+
+        using BlockingCountingTrieNodeReader reader = new(state.State.Reader);
+        reader.BlockNextStateRead();
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(blockerAddress, blockerAccount)],
+            []));
+        if (!reader.WaitForBlockedStateRead(TimeSpan.FromSeconds(5)))
+        {
+            reader.ReleaseStateRead();
+            Assert.Fail("The worker did not reach the blocking account proof.");
+        }
+
+        IReadOnlyList<SparseTrieFinalSlot> finalSlots = change is PendingFinalStorageChange.Clear
+            ? []
+            :
+            [
+                new SparseTrieFinalSlot(
+                    state.UnchangedSlot,
+                    state.UnchangedValue,
+                    Changed: false),
+                new SparseTrieFinalSlot(
+                    state.ChangedSlot,
+                    changedValue,
+                    Changed: change is not PendingFinalStorageChange.Unchanged),
+            ];
+        Task<SparseTrieBlockResult> finishTask;
+        try
+        {
+            block.EnqueueDelta(new SparseTriePhaseDelta(
+                [],
+                [new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.UnchangedSlot,
+                    [0xa1])]));
+            block.EnqueueDelta(new SparseTriePhaseDelta(
+                [],
+                [new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    [0xa2])]));
+            finishTask = block.FinishAsync(new SparseTrieFinalState(
+                [new SparseTrieFinalStorageBatch(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    Clear: change is PendingFinalStorageChange.Clear,
+                    finalSlots)],
+                [
+                    new SparseTrieFinalAccount(blockerAddress, blockerAccount),
+                    new SparseTrieFinalAccount(state.Address, state.ParentAccount),
+                ]));
+        }
+        finally
+        {
+            reader.ReleaseStateRead();
+        }
+
+        SparseTrieBlockResult result = await finishTask;
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            if (change is PendingFinalStorageChange.Unchanged or PendingFinalStorageChange.Clear)
+            {
+                Assert.That(
+                    reader.StorageLoads,
+                    Is.Zero,
+                    "A touch marker queued behind Finish must not reveal storage afterward.");
+            }
+        }
+    }
+
     [Test]
     public async Task SequentialAcceptedBlocks_RetainStorageTrie()
     {
@@ -554,8 +737,54 @@ public class SparseTrieTaskTests
         Assert.That(recoveredResult.StateRoot, Is.EqualTo(state.State.ParentRoot));
     }
 
+    [Test]
+    public async Task IdleStorageProofFailure_PoisonsOnlySessionAndWorkerCanRecover()
+    {
+        StorageTestState state = BuildStorageState();
+        using ThrowingStorageTrieNodeReader reader = new(state.State.Reader);
+        await using SparseTrieWorker worker = CreateWorker();
+
+        await using (SparseTrieBlockHandle poisoned = worker.BeginBlock(
+            state.State.ParentRoot,
+            reader))
+        {
+            ValueHash256 slotPath = default;
+            StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
+            Assert.That(
+                poisoned.TryEnqueueStorageTouch(
+                    state.Address.ToAccountPath.ToCommitment(),
+                    state.ParentStorageRoot,
+                    slotPath),
+                Is.True);
+            Assert.That(reader.WaitForStorageRead(TimeSpan.FromSeconds(5)), Is.True);
+
+            Func<Task> finish = async () => await poisoned.FinishAsync(
+                new SparseTrieFinalState([], []));
+            Assert.ThrowsAsync<InvalidOperationException>(finish);
+            await poisoned.AbortAsync();
+        }
+
+        await using SparseTrieBlockHandle recovered = worker.BeginBlock(
+            state.State.ParentRoot,
+            state.State.Reader);
+        SparseTrieBlockResult recoveredResult = await recovered.FinishAsync(
+            new SparseTrieFinalState([], []));
+        await recovered.PrepareCommitAsync();
+        await recovered.AcceptAsync();
+
+        Assert.That(recoveredResult.StateRoot, Is.EqualTo(state.State.ParentRoot));
+    }
+
     private static SparseTrieWorker CreateWorker() =>
         new(LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+    public enum PendingFinalStorageChange
+    {
+        Changed,
+        Unchanged,
+        Delete,
+        Clear,
+    }
 
     private static void AddProvisionalStorageDelta(
         List<SparseTrieStorageDelta> deltas,
@@ -747,5 +976,91 @@ public class SparseTrieTaskTests
         public StorageTree StorageTree { get; } = storageTree;
         public Hash256 StorageRoot { get; set; } = storageRoot;
         public Dictionary<int, byte[]> Slots { get; } = slots;
+    }
+
+    private class CountingTrieNodeReader(ITrieNodeReader inner) : ITrieNodeReader, IDisposable
+    {
+        private int _storageLoads;
+
+        public int StorageLoads => Volatile.Read(ref _storageLoads);
+
+        public virtual byte[] LoadStateRlp(
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None) =>
+            inner.LoadStateRlp(path, hash, flags);
+
+        public virtual byte[] LoadStorageRlp(
+            Hash256 accountPathHash,
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            Interlocked.Increment(ref _storageLoads);
+            return inner.LoadStorageRlp(accountPathHash, path, hash, flags);
+        }
+
+        public virtual void Dispose()
+        {
+        }
+    }
+
+    private sealed class BlockingCountingTrieNodeReader(ITrieNodeReader inner)
+        : CountingTrieNodeReader(inner)
+    {
+        private readonly ManualResetEventSlim _stateReadStarted = new();
+        private readonly ManualResetEventSlim _releaseStateRead = new(initialState: true);
+        private int _blockStateRead;
+
+        public void BlockNextStateRead()
+        {
+            _releaseStateRead.Reset();
+            Volatile.Write(ref _blockStateRead, 1);
+        }
+
+        public bool WaitForBlockedStateRead(TimeSpan timeout) => _stateReadStarted.Wait(timeout);
+
+        public void ReleaseStateRead() => _releaseStateRead.Set();
+
+        public override byte[] LoadStateRlp(
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            if (Interlocked.Exchange(ref _blockStateRead, 0) != 0)
+            {
+                _stateReadStarted.Set();
+                _releaseStateRead.Wait();
+            }
+
+            return base.LoadStateRlp(path, hash, flags);
+        }
+
+        public override void Dispose()
+        {
+            _releaseStateRead.Set();
+            _stateReadStarted.Dispose();
+            _releaseStateRead.Dispose();
+        }
+    }
+
+    private sealed class ThrowingStorageTrieNodeReader(ITrieNodeReader inner)
+        : CountingTrieNodeReader(inner)
+    {
+        private readonly ManualResetEventSlim _storageRead = new();
+
+        public bool WaitForStorageRead(TimeSpan timeout) => _storageRead.Wait(timeout);
+
+        public override byte[] LoadStorageRlp(
+            Hash256 accountPathHash,
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            _storageRead.Set();
+            throw new InvalidOperationException("Expected storage proof failure.");
+        }
+
+        public override void Dispose() => _storageRead.Dispose();
     }
 }
