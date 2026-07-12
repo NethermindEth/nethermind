@@ -187,6 +187,8 @@
         button.danger:hover { border-color: var(--danger); color: var(--danger); }
         button.bell { filter: grayscale(1) opacity(0.45); font-size: 13px; }
         button.bell.on { filter: none; }
+        button.tag { font-size: 13px; filter: grayscale(1) opacity(0.55); }
+        button.tag:hover { filter: none; }
 
         .panel {
             position: relative;
@@ -1328,7 +1330,7 @@
                 addr.title = entry.address + ' (click to copy)';
                 addr.onclick = () => copyAddress(entry.address);
                 head.append(addr);
-                const rename = el('button', 'link', '✎');
+                const rename = el('button', 'link tag', '🏷️');
                 rename.title = 'Name this account';
                 rename.onclick = () => {
                     const name = window.prompt('Name for ' + shortAddr(entry.address), entry.label || '');
