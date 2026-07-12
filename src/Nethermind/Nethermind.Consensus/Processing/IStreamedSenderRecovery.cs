@@ -25,8 +25,8 @@ public interface IStreamedSenderRecovery
     void EnsureSendersRecovered(Block block, CancellationToken token);
 
     /// <summary>
-    /// Blocks until the transaction is fully recovered or the block's recovery completes;
-    /// a no-op when already recovered or without recovery in flight.
+    /// Blocks until the block's in-flight recovery completes and the transaction is fully
+    /// recovered; a no-op for blocks without recovery in flight.
     /// </summary>
     void EnsureSenderRecovered(Block block, Transaction transaction);
 }

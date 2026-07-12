@@ -35,7 +35,7 @@ public sealed class StreamedSenderRecovery(
     {
         if (block.Transactions.Length == 0) return;
 
-        _inFlight.Add(block.Body, Task.Run(() => Recover(block)));
+        _inFlight.AddOrUpdate(block.Body, Task.Run(() => Recover(block)));
     }
 
     public void EnsureSendersRecovered(Block block, CancellationToken token)
@@ -48,12 +48,10 @@ public sealed class StreamedSenderRecovery(
 
     public void EnsureSenderRecovered(Block block, Transaction transaction)
     {
-        if (IsFullyRecovered(transaction)) return;
         if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
 
-        // Recovery normally runs ahead of execution, so the spin is rare and short.
         SpinWait spinner = default;
-        while (!IsFullyRecovered(transaction) && !recovery.IsCompleted)
+        while (!recovery.IsCompleted)
         {
             if (spinner.NextSpinWillYield)
             {
@@ -106,6 +104,8 @@ public sealed class StreamedSenderRecovery(
         }
     }
 
+    // A cancelled token throws OperationCanceledException past the fallback: processing is
+    // being aborted and no verdict is produced, which is the correct fail mode.
     private void AwaitRecovery(Block block, Task recovery, CancellationToken token)
     {
         try
