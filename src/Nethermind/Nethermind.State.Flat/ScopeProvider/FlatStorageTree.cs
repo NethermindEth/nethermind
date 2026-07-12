@@ -248,9 +248,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         internal void ApplySparseRoot(Hash256 root)
         {
-            _storageTree._tree.SetRootHash(root, resetObjects: true);
-            _storageTree._warmupStorageTree.SetRootHash(root, resetObjects: true);
+            SetUnresolvedRoot(_storageTree._tree, root);
+            SetUnresolvedRoot(_storageTree._warmupStorageTree, root);
             _onRootUpdated(_storageTree._address, root);
+        }
+
+        private static void SetUnresolvedRoot(PatriciaTree tree, Hash256 root)
+        {
+            tree.SetRootHash(root, resetObjects: false);
+            tree.RootRef = root == Keccak.EmptyTreeHash ? null : new TrieNode(NodeType.Unknown, root);
         }
 
         internal void ReplayFallback()

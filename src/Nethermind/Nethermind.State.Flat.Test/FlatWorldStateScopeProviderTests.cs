@@ -980,6 +980,64 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void SparseWriteBatch_DoesNotResolveNewStorageRootBeforeSnapshotCommit()
+    {
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true },
+            new NoopTrieWarmer());
+
+        Address address = TestItem.AddressA;
+        Hash256 addressHash = address.ToAccountPath.ToCommitment();
+        UInt256 slot = 1;
+        byte[] parentValue = [0x12];
+        byte[] newValue = [0x34];
+
+        RawTrieStore store = new(new MemDb());
+        StorageTree referenceStorage = new(store.GetTrieStore(addressHash), LimboLogs.Instance);
+        referenceStorage.Set(in slot, parentValue);
+        referenceStorage.UpdateRootHash();
+        Hash256 parentStorageRoot = referenceStorage.RootHash;
+        TrieNode parentRootNode = new(
+            NodeType.Unknown,
+            parentStorageRoot,
+            referenceStorage.RootRef!.FullRlp);
+        referenceStorage.Commit();
+        Account parentAccount = new(1, (UInt256)1_000, parentStorageRoot, Keccak.OfAnEmptyString);
+
+        ctx.AddSnapshot(content =>
+        {
+            content.Accounts[address] = parentAccount;
+            content.Storages[(address, slot)] = SlotValue.FromSpanWithoutLeadingZero(parentValue);
+            content.StorageNodes[(addressHash, TreePath.Empty)] = parentRootNode;
+        });
+
+        referenceStorage.Set(in slot, newValue);
+        referenceStorage.UpdateRootHash();
+        Hash256 expectedStorageRoot = referenceStorage.RootHash;
+        StateTree expectedState = new();
+        expectedState.Set(address, parentAccount.WithChangedStorageRoot(expectedStorageRoot));
+        expectedState.UpdateRootHash();
+
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
+        StorageCell cell = new(address, in slot);
+        sink.OnCommittedStorage(in cell, newValue);
+        sink.OnCommitPhaseCompleted(isFinal: true);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
+                   writeBatch.CreateStorageWriteBatch(address, 1))
+                storageBatch.Set(in slot, newValue);
+            writeBatch.Set(address, parentAccount);
+        }
+
+        scope.UpdateRootHash();
+
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+    }
+
+    [Test]
     public void SparseAcceptedRoot_IsReusedByNextBlock()
     {
         using TestContext ctx = new(
