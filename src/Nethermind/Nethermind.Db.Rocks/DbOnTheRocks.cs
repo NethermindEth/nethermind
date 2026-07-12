@@ -38,6 +38,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 {
     protected ILogger _logger;
 
+    internal ILogger Logger => _logger;
+
     private string? _fullPath;
 
     internal string FullPath => _fullPath ?? throw new InvalidOperationException("DB path not initialized");

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -131,6 +132,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
         private const int MaxL0FilesBeforeThrottle = 20;
+        private const int L0DrainMaxPolls = 1500;
+        private const int L0DrainPollMs = 20;
         private const int SlabSize = 1 << 20;
 
         private static readonly ArrayPool<byte> s_slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
@@ -318,12 +321,15 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         private void WaitForCompactionHeadroom()
         {
-            for (int i = 0; i < 1500; i++)
+            for (int i = 0; i < L0DrainMaxPolls; i++)
             {
                 string? v = _columnDb._rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnDb._columnFamily);
                 if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
-                Thread.Sleep(20);
+                Thread.Sleep(L0DrainPollMs);
             }
+
+            ILogger logger = _columnDb._mainDb.Logger;
+            if (logger.IsWarn) logger.Warn($"L0 of {_columnDb._mainDb.Name} column {_columnDb.Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
         }
 
         public void Dispose()
