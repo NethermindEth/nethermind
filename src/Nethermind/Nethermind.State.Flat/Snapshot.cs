@@ -145,7 +145,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
-        StorageNodes.Clear();
+        StorageNodes.NoLockClear();
     }
 
     /// <summary>

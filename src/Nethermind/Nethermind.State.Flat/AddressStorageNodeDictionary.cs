@@ -53,6 +53,8 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     public void Clear() => _byAddress.Clear();
 
+    internal void NoLockClear() => _byAddress.NoLockClear();
+
     public Enumerator GetEnumerator() => new(_byAddress.GetEnumerator());
 
     IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>.GetEnumerator() =>
