@@ -963,8 +963,6 @@ public class FlatWorldStateScopeProviderTests
         expectedState.UpdateRootHash();
 
         sink.OnCommittedAccount(address, account);
-        StorageCell cell = new(address, in slot);
-        sink.OnCommittedStorage(in cell, value);
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -1026,8 +1024,6 @@ public class FlatWorldStateScopeProviderTests
 
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
-        StorageCell cell = new(address, in slot);
-        sink.OnCommittedStorage(in cell, newValue);
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -1077,6 +1073,21 @@ public class FlatWorldStateScopeProviderTests
         expectedState.UpdateRootHash();
         scope.UpdateRootHash();
         Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+    }
+
+    [Test]
+    public void SparseScope_WarmerIgnoresSnapshotRootWithDifferentHash()
+    {
+        Hash256 parentRoot = TestItem.KeccakA;
+        Hash256 staleRoot = TestItem.KeccakB;
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true },
+            new NoopTrieWarmer(),
+            new StateId(1, parentRoot.ValueHash256));
+        ctx.AddSnapshot(content =>
+            content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, staleRoot));
+
+        Assert.That(() => _ = ctx.Scope, Throws.Nothing);
     }
 
     [Test]

@@ -22,9 +22,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
-/// <summary>Sink for committed storage writes. <c>in</c> avoids copying the cell.</summary>
-internal delegate void StorageCommitSink(in StorageCell cell, byte[] value);
-
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
@@ -44,9 +41,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
     private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
-
-    /// <summary>Optional non-destructive sink for committed storage values.</summary>
-    internal StorageCommitSink? CommittedStorageSink { get; set; }
 
     /// <summary>
     /// Reset the storage state
@@ -189,8 +183,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                     GetOrCreateStorage(change.StorageCell.Address)
                         .SaveChange(change.StorageCell, change.Value);
-
-                    CommittedStorageSink?.Invoke(change.StorageCell, change.Value);
                 }
 
                 if (isTracing)
@@ -637,7 +629,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 }
                 else
                 {
-                    storageWriteBatch.ObserveFinalValue(kvp.Key, after);
                     skipped++;
                 }
             }

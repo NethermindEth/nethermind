@@ -183,8 +183,11 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
-        // TrieWarmer only touch `_transientResource`
         GuardDispose();
+
+        // A stale path-keyed warmer entry must not shadow the current sparse/verified root.
+        if (HashAwareTrieReads)
+            return FindStateNodeOrUnknown(path, hash);
 
         if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
@@ -362,6 +365,9 @@ public sealed class SnapshotBundle : IDisposable
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
         GuardDispose();
+
+        if (HashAwareTrieReads)
+            return FindStorageNodeOrUnknown(address, path, hash);
 
         if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {

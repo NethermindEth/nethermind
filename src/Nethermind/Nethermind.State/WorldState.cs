@@ -257,10 +257,7 @@ namespace Nethermind.State
             }
 
             if (_currentScope is IWorldStateScopeProvider.ISparseDeltaSink sink && sink.WantsCommittedDeltas)
-            {
                 _stateProvider.CommittedAccountSink = sink.OnCommittedAccount;
-                _persistentStorageProvider.CommittedStorageSink = (in StorageCell cell, byte[] value) => sink.OnCommittedStorage(in cell, value);
-            }
 
             return new Reactive.AnonymousDisposable(() =>
             {
@@ -279,7 +276,6 @@ namespace Nethermind.State
                     _localMetrics.Flush();
                     Reset();
                     _stateProvider.CommittedAccountSink = null;
-                    _persistentStorageProvider.CommittedStorageSink = null;
                     _stateProvider.SetScope(null);
                     _currentScope.Dispose();
                 }

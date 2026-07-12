@@ -25,8 +25,8 @@ public interface IWorldStateScopeProvider
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     /// <summary>
-    /// Optional capability for receiving committed account and storage deltas while execution is
-    /// still running. Implementations can hash raw keys and update an incremental root off-thread.
+    /// Optional capability for receiving committed account deltas while execution is still
+    /// running. Implementations can hash raw keys and update an incremental root off-thread.
     /// </summary>
     public interface ISparseDeltaSink
     {
@@ -36,11 +36,8 @@ public interface IWorldStateScopeProvider
         /// <summary>Reports a committed account leaf. A null account is deleted.</summary>
         void OnCommittedAccount(Address address, Account? account);
 
-        /// <summary>Reports a committed storage write (post commit-phase).</summary>
-        void OnCommittedStorage(in StorageCell cell, byte[] value);
-
         /// <summary>
-        /// Publishes the committed account/storage notifications accumulated for one commit phase.
+        /// Publishes the committed account notifications accumulated for one commit phase.
         /// The final phase is followed by the exact write-batch reconciliation barrier.
         /// </summary>
         void OnCommitPhaseCompleted(bool isFinal);
@@ -223,13 +220,6 @@ public interface IWorldStateScopeProvider
     public interface IStorageWriteBatch : IDisposable
     {
         void Set(in UInt256 index, byte[] value);
-
-        /// <summary>
-        /// Reports the exact final value of a slot which was touched during the block but returned
-        /// to its original value. Most backends can ignore it; incremental root builders use it to
-        /// reconcile provisional per-transaction updates before final hashing.
-        /// </summary>
-        void ObserveFinalValue(in UInt256 index, byte[] value) { }
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.
