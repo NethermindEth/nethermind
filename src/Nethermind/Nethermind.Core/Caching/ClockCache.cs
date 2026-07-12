@@ -18,7 +18,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 #if ZK_EVM
     private readonly int? _lockPartition = lockPartition;
     private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
-    private readonly MockLock _lock = new();
+    private readonly Nethermind.Core.Threading.MockLock _lock = new();
 #else
     private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
     private readonly Lock _lock = new();
