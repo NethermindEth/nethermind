@@ -143,7 +143,8 @@ public sealed class SparseRootComputer : IDisposable
         {
             for (int retry = 0; retry < MaxTriePathRetries; retry++)
             {
-                List<(ValueHash256 Key, byte MinLength)> targets = [];
+                List<(ValueHash256 Key, byte MinLength)> targets = new(
+                    missCount < 0 ? updates.Count : missCount);
                 if (missCount < 0)
                 {
                     _trie.UpdateStorageLeaves(
@@ -257,7 +258,8 @@ public sealed class SparseRootComputer : IDisposable
             for (int retry = 0; retry < MaxTriePathRetries; retry++)
             {
                 long updateStartedAt = Stopwatch.GetTimestamp();
-                List<(ValueHash256 Key, byte MinLength)> targets = [];
+                List<(ValueHash256 Key, byte MinLength)> targets = new(
+                    missCount < 0 ? updates.Count : missCount);
                 if (missCount < 0)
                 {
                     _trie.UpdateAccountLeaves(
@@ -345,7 +347,7 @@ public sealed class SparseRootComputer : IDisposable
         SparseSubtrie subtrie,
         List<(ValueHash256 Key, byte MinLength)> targets)
     {
-        List<MultiProofReader.BlindedProofTarget> blinded = [];
+        List<MultiProofReader.BlindedProofTarget> blinded = new(targets.Count);
         foreach ((ValueHash256 key, byte _) in targets)
         {
             byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
