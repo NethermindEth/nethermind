@@ -18,7 +18,6 @@ public class PreBlockCaches
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    // Pure function of its key, so reorg-immune: deliberately excluded from the per-block clear.
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _precompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
@@ -65,8 +64,7 @@ public class PreBlockCaches
     {
         private Address Address { get; } = address;
         private ReadOnlyMemory<byte> Data { get; } = data;
-        // Reference-compared: results may legally differ across forks (e.g. input bounds), so an
-        // entry must never be served across a fork boundary.
+        // Reference-compared; results may differ across forks, so entries never cross a fork boundary.
         private IReleaseSpec Spec { get; } = spec;
 
         public bool Equals(PrecompileCacheKey other) =>
