@@ -26,7 +26,7 @@ public interface IDbConfig : IConfig
 
     int? MaxOpenFiles { get; set; }
 
-    [ConfigItem(Description = "Store RocksDB index and filter blocks in the block cache (partitioned: two-level index + partitioned filter, top level pinned) instead of pinning them whole in unbounded table-reader memory. Bounds native memory at large state, where index+filter blocks across many SST files can reach tens of GB and grow with the file count. Partitioning applies to newly written/compacted SSTs (existing files read transparently) and evicts at partition granularity, so it avoids the whole-filter re-read of monolithic caching. Best for read-serving/RPC replica nodes; a head-following node still benefits from a per-column block_cache sized to hold the working set. Default off.", DefaultValue = "false")]
+    [ConfigItem(Description = "Store RocksDB index and filter blocks (partitioned, top level pinned) in the block cache to bound table-reader memory at large state. Default off.", DefaultValue = "false")]
     bool CacheIndexAndFilterBlocks { get; set; }
     bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
     bool WriteAheadLogSync { get; set; }

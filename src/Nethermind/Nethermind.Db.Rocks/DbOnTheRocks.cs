@@ -558,19 +558,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         string rocksDbOptions = dbConfig.RocksDbOptions;
         if (dbConfig.CacheIndexAndFilterBlocks)
         {
-            // Move index + filter blocks into the (bounded) block cache instead of pinning them in unbounded
-            // table-reader memory. At large state (10x) this is the dominant native RAM — index+filter for every
-            // open SST across hundreds of thousands of files — and it grows with the SST count, OOM-ing the node.
-            // Capping it into the block cache bounds it; pinning L0 keeps the hottest filters resident for reads.
-            // Applied through the options string (not the C# table-options API) so it survives the
-            // rocksdb_get_options_from_string merge below, which rewrites block_based_table_factory fields.
-            //
-            // Partitioned index/filter (two-level index + partitioned filter, top level pinned) is the canonical
-            // way to bound this without the whole-filter thrash of monolithic caching: only the small top-level
-            // block stays resident and individual partitions are cached/evicted at block granularity, so a random
-            // point-get touches one partition instead of re-reading a whole SST's filter. It is a write-time SST
-            // format, so it applies to newly written/compacted files (existing files keep their monolithic filters,
-            // read transparently), and needs no migration.
+            // Must go through the options string: the rocksdb_get_options_from_string merge below rewrites
+            // block_based_table_factory fields set via the C# table-options API.
             rocksDbOptions +=
                 "block_based_table_factory.cache_index_and_filter_blocks=true;" +
                 "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
