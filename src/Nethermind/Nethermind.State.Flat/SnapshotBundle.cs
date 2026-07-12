@@ -187,7 +187,26 @@ public sealed class SnapshotBundle : IDisposable
 
         // A stale path-keyed warmer entry must not shadow the current sparse/verified root.
         if (HashAwareTrieReads)
-            return FindStateNodeOrUnknown(path, hash);
+        {
+            HashedKey<TreePath> key = new(path);
+            TrieNode exact;
+            if (_trieChanged &&
+                _changedStateNodes.TryGetValue(key, out TrieNode? changed) &&
+                changed.Keccak == hash)
+            {
+                exact = changed;
+            }
+            else if (TryFindCommittedStateNode(path, hash, out TrieNode? committed))
+            {
+                exact = committed;
+            }
+            else
+            {
+                exact = new TrieNode(NodeType.Unknown, hash);
+            }
+
+            return _transientResource.GetOrAddStateNode(path, exact);
+        }
 
         if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
@@ -367,7 +386,26 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (HashAwareTrieReads)
-            return FindStorageNodeOrUnknown(address, path, hash);
+        {
+            HashedKey<(Hash256, TreePath)> key = new((address, path));
+            TrieNode exact;
+            if (_trieChanged &&
+                _changedStorageNodes.TryGetValue(key, out TrieNode? changed) &&
+                changed.Keccak == hash)
+            {
+                exact = changed;
+            }
+            else if (TryFindCommittedStorageNode(address, path, hash, out TrieNode? committed))
+            {
+                exact = committed;
+            }
+            else
+            {
+                exact = new TrieNode(NodeType.Unknown, hash);
+            }
+
+            return _transientResource.GetOrAddStorageNode(address, path, exact);
+        }
 
         if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {

@@ -756,6 +756,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             SparseTrieBlockHandle block = scope._sparseBlock
                 ?? throw new InvalidOperationException("Sparse write batch lost its block session.");
 
+            // TrieWarmer shares resolved nodes with these Patricia storage trees; re-proving
+            // their paths in the sparse worker would turn warm root updates into cold DB reads.
             ApplyDirtyStorageRoots(sparseMode: true);
             foreach (AddressAsKey address in scope._provisionalSparseAccounts)
             {

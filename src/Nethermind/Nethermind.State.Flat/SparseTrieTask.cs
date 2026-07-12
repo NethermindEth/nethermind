@@ -280,7 +280,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         {
             ValueHash256 accountPath = accountDelta.Address.ToAccountPath;
             session.RevealedAccounts.Add(accountPath);
-            session.ProvisionalAccounts.Add(accountDelta.Address);
+            session.ProvisionalAccountValues[accountDelta.Address] = accountDelta.Account;
             accountUpdates[accountPath] = accountDelta.Account is null
                 ? LeafUpdate.Deleted()
                 : LeafUpdate.Changed(AccountDecoder.Instance.Encode(accountDelta.Account).Bytes);
@@ -469,9 +469,13 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 storageRoot is not null)
                 account = account.WithChangedStorageRoot(storageRoot);
 
-            accountUpdates[accountPath] = account is null
-                ? LeafUpdate.Deleted()
-                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
+            if (!session.ProvisionalAccountValues.TryGetValue(address, out Account? provisional) ||
+                provisional != account)
+            {
+                accountUpdates[accountPath] = account is null
+                    ? LeafUpdate.Deleted()
+                    : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
+            }
         }
 
         foreach (AddressAsKey storageAddress in mutableStorageRoots.Keys)
@@ -480,7 +484,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException($"Final accounts omit storage owner {storageAddress}.");
         }
 
-        foreach (AddressAsKey provisionalAddress in session.ProvisionalAccounts)
+        foreach (AddressAsKey provisionalAddress in session.ProvisionalAccountValues.Keys)
         {
             if (!finalAccounts.Contains(provisionalAddress))
                 throw new InvalidOperationException(
@@ -488,7 +492,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
 
         Hash256 stateRoot;
-        if (accountUpdates.Count == 0)
+        if (accountUpdates.Count == 0 && session.ProvisionalAccountValues.Count == 0)
         {
             if (storageCount != 0)
                 throw new InvalidOperationException("Storage changed without a final account leaf.");
@@ -496,8 +500,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
         else
         {
-            computer.SetAccountChanges(accountUpdates);
-            computer.ApplyAccountChanges(accountUpdates);
+            if (accountUpdates.Count != 0)
+            {
+                computer.SetAccountChanges(accountUpdates);
+                computer.ApplyAccountChanges(accountUpdates);
+            }
             stateRoot = computer.ComputeAppliedStateRoot();
         }
 
@@ -737,7 +744,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public SparseRootComputer? Computer { get; set; }
         public Dictionary<Hash256, ProvisionalStorage> ProvisionalStorage { get; } = [];
         public HashSet<ValueHash256> RevealedAccounts { get; } = [];
-        public HashSet<AddressAsKey> ProvisionalAccounts { get; } = new(AddressAsKey.EqualityComparer);
+        public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
         public SparseTrieBlockResult? Result { get; set; }
         public TaskCompletionSource<SparseTrieBlockResult>? FinishCompletion { get; set; }
