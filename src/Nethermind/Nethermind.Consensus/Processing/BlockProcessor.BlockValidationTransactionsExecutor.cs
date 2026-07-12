@@ -47,7 +47,7 @@ public partial class BlockProcessor
             {
                 Transaction currentTx = block.Transactions[i];
 
-                senderRecovery?.EnsureSenderRecovered(block, currentTx);
+                senderRecovery?.EnsureSenderRecovered(block, currentTx, i);
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 

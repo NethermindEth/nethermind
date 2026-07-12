@@ -93,15 +93,17 @@ namespace Nethermind.Consensus.Processing
             int i,
             (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state)
         {
-            Transaction tx = state.txs[i];
-
-            // Compute the lazily-deferred keccak on this worker, not on the serial processing path.
-            _ = tx.Hash;
-            tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
-            state.recover.RecoverAuthorities(tx, state.releaseSpec);
-            if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-
+            state.recover.Recover(state.txs[i], state.releaseSpec);
             return state;
+        }
+
+        public void Recover(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            // Compute the lazily-deferred keccak here, off the serial processing path.
+            _ = tx.Hash;
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+            RecoverAuthorities(tx, releaseSpec);
+            if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
         }
 
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)

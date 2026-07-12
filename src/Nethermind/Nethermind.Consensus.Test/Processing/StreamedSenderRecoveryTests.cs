@@ -66,9 +66,9 @@ public class StreamedSenderRecoveryTests
             "precondition: the processing copy shares the suggested block's body");
 
         _recovery.Begin(suggested);
-        foreach (Transaction tx in processingCopy.Transactions)
+        for (int i = 0; i < processingCopy.Transactions.Length; i++)
         {
-            _recovery.EnsureSenderRecovered(processingCopy, tx);
+            _recovery.EnsureSenderRecovered(processingCopy, processingCopy.Transactions[i], i);
         }
 
         foreach (Transaction tx in processingCopy.Transactions)
@@ -85,9 +85,9 @@ public class StreamedSenderRecoveryTests
 
         _recovery.Begin(suggested);
         _recovery.RecoverData(processingCopy);
-        foreach (Transaction tx in processingCopy.Transactions)
+        for (int i = 0; i < processingCopy.Transactions.Length; i++)
         {
-            _recovery.EnsureSenderRecovered(processingCopy, tx);
+            _recovery.EnsureSenderRecovered(processingCopy, processingCopy.Transactions[i], i);
         }
 
         foreach (Transaction tx in processingCopy.Transactions)
@@ -116,7 +116,7 @@ public class StreamedSenderRecoveryTests
         Assert.That(tx.AuthorizationList![0].Authority, Is.Null, "precondition: the authority is what recovery still owes");
 
         _recovery.Begin(block);
-        _recovery.EnsureSenderRecovered(block, tx);
+        _recovery.EnsureSenderRecovered(block, tx, 0);
 
         Assert.That(tx.AuthorizationList[0].Authority, Is.Not.Null,
             "the per-tx join must not hand a set-code transaction to execution before its authorities are recovered");
@@ -137,9 +137,9 @@ public class StreamedSenderRecoveryTests
         switch (joinKind)
         {
             case JoinKind.EnsureSenderRecovered:
-                foreach (Transaction tx in block.Transactions)
+                for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    _recovery.EnsureSenderRecovered(block, tx);
+                    _recovery.EnsureSenderRecovered(block, block.Transactions[i], i);
                 }
                 break;
             case JoinKind.RecoverData:

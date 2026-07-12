@@ -19,6 +19,9 @@ namespace Nethermind.Consensus.Processing;
 /// not per block: executors receive a header-replaced copy of the suggested block
 /// (<c>BlockProcessor.PrepareBlockForProcessing</c>) that shares its body — keying by block
 /// instance made executor joins silent no-ops and falsely invalidated a valid block.
+/// Recovery runs on a single background thread, in block order: fanning it out competed with
+/// the executing block for cores, and ecrecover is several times faster per transaction than
+/// execution, so a lone thread stays ahead of the executors it feeds.
 /// </summary>
 public sealed class StreamedSenderRecovery(
     RecoverSignatures recoverSignatures,
@@ -28,26 +31,32 @@ public sealed class StreamedSenderRecovery(
     // Defensive only: a stuck recovery must fail the block, never hang the processing pipeline.
     private static readonly TimeSpan RecoveryTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly ConditionalWeakTable<BlockBody, Task> _inFlight = [];
+    private readonly ConditionalWeakTable<BlockBody, InFlightRecovery> _inFlight = [];
     private readonly ILogger _logger = logManager.GetClassLogger<StreamedSenderRecovery>();
 
     public void Begin(Block block)
     {
         if (block.Transactions.Length == 0) return;
 
-        _inFlight.AddOrUpdate(block.Body, Task.Run(() => Recover(block)));
+        InFlightRecovery recovery = new();
+        recovery.Task = Task.Run(() => Recover(block, recovery));
+        _inFlight.AddOrUpdate(block.Body, recovery);
     }
 
-    public void EnsureSenderRecovered(Block block, Transaction transaction)
+    public void EnsureSenderRecovered(Block block, Transaction transaction, int index)
     {
-        if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
+        if (!_inFlight.TryGetValue(block.Body, out InFlightRecovery? recovery)) return;
+
+        // The published prefix is the release/acquire edge for the recovery's plain stores:
+        // seeing PublishedCount > index makes every write for transactions up to index visible.
+        if (Volatile.Read(ref recovery.PublishedCount) > index) return;
 
         SpinWait spinner = default;
-        while (!recovery.IsCompleted)
+        while (Volatile.Read(ref recovery.PublishedCount) <= index && !recovery.Task.IsCompleted)
         {
             if (spinner.NextSpinWillYield)
             {
-                AwaitRecovery(block, recovery);
+                AwaitRecovery(block, recovery.Task);
                 break;
             }
 
@@ -83,11 +92,17 @@ public sealed class StreamedSenderRecovery(
         recoverSignatures.RecoverData(block);
     }
 
-    private void Recover(Block block)
+    private void Recover(Block block, InFlightRecovery recovery)
     {
         try
         {
-            recoverSignatures.RecoverData(block.Transactions, specProvider.GetSpec(block.Header));
+            Transaction[] txs = block.Transactions;
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            for (int i = 0; i < txs.Length; i++)
+            {
+                recoverSignatures.Recover(txs[i], spec);
+                Volatile.Write(ref recovery.PublishedCount, i + 1);
+            }
         }
         catch (Exception e)
         {
@@ -122,8 +137,8 @@ public sealed class StreamedSenderRecovery(
 
         if (_logger.IsWarn)
         {
-            string taskState = _inFlight.TryGetValue(block.Body, out Task? recovery)
-                ? $"tracked, status={recovery.Status}, exception={recovery.Exception?.GetBaseException().Message ?? "none"}"
+            string taskState = _inFlight.TryGetValue(block.Body, out InFlightRecovery? recovery)
+                ? $"tracked, status={recovery.Task.Status}, published={Volatile.Read(ref recovery.PublishedCount)}, exception={recovery.Task.Exception?.GetBaseException().Message ?? "none"}"
                 : "not tracked";
             _logger.Warn($"Streamed recovery left {missing}/{block.Transactions.Length} transactions not fully recovered for block " +
                 $"{block.ToString(Block.Format.FullHashAndNumber)} (recovery task: {taskState}); recovering synchronously.");
@@ -135,4 +150,10 @@ public sealed class StreamedSenderRecovery(
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowRecoveryIncomplete(Block block) =>
         throw new InvalidOperationException($"Streamed sender recovery did not complete for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+
+    private sealed class InFlightRecovery
+    {
+        public Task Task = null!;
+        public int PublishedCount;
+    }
 }

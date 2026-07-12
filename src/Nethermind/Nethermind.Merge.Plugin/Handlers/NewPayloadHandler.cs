@@ -359,9 +359,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Far-from-tip payloads take Syncing/insert paths that never use the senders.
         if (block.Number > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return;
 
-        // Streaming only helps at the tip, where cores are idle; with a backlog it steals cores
-        // from the executing block and regresses throughput, so those blocks keep the
-        // preprocessor's pipelined recovery.
+        // With a backlog the pipelined preprocessor recovery already overlaps whole blocks;
+        // streaming would only move the joins inside processing.
         if (!_processingQueue.IsEmpty) return;
 
         Transaction[] txs = block.Transactions;

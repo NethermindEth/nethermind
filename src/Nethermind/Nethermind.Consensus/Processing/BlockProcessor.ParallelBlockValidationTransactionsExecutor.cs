@@ -85,7 +85,7 @@ public partial class BlockProcessor
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                senderRecovery?.EnsureSenderRecovered(block, currentTx);
+                senderRecovery?.EnsureSenderRecovered(block, currentTx, (int)i);
                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
@@ -165,7 +165,7 @@ public partial class BlockProcessor
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
-                                state.senderRecovery?.EnsureSenderRecovered(state.block, tx);
+                                state.senderRecovery?.EnsureSenderRecovered(state.block, tx, txIndex);
                                 try
                                 {
                                     IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
