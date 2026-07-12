@@ -36,10 +36,6 @@ public class CacheIndexAndFilterBlocksTests
     [Test]
     public void CacheIndexAndFilterBlocks_partitioned_filters_open_and_round_trip()
     {
-        // Opening the DB with CacheIndexAndFilterBlocks=true appends the partitioned index/filter options
-        // (cache_index_and_filter_blocks + two-level index + partition_filters + pin_top_level) to the RocksDB
-        // options string. If RocksDB rejected that combination, the column-family open below would throw. A
-        // successful write→read round-trip proves the options parse and are accepted by the engine.
         string path = Path.Combine(Path.GetTempPath(), "flat-cif-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         DbConfig dbConfig = new() { CacheIndexAndFilterBlocks = true };
@@ -68,7 +64,7 @@ public class CacheIndexAndFilterBlocksTests
         }
         finally
         {
-            try { Directory.Delete(path, true); } catch { /* best effort */ }
+            try { Directory.Delete(path, true); } catch { }
         }
     }
 }

@@ -169,9 +169,6 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
 
-    // Direct RocksDB memory-by-type profile. RocksDB's process memory is dominated by four pools; logging them per
-    // column family shows exactly where native RAM goes (e.g. table-reader index/filter blocks pinned by
-    // max_open_files=-1 across many SST files), which the aggregate process RSS cannot.
     private void LogMemoryProfile()
     {
         if (!logger.IsInfo) return;
@@ -183,9 +180,9 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
 
         const double MB = 1024 * 1024, GB = MB * 1024;
-        long tableReaders = Prop("rocksdb.estimate-table-readers-mem");   // index + filter blocks (out of block cache)
-        long memtables = Prop("rocksdb.cur-size-all-mem-tables");         // active + unflushed memtables
-        long blockCache = Prop("rocksdb.block-cache-usage");              // block cache (shared across CFs)
+        long tableReaders = Prop("rocksdb.estimate-table-readers-mem");
+        long memtables = Prop("rocksdb.cur-size-all-mem-tables");
+        long blockCache = Prop("rocksdb.block-cache-usage");
         long blockCachePinned = Prop("rocksdb.block-cache-pinned-usage");
         long liveSst = Prop("rocksdb.live-sst-files-size");
         long numKeys = Prop("rocksdb.estimate-num-keys");
