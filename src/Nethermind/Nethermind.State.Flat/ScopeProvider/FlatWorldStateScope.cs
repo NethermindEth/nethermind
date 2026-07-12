@@ -836,6 +836,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 ApplyDirtyStorageRoots(sparseMode: true);
+                if (scope._configuration.VerifyWithTrie && logger.IsWarn)
+                {
+                    logger.Warn(
+                        $"Sparse diagnostic parent {scope._currentStateId.StateRoot}, root {result.StateRoot}, " +
+                        $"accounts {_dirtyAccounts.Count}, storage {storageBatches.Count}.");
+                    foreach (KeyValuePair<AddressAsKey, Account?> entry in _dirtyAccounts)
+                        logger.Warn($"Sparse diagnostic account {entry.Key}: {entry.Value?.ToString() ?? "deleted"}.");
+                    foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                    {
+                        SparseTrieFinalStorageBatch finalState = storageBatch.FinalState;
+                        logger.Warn(
+                            $"Sparse diagnostic storage {finalState.Address}: parent {finalState.ParentStorageRoot}, " +
+                            $"root {result.StorageRoots[finalState.Address]}, clear {finalState.Clear}, " +
+                            $"slots {finalState.Slots.Count}.");
+                    }
+                }
                 scope._sparseComputedRoot = result.StateRoot;
                 scope._sparseRootReturned = false;
                 scope._fallbackJournal = this;
