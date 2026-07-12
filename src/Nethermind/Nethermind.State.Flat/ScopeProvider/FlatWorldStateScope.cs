@@ -346,7 +346,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void HintGet(Address address, Account? account)
     {
         _snapshotBundle.SetAccount(address, account);
-        if (_sparseBlock is null && _snapshotBundle.ShouldQueuePrewarm(address))
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
@@ -385,8 +385,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_sparseBlock is null &&
-                        _snapshotBundle.ShouldQueuePrewarm(address)
+                    if (_snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -546,8 +545,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (IsDisposed || _pausePrewarmer) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
-        if (_sparseBlock is null &&
-            _snapshotBundle.ShouldQueuePrewarm(address)
+        if (_snapshotBundle.ShouldQueuePrewarm(address)
             && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
             Interlocked.Increment(ref _outstandingWarmups);
     }
