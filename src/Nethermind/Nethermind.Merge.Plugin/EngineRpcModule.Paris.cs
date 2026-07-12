@@ -69,7 +69,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
-        long entryTimestamp = Stopwatch.GetTimestamp();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
 
@@ -89,33 +88,13 @@ public partial class EngineRpcModule : IEngineRpcModule
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
 
-        long preLockTimestamp = Stopwatch.GetTimestamp();
         if (await _locker.WaitAsync(_timeout))
         {
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                IDisposable region = _gcKeeper.TryStartNoGCRegion();
-                long gcTimestamp = Stopwatch.GetTimestamp();
-                long handleTimestamp = 0;
-                try
-                {
-                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
-                    handleTimestamp = Stopwatch.GetTimestamp();
-                    return result;
-                }
-                finally
-                {
-                    region.Dispose();
-                    if (_logger.IsInfo && handleTimestamp != 0)
-                        _logger.Info($"newPayload breakdown blk={executionPayload.BlockNumber} " +
-                            $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
-                            $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
-                            $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +
-                            $"handle={Stopwatch.GetElapsedTime(gcTimestamp, handleTimestamp).TotalMilliseconds:F2}ms " +
-                            $"dispose={Stopwatch.GetElapsedTime(handleTimestamp).TotalMilliseconds:F2}ms " +
-                            $"total={Stopwatch.GetElapsedTime(entryTimestamp).TotalMilliseconds:F2}ms");
-                }
+                using IDisposable region = _gcKeeper.TryStartNoGCRegion();
+                return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }
             catch (BlockchainException exception)
             {

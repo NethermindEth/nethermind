@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -393,7 +392,6 @@ namespace Nethermind.Blockchain
 
         protected virtual AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            long suggestStartTimestamp = Stopwatch.GetTimestamp();
             bool shouldProcess = options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
             bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
             bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
@@ -440,7 +438,6 @@ namespace Nethermind.Blockchain
             }
 
             SetTotalDifficulty(header);
-            long preDoneTimestamp = Stopwatch.GetTimestamp();
 
             if (block is not null)
             {
@@ -452,13 +449,11 @@ namespace Nethermind.Blockchain
                 _blockStore.Insert(block);
                 _balStore.InsertFromBlock(block);
             }
-            long blockInsertTimestamp = Stopwatch.GetTimestamp();
 
             if (!isKnown)
             {
                 _headerStore.Insert(header);
             }
-            long headerInsertTimestamp = Stopwatch.GetTimestamp();
 
             if (!isKnown || fillBeaconBlock)
             {
@@ -466,7 +461,6 @@ namespace Nethermind.Blockchain
                 UpdateOrCreateLevel(header.Number, blockInfo, setAsMain);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
             }
-            long levelTimestamp = Stopwatch.GetTimestamp();
 
             if (header.IsGenesis)
             {
@@ -494,14 +488,6 @@ namespace Nethermind.Blockchain
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
-
-            if (Logger.IsInfo)
-                Logger.Info($"Suggest breakdown blk={header.Number} " +
-                    $"pre={Stopwatch.GetElapsedTime(suggestStartTimestamp, preDoneTimestamp).TotalMilliseconds:F2}ms " +
-                    $"insertBlock={Stopwatch.GetElapsedTime(preDoneTimestamp, blockInsertTimestamp).TotalMilliseconds:F2}ms " +
-                    $"insertHeader={Stopwatch.GetElapsedTime(blockInsertTimestamp, headerInsertTimestamp).TotalMilliseconds:F2}ms " +
-                    $"level={Stopwatch.GetElapsedTime(headerInsertTimestamp, levelTimestamp).TotalMilliseconds:F2}ms " +
-                    $"tail={Stopwatch.GetElapsedTime(levelTimestamp).TotalMilliseconds:F2}ms");
 
             return AddBlockResult.Added;
         }

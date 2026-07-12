@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -123,7 +122,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        long handleStartTimestamp = Stopwatch.GetTimestamp();
         Result<Block> decodingResult = request.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
         if (decodingResult.IsError)
         {
@@ -132,8 +130,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
         Block block = decodingResult.Data;
         TryBeginSenderRecovery(block);
-        if (_logger.IsInfo)
-            _logger.Info($"newPayload decode blk={block.Number} getBlock={Stopwatch.GetElapsedTime(handleStartTimestamp).TotalMilliseconds:F2}ms");
 
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
@@ -378,8 +374,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // copy those senders by hash so only the remainder (e.g. never-gossiped transactions)
         // needs ecrecover. The pool lookups take the TxPool lock, so they belong here: work
         // handed to Begin must be pure computation (see <see cref="IStreamedSenderRecovery"/>).
-        long poolCopyStartTimestamp = Stopwatch.GetTimestamp();
-        int reused = 0;
         foreach (Transaction tx in txs)
         {
             if (tx.SenderAddress is null
@@ -388,12 +382,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 && pooled.SenderAddress is not null)
             {
                 tx.SenderAddress = pooled.SenderAddress;
-                reused++;
             }
         }
-        if (_logger.IsInfo)
-            _logger.Info($"senderReuse blk={block.Number} reused={reused}/{txs.Length} " +
-                $"poolCopy={Stopwatch.GetElapsedTime(poolCopyStartTimestamp).TotalMilliseconds:F2}ms");
 
         _senderRecovery.Begin(block);
     }
@@ -439,11 +429,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
-            long suggestStartTimestamp = Stopwatch.GetTimestamp();
             AddBlockResult addResult = await _blockTree
                 .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
                 .AsTask().TimeoutOn(timeoutTask);
-            long suggestEndTimestamp = Stopwatch.GetTimestamp();
 
             result = addResult switch
             {
@@ -474,15 +462,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // but add it to the processing queue just in case.
                 // No recovery barrier: senders stream in while the block executes — the prewarmer
                 // skips not-yet-recovered txs and the executors gate per transaction.
-                long enqueueStartTimestamp = Stopwatch.GetTimestamp();
                 await _processingQueue.Enqueue(block, processingOptions);
-                long waitStartTimestamp = Stopwatch.GetTimestamp();
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
-                if (_logger.IsInfo)
-                    _logger.Info($"newPayload inner blk={block.Number} " +
-                        $"suggest={Stopwatch.GetElapsedTime(suggestStartTimestamp, suggestEndTimestamp).TotalMilliseconds:F2}ms " +
-                        $"enqueue={Stopwatch.GetElapsedTime(enqueueStartTimestamp, waitStartTimestamp).TotalMilliseconds:F2}ms " +
-                        $"wait={Stopwatch.GetElapsedTime(waitStartTimestamp).TotalMilliseconds:F2}ms");
             }
             else
             {

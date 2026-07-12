@@ -108,13 +108,9 @@ public sealed class StreamedSenderRecovery(
 
     private void Recover(Block block)
     {
-        long startTimestamp = Stopwatch.GetTimestamp();
         try
         {
             recoverSignatures.RecoverData(block.Transactions, specProvider.GetSpec(block.Header));
-            if (_logger.IsInfo)
-                _logger.Info($"newPayload ecrecover blk={block.Number} txs={block.Transactions.Length} " +
-                    $"recover={Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds:F2}ms");
         }
         catch (Exception e)
         {
