@@ -631,6 +631,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 try
                 {
                     _sparseBlock.PrepareCommitAsync().GetAwaiter().GetResult();
+                    if (sparseRoot != _currentStateId.StateRoot.ToCommitment() &&
+                        (!_snapshotBundle.TryGetChangedStateNode(TreePath.Empty, out TrieNode? rootNode) ||
+                         rootNode.Keccak != sparseRoot))
+                    {
+                        throw new TrieException(
+                            $"Sparse trie prepared root node {rootNode?.Keccak?.ToString() ?? "missing"} " +
+                            $"instead of {sparseRoot}.");
+                    }
                     _stateTree.SetRootHash(sparseRoot, resetObjects: true);
                     _warmupStateTree.SetRootHash(sparseRoot, resetObjects: true);
                     sparsePrepared = true;

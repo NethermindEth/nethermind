@@ -408,6 +408,15 @@ public sealed class SnapshotBundle : IDisposable
         _transientResource.UpdateStateNode(path, newNode);
     }
 
+    internal bool TryGetChangedStateNode(in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    {
+        if (_trieChanged)
+            return _changedStateNodes.TryGetValue(new HashedKey<TreePath>(path), out node);
+
+        node = null;
+        return false;
+    }
+
     // This is called only during trie commit
     public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
     {
