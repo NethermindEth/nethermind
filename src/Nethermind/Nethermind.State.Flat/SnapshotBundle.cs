@@ -460,6 +460,18 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
+    internal byte[]? TryLoadStateRlpForTrieWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        byte[]? rlp = TryLoadStateRlp(path, hash, flags);
+        if (HashAwareTrieReads && rlp is not null && (path.Length & 1) == 0)
+        {
+            // WarmUpPath already inserts odd-depth nodes through FindCachedOrUnknown.
+            _transientResource.UpdateStateNode(path, new TrieNode(NodeType.Unknown, hash, rlp));
+        }
+
+        return rlp;
+    }
+
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
@@ -472,6 +484,22 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    internal byte[]? TryLoadStorageRlpForTrieWarmer(
+        Hash256 address,
+        in TreePath path,
+        Hash256 hash,
+        ReadFlags flags)
+    {
+        byte[]? rlp = TryLoadStorageRlp(address, path, hash, flags);
+        if (HashAwareTrieReads && rlp is not null && (path.Length & 1) == 0)
+        {
+            // WarmUpPath already inserts odd-depth nodes through FindCachedOrUnknown.
+            _transientResource.UpdateStorageNode(address, path, new TrieNode(NodeType.Unknown, hash, rlp));
+        }
+
+        return rlp;
     }
 
     internal byte[]? TryLoadCommittedStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
