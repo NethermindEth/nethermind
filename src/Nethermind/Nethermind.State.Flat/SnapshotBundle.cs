@@ -149,11 +149,11 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (DoFindStateNodeExternal(path, hash, out node))
         {
@@ -173,7 +173,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -190,7 +190,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (_trieNodeCache.TryGet(null, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
 
@@ -199,7 +199,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStateNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
@@ -215,11 +215,11 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
         {
@@ -239,7 +239,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else
         {
@@ -259,7 +259,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
 
@@ -268,7 +268,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }

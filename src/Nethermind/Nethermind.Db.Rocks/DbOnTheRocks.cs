@@ -24,6 +24,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -90,9 +91,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    internal long _allocatedSpan = 0;
-    private long _totalReads;
-    private long _totalWrites;
+    // Bumped on every Get/Set by the block-processing thread, prewarm/warm-read workers, and sync
+    // concurrently (all columns share this instance) - main/other split on padded slots keeps the
+    // block thread's line private and the counters from false-sharing with each other.
+    internal CacheLinePaddedLong _allocatedSpan;
+    private CacheLinePaddedLong _mainTotalReads;
+    private CacheLinePaddedLong _otherTotalReads;
+    private CacheLinePaddedLong _mainTotalWrites;
+    private CacheLinePaddedLong _otherTotalWrites;
 
     private readonly IteratorManager _iteratorManager;
     private ulong _writeBufferSize;
@@ -339,9 +345,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads);
+    protected internal void UpdateReadMetrics() =>
+        Interlocked.Increment(ref ProcessingThread.IsBlockProcessingThread ? ref _mainTotalReads.Value : ref _otherTotalReads.Value);
 
-    protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites);
+    protected internal void UpdateWriteMetrics() =>
+        Interlocked.Increment(ref ProcessingThread.IsBlockProcessingThread ? ref _mainTotalWrites.Value : ref _otherTotalWrites.Value);
 
     protected virtual long FetchTotalPropertyValue(string propertyName) =>
         long.TryParse(_db.GetProperty(propertyName), out long parsedValue)
@@ -358,8 +366,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CacheSize = 0,
                 IndexSize = 0,
                 MemtableSize = 0,
-                TotalReads = _totalReads,
-                TotalWrites = _totalWrites,
+                TotalReads = _mainTotalReads.Value + _otherTotalReads.Value,
+                TotalWrites = _mainTotalWrites.Value + _otherTotalWrites.Value,
             };
         }
         return new IDbMeta.DbMetric()
@@ -368,8 +376,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
-            TotalReads = _totalReads,
-            TotalWrites = _totalWrites,
+            TotalReads = _mainTotalReads.Value + _otherTotalReads.Value,
+            TotalWrites = _mainTotalWrites.Value + _otherTotalWrites.Value,
         };
     }
 
@@ -923,7 +931,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (!span.IsNullOrEmpty())
             {
-                Interlocked.Increment(ref _allocatedSpan);
+                Interlocked.Increment(ref _allocatedSpan.Value);
                 GC.AddMemoryPressure(span.Length);
             }
             return span;
@@ -1023,7 +1031,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         if (!span.IsNullOrEmpty())
         {
-            Interlocked.Decrement(ref _allocatedSpan);
+            Interlocked.Decrement(ref _allocatedSpan.Value);
             GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
