@@ -87,6 +87,74 @@ public sealed class SparseRootComputer : IDisposable
         if (updates.Count == 0)
             return;
 
+        SparsePatriciaTree storageTrie = PrepareStorageBase(accountPathHash, previousStorageRoot);
+        EnsureStorageRootRevealed(storageTrie, accountPathHash, previousStorageRoot);
+
+        ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
+    }
+
+    internal List<MultiProofReader.BlindedProofTarget> PrepareStorageProof(
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot,
+        Dictionary<ValueHash256, LeafUpdate> updates)
+    {
+        _storageChanges[accountPathHash] = (previousStorageRoot, updates);
+        SparsePatriciaTree storageTrie = PrepareStorageBase(accountPathHash, previousStorageRoot);
+        return BuildStorageProofTargets(storageTrie, accountPathHash, previousStorageRoot, updates);
+    }
+
+    internal List<MultiProofReader.BlindedProofTarget> ApplyStorageProof(
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot,
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        List<ProofNode> proofNodes)
+    {
+        _storageChanges[accountPathHash] = (previousStorageRoot, updates);
+        SparsePatriciaTree storageTrie = PrepareStorageBase(accountPathHash, previousStorageRoot);
+        if (proofNodes.Count != 0)
+        {
+            storageTrie.RevealNodes(proofNodes);
+            LastProofNodeCount += proofNodes.Count;
+        }
+
+        return BuildStorageProofTargets(storageTrie, accountPathHash, previousStorageRoot, updates);
+    }
+
+    private List<MultiProofReader.BlindedProofTarget> BuildStorageProofTargets(
+        SparsePatriciaTree storageTrie,
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot,
+        Dictionary<ValueHash256, LeafUpdate> updates)
+    {
+        if (previousStorageRoot == Keccak.EmptyTreeHash)
+            return [];
+
+        if (storageTrie.Subtrie.IsEmpty)
+        {
+            List<MultiProofReader.BlindedProofTarget> rootTargets = new(updates.Count);
+            RlpNode root = RlpNode.FromHash(previousStorageRoot);
+            foreach (ValueHash256 key in updates.Keys)
+            {
+                rootTargets.Add(new MultiProofReader.BlindedProofTarget(
+                    TreePath.Empty,
+                    root,
+                    Nibbles.BytesToNibbleBytes(key.Bytes)));
+            }
+            return rootTargets;
+        }
+
+        List<(ValueHash256 Key, byte MinLength)> targets = new(updates.Count);
+        _trie.UpdateStorageLeaves(
+            accountPathHash,
+            updates,
+            (key, minLength) => targets.Add((key, minLength)));
+        return BuildBlindedTargets(storageTrie.Subtrie, targets);
+    }
+
+    private SparsePatriciaTree PrepareStorageBase(
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot)
+    {
         SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
         if (_storageBaseRoots.TryAdd(accountPathHash, previousStorageRoot))
         {
@@ -96,15 +164,6 @@ public sealed class SparseRootComputer : IDisposable
                 _trie.WipeStorage(accountPathHash);
                 storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
             }
-
-            if (storageTrie.Subtrie.IsEmpty && previousStorageRoot != Keccak.EmptyTreeHash)
-            {
-                byte[] rootRlp = _reader.LoadStorageRlp(
-                    accountPathHash,
-                    TreePath.Empty,
-                    previousStorageRoot);
-                storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
-            }
         }
         else if (_storageBaseRoots[accountPathHash] != previousStorageRoot)
         {
@@ -112,7 +171,22 @@ public sealed class SparseRootComputer : IDisposable
                 $"Conflicting parent storage roots for account {accountPathHash}.");
         }
 
-        ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
+        return storageTrie;
+    }
+
+    private void EnsureStorageRootRevealed(
+        SparsePatriciaTree storageTrie,
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot)
+    {
+        if (!storageTrie.Subtrie.IsEmpty || previousStorageRoot == Keccak.EmptyTreeHash)
+            return;
+
+        byte[] rootRlp = _reader.LoadStorageRlp(
+            accountPathHash,
+            TreePath.Empty,
+            previousStorageRoot);
+        storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
     }
 
     /// <summary>
