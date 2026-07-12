@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -126,6 +127,45 @@ public class SnapshotTests
             Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressB, pathB)), out TrieNode? foundB), Is.True);
             Assert.That(foundB, Is.SameAs(otherAddress));
             Assert.That(snapshot.StorageNodesCount, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void PublicTrieNodeSettersPreserveWriteBehavior()
+    {
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool),
+            Substitute.For<ITrieNodeCache>(),
+            _pool,
+            ResourcePool.Usage.MainBlockProcessing);
+        TreePath statePath = TreePath.FromHexString("12");
+        TreePath storagePath = TreePath.FromHexString("34");
+        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
+        TrieNode stateNode = new(NodeType.Unknown, TestItem.KeccakA);
+        TrieNode storageNode = new(NodeType.Unknown, TestItem.KeccakB);
+
+        bundle.SetStateNode(statePath, stateNode);
+        bundle.SetStorageNode(address, storagePath, storageNode);
+
+        MethodInfo? stateSetter = typeof(SnapshotBundle).GetMethod(
+            nameof(SnapshotBundle.SetStateNode),
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            [typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
+            modifiers: null);
+        MethodInfo? storageSetter = typeof(SnapshotBundle).GetMethod(
+            nameof(SnapshotBundle.SetStorageNode),
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            [typeof(Hash256), typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
+            modifiers: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateSetter, Is.Not.Null);
+            Assert.That(storageSetter, Is.Not.Null);
+            Assert.That(bundle.FindStateNodeOrUnknown(statePath, TestItem.KeccakA), Is.SameAs(stateNode));
+            Assert.That(bundle.FindStorageNodeOrUnknown(address, storagePath, TestItem.KeccakB), Is.SameAs(storageNode));
         }
     }
 
