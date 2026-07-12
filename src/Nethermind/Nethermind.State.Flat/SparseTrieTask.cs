@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -371,11 +372,27 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
 
         computer.ApplyAccountChanges(accountUpdates);
-        foreach (KeyValuePair<Hash256, Dictionary<ValueHash256, LeafUpdate>> entry in storageUpdates)
+        if (storageUpdates.Count < 3 || session.Bundle is null)
         {
-            ProvisionalStorage provisional = session.ProvisionalStorage[entry.Key];
-            computer.ApplyStorageChanges(entry.Key, provisional.ParentStorageRoot, entry.Value);
+            foreach (KeyValuePair<Hash256, Dictionary<ValueHash256, LeafUpdate>> entry in storageUpdates)
+                ApplyStorageChanges(session, computer, entry);
         }
+        else
+        {
+            Parallel.ForEach(
+                storageUpdates,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                entry => ApplyStorageChanges(session, computer, entry));
+        }
+    }
+
+    private static void ApplyStorageChanges(
+        WorkerSession session,
+        SparseRootComputer computer,
+        KeyValuePair<Hash256, Dictionary<ValueHash256, LeafUpdate>> entry)
+    {
+        ProvisionalStorage provisional = session.ProvisionalStorage[entry.Key];
+        computer.ApplyStorageChanges(entry.Key, provisional.ParentStorageRoot, entry.Value);
     }
 
     private static void AddAccountTouch(
@@ -451,8 +468,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             }
 
             SparseRootComputer computer = session.GetComputer();
-            foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in groups)
-                computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
+            if (groups.Count < 3 || session.Bundle is null)
+            {
+                foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in groups)
+                    ApplyStorageTouch(computer, entry);
+            }
+            else
+            {
+                Parallel.ForEach(
+                    groups,
+                    RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                    entry => ApplyStorageTouch(computer, entry));
+            }
 
             Volatile.Write(ref session.StorageTouchCommandQueued, 0);
             if (ShouldYieldSpeculativeTouches() ||
@@ -465,6 +492,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     }
 
     private bool ShouldYieldSpeculativeTouches() => _commands.Reader.TryPeek(out _);
+
+    private static void ApplyStorageTouch(
+        SparseRootComputer computer,
+        KeyValuePair<Hash256, StorageTouchGroup> entry) =>
+        computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
 
     private void Finish(FinishCommand command)
     {
@@ -517,10 +549,15 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException($"Final accounts omit storage owner {batch.Address}.");
             if (storageOwner is null)
             {
-                computer.WipeStorage(accountHash);
                 session.DirtyStorageHashes.Add(accountHash);
                 session.RetainedStorageHashes.Add(accountHash);
-                storageJobs[i] = new StorageRootJob(batch.Address, accountHash, Keccak.EmptyTreeHash);
+                storageJobs[i] = new StorageRootJob(
+                    batch.Address,
+                    accountHash,
+                    Keccak.EmptyTreeHash,
+                    ParentRoot: Keccak.EmptyTreeHash,
+                    Updates: null,
+                    Wipe: true);
                 continue;
             }
 
@@ -565,21 +602,16 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
             Hash256 effectiveParentRoot = batch.ParentStorageRoot;
             if (batch.Clear)
-            {
-                computer.WipeStorage(accountHash);
                 effectiveParentRoot = Keccak.EmptyTreeHash;
-            }
-
-            if (updates.Count > 0)
-                computer.ApplyStorageChanges(accountHash, effectiveParentRoot, updates);
-            else
-                computer.AddStorageChanges(accountHash, effectiveParentRoot, updates);
 
             bool hasAppliedProvisional = !batch.Clear && provisional is not null && provisional.TouchedSlots.Count != 0;
             storageJobs[i] = new StorageRootJob(
                 batch.Address,
                 accountHash,
-                updates.Count == 0 && !hasAppliedProvisional ? effectiveParentRoot : null);
+                updates.Count == 0 && !hasAppliedProvisional ? effectiveParentRoot : null,
+                effectiveParentRoot,
+                updates,
+                Wipe: batch.Clear);
         }
 
         foreach (KeyValuePair<Hash256, ProvisionalStorage> provisional in session.ProvisionalStorage)
@@ -601,17 +633,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
 
         Hash256[] storageRoots = new Hash256[storageCount];
-        if (storageCount == 1)
+        if (storageCount < 3 || session.Bundle is null)
         {
-            storageRoots[0] = ComputeStorageRoot(computer, storageJobs[0]);
+            for (int i = 0; i < storageCount; i++)
+                storageRoots[i] = ApplyAndComputeStorageRoot(computer, storageJobs[i]);
         }
-        else if (storageCount > 1)
+        else
         {
             Parallel.For(
                 0,
                 storageCount,
-                new ParallelOptions { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, storageCount) },
-                i => storageRoots[i] = ComputeStorageRoot(computer, storageJobs[i]));
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                i => storageRoots[i] = ApplyAndComputeStorageRoot(computer, storageJobs[i]));
         }
 
         Dictionary<AddressAsKey, Hash256> mutableStorageRoots = new(
@@ -682,8 +715,21 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             new ReadOnlyDictionary<AddressAsKey, Hash256>(mutableStorageRoots));
     }
 
-    private static Hash256 ComputeStorageRoot(SparseRootComputer computer, StorageRootJob job) =>
-        job.KnownRoot ?? computer.ComputeAppliedStorageRoot(job.AccountHash, allowParallel: false);
+    private static Hash256 ApplyAndComputeStorageRoot(SparseRootComputer computer, StorageRootJob job)
+    {
+        if (job.Wipe)
+            computer.WipeStorage(job.AccountHash);
+
+        if (job.Updates is not null)
+        {
+            if (job.Updates.Count > 0)
+                computer.ApplyStorageChanges(job.AccountHash, job.ParentRoot, job.Updates);
+            else
+                computer.AddStorageChanges(job.AccountHash, job.ParentRoot, job.Updates);
+        }
+
+        return job.KnownRoot ?? computer.ComputeAppliedStorageRoot(job.AccountHash, allowParallel: false);
+    }
 
     private static LeafUpdate EncodeStorageValue(byte[] value)
     {
@@ -711,17 +757,30 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
 
         SparseTrieSnapshotCommitter.CommitAccountTrie(_trie.AccountTrie.Subtrie, session.Bundle);
-        foreach (Hash256 accountHash in session.DirtyStorageHashes)
+        if (session.DirtyStorageHashes.Count < 3)
         {
-            if (_trie.StorageTries.TryGetValue(accountHash, out SparsePatriciaTree? storageTrie))
-            {
-                SparseTrieSnapshotCommitter.CommitStorageTrie(
-                    storageTrie.Subtrie,
-                    session.Bundle,
-                    accountHash);
-            }
+            foreach (Hash256 accountHash in session.DirtyStorageHashes)
+                CommitStorageTrie(session, accountHash);
+        }
+        else
+        {
+            Parallel.ForEach(
+                session.DirtyStorageHashes,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                accountHash => CommitStorageTrie(session, accountHash));
         }
         session.Prepared = true;
+    }
+
+    private void CommitStorageTrie(WorkerSession session, Hash256 accountHash)
+    {
+        if (_trie.StorageTries.TryGetValue(accountHash, out SparsePatriciaTree? storageTrie))
+        {
+            SparseTrieSnapshotCommitter.CommitStorageTrie(
+                storageTrie.Subtrie,
+                session.Bundle!,
+                accountHash);
+        }
     }
 
     private void Accept(WorkerSession session)
@@ -965,7 +1024,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private readonly record struct StorageRootJob(
         AddressAsKey Address,
         Hash256 AccountHash,
-        Hash256? KnownRoot);
+        Hash256? KnownRoot,
+        Hash256 ParentRoot,
+        Dictionary<ValueHash256, LeafUpdate>? Updates,
+        bool Wipe);
 
     private abstract record Command(WorkerSession? Session);
     private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);

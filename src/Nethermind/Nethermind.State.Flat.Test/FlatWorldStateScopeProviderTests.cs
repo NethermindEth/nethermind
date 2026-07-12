@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -1235,13 +1236,18 @@ public class FlatWorldStateScopeProviderTests
 
         Address firstAddress = TestItem.AddressA;
         Address secondAddress = TestItem.AddressB;
+        Address thirdAddress = TestItem.AddressC;
         UInt256 firstSlot = 1;
         UInt256 secondSlot = 2;
+        UInt256 thirdSlot = 4;
         StorageCell firstCell = new(firstAddress, in firstSlot);
         StorageCell secondCell = new(secondAddress, in secondSlot);
+        StorageCell thirdCell = new(thirdAddress, in thirdSlot);
         byte[] firstInitialValue = [0x11];
         byte[] firstFinalValue = [0x33];
         byte[] secondValue = [0x22];
+        byte[] thirdInitialValue = [0x55];
+        byte[] thirdFinalValue = [0x66];
 
         RawTrieStore referenceStore = new(new MemDb());
         StorageTree firstStorage = new(
@@ -1250,12 +1256,17 @@ public class FlatWorldStateScopeProviderTests
         StorageTree secondStorage = new(
             referenceStore.GetTrieStore(secondAddress.ToAccountPath.ToCommitment()),
             LimboLogs.Instance);
+        StorageTree thirdStorage = new(
+            referenceStore.GetTrieStore(thirdAddress.ToAccountPath.ToCommitment()),
+            LimboLogs.Instance);
         StateTree expectedState = new();
 
         worldState.CreateAccount(firstAddress, (UInt256)1_000);
         worldState.CreateAccount(secondAddress, (UInt256)2_000);
+        worldState.CreateAccount(thirdAddress, (UInt256)3_000);
         worldState.Set(in firstCell, firstInitialValue);
         worldState.Set(in secondCell, secondValue);
+        worldState.Set(in thirdCell, thirdInitialValue);
         worldState.Commit(
             Nethermind.Specs.Forks.Cancun.Instance,
             Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
@@ -1264,6 +1275,7 @@ public class FlatWorldStateScopeProviderTests
         worldState.SetNonce(firstAddress, 1);
         worldState.AddToBalance(secondAddress, (UInt256)100, Nethermind.Specs.Forks.Cancun.Instance);
         worldState.Set(in firstCell, firstFinalValue);
+        worldState.Set(in thirdCell, thirdFinalValue);
         worldState.Commit(
             Nethermind.Specs.Forks.Cancun.Instance,
             Nethermind.Evm.Tracing.State.NullStateTracer.Instance,
@@ -1278,12 +1290,19 @@ public class FlatWorldStateScopeProviderTests
         firstStorage.UpdateRootHash();
         secondStorage.Set(in secondSlot, secondValue);
         secondStorage.UpdateRootHash();
+        thirdStorage.Set(in thirdSlot, thirdFinalValue);
+        thirdStorage.UpdateRootHash();
         expectedState.Set(firstAddress, new Account(1, (UInt256)1_000, firstStorage.RootHash, Keccak.OfAnEmptyString));
         expectedState.Set(secondAddress, new Account(0, (UInt256)2_100, secondStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.Set(thirdAddress, new Account(0, (UInt256)3_000, thirdStorage.RootHash, Keccak.OfAnEmptyString));
         expectedState.UpdateRootHash();
         Assert.That(worldState.StateRoot, Is.EqualTo(expectedState.RootHash), "block one");
 
         worldState.CommitTree(1);
+        Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
+        AssertStorageRootPersisted(ctx.LastCommittedSnapshot!, firstAddress, firstStorage.RootHash);
+        AssertStorageRootPersisted(ctx.LastCommittedSnapshot!, secondAddress, secondStorage.RootHash);
+        AssertStorageRootPersisted(ctx.LastCommittedSnapshot!, thirdAddress, thirdStorage.RootHash);
         worldState.Reset();
 
         scope.IncrementOutstandingWarmups();
@@ -1292,8 +1311,10 @@ public class FlatWorldStateScopeProviderTests
         UInt256 nextSlot = 3;
         StorageCell nextCell = new(firstAddress, in nextSlot);
         byte[] nextValue = [0x44];
+        byte[] thirdNextValue = [0x77];
         worldState.Set(in nextCell, nextValue);
         worldState.Set(in secondCell, StorageTree.ZeroBytes);
+        worldState.Set(in thirdCell, thirdNextValue);
         worldState.SetNonce(secondAddress, 2);
         worldState.AddToBalance(firstAddress, (UInt256)50, Nethermind.Specs.Forks.Cancun.Instance);
         worldState.Commit(
@@ -1310,10 +1331,20 @@ public class FlatWorldStateScopeProviderTests
         firstStorage.UpdateRootHash();
         secondStorage.Set(in secondSlot, StorageTree.ZeroBytes);
         secondStorage.UpdateRootHash();
+        thirdStorage.Set(in thirdSlot, thirdNextValue);
+        thirdStorage.UpdateRootHash();
         expectedState.Set(firstAddress, new Account(1, (UInt256)1_050, firstStorage.RootHash, Keccak.OfAnEmptyString));
         expectedState.Set(secondAddress, new Account(2, (UInt256)2_100, secondStorage.RootHash, Keccak.OfAnEmptyString));
+        expectedState.Set(thirdAddress, new Account(0, (UInt256)3_000, thirdStorage.RootHash, Keccak.OfAnEmptyString));
         expectedState.UpdateRootHash();
         Assert.That(worldState.StateRoot, Is.EqualTo(expectedState.RootHash), "block two");
+    }
+
+    private static void AssertStorageRootPersisted(Snapshot snapshot, Address address, Hash256 expectedRoot)
+    {
+        HashedKey<(Hash256, TreePath)> key = new((address.ToAccountPath.ToCommitment(), TreePath.Empty));
+        Assert.That(snapshot.TryGetStorageNode(key, out TrieNode? node), Is.True, address.ToString());
+        Assert.That(node!.Keccak, Is.EqualTo(expectedRoot), address.ToString());
     }
 
     private static Hash256 CalculateStorageRoot(Address address, in UInt256 slot, byte[] value)

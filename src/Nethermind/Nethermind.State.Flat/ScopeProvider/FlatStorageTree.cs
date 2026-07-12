@@ -252,14 +252,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         internal void ApplySparseRoot(Hash256 root)
         {
             SetUnresolvedRoot(storageTree._tree, root);
-            SetUnresolvedRoot(storageTree._warmupStorageTree, root);
             onRootUpdated(storageTree._address, root);
         }
 
         internal void ReplayFallback()
         {
             storageTree._tree.SetRootHash(storageTree._parentRootHash, resetObjects: true);
-            storageTree._warmupStorageTree.SetRootHash(storageTree._parentRootHash, resetObjects: true);
 
             int changedCount = 0;
             foreach (SlotValue value in _slots.Values)
