@@ -17,10 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-// Exercises the --FlatDb.PersistViaSstIngestion path end-to-end on a real RocksDB. The MemDb-backed tests only
-// cover the default WriteBatch path (MemDb is not ISstIngestible and falls back), so without this the ingest code
-// is untested. Covers: ingest round-trip, the SelfDestruct+recreate last-write-wins dedup (which an SST forbids as
-// a duplicate key), delete tombstones, the currentState pointer advance, and the MemDb fallback.
 [TestFixture]
 public class SstIngestionTests
 {
@@ -50,7 +46,7 @@ public class SstIngestionTests
     public void TearDown()
     {
         _db.Dispose();
-        try { Directory.Delete(_dbPath, true); } catch { /* best effort */ }
+        try { Directory.Delete(_dbPath, true); } catch { }
     }
 
     private static SlotValue Slot(byte v) => SlotValue.FromSpanWithoutLeadingZero(new byte[] { v });
@@ -84,8 +80,6 @@ public class SstIngestionTests
             batch.Set(dedupedKey, [0x0a]);
             batch.Set(dedupedKey, [0x0b]);
 
-            // Push past the chunk threshold so a mid-batch flush ingests the writes above,
-            // then write conflicting values that land in the next chunk's file.
             byte[] filler = new byte[64 * 1024];
             Span<byte> key = stackalloc byte[32];
             for (int i = 0; i < 2100; i++)
@@ -138,9 +132,6 @@ public class SstIngestionTests
             batch.SetStorage(Addr, Slot2, v2);
         }
 
-        // SelfDestruct clears all existing storage (delete tombstones for slot1 + slot2), then slot1 is recreated
-        // and slot3 added. The ingested SST must collapse slot1's delete+put to the put (last write wins, no
-        // duplicate key) and keep slot2 tombstoned.
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
         {
             batch.SelfDestruct(Addr);
@@ -149,16 +140,15 @@ public class SstIngestionTests
         }
 
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        AssertSlot(reader, Slot1, v1b);  // recreated — last write wins
-        AssertSlot(reader, Slot3, v3);   // added
-        AssertSlotAbsent(reader, Slot2); // tombstoned by self-destruct
+        AssertSlot(reader, Slot1, v1b);
+        AssertSlot(reader, Slot3, v3);
+        AssertSlotAbsent(reader, Slot2);
         Assert.That(reader.CurrentState, Is.EqualTo(s2));
     }
 
     [Test]
     public void PersistViaSstIngestion_on_MemDb_falls_back_and_round_trips()
     {
-        // MemDb is not ISstIngestible, so the flag falls back to the WriteBatch path — must still round-trip.
         using SnapshotableMemColumnsDb<FlatDbColumns> memDb = new();
         RocksDbPersistence persistence = new(memDb, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true });
         StateId s1 = State(1, 1);

@@ -43,7 +43,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Lower bound, in bytes, for the RocksDB write buffer (memtable) size of the flat-state columns. The per-batch adjuster never shrinks a column's memtable below this value. Raising it lets frequent small persistence batches (small CompactSize) coalesce and deduplicate in the memtable instead of churning L0, decoupling write amplification from CompactSize.", DefaultValue = "16777216")]
     long PersistenceWriteBufferFloor { get; set; }
 
-    [ConfigItem(Description = "Persist compacted snapshots by building sorted SST files (from a byte-capped in-memory buffer) and ingesting them (bypassing the memtable → flush → L0-compaction burst) instead of committing one large WriteBatch. Removes the multi-second persist stalls that block reads at large state sizes, at the cost of higher peak persist memory. Default off.", DefaultValue = "false")]
+    [ConfigItem(Description = "Persist compacted snapshots by ingesting sorted SST files instead of one large WriteBatch, avoiding the memtable-flush burst that stalls reads at large state. Default off.", DefaultValue = "false")]
     bool PersistViaSstIngestion { get; set; }
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
