@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -11,7 +12,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : AbstractMinimalTrieStore
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        bundle.TryFindStateNodes(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+        bundle.TryFindStateNodes(new HashedKey<TreePath>(path), out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStateRlp(path, hash, flags);
 
@@ -31,7 +32,7 @@ internal class ReadOnlyStorageTrieStoreAdapter(
 ) : AbstractMinimalTrieStore
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        bundle.TryFindStorageNodes(addressHash, path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+        bundle.TryFindStorageNodes(new HashedKey<(Hash256, TreePath)>((addressHash, path)), out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
 
