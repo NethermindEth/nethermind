@@ -65,7 +65,8 @@ internal sealed record SparseTrieBlockResult(
 /// </summary>
 public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 {
-    private const int MaxSpeculativeTouchesPerPass = 256;
+    private const int MaxCommandsPerPass = 8;
+    private const int MaxSpeculativeTouchesPerPass = 64;
 
     private readonly Channel<Command> _commands = Channel.CreateUnbounded<Command>(
         new UnboundedChannelOptions
@@ -244,7 +245,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 bool continueProcessing;
                 do
                 {
-                    while (_commands.Reader.TryRead(out Command? command))
+                    int commandsProcessed = 0;
+                    while (commandsProcessed < MaxCommandsPerPass &&
+                           _commands.Reader.TryRead(out Command? command))
                     {
                         if (command is StopCommand stop)
                         {
@@ -254,6 +257,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                         }
 
                         ProcessCommand(command);
+                        commandsProcessed++;
                     }
 
                     continueProcessing = TryProcessSpeculativeTouches();
@@ -387,8 +391,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private bool TryProcessSpeculativeTouches()
     {
         WorkerSession? session = _activeSession;
-        if (session is null || session.FinishRequested || session.Error is not null ||
-            _commands.Reader.TryPeek(out _))
+        if (session is null || session.FinishRequested || session.Error is not null)
             return false;
         if (session.PendingStorageTouches.IsEmpty && session.PendingAccountTouches.IsEmpty)
             return false;
@@ -398,12 +401,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             int remaining = MaxSpeculativeTouchesPerPass;
             if (!session.PendingStorageTouches.IsEmpty)
                 ProcessStorageTouches(session, ref remaining);
-            if (remaining != 0 && !session.PendingAccountTouches.IsEmpty &&
-                !_commands.Reader.TryPeek(out _))
+            if (remaining != 0 && !session.PendingAccountTouches.IsEmpty)
                 ProcessAccountTouches(session, ref remaining);
-
-            if (_commands.Reader.TryPeek(out _))
-                return true;
 
             return !session.PendingAccountTouches.IsEmpty || !session.PendingStorageTouches.IsEmpty;
         }

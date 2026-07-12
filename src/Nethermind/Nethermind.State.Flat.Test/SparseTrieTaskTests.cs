@@ -276,6 +276,55 @@ public class SparseTrieTaskTests
         }
     }
 
+    [Test]
+    public async Task SpeculativeTouches_AreProcessedBeforeLongCommandBacklog()
+    {
+        StorageTestState state = BuildStorageState();
+        using BlockingCountingTrieNodeReader reader = new(state.State.Reader);
+        reader.BlockNextStateRead();
+        reader.BlockNextStorageRead();
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+
+        Assert.That(block.TryEnqueueAccountTouch(state.Address.ToAccountPath), Is.True);
+        if (!reader.WaitForBlockedStateRead(TimeSpan.FromSeconds(5)))
+        {
+            reader.ReleaseStateRead();
+            reader.ReleaseStorageRead();
+            Assert.Fail("The worker did not reach the blocking account proof.");
+        }
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
+        Assert.That(
+            block.TryEnqueueStorageTouch(
+                state.Address.ToAccountPath.ToCommitment(),
+                state.ParentStorageRoot,
+                slotPath),
+            Is.True);
+
+        for (int i = 0; i < 16; i++)
+            block.EnqueueDelta(new SparseTriePhaseDelta([], []));
+
+        Task<SparseTrieBlockResult> finishTask = block.FinishAsync(new SparseTrieFinalState([], []));
+        reader.ReleaseStateRead();
+
+        try
+        {
+            Assert.That(
+                reader.WaitForBlockedStorageRead(TimeSpan.FromSeconds(5)),
+                Is.True,
+                "The queued commands starved speculative storage proof work until finalization.");
+        }
+        finally
+        {
+            reader.ReleaseStorageRead();
+        }
+
+        SparseTrieBlockResult result = await finishTask;
+        Assert.That(result.StateRoot, Is.EqualTo(state.State.ParentRoot));
+    }
+
     [TestCase(PendingFinalStorageChange.Changed)]
     [TestCase(PendingFinalStorageChange.Unchanged)]
     [TestCase(PendingFinalStorageChange.Delete)]
@@ -1010,7 +1059,10 @@ public class SparseTrieTaskTests
     {
         private readonly ManualResetEventSlim _stateReadStarted = new();
         private readonly ManualResetEventSlim _releaseStateRead = new(initialState: true);
+        private readonly ManualResetEventSlim _storageReadStarted = new();
+        private readonly ManualResetEventSlim _releaseStorageRead = new(initialState: true);
         private int _blockStateRead;
+        private int _blockStorageRead;
 
         public void BlockNextStateRead()
         {
@@ -1021,6 +1073,16 @@ public class SparseTrieTaskTests
         public bool WaitForBlockedStateRead(TimeSpan timeout) => _stateReadStarted.Wait(timeout);
 
         public void ReleaseStateRead() => _releaseStateRead.Set();
+
+        public void BlockNextStorageRead()
+        {
+            _releaseStorageRead.Reset();
+            Volatile.Write(ref _blockStorageRead, 1);
+        }
+
+        public bool WaitForBlockedStorageRead(TimeSpan timeout) => _storageReadStarted.Wait(timeout);
+
+        public void ReleaseStorageRead() => _releaseStorageRead.Set();
 
         public override byte[] LoadStateRlp(
             in TreePath path,
@@ -1036,11 +1098,29 @@ public class SparseTrieTaskTests
             return base.LoadStateRlp(path, hash, flags);
         }
 
+        public override byte[] LoadStorageRlp(
+            Hash256 accountPathHash,
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            if (Interlocked.Exchange(ref _blockStorageRead, 0) != 0)
+            {
+                _storageReadStarted.Set();
+                _releaseStorageRead.Wait();
+            }
+
+            return base.LoadStorageRlp(accountPathHash, path, hash, flags);
+        }
+
         public override void Dispose()
         {
             _releaseStateRead.Set();
+            _releaseStorageRead.Set();
             _stateReadStarted.Dispose();
             _releaseStateRead.Dispose();
+            _storageReadStarted.Dispose();
+            _releaseStorageRead.Dispose();
         }
     }
 
