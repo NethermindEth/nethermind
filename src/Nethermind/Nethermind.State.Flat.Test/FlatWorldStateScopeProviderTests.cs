@@ -943,6 +943,20 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
+    [TestCase(false, 1)]
+    [TestCase(true, 0)]
+    public void AccountHintGet_SparseRootSkipsPatriciaWarmup(bool useSparseRoot, int expectedPushes)
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: false, acceptMpmcSlotJob: false);
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = useSparseRoot },
+            warmer);
+
+        ctx.Scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(expectedPushes));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void SparseWriteBatch_MatchesPatriciaBeforeAndAfterFallback(bool sparseStorage)
@@ -1217,16 +1231,20 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia(bool sparseStorage)
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia(
+        bool sparseStorage,
+        bool verifyWithTrie)
     {
         using TestContext ctx = new(
             new FlatDbConfig
             {
                 UseSparseRootComputation = true,
                 UseSparseStorageRootComputation = sparseStorage,
-                VerifyWithTrie = true,
+                VerifyWithTrie = verifyWithTrie,
             },
             new NoopTrieWarmer());
         FlatWorldStateScope scope = ctx.Scope;
@@ -1333,6 +1351,7 @@ public class FlatWorldStateScopeProviderTests
 
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
+        public int AddressJobPushes { get; private set; }
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
 
@@ -1348,7 +1367,11 @@ public class FlatWorldStateScopeProviderTests
             return acceptMpmcSlotJob;
         }
 
-        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            AddressJobPushes++;
+            return false;
+        }
 
         public void OnEnterScope() { }
 
