@@ -1113,8 +1113,15 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = ctx.Scope;
         Assert.That(cachedRoot.HasRlp, Is.False, "scope construction must not materialize the cache placeholder");
         Account? actual = scope.Get(address);
+        Assert.That(cachedRoot.HasRlp, Is.False, "the main state tree must use the materialized snapshot node");
+        scope.IncrementOutstandingWarmups();
+        bool warmed = scope.WarmUpStateTrie(address, scope.HintSequenceId);
 
-        Assert.That(actual, Is.EqualTo(account));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(account));
+            Assert.That(warmed, Is.True);
+        }
     }
 
     [Test]

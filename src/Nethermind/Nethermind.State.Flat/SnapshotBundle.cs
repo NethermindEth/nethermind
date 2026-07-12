@@ -406,9 +406,17 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        byte[]? rlp = HashAwareTrieReads
-            ? _readOnlySnapshotBundle.TryLoadStateRlpMatching(path, hash, flags)
-            : _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
+        byte[]? rlp;
+        if (HashAwareTrieReads)
+        {
+            rlp = TryFindCommittedStateNode(path, hash, out TrieNode? node) && node.HasRlp
+                ? node.FullRlp.ToArray()
+                : _readOnlySnapshotBundle.TryLoadStateRlpMatching(path, hash, flags);
+        }
+        else
+        {
+            rlp = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
+        }
 
         if (HashAwareTrieReads && rlp is null && path.Length == 0)
             throw new TrieException(DescribeMissingStateRoot(hash, flags));
@@ -453,9 +461,14 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        return HashAwareTrieReads
-            ? _readOnlySnapshotBundle.TryLoadStorageRlpMatching(address, path, hash, flags)
-            : _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+        if (HashAwareTrieReads)
+        {
+            return TryFindCommittedStorageNode(address, path, hash, out TrieNode? node) && node.HasRlp
+                ? node.FullRlp.ToArray()
+                : _readOnlySnapshotBundle.TryLoadStorageRlpMatching(address, path, hash, flags);
+        }
+
+        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
     internal byte[]? TryLoadCommittedStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
