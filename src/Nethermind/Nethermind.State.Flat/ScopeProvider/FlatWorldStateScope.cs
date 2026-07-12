@@ -37,7 +37,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
 
     private readonly Dictionary<AddressAsKey, Account?> _pendingSparseAccounts = new(AddressAsKey.EqualityComparer);
-    private readonly HashSet<AddressAsKey> _provisionalSparseAccounts = new(AddressAsKey.EqualityComparer);
+    private readonly Dictionary<AddressAsKey, Account?> _provisionalSparseAccounts = new(AddressAsKey.EqualityComparer);
     private SparseTrieBlockHandle? _sparseBlock;
     private WriteBatch? _activeWriteBatch;
     private WriteBatch? _fallbackJournal;
@@ -182,7 +182,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (_sparseBlock is not null && _acceptSparseDeltas)
         {
             _pendingSparseAccounts[address] = account;
-            _provisionalSparseAccounts.Add(address);
+            _provisionalSparseAccounts[address] = account;
         }
     }
 
@@ -699,6 +699,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private Exception? _sparsePublishException;
+        private bool _sparsePrehashQueued;
         private bool _disposed;
         private bool _released;
 
@@ -719,15 +721,57 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
         }
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) =>
-            scope
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
+        {
+            // The final write batch starts after StateProvider.Commit, so this account value is
+            // stable while independent storage roots finish and can safely be combined with them.
+            Account? sparseAccount = null;
+            if (UsesSparse &&
+                !scope._provisionalSparseAccounts.TryGetValue(address, out sparseAccount))
+            {
+                sparseAccount = scope._snapshotBundle.GetAccount(address);
+            }
+            if (UsesSparse)
+            {
+                _dirtyAccounts[address] = sparseAccount;
+                if (!_sparsePrehashQueued)
+                {
+                    _sparsePrehashQueued = true;
+                    try
+                    {
+                        scope._sparseBlock!.EnqueuePrehash();
+                    }
+                    catch (Exception exception)
+                    {
+                        _sparsePublishException = exception;
+                    }
+                }
+            }
+
+            return scope
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
+                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot, sparseAccount));
+        }
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash, Account? sparseAccount)
+        {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+            if (UsesSparse && sparseAccount is not null)
+            {
+                try
+                {
+                    scope._sparseBlock!.EnqueueDelta(new SparseTriePhaseDelta(
+                        [new SparseTrieAccountDelta(address.Value, sparseAccount.WithChangedStorageRoot(storageTreeRootHash))],
+                        []));
+                }
+                catch (Exception exception)
+                {
+                    Interlocked.CompareExchange(ref _sparsePublishException, exception, null);
+                }
+            }
+        }
 
         public void Dispose()
         {
@@ -762,7 +806,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             // TrieWarmer shares resolved nodes with these Patricia storage trees; re-proving
             // their paths in the sparse worker would turn warm root updates into cold DB reads.
             ApplyDirtyStorageRoots(sparseMode: true);
-            foreach (AddressAsKey address in scope._provisionalSparseAccounts)
+            foreach (AddressAsKey address in scope._provisionalSparseAccounts.Keys)
             {
                 if (!_dirtyAccounts.ContainsKey(address))
                     _dirtyAccounts[address] = scope.Get(address.Value);
@@ -774,6 +818,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
+                if (_sparsePublishException is not null)
+                    throw new InvalidOperationException("Failed to publish a completed storage root.", _sparsePublishException);
+
                 long waitStartedAt = Stopwatch.GetTimestamp();
                 SparseTrieBlockResult result;
                 try

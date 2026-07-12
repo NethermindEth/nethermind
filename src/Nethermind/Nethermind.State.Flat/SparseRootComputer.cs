@@ -322,10 +322,10 @@ public sealed class SparseRootComputer : IDisposable
         }
     }
 
-    internal Hash256 ComputeAppliedStateRoot()
+    internal Hash256 ComputeAppliedStateRoot(bool allowParallel = true)
     {
         long startedAt = Stopwatch.GetTimestamp();
-        Hash256 root = _trie.ComputeRoot();
+        Hash256 root = _trie.ComputeRoot(allowParallel);
         LastComputeRootMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
         return root;
     }

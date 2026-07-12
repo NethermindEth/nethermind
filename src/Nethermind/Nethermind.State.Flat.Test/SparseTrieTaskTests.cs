@@ -47,7 +47,7 @@ public class SparseTrieTaskTests
     }
 
     [Test]
-    public async Task ProvisionalAccountReturningToOriginal_IsReconciled()
+    public async Task PrehashedProvisionalAccountReturningToOriginal_IsReconciled()
     {
         TestState state = BuildState(accountCount: 20);
         Address address = state.Addresses[3];
@@ -59,6 +59,7 @@ public class SparseTrieTaskTests
         block.EnqueueDelta(new SparseTriePhaseDelta(
             [new SparseTrieAccountDelta(address, provisionalAccount)],
             []));
+        block.EnqueuePrehash();
 
         SparseTrieBlockResult result = await block.FinishAsync(
             new SparseTrieFinalState([], [new SparseTrieFinalAccount(address, originalAccount)]));

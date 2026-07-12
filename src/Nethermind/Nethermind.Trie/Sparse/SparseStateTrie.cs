@@ -120,7 +120,9 @@ public sealed class SparseStateTrie : IDisposable
     /// Storage-only changes must still rewrite the account leaf.
     /// </remarks>
     /// </summary>
-    public Hash256 ComputeRoot() => AccountTrie.ComputeRoot();
+    public Hash256 ComputeRoot() => ComputeRoot(allowParallel: true);
+
+    internal Hash256 ComputeRoot(bool allowParallel) => AccountTrie.ComputeRoot(allowParallel);
 
     public void WipeStorage(Hash256 accountPathHash)
     {
@@ -130,7 +132,7 @@ public sealed class SparseStateTrie : IDisposable
 
     public void Clear()
     {
-        _accountTrie?.Clear();
+        _accountTrie?.Dispose();
         _accountTrie = null;
         foreach (KeyValuePair<Hash256, SparsePatriciaTree> kvp in _storageTries)
             kvp.Value.Dispose();
