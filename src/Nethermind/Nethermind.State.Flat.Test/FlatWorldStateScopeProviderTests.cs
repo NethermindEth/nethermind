@@ -1217,20 +1217,16 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia(
-        bool sparseStorage,
-        bool verifyWithTrie)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia(bool sparseStorage)
     {
         using TestContext ctx = new(
             new FlatDbConfig
             {
                 UseSparseRootComputation = true,
                 UseSparseStorageRootComputation = sparseStorage,
-                VerifyWithTrie = verifyWithTrie,
+                VerifyWithTrie = true,
             },
             new NoopTrieWarmer());
         FlatWorldStateScope scope = ctx.Scope;
@@ -1289,6 +1285,9 @@ public class FlatWorldStateScopeProviderTests
 
         worldState.CommitTree(1);
         worldState.Reset();
+
+        scope.IncrementOutstandingWarmups();
+        Assert.That(scope.WarmUpStateTrie(firstAddress, scope.HintSequenceId), Is.True);
 
         UInt256 nextSlot = 3;
         StorageCell nextCell = new(firstAddress, in nextSlot);

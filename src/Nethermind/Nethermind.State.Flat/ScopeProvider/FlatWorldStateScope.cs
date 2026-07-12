@@ -97,7 +97,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
         };
-        _snapshotBundle.HashAwareTrieReads = configuration.VerifyWithTrie;
 
         _warmReadPool = warmReadPool;
         _logManager = logManager;

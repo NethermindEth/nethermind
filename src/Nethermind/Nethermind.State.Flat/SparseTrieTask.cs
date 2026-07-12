@@ -64,6 +64,8 @@ internal sealed record SparseTrieBlockResult(
 /// </summary>
 public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 {
+    private const int MaxSpeculativeTouchesPerPass = 256;
+
     private readonly Channel<Command> _commands = Channel.CreateUnbounded<Command>(
         new UnboundedChannelOptions
         {
@@ -385,19 +387,31 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             touches.Add(accountPath, LeafUpdate.Touched());
     }
 
-    private static void ProcessAccountTouches(WorkerSession session)
+    private void ProcessAccountTouches(WorkerSession session)
     {
         while (true)
         {
+            if (ShouldYieldSpeculativeTouches())
+            {
+                Volatile.Write(ref session.AccountTouchCommandQueued, 0);
+                return;
+            }
+
             Dictionary<ValueHash256, LeafUpdate> updates = [];
-            while (session.PendingAccountTouches.TryDequeue(out ValueHash256 accountPath))
+            int processed = 0;
+            while (processed < MaxSpeculativeTouchesPerPass &&
+                   session.PendingAccountTouches.TryDequeue(out ValueHash256 accountPath))
+            {
+                processed++;
                 AddAccountTouch(session, updates, accountPath);
+            }
 
             if (updates.Count != 0)
                 session.GetComputer().ApplyAccountChanges(updates);
 
             Volatile.Write(ref session.AccountTouchCommandQueued, 0);
-            if (session.PendingAccountTouches.IsEmpty ||
+            if (ShouldYieldSpeculativeTouches() ||
+                session.PendingAccountTouches.IsEmpty ||
                 Interlocked.CompareExchange(ref session.AccountTouchCommandQueued, 1, 0) != 0)
             {
                 return;
@@ -405,13 +419,22 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
     }
 
-    private static void ProcessStorageTouches(WorkerSession session)
+    private void ProcessStorageTouches(WorkerSession session)
     {
         while (true)
         {
-            Dictionary<Hash256, StorageTouchGroup> groups = [];
-            while (session.PendingStorageTouches.TryDequeue(out StorageTouch touch))
+            if (ShouldYieldSpeculativeTouches())
             {
+                Volatile.Write(ref session.StorageTouchCommandQueued, 0);
+                return;
+            }
+
+            Dictionary<Hash256, StorageTouchGroup> groups = [];
+            int processed = 0;
+            while (processed < MaxSpeculativeTouchesPerPass &&
+                   session.PendingStorageTouches.TryDequeue(out StorageTouch touch))
+            {
+                processed++;
                 if (!groups.TryGetValue(touch.AccountHash, out StorageTouchGroup? group))
                 {
                     group = new StorageTouchGroup(touch.ParentStorageRoot);
@@ -432,13 +455,16 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
 
             Volatile.Write(ref session.StorageTouchCommandQueued, 0);
-            if (session.PendingStorageTouches.IsEmpty ||
+            if (ShouldYieldSpeculativeTouches() ||
+                session.PendingStorageTouches.IsEmpty ||
                 Interlocked.CompareExchange(ref session.StorageTouchCommandQueued, 1, 0) != 0)
             {
                 return;
             }
         }
     }
+
+    private bool ShouldYieldSpeculativeTouches() => _commands.Reader.TryPeek(out _);
 
     private void Finish(FinishCommand command)
     {
