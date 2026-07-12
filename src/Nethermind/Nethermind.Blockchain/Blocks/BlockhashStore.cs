@@ -5,6 +5,7 @@ using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -30,6 +31,21 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
         StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
         worldState.RecordBytecodeAccess(eip2935Account);
+    }
+
+    public AccessList? GetAccessList(Block block, IReleaseSpec spec)
+    {
+        BlockHeader header = block.Header;
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return null;
+
+        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!worldState.IsContract(eip2935Account)) return null;
+
+        UInt256 parentBlockIndex = new((header.Number - 1) % spec.Eip2935RingBufferSize);
+        return new AccessList.Builder()
+            .AddAddress(eip2935Account)
+            .AddStorage(parentBlockIndex)
+            .Build();
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)

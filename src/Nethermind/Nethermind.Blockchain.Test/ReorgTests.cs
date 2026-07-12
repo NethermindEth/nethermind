@@ -111,6 +111,7 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            new BlockhashStore(stateProvider),
             blockhashProvider,
             LimboLogs.Instance);
 

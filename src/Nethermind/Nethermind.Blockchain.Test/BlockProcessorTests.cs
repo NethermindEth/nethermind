@@ -279,6 +279,7 @@ public class BlockProcessorTests
             HoodiSpecProvider.Instance,
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+            new BlockhashStore(stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
