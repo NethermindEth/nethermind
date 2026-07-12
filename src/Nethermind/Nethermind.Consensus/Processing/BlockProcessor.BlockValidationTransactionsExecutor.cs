@@ -46,7 +46,7 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                if (currentTx.SenderAddress is null) senderRecovery?.EnsureSenderRecovered(block, currentTx);
+                if (currentTx.SenderAddress is null || currentTx.HasAuthorizationList) senderRecovery?.EnsureSenderRecovered(block, currentTx);
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 

@@ -495,8 +495,8 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (Logger.IsDebug)
-                Logger.Debug($"Suggest breakdown blk={header.Number} " +
+            if (Logger.IsInfo)
+                Logger.Info($"Suggest breakdown blk={header.Number} " +
                     $"pre={Stopwatch.GetElapsedTime(suggestStartTimestamp, preDoneTimestamp).TotalMilliseconds:F2}ms " +
                     $"insertBlock={Stopwatch.GetElapsedTime(preDoneTimestamp, blockInsertTimestamp).TotalMilliseconds:F2}ms " +
                     $"insertHeader={Stopwatch.GetElapsedTime(blockInsertTimestamp, headerInsertTimestamp).TotalMilliseconds:F2}ms " +

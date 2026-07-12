@@ -107,8 +107,8 @@ public partial class EngineRpcModule : IEngineRpcModule
                 finally
                 {
                     region.Dispose();
-                    if (_logger.IsDebug && handleTimestamp != 0)
-                        _logger.Debug($"newPayload breakdown blk={executionPayload.BlockNumber} " +
+                    if (_logger.IsInfo && handleTimestamp != 0)
+                        _logger.Info($"newPayload breakdown blk={executionPayload.BlockNumber} " +
                             $"validate={Stopwatch.GetElapsedTime(entryTimestamp, preLockTimestamp).TotalMilliseconds:F2}ms " +
                             $"lockWait={Stopwatch.GetElapsedTime(preLockTimestamp, startTime).TotalMilliseconds:F2}ms " +
                             $"gcSetup={Stopwatch.GetElapsedTime(startTime, gcTimestamp).TotalMilliseconds:F2}ms " +

@@ -98,6 +98,34 @@ public class StreamedSenderRecoveryTests
         }
     }
 
+    // The pool-copy fast path copies only senders, and recovery itself writes the sender before
+    // the authorities, so a set-code transaction can show a sender while its authorities are
+    // still missing. The per-tx gate must treat such a transaction as not yet recovered —
+    // executing it would silently skip valid tuples and diverge the state root.
+    [Test]
+    public void EnsureSenderRecovered_WithSenderVisibleButAuthorityMissing_WaitsForAuthorities()
+    {
+        EthereumEcdsa ecdsa = new(MainnetSpecProvider.Instance.ChainId);
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyB, MainnetSpecProvider.Instance.ChainId, TestItem.AddressC, 0))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber + 3)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .TestObject;
+        Assert.That(tx.SenderAddress, Is.Not.Null, "precondition: the sender is already visible, as after a pool copy");
+        Assert.That(tx.AuthorizationList![0].Authority, Is.Null, "precondition: the authority is what recovery still owes");
+
+        _recovery.Begin(block);
+        _recovery.EnsureSenderRecovered(block, tx);
+
+        Assert.That(tx.AuthorizationList[0].Authority, Is.Not.Null,
+            "the per-tx join must not hand a set-code transaction to execution before its authorities are recovered");
+    }
+
     [Test]
     public void Begin_WithEmptyBlock_TracksNothing()
     {

@@ -55,13 +55,13 @@ public sealed class StreamedSenderRecovery(
 
     public void EnsureSenderRecovered(Block block, Transaction transaction)
     {
-        if (transaction.SenderAddress is not null) return;
+        if (IsFullyRecovered(transaction)) return;
         if (!_inFlight.TryGetValue(block.Body, out Task? recovery)) return;
 
         // Execution normally runs well behind recovery, so the spin is rare and short; past it,
         // the sender is genuinely behind and blocking on the whole task is cheaper than yielding.
         SpinWait spinner = default;
-        while (transaction.SenderAddress is null && !recovery.IsCompleted)
+        while (!IsFullyRecovered(transaction) && !recovery.IsCompleted)
         {
             if (spinner.NextSpinWillYield)
             {
@@ -72,7 +72,29 @@ public sealed class StreamedSenderRecovery(
             spinner.SpinOnce();
         }
 
-        if (transaction.SenderAddress is null) RecoverAnythingMissing(block);
+        if (!IsFullyRecovered(transaction)) RecoverAnythingMissing(block);
+    }
+
+    /// <summary>
+    /// The gate condition for handing a transaction to execution. Checking the sender alone is
+    /// not enough: recovery writes the sender before the EIP-7702 authorities (and the pool-copy
+    /// fast path copies only senders), so a set-code transaction whose sender is already visible
+    /// may still be missing authorities — executing it then would silently skip valid tuples and
+    /// diverge the state root.
+    /// </summary>
+    private static bool IsFullyRecovered(Transaction transaction)
+    {
+        if (transaction.SenderAddress is null) return false;
+
+        if (transaction.HasAuthorizationList)
+        {
+            foreach (AuthorizationTuple tuple in transaction.AuthorizationList.AsSpan())
+            {
+                if (tuple.Authority is null) return false;
+            }
+        }
+
+        return true;
     }
 
     public void RecoverData(Block block)
@@ -90,8 +112,8 @@ public sealed class StreamedSenderRecovery(
         try
         {
             recoverSignatures.RecoverData(block.Transactions, specProvider.GetSpec(block.Header));
-            if (_logger.IsDebug)
-                _logger.Debug($"newPayload ecrecover blk={block.Number} txs={block.Transactions.Length} " +
+            if (_logger.IsInfo)
+                _logger.Info($"newPayload ecrecover blk={block.Number} txs={block.Transactions.Length} " +
                     $"recover={Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds:F2}ms");
         }
         catch (Exception e)
@@ -127,7 +149,7 @@ public sealed class StreamedSenderRecovery(
         int missing = 0;
         foreach (Transaction tx in block.Transactions)
         {
-            if (tx.SenderAddress is null) missing++;
+            if (!IsFullyRecovered(tx)) missing++;
         }
 
         if (missing == 0) return;
@@ -137,7 +159,7 @@ public sealed class StreamedSenderRecovery(
             string taskState = _inFlight.TryGetValue(block.Body, out Task? recovery)
                 ? $"tracked, status={recovery.Status}, exception={recovery.Exception?.GetBaseException().Message ?? "none"}"
                 : "not tracked";
-            _logger.Warn($"Streamed recovery left {missing}/{block.Transactions.Length} senders missing for block " +
+            _logger.Warn($"Streamed recovery left {missing}/{block.Transactions.Length} transactions not fully recovered for block " +
                 $"{block.ToString(Block.Format.FullHashAndNumber)} (recovery task: {taskState}); recovering synchronously.");
         }
 
