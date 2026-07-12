@@ -137,8 +137,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         private const int L0DrainPollMs = 20;
         private const int SlabSize = 1 << 20;
 
+        // Worst-case permanent retention: slabs <= 1024 x 1 MiB = 1 GiB; entries <= 6 arrays/bucket over 2^16..2^22 x 32 B ~= 1.5 GiB.
+        // 6 covers peak concurrency: six column batches alive per persist, one persist in flight.
         private static readonly ArrayPool<byte> s_slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
-        private static readonly ArrayPool<Entry> s_entryPool = ArrayPool<Entry>.Create(1 << 22, 8);
+        private static readonly ArrayPool<Entry> s_entryPool = ArrayPool<Entry>.Create(1 << 22, 6);
         private static readonly EnvOptions s_envOptions = new();
 
         private readonly ColumnDb _columnDb = columnDb;
