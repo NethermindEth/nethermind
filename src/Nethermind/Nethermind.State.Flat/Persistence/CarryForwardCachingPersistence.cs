@@ -189,9 +189,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
-        // Tracking more written keys than the cache can hold is pointless: a wholesale clear
-        // costs at most re-warming _maxEntriesPerKind entries, while an unbounded write-set for a
-        // multi-million-key persist churns hundreds of MB of LOH-backed HashSet storage per batch.
         private readonly int _maxTrackedWrites = parent._maxEntriesPerKind * 2;
 
         private HashSet<Address>? _writtenAccounts;

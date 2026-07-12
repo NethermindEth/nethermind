@@ -19,10 +19,7 @@ public class FlatStateReader(
     ILogManager logManager
 ) : IStateReader
 {
-    // Read-path clean cache for trie-node RLP, keyed by node hash. Trie nodes are content-addressed,
-    // so a hash always maps to the same bytes: the cache is immutable and needs no invalidation, even
-    // across new blocks. It lets repeated eth_getProof walks reuse the shared top-of-trie nodes instead
-    // of re-reading them from RocksDB on every call.
+    // Content-addressed (node hash -> RLP): entries are immutable, so no invalidation is needed.
     private const int TrieNodeRlpCacheCapacity = 1 << 18;
     private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(TrieNodeRlpCacheCapacity);
 
