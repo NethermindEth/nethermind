@@ -984,6 +984,56 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public async Task SparseWriteBatch_ConcurrentStorageCallbacksMatchPatricia()
+    {
+        using TestContext ctx = new(
+            new FlatDbConfig { UseSparseRootComputation = true },
+            new NoopTrieWarmer());
+        FlatWorldStateScope scope = ctx.Scope;
+        IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
+
+        Address firstAddress = TestItem.AddressA;
+        Address secondAddress = TestItem.AddressB;
+        Account firstAccount = new(1, (UInt256)1_000);
+        Account secondAccount = new(2, (UInt256)2_000);
+        UInt256 firstSlot = 1;
+        UInt256 secondSlot = 2;
+        byte[] firstValue = [0x12];
+        byte[] secondValue = [0x34];
+
+        sink.OnCommittedAccount(firstAddress, firstAccount);
+        sink.OnCommittedAccount(secondAddress, secondAccount);
+        sink.OnCommitPhaseCompleted(isFinal: true);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch firstStorage =
+                writeBatch.CreateStorageWriteBatch(firstAddress, 1);
+            IWorldStateScopeProvider.IStorageWriteBatch secondStorage =
+                writeBatch.CreateStorageWriteBatch(secondAddress, 1);
+            firstStorage.Set(in firstSlot, firstValue);
+            secondStorage.Set(in secondSlot, secondValue);
+
+            await Task.WhenAll(
+                Task.Run(firstStorage.Dispose),
+                Task.Run(secondStorage.Dispose));
+
+            writeBatch.Set(firstAddress, firstAccount);
+            writeBatch.Set(secondAddress, secondAccount);
+        }
+
+        StateTree expectedState = new();
+        expectedState.Set(firstAddress, firstAccount.WithChangedStorageRoot(
+            CalculateStorageRoot(firstAddress, firstSlot, firstValue)));
+        expectedState.Set(secondAddress, secondAccount.WithChangedStorageRoot(
+            CalculateStorageRoot(secondAddress, secondSlot, secondValue)));
+        expectedState.UpdateRootHash();
+
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
+    }
+
+    [Test]
     public void SparseWriteBatch_DoesNotResolveNewStorageRootBeforeSnapshotCommit()
     {
         using TestContext ctx = new(
