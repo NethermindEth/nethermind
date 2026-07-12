@@ -154,10 +154,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     internal bool TryEnqueueAccountTouch(WorkerSession session, ValueHash256 accountPath)
     {
-        if (!session.HintedAccounts.TryAdd(accountPath, 0))
+        if (!TryAddPendingAccountTouch(session, accountPath))
             return true;
 
-        session.PendingAccountTouches.Enqueue(accountPath);
         if (Interlocked.CompareExchange(ref session.AccountTouchCommandQueued, 1, 0) != 0)
             return true;
 
@@ -166,6 +165,17 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
         session.Poison(new ObjectDisposedException(nameof(SparseTrieWorker)));
         return false;
+    }
+
+    private static bool TryAddPendingAccountTouch(
+        WorkerSession session,
+        ValueHash256 accountPath)
+    {
+        if (!session.HintedAccounts.TryAdd(accountPath, 0))
+            return false;
+
+        session.PendingAccountTouches.Enqueue(accountPath);
+        return true;
     }
 
     internal bool TryEnqueueStorageTouch(
@@ -324,14 +334,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private void ProcessDelta(WorkerSession session, SparseTriePhaseDelta delta)
     {
-        SparseRootComputer computer = session.GetComputer();
-        Dictionary<ValueHash256, LeafUpdate> accountUpdates = [];
-
         foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
         {
             ValueHash256 accountPath = accountDelta.Address.ToAccountPath;
             session.ProvisionalAccountValues[accountDelta.Address] = accountDelta.Account;
-            AddAccountTouch(session, accountUpdates, accountPath);
+            TryAddPendingAccountTouch(session, accountPath);
         }
 
         foreach (SparseTrieStorageDelta storageDelta in delta.StorageDeltas)
@@ -339,7 +346,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             ValueHash256 accountPath = storageDelta.Address.ToAccountPath;
             Hash256 accountHash = accountPath.ToCommitment();
             session.RetainedStorageHashes.Add(accountHash);
-            AddAccountTouch(session, accountUpdates, accountPath);
+            TryAddPendingAccountTouch(session, accountPath);
 
             ref ProvisionalStorage? provisional = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
                 session.ProvisionalStorage,
@@ -366,8 +373,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 provisional.ParentStorageRoot,
                 slotPath);
         }
-
-        computer.ApplyAccountChanges(accountUpdates);
     }
 
     private static void AddAccountTouch(
