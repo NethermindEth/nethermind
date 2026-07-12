@@ -170,9 +170,6 @@ public static partial class EvmInstructions
         bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
         bool isAliveAccount = !state.IsDeadAccount(contractAddress);
         bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
-        ulong createStateSpill = chargeCreateStateGas
-            ? TGasPolicy.CalculateStateGasSpill(in gas, TGasPolicy.GetCreateStateCost())
-            : 0;
 
         if (chargeCreateStateGas && !TGasPolicy.ConsumeCreateStateGas(ref gas))
             goto OutOfGas;
@@ -187,8 +184,6 @@ public static partial class EvmInstructions
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TGasPolicy.TryReserveChildGas(ref gas, spec, out ulong callGas))
             goto OutOfGas;
-
-        bool createOnPreExistingAccount = accountExists && !isNonZeroAccount;
 
         // Increment the nonce of the executing account to reflect the contract creation.
         state.IncrementNonce(env.ExecutingAccount);
@@ -244,8 +239,7 @@ public static partial class EvmInstructions
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
-            isCreateStateGasCharged: chargeCreateStateGas,
-            createStateGasSpill: (long)createStateSpill);
+            isCreateStateGasCharged: chargeCreateStateGas);
 
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.

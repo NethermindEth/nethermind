@@ -11,7 +11,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Validation;
@@ -314,26 +313,24 @@ namespace Nethermind.Evm.TransactionProcessing
             long delegationRefunds = 0;
             TGasPolicy executionIntrinsicGasStandard = intrinsicGas.Standard;
             TransactionResult result;
-            // The flag defers the halt to ExecuteEvmCall so top-frame prep rolls back and the
-            // sender forfeits all regular gas; merely draining the gas would let a zero-cost frame succeed.
+            TGasPolicy prePreparationGas = gasAvailable;
+            // The flag defers the halt to ExecuteEvmCall after the entire preparation phase is rolled back.
             bool topFrameOutOfGas = false;
             Snapshot preExecutionSnapshot = Snapshot.Empty;
-            bool rollbackPreExecutionChangesOnHalt = false;
+            bool hasPreExecutionSnapshot = false;
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                TGasPolicy preAuthorizationGas = gasAvailable;
                 if (spec.IsEip8037Enabled)
                 {
                     preExecutionSnapshot = WorldState.TakeSnapshot();
+                    hasPreExecutionSnapshot = true;
                 }
 
                 if (!ProcessDelegations(tx, spec, accessTracker, ref gasAvailable, ref executionIntrinsicGasStandard, out delegationRefunds))
                 {
                     if (spec.IsEip8037Enabled)
                     {
-                        WorldState.Restore(preExecutionSnapshot);
-                        gasAvailable = preAuthorizationGas;
                         topFrameOutOfGas = true;
                     }
                     else
@@ -341,13 +338,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         return TransactionResult.GasLimitBelowIntrinsicGas;
                     }
                 }
-                else
-                {
-                    rollbackPreExecutionChangesOnHalt = spec.IsEip8037Enabled;
-                }
             }
-
-            IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
             bool loadRecipient = !topFrameOutOfGas;
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, loadRecipient, ref gasAvailable, ref topFrameOutOfGas, out ExecutionEnvironment e))) return result;
@@ -361,10 +352,18 @@ namespace Nethermind.Evm.TransactionProcessing
                 topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
             }
 
-            if (topFrameOutOfGas && rollbackPreExecutionChangesOnHalt)
+            if (topFrameOutOfGas && spec.IsEip8037Enabled)
             {
-                WorldState.Restore(preExecutionSnapshot);
+                if (hasPreExecutionSnapshot)
+                {
+                    WorldState.Restore(preExecutionSnapshot);
+                }
+
+                gasAvailable = prePreparationGas;
+                executionIntrinsicGasStandard = intrinsicGas.Standard;
             }
+
+            IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
@@ -1291,7 +1290,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
-                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, burnFullGasLimit: true);
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto Complete;
             }
 
@@ -1459,8 +1458,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy intrinsicGasStandard,
             ulong floorGas,
             long postIntrinsicStateReservoir,
-            ulong codeInsertRegularRefund = 0,
-            bool burnFullGasLimit = false)
+            ulong codeInsertRegularRefund = 0)
         {
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
@@ -1481,7 +1479,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
-            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertRegularRefund, burnFullGasLimit);
+            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertRegularRefund);
         }
 
         protected virtual GasConsumed RefundOnFail(
@@ -1544,8 +1542,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 gasPrice,
             in TGasPolicy intrinsicGasStandard,
             ulong floorGas,
-            ulong codeInsertRegularRefund = 0,
-            bool burnFullGasLimit = false)
+            ulong codeInsertRegularRefund = 0)
         {
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
@@ -1555,21 +1552,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 $"EIP-8037 halt-path invariant violated: reservoir ({stateReservoir}) exceeds gasLimit ({tx.GasLimit}).");
             // tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left. The halt burns anything
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
-            ulong preRefundGas = burnFullGasLimit ? tx.GasLimit : tx.GasLimit - (ulong)stateReservoir;
+            ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
             // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
             // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
             ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
-            long intrinsicStateGas = burnFullGasLimit ? 0 : TGasPolicy.GetStateGasUsed(in gas);
-            long spillBurned = burnFullGasLimit ? 0 : TGasPolicy.GetStateGasSpillBurned(in gas);
-            // On an exceptional halt spilled state gas ends up in gas_left and is burned as regular;
-            // only the intrinsic state gas remaining after the reset stays in the state dimension.
-            long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
-            Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
-                $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
+            long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
+            Debug.Assert(tx.IsSystem() || (ulong)intrinsicStateGas <= preRefundGas,
+                $"EIP-8037 halt-path invariant violated: state gas ({intrinsicStateGas}) exceeds pre-refund gas ({preRefundGas}).");
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)intrinsicStateGas, floorGas);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, intrinsicStateGas);
         }
 
         private GasConsumed RefundFailedEip8037Gas(

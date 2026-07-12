@@ -26,16 +26,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateReservoir;
     /// <summary>Cumulative state gas used for block accounting.</summary>
     public long StateGasUsed;
-    /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
+    /// <summary>State gas drawn from this frame's regular gas pool.</summary>
     public long StateGasSpill;
-    /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
-    public long StateGasSpillBurned;
-    /// <summary>Spill that should remain in the block regular dimension.</summary>
-    public long StateGasSpillReclassified;
-    /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
+    /// <summary>Spilled state gas already returned by this frame's LIFO refunds.</summary>
     public long StateGasSpillRefunded;
-    /// <summary>Regular gas that remains spendable in this frame but must not refund to its caller.</summary>
-    public ulong NonRefundableRegularGas;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
 
@@ -72,17 +66,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong GetRefundableRemainingGas(in EthereumGasPolicy gas) =>
-        gas.Value - Math.Min(gas.Value, gas.NonRefundableRegularGas);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void MarkGasNonRefundable(ref EthereumGasPolicy gas, ulong amount)
-    {
-        ulong nonRefundableGas = Math.Min(gas.Value, amount);
-        gas.NonRefundableRegularGas = Math.Max(gas.NonRefundableRegularGas, nonRefundableGas);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateReservoir(in EthereumGasPolicy gas) => gas.StateReservoir;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -90,9 +73,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
@@ -119,15 +99,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (gas.Value < cost)
         {
             gas.Value = 0;
-            gas.NonRefundableRegularGas = 0;
             gas.OutOfGas = true;
         }
         else
         {
             gas.Value -= cost;
-            gas.NonRefundableRegularGas = gas.NonRefundableRegularGas > cost
-                ? gas.NonRefundableRegularGas - cost
-                : 0;
         }
     }
 
@@ -137,9 +113,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ulong v = gas.Value;
         if (v < cost) return false;
         gas.Value = v - cost;
-        gas.NonRefundableRegularGas = gas.NonRefundableRegularGas > cost
-            ? gas.NonRefundableRegularGas - cost
-            : 0;
         return true;
     }
 
@@ -177,17 +150,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas)
     {
-        gas.Value += GetRefundableRemainingGas(in childGas);
+        gas.Value += childGas.Value;
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
-        gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
-    // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
-    // state gas usage. Propagate spill so block-regular accounting can exclude it.
+    // On explicit REVERT, refill the child's state gas and return its restored pools.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
@@ -196,16 +166,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
-        parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
     // On child exceptional halt, regular gas in the child frame is consumed, but state gas did
     // not produce durable state growth. Restore the child's state reservoir and state usage to
     // the parent reservoir without adding the child's state usage to parent block-state usage.
-    // Any child state spill remains state-attributed for block regular gas accounting.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
@@ -213,9 +178,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // portion refills gas_left, which the halt burns as regular gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned + childNetSpill;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -226,6 +188,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
+        parentGas.StateGasSpill -= childGas.StateGasSpill;
+        parentGas.StateGasSpillRefunded -= childGas.StateGasSpillRefunded;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -239,7 +203,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static void SetOutOfGas(ref EthereumGasPolicy gas)
     {
         gas.Value = 0;
-        gas.NonRefundableRegularGas = 0;
         gas.OutOfGas = true;
     }
 
@@ -418,7 +381,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (gas.Value < childGas)
         {
             gas.Value = 0;
-            gas.NonRefundableRegularGas = 0;
             gas.OutOfGas = true;
             return false;
         }
@@ -507,8 +469,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
         // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
         // paying for state-gas that did not commit.
-        // StateGasSpillBurned is preserved: the top-level halt formula still needs it to
-        // reattribute earlier burned spill from the state to the regular dimension.
         gas.StateReservoir = initialStateReservoir;
         gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
@@ -690,7 +650,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        ulong cost = Eip8038Constants.ColdAccountAccess;
+        ulong cost = ColdAccountAccessCost(spec);
         if (hasValue)
             cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
 

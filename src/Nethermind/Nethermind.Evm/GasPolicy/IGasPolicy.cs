@@ -24,15 +24,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
-    /// <summary>Gets the regular gas that may be returned to the parent frame or transaction sender.</summary>
-    /// <remarks>EIP-8037 policies exclude regular gas marked as burned by a reverted state-gas spill.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual ulong GetRefundableRemainingGas(in TSelf gas) => TSelf.GetRemainingGas(in gas);
-
-    /// <summary>Marks regular gas as burned so it cannot be returned by a later frame unwind.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void MarkGasNonRefundable(ref TSelf gas, ulong amount) { }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
 
@@ -44,10 +35,10 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetPreRefundGas(in TSelf gas, ulong txGasLimit)
     {
-        ulong refundableGas = TSelf.GetRefundableRemainingGas(in gas);
-        Debug.Assert((long)txGasLimit - (long)refundableGas - TSelf.GetStateReservoir(in gas) >= 0,
-            $"Gas invariant violated: refundable remaining ({refundableGas}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
-        return txGasLimit - refundableGas - (ulong)TSelf.GetStateReservoir(in gas);
+        ulong remainingGas = TSelf.GetRemainingGas(in gas);
+        Debug.Assert((long)txGasLimit - (long)remainingGas - TSelf.GetStateReservoir(in gas) >= 0,
+            $"Gas invariant violated: remaining ({remainingGas}) + reservoir ({TSelf.GetStateReservoir(in gas)}) exceeds gasLimit ({txGasLimit}).");
+        return txGasLimit - remainingGas - (ulong)TSelf.GetStateReservoir(in gas);
     }
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -69,11 +60,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual long GetStateGasUsed(in TSelf gas) => 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
-    // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
-    // Used by top-level halt to reattribute burned spill from state to regular dimension.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CalculateStateGasSpill(in TSelf gas, long stateGasCost)
     {

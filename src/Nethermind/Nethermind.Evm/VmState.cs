@@ -51,8 +51,6 @@ public class VmState<TGasPolicy> : IDisposable
     public bool IsContinuation { get; set; } // TODO: move to CallEnv
     public bool IsCreateOnPreExistingAccount { get; private set; } // TODO: move to CallEnv
     public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv
-    public long CreateStateGasSpill { get; private set; } // TODO: move to CallEnv
-    public bool IsCreateStateGasSpilled => CreateStateGasSpill > 0;
 
     /// <summary>
     /// EIP-8037: the parent <c>*CALL</c> charged NEW_ACCOUNT state gas up-front for this (dead)
@@ -87,7 +85,6 @@ public class VmState<TGasPolicy> : IDisposable
             isStatic: false,
             isCreateOnPreExistingAccount: false,
             isCreateStateGasCharged: false,
-            createStateGasSpill: 0,
             newAccountCharged: false,
             env: env,
             stateForAccessLists: accessedItems,
@@ -110,8 +107,7 @@ public class VmState<TGasPolicy> : IDisposable
         in Snapshot snapshot,
         bool isTopLevel = false,
         bool newAccountCharged = false,
-        bool isCreateStateGasCharged = false,
-        long createStateGasSpill = 0)
+        bool isCreateStateGasCharged = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -123,7 +119,6 @@ public class VmState<TGasPolicy> : IDisposable
             isStatic: isStatic,
             isCreateOnPreExistingAccount: isCreateOnPreExistingAccount,
             isCreateStateGasCharged: isCreateStateGasCharged,
-            createStateGasSpill: createStateGasSpill,
             newAccountCharged: newAccountCharged,
             env: env,
             stateForAccessLists: stateForAccessLists,
@@ -147,7 +142,6 @@ public class VmState<TGasPolicy> : IDisposable
         bool isStatic,
         bool isCreateOnPreExistingAccount,
         bool isCreateStateGasCharged,
-        long createStateGasSpill,
         bool newAccountCharged,
         ExecutionEnvironment env,
         in StackAccessTracker stateForAccessLists,
@@ -185,7 +179,6 @@ public class VmState<TGasPolicy> : IDisposable
         IsContinuation = false;
         IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
         IsCreateStateGasCharged = isCreateStateGasCharged;
-        CreateStateGasSpill = createStateGasSpill;
         NewAccountCharged = newAccountCharged;
 
         if (!_isDisposed)

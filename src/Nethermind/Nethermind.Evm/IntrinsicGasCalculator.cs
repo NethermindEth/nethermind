@@ -150,7 +150,9 @@ public static class IntrinsicGasCalculator
         }
         else if (transaction.SenderAddress != transaction.To)
         {
-            floorBase += Eip8038Constants.ColdAccountAccess;
+            floorBase += spec.IsEip8038Enabled
+                ? Eip8038Constants.ColdAccountAccess
+                : GasCostOf.ColdAccountAccess;
             if (!transaction.Value.IsZero)
             {
                 floorBase += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;

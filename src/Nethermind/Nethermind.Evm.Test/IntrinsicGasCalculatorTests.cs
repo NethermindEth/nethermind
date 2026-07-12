@@ -284,12 +284,12 @@ namespace Nethermind.Evm.Test
         // touch and value-move costs are flat for every non-self recipient.
         private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;
         private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;
-        private const ulong ColdAccess = Eip8038Constants.ColdAccountAccess;
+        private const ulong ColdAccess = GasCostOf.ColdAccountAccess;
         private const ulong TxValueCost = GasCostOf.TxValueCostEip2780;
 
-        [TestCase(false, 1ul, TxBaseEip2780 + ColdAccess + TxValueCost + TransferLogEip2780, TestName = "Eip2780_intrinsic_value_transfer_21000")]
+        [TestCase(false, 1ul, TxBaseEip2780 + ColdAccess + TxValueCost + TransferLogEip2780, TestName = "Eip2780_intrinsic_value_transfer_20600")]
         [TestCase(true, 1ul, TxBaseEip2780, TestName = "Eip2780_intrinsic_self_transfer_12000")]
-        [TestCase(false, 0ul, TxBaseEip2780 + ColdAccess, TestName = "Eip2780_intrinsic_no_transfer_15000")]
+        [TestCase(false, 0ul, TxBaseEip2780 + ColdAccess, TestName = "Eip2780_intrinsic_no_transfer_14600")]
         [TestCase(true, 0ul, TxBaseEip2780, TestName = "Eip2780_intrinsic_self_no_transfer_12000")]
         public void Eip2780_intrinsic_gas_is_calculated_properly(bool selfTransfer, ulong value, ulong expectedStandard)
         {
@@ -334,17 +334,31 @@ namespace Nethermind.Evm.Test
                 Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate + TransferLogEip2780));
         }
 
-        [Test]
-        public void Eip2780_reduces_the_calldata_floor_base()
+        [TestCase(false, GasCostOf.ColdAccountAccess)]
+        [TestCase(true, Eip8038Constants.ColdAccountAccess)]
+        public void Eip2780_calldata_floor_uses_the_active_cold_account_cost(bool eip8038Enabled, ulong coldAccountCost)
         {
             // Without reducing the floor base, the legacy 21,000 floor would dominate and negate the EIP.
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
-            Transaction tx = Build.A.Transaction.WithData([1]).SignedAndResolved().TestObject;
+            OverridableReleaseSpec spec = new(Prague.Instance)
+            {
+                IsEip2780Enabled = true,
+                IsEip7708Enabled = true,
+                IsEip8038Enabled = eip8038Enabled,
+            };
+            Transaction tx = Build.A.Transaction
+                .WithValue(0)
+                .WithTo(TestItem.AddressB)
+                .WithData([1])
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
 
-            // EIP-2780 uses its reduced transaction base plus the non-self recipient touch in the floor base.
-            Assert.That(gas.FloorGas, Is.EqualTo(TxBaseEip2780 + ColdAccess + 6_040));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.Standard, Is.EqualTo(TxBaseEip2780 + coldAccountCost + GasCostOf.TxDataNonZeroEip2028));
+                Assert.That(gas.FloorGas, Is.EqualTo(TxBaseEip2780 + coldAccountCost + GasCostOf.TotalCostFloorPerTokenEip7623 * GasCostOf.TxDataNonZeroMultiplierEip2028));
+            }
         }
 
         [Test]
