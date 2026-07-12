@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -466,7 +467,9 @@ public sealed class SnapshotBundle : IDisposable
         if (HashAwareTrieReads && rlp is not null && (path.Length & 1) == 0)
         {
             // WarmUpPath already inserts odd-depth nodes through FindCachedOrUnknown.
-            _transientResource.UpdateStateNode(path, new TrieNode(NodeType.Unknown, hash, rlp));
+            _transientResource.UpdateStateNode(
+                path,
+                new TrieNode(NodeType.Unknown, hash, new CappedArray<byte>(rlp)));
         }
 
         return rlp;
@@ -496,7 +499,10 @@ public sealed class SnapshotBundle : IDisposable
         if (HashAwareTrieReads && rlp is not null && (path.Length & 1) == 0)
         {
             // WarmUpPath already inserts odd-depth nodes through FindCachedOrUnknown.
-            _transientResource.UpdateStorageNode(address, path, new TrieNode(NodeType.Unknown, hash, rlp));
+            _transientResource.UpdateStorageNode(
+                address,
+                path,
+                new TrieNode(NodeType.Unknown, hash, new CappedArray<byte>(rlp)));
         }
 
         return rlp;
