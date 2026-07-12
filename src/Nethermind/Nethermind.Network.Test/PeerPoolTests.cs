@@ -77,6 +77,37 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task PeerPool_ShouldSkipCandidate_WithUnresolvedTcpPort()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+
+        TestNodeSource nodeSource = new();
+        PeerPool pool = new(
+            nodeSource,
+            Substitute.For<INodeStatsManager>(),
+            new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig()
+            {
+                MaxActivePeers = 5,
+                MaxCandidatePeerCount = 10
+            },
+            LimboLogs.Instance,
+            trustedNodesManager);
+
+        Node unresolvedNode = Node.FromDiscoveryEndpoint(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("1.2.3.4"), 30303));
+        Node resolvedNode = new(TestItem.PublicKeyB, "1.2.3.5", 30303);
+
+        pool.Start();
+        nodeSource.AddNode(unresolvedNode);
+        nodeSource.AddNode(resolvedNode);
+
+        Assert.That(() => pool.Peers.ContainsKey(resolvedNode.Id), Is.True.After(1000, 10));
+        Assert.That(pool.Peers.ContainsKey(unresolvedNode.Id), Is.False);
+
+        await pool.StopAsync();
+    }
+
+    [Test]
     public async Task PeerPool_RunPeerCommit_ShouldContinueAfterNoPendingChange()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();

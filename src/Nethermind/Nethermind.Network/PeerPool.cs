@@ -281,6 +281,15 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
+                // A node only heard about via relay (e.g. a Neighbours/FindNode mention) may not have a
+                // resolved TCP port yet - port 0 is not dialable, so wait for it to be learned via a direct
+                // Ping/ENR exchange (or an inbound connection) instead of feeding in a dead candidate.
+                if (node.Port == 0)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping candidate with unresolved TCP port: {node:s}");
+                    continue;
+                }
+
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
                 while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
