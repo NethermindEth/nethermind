@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NodeBuffer = System.Collections.Generic.List<(Nethermind.Trie.TreePath Path, Nethermind.Trie.TrieNode Node)>;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -31,11 +33,15 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
-        private ThreadLocal<List<(TreePath Path, TrieNode Node)>>? _parallelBuffers;
+        private const int InitialNodeBufferCapacity = 128;
+        private static readonly ObjectPool<NodeBuffer> NodeBufferPool =
+            new DefaultObjectPool<NodeBuffer>(new NodeBufferPoolPolicy());
+
+        private ThreadLocal<NodeBuffer>? _parallelBuffers;
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            ThreadLocal<List<(TreePath Path, TrieNode Node)>>? parallelBuffers = Volatile.Read(ref _parallelBuffers);
+            ThreadLocal<NodeBuffer>? parallelBuffers = Volatile.Read(ref _parallelBuffers);
             if (parallelBuffers is null)
             {
                 WriteNode(path, node);
@@ -53,16 +59,24 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
         public void Dispose()
         {
-            ThreadLocal<List<(TreePath Path, TrieNode Node)>>? parallelBuffers = _parallelBuffers;
+            ThreadLocal<NodeBuffer>? parallelBuffers = _parallelBuffers;
             if (parallelBuffers is null) return;
 
+            IList<NodeBuffer> buffers = parallelBuffers.Values;
             try
             {
-                PublishNodes(parallelBuffers.Values);
+                PublishNodes(buffers);
             }
             finally
             {
-                parallelBuffers.Dispose();
+                try
+                {
+                    parallelBuffers.Dispose();
+                }
+                finally
+                {
+                    foreach (NodeBuffer buffer in buffers) NodeBufferPool.Return(buffer);
+                }
             }
         }
 
@@ -72,8 +86,8 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
             if (Volatile.Read(ref _parallelBuffers) is null)
             {
-                ThreadLocal<List<(TreePath Path, TrieNode Node)>> candidate = new(static () => [], trackAllValues: true);
-                ThreadLocal<List<(TreePath Path, TrieNode Node)>>? existing =
+                ThreadLocal<NodeBuffer> candidate = new(static () => NodeBufferPool.Get(), trackAllValues: true);
+                ThreadLocal<NodeBuffer>? existing =
                     Interlocked.CompareExchange(ref _parallelBuffers, candidate, null);
                 if (existing is not null) candidate.Dispose();
             }
@@ -82,6 +96,17 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
         }
 
         void ICommitter.ReturnConcurrencyQuota() => quota.ReturnConcurrencyQuota();
+
+        private sealed class NodeBufferPoolPolicy : IPooledObjectPolicy<NodeBuffer>
+        {
+            public NodeBuffer Create() => new(InitialNodeBufferCapacity);
+
+            public bool Return(NodeBuffer buffer)
+            {
+                buffer.Clear();
+                return true;
+            }
+        }
     }
 
     public class UnsupportedOperationException(string message) : Exception(message);
