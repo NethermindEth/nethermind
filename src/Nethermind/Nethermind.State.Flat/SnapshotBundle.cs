@@ -406,10 +406,48 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        return HashAwareTrieReads
+        byte[]? rlp = HashAwareTrieReads
             ? _readOnlySnapshotBundle.TryLoadStateRlpMatching(path, hash, flags)
             : _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
+
+        if (HashAwareTrieReads && rlp is null && path.Length == 0)
+            throw new TrieException(DescribeMissingStateRoot(hash, flags));
+
+        return rlp;
     }
+
+    private string DescribeMissingStateRoot(Hash256 requestedHash, ReadFlags flags)
+    {
+        TreePath rootPath = TreePath.Empty;
+        HashedKey<TreePath> rootKey = new(rootPath);
+        string changed = _changedStateNodes.TryGetValue(rootKey, out TrieNode? changedNode)
+            ? DescribeNode(changedNode)
+            : "missing";
+        string local = string.Empty;
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            string candidate = _snapshots[i].TryGetStateNode(rootKey, out TrieNode? node)
+                ? DescribeNode(node)
+                : "missing";
+            local += $" [{i}]={candidate}";
+        }
+
+        string readOnly = _readOnlySnapshotBundle.TryFindStateNodes(rootKey, out TrieNode? readOnlyNode)
+            ? DescribeNode(readOnlyNode)
+            : "missing";
+        byte[]? rawPersistedRlp = _readOnlySnapshotBundle.TryLoadStateRlp(rootPath, requestedHash, flags);
+        string persisted = rawPersistedRlp is null
+            ? "missing"
+            : $"hash={Keccak.Compute(rawPersistedRlp)},rlp={rawPersistedRlp.Length}";
+
+        return $"Exact state root {requestedHash} is unavailable. " +
+               $"changed={changed}; local-count={_snapshots.Count}:{local}; " +
+               $"read-only-count={_readOnlySnapshotBundle.SnapshotCount},newest={readOnly}; " +
+               $"persistence-newest={persisted}.";
+    }
+
+    private static string DescribeNode(TrieNode node) =>
+        $"hash={node.Keccak},rlp={node.FullRlp.Length},type={node.NodeType},persisted={node.IsPersisted}";
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
