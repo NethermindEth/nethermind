@@ -330,11 +330,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
         {
             ValueHash256 accountPath = accountDelta.Address.ToAccountPath;
-            session.RevealedAccounts.Add(accountPath);
             session.ProvisionalAccountValues[accountDelta.Address] = accountDelta.Account;
-            accountUpdates[accountPath] = accountDelta.Account is null
-                ? LeafUpdate.Deleted()
-                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(accountDelta.Account).Bytes);
+            AddAccountTouch(session, accountUpdates, accountPath);
         }
 
         foreach (SparseTrieStorageDelta storageDelta in delta.StorageDeltas)
@@ -627,13 +624,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 storageRoot is not null)
                 account = account.WithChangedStorageRoot(storageRoot);
 
-            if (!session.ProvisionalAccountValues.TryGetValue(address, out Account? provisional) ||
-                provisional != account)
-            {
-                accountUpdates[accountPath] = account is null
-                    ? LeafUpdate.Deleted()
-                    : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
-            }
+            accountUpdates[accountPath] = account is null
+                ? LeafUpdate.Deleted()
+                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
         }
 
         foreach (AddressAsKey storageAddress in mutableStorageRoots.Keys)
