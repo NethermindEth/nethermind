@@ -673,10 +673,19 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
-      - name: Recover stale EXPB overlay
+      - name: Recover stale EXPB resources
         shell: bash
         run: |
           set -euo pipefail
+          network="expb-executor-${SCENARIO_NAME}-network"
+          if docker network inspect "${network}" >/dev/null 2>&1; then
+            mapfile -t stale_containers < <(docker ps -aq --filter "network=${network}")
+            if (( ${#stale_containers[@]} > 0 )); then
+              docker rm -f "${stale_containers[@]}"
+            fi
+            docker network rm "${network}"
+          fi
+
           merged="${EXPB_DATA_DIR}/work/merged"
           if mountpoint -q "${merged}"; then
             umount "${merged}" || umount -l "${merged}"
@@ -1639,6 +1648,7 @@ jobs:
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+      SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
     steps:
       - name: Print resolved inputs
         run: |
@@ -1670,7 +1680,7 @@ jobs:
           DOCKER_TAG: ${{ matrix.tag }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
-          SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
+          SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
@@ -1761,10 +1771,19 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
-      - name: Recover stale EXPB overlay
+      - name: Recover stale EXPB resources
         shell: bash
         run: |
           set -euo pipefail
+          network="expb-executor-${SCENARIO_NAME}-network"
+          if docker network inspect "${network}" >/dev/null 2>&1; then
+            mapfile -t stale_containers < <(docker ps -aq --filter "network=${network}")
+            if (( ${#stale_containers[@]} > 0 )); then
+              docker rm -f "${stale_containers[@]}"
+            fi
+            docker network rm "${network}"
+          fi
+
           merged="${EXPB_DATA_DIR}/work/merged"
           if mountpoint -q "${merged}"; then
             umount "${merged}" || umount -l "${merged}"
