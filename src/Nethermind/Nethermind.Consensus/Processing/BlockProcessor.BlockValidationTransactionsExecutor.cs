@@ -21,8 +21,7 @@ public partial class BlockProcessor
     public class BlockValidationTransactionsExecutor(
         ITransactionProcessorAdapter transactionProcessor,
         IWorldState stateProvider,
-        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null,
-        IStreamedSenderRecovery? senderRecovery = null)
+        BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         protected IWorldState _stateProvider = stateProvider;
@@ -46,8 +45,6 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-
-                senderRecovery?.EnsureSenderRecovered(block, currentTx, i);
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 

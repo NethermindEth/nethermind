@@ -50,12 +50,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Block preprocessor steps, injected as an ordered IReadOnlyList<IBlockPreprocessorStep>.
             // Consensus plugins prepend/append their own steps via the same DSL.
-            // One shared recovery instance: the newPayload handler begins it, the executors join
-            // it, and as the first preprocessor step it skips blocks already in flight.
-            .AddSingleton<RecoverSignatures>()
-            .AddSingleton<StreamedSenderRecovery>()
-            .Bind<IStreamedSenderRecovery, StreamedSenderRecovery>()
-            .AddFirst<IBlockPreprocessorStep>(ctx => ctx.Resolve<StreamedSenderRecovery>())
+            .AddFirst<IBlockPreprocessorStep, RecoverSignatures>()
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
