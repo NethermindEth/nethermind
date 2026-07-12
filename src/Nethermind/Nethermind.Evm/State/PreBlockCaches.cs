@@ -2,26 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-
-using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private const int InitialCapacity = 4096 * 8;
-
-    private static int LockPartitions => CollectionExtensions.LockPartitions;
-
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
+    // Pure function of its key, so reorg-immune: deliberately excluded from the per-block clear.
+    private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _precompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
@@ -29,17 +27,18 @@ public class PreBlockCaches
     public PreBlockCaches(PreBlockCachesConfig config)
     {
         _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _precompileCache = new ClockCache<PrecompileCacheKey, Result<byte[]>>(
+            config.PrecompileCacheMaxEntries, comparer: EqualityComparer<PrecompileCacheKey>.Default);
         _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
-            () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
+            () => { _stateCache.Clear(); return CacheType.None; }
         ];
     }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
+    public ClockCache<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
 
     /// <summary>
     /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
@@ -62,13 +61,18 @@ public class PreBlockCaches
         return isDirty;
     }
 
-    public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data) : IEquatable<PrecompileCacheKey>
+    public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<PrecompileCacheKey>
     {
         private Address Address { get; } = address;
         private ReadOnlyMemory<byte> Data { get; } = data;
-        public bool Equals(PrecompileCacheKey other) => Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
+        // Reference-compared: results may legally differ across forks (e.g. input bounds), so an
+        // entry must never be served across a fork boundary.
+        private IReleaseSpec Spec { get; } = spec;
+
+        public bool Equals(PrecompileCacheKey other) =>
+            ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
-        public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
+        public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode() ^ RuntimeHelpers.GetHashCode(Spec);
     }
 }
 
@@ -76,6 +80,8 @@ public sealed record PreBlockCachesConfig
 {
     // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
     public int StorageCacheSetsBits { get; init; } = 17;
+
+    public int PrecompileCacheMaxEntries { get; init; } = 32768;
 }
 
 [Flags]

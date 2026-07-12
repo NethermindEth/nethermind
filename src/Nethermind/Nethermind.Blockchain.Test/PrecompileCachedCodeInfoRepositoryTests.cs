@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
@@ -22,6 +22,9 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class PrecompileCachedCodeInfoRepositoryTests
 {
+    private static ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> CreateCache(int maxEntries = 1024) =>
+        new(maxEntries, comparer: EqualityComparer<PreBlockCaches.PrecompileCacheKey>.Default);
+
     private static IReleaseSpec CreateSpecWithPrecompile(Address precompileAddress)
     {
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
@@ -58,7 +61,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -88,7 +91,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -114,7 +117,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
@@ -144,7 +147,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -179,7 +182,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -238,7 +241,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
@@ -266,7 +269,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.Precompiles.Returns(new HashSet<AddressAsKey>
@@ -304,7 +307,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -343,7 +346,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -377,7 +380,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
@@ -410,7 +413,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
@@ -447,7 +450,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -485,7 +488,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         precompileProvider.GetPrecompiles().Returns(precompiles);
 
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
@@ -508,7 +511,96 @@ public class PrecompileCachedCodeInfoRepositoryTests
             Assert.That((bool)result3, Is.False);
             Assert.That((bool)result1Again, Is.False);
             Assert.That(runCount, Is.EqualTo(4), "each call must re-run; invalid-length results must not be cached");
-            Assert.That(cache, Is.Empty, "cache must remain empty for invalid-length results");
+            Assert.That(cache.Count, Is.EqualTo(0), "cache must remain empty for invalid-length results");
+        }
+    }
+
+    [Test]
+    public void CachedPrecompile_DifferentSpecs_CreateSeparateCacheEntries()
+    {
+        int runCount = 0;
+        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(cachingPrecompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        byte[] input = [1, 2, 3];
+
+        codeInfo.Precompile!.Run(input, Prague.Instance);
+        codeInfo.Precompile!.Run(input, Osaka.Instance);
+        codeInfo.Precompile!.Run(input, Prague.Instance);
+        codeInfo.Precompile!.Run(input, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2), "an entry cached under one spec must not be served under another");
+            Assert.That(cache.Count, Is.EqualTo(2), "each spec must have its own entry for the same input");
+        }
+    }
+
+    [Test]
+    public void PrecompileCache_AfterPerBlockClear_RetainsEntries()
+    {
+        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches.PrecompileCacheKey key = new(Address.FromNumber(100), new byte[] { 1, 2, 3 }, Prague.Instance);
+        Result<byte[]> result = new byte[] { 42 };
+        preBlockCaches.PrecompileCache.Set(key, result);
+
+        preBlockCaches.ClearCaches();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.PrecompileCache.TryGet(key, out Result<byte[]> cached), Is.True,
+                "precompile results are pure functions of their key and must survive the per-block clear");
+            Assert.That(cached.Data, Is.EqualTo(result.Data));
+        }
+    }
+
+    [Test]
+    public void CachedPrecompile_AtCapacity_EvictsInsteadOfGrowing()
+    {
+        int runCount = 0;
+        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(cachingPrecompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache(maxEntries: 2);
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        codeInfo.Precompile!.Run(new byte[] { 1 }, Prague.Instance);
+        codeInfo.Precompile!.Run(new byte[] { 2 }, Prague.Instance);
+        codeInfo.Precompile!.Run(new byte[] { 3 }, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(3), "precondition: three distinct inputs must each execute");
+            Assert.That(cache.Count, Is.EqualTo(2), "cache must evict at capacity instead of growing");
         }
     }
 

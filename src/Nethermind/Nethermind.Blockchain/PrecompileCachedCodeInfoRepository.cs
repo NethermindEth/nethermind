@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
@@ -19,7 +19,7 @@ public class PrecompileCachedCodeInfoRepository(
     IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
-    ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
+    ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCache is null
         ? precompileProvider.GetPrecompiles()
@@ -52,7 +52,7 @@ public class PrecompileCachedCodeInfoRepository(
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
@@ -64,7 +64,7 @@ public class PrecompileCachedCodeInfoRepository(
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
@@ -73,8 +73,8 @@ public class PrecompileCachedCodeInfoRepository(
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
-            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
-            if (!cache.TryGetValue(key, out Result<byte[]> result))
+            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput, releaseSpec);
+            if (!cache.TryGet(key, out Result<byte[]> result))
             {
                 result = precompile.Run(inputData, releaseSpec);
 
@@ -85,8 +85,8 @@ public class PrecompileCachedCodeInfoRepository(
 
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
                 // effective-input bounds are expected to remain the same
-                key = new(address, effectiveInput.ToArray());
-                cache.TryAdd(key, result);
+                key = new(address, effectiveInput.ToArray(), releaseSpec);
+                cache.Set(key, result);
             }
 
             return result;
