@@ -21,101 +21,168 @@ public sealed class SparsePatriciaTree : IDisposable
     public bool IsRevealed { get; private set; }
 
     /// <summary>
-    /// Reveals proof nodes into the sparse trie. Proof nodes must be sorted by path
-    /// (root first, then children). Each proof node is walked from the root to find
-    /// the correct blinded child to replace.
+    /// Reveals proof nodes into the sparse trie. Nodes are processed in path order so
+    /// consecutive proofs can resume from their nearest common revealed ancestor. When
+    /// the trie is empty, the batch must contain the root proof.
     /// </summary>
     public void RevealNodes(IReadOnlyList<ProofNode> proofNodes)
     {
-        // Reserve arena/children for the batch up front so per-node reveals don't hit repeated
-        // doubling resizes. Each proof node reveals at most one arena node; the children reserve
-        // inside covers branch fan-out.
         _subtrie.ReserveForReveal(proofNodes.Count);
-        foreach (ProofNode pn in proofNodes)
-            RevealSingleNode(pn);
+        Span<RevealCursorEntry> cursor = stackalloc RevealCursorEntry[65];
+        int cursorLength = 0;
+
+        bool sorted = true;
+        for (int i = 1; i < proofNodes.Count; i++)
+        {
+            TreePath previous = proofNodes[i - 1].Path;
+            TreePath current = proofNodes[i].Path;
+            if (previous.CompareTo(in current) > 0)
+            {
+                sorted = false;
+                break;
+            }
+        }
+
+        if (sorted)
+        {
+            for (int i = 0; i < proofNodes.Count; i++)
+                RevealNode(proofNodes[i], cursor, ref cursorLength);
+        }
+        else
+        {
+            ProofNode[] ordered = ArrayPool<ProofNode>.Shared.Rent(proofNodes.Count);
+            try
+            {
+                for (int i = 0; i < proofNodes.Count; i++)
+                    ordered[i] = proofNodes[i];
+                Array.Sort(ordered, 0, proofNodes.Count, ProofNodePathComparer.Instance);
+                for (int i = 0; i < proofNodes.Count; i++)
+                    RevealNode(ordered[i], cursor, ref cursorLength);
+            }
+            finally
+            {
+                Array.Clear(ordered, 0, proofNodes.Count);
+                ArrayPool<ProofNode>.Shared.Return(ordered);
+            }
+        }
+
         IsRevealed = true;
     }
 
-    private void RevealSingleNode(ProofNode proofNode)
+    private void RevealNode(
+        ProofNode proofNode,
+        Span<RevealCursorEntry> cursor,
+        ref int cursorLength)
     {
         if (_subtrie.Root == -1 || _subtrie.NodeAt(_subtrie.Root).IsEmpty())
         {
             if (_subtrie.Root >= 0)
                 _subtrie.FreeNode(_subtrie.Root);
             _subtrie.Root = CreateNodeFromProof(_subtrie, proofNode);
+            cursor[0] = new RevealCursorEntry(_subtrie.Root, TreePath.Empty);
+            cursorLength = 1;
             return;
         }
 
-        // Walk the existing trie from root to find the parent that should hold this node
         TreePath targetPath = proofNode.Path;
         if (targetPath.Length == 0)
-        {
-            // Root already exists from initial reveal — skip.
-            // Retry proofs redundantly include the root node; replacing it here
-            // would destroy all previously revealed children.
             return;
+
+        if (cursorLength == 0)
+        {
+            cursor[0] = new RevealCursorEntry(_subtrie.Root, TreePath.Empty);
+            cursorLength = 1;
         }
 
-        // Walk down from root following the target path nibbles
-        int currentIdx = _subtrie.Root;
-        byte[] targetNibbles = targetPath.ToNibble();
-        int nibblePos = 0;
-
-        while (nibblePos < targetNibbles.Length)
+        while (cursorLength > 1)
         {
-            // Read node fields by value — do NOT hold a ref across AllocNode/AllocChildren
-            // calls (CreateNodeFromProof triggers Array.Resize, invalidating refs).
+            TreePath ancestorPath = cursor[cursorLength - 1].Path;
+            if (targetPath.Length >= ancestorPath.Length && targetPath.StartsWith(ancestorPath))
+                break;
+            cursorLength--;
+        }
+
+        int currentIdx = cursor[cursorLength - 1].ArenaIndex;
+        TreePath currentPath = cursor[cursorLength - 1].Path;
+        if (currentPath.Length == targetPath.Length)
+            return;
+
+        while (currentPath.Length < targetPath.Length)
+        {
             SparseTrieNode current = _subtrie.NodeAt(currentIdx);
+            if (!current.IsBranch())
+                return;
 
-            if (current.IsBranch())
+            byte[] shortKey = current.ShortKey ?? [];
+            if (!MatchesPath(targetPath, currentPath.Length, shortKey))
+                return;
+
+            int branchPathLength = currentPath.Length + shortKey.Length;
+            if (branchPathLength == targetPath.Length)
             {
-                byte[] shortKey = current.ShortKey ?? [];
-                nibblePos += shortKey.Length;
-                if (nibblePos >= targetNibbles.Length)
-                {
-                    if (current.HasShortKey() && current.ChildCount() == 0)
-                    {
-                        MergeChildIntoBranchWithExtension(currentIdx, proofNode);
-                        return;
-                    }
-                    break;
-                }
-
-                int nibble = targetNibbles[nibblePos];
-                if (!current.StateMask.IsBitSet(nibble)) break;
-
-                int denseIdx = current.DenseChildIndex(nibble);
-                SparseChildEntry childEntry = _subtrie.ChildAt(denseIdx);
-
-                nibblePos++;
-                if (nibblePos >= targetNibbles.Length || nibblePos == targetPath.Length)
-                {
-                    if (childEntry.IsBlinded)
-                    {
-                        int newNodeIdx = CreateNodeFromProof(_subtrie, proofNode);
-                        // Re-compute denseIdx: _children may have been resized by CreateNodeFromProof
-                        denseIdx = _subtrie.NodeAt(currentIdx).DenseChildIndex(nibble);
-                        _subtrie.ChildAt(denseIdx) = SparseChildEntry.Revealed(newNodeIdx);
-                        _subtrie.NodeAt(currentIdx).BlindedMask = _subtrie.NodeAt(currentIdx).BlindedMask.ClearBit(nibble);
-                    }
-                    return;
-                }
-
-                if (childEntry.IsBlinded)
-                {
-                    int newNodeIdx = CreateNodeFromProof(_subtrie, proofNode);
-                    denseIdx = _subtrie.NodeAt(currentIdx).DenseChildIndex(nibble);
-                    _subtrie.ChildAt(denseIdx) = SparseChildEntry.Revealed(newNodeIdx);
-                    _subtrie.NodeAt(currentIdx).BlindedMask = _subtrie.NodeAt(currentIdx).BlindedMask.ClearBit(nibble);
-                    return;
-                }
-
-                currentIdx = childEntry.ArenaIndex;
-                continue;
+                if (current.HasShortKey() && current.ChildCount() == 0)
+                    MergeChildIntoBranchWithExtension(currentIdx, proofNode);
+                return;
             }
 
-            // Reached a leaf or empty node — can't descend further
-            break;
+            int nibble = targetPath[branchPathLength];
+            if (!current.StateMask.IsBitSet(nibble))
+                return;
+
+            int denseIdx = current.DenseChildIndex(nibble);
+            SparseChildEntry childEntry = _subtrie.ChildAt(denseIdx);
+            TreePath childPath = currentPath.Append(shortKey).Append(nibble);
+
+            if (childEntry.IsBlinded)
+            {
+                if (childPath.Length != targetPath.Length)
+                    return;
+
+                int newNodeIdx = CreateNodeFromProof(_subtrie, proofNode);
+                denseIdx = _subtrie.NodeAt(currentIdx).DenseChildIndex(nibble);
+                _subtrie.ChildAt(denseIdx) = SparseChildEntry.Revealed(newNodeIdx);
+                _subtrie.NodeAt(currentIdx).BlindedMask =
+                    _subtrie.NodeAt(currentIdx).BlindedMask.ClearBit(nibble);
+                cursor[cursorLength++] = new RevealCursorEntry(newNodeIdx, childPath);
+                return;
+            }
+
+            currentIdx = childEntry.ArenaIndex;
+            currentPath = childPath;
+            cursor[cursorLength++] = new RevealCursorEntry(currentIdx, currentPath);
+        }
+    }
+
+    private static bool MatchesPath(in TreePath path, int offset, ReadOnlySpan<byte> segment)
+    {
+        if (offset + segment.Length > path.Length)
+            return false;
+        for (int i = 0; i < segment.Length; i++)
+        {
+            if (path[offset + i] != segment[i])
+                return false;
+        }
+
+        return true;
+    }
+
+    private readonly record struct RevealCursorEntry(int ArenaIndex, TreePath Path);
+
+    private sealed class ProofNodePathComparer : IComparer<ProofNode>
+    {
+        public static ProofNodePathComparer Instance { get; } = new();
+
+        public int Compare(ProofNode? x, ProofNode? y)
+        {
+            if (ReferenceEquals(x, y))
+                return 0;
+            if (x is null)
+                return -1;
+            if (y is null)
+                return 1;
+            TreePath xPath = x.Path;
+            TreePath yPath = y.Path;
+            return xPath.CompareTo(in yPath);
         }
     }
 

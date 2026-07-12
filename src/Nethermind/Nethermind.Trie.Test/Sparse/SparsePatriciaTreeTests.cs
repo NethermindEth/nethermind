@@ -401,8 +401,9 @@ public class SparsePatriciaTreeTests
         Assert.That(proof.AccountNodes, Is.Not.Empty);
     }
 
-    [Test]
-    public void UpdateAfterReveal_MatchesPatricia()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void UpdateAfterReveal_MatchesPatricia(bool reverseProof)
     {
         // Build a trie with 5 keys, reveal all, update one, compare roots
         MemDb db = new();
@@ -424,13 +425,21 @@ public class SparsePatriciaTreeTests
         Hash256[] allKeys = new Hash256[5];
         for (int i = 0; i < 5; i++) allKeys[i] = TestItem.Keccaks[i];
         DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, tree.RootHash, allKeys);
+        List<ProofNode> proofNodes = [.. proof.AccountNodes];
+        if (reverseProof)
+            proofNodes.Reverse();
+        ProofNode[] originalOrder = [.. proofNodes];
 
         using SparsePatriciaTree sparse = new();
-        sparse.RevealNodes(proof.AccountNodes);
+        sparse.RevealNodes(proofNodes);
         sparse.UpdateLeaves(new() { [TestItem.Keccaks[2]] = LeafUpdate.Changed(MakeValue(99)) }, null);
         Hash256 sparseRoot = sparse.ComputeRoot();
 
-        Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sparseRoot, Is.EqualTo(patriciaRoot));
+            Assert.That(proofNodes, Is.EqualTo(originalOrder));
+        }
     }
 
     [Test]
