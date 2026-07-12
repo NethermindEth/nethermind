@@ -131,6 +131,64 @@ public class SnapshotTests
     }
 
     [Test]
+    public void AddressOwnedStorageNodesRetainEligibleInnerCapacityAfterQuiescentClear()
+    {
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
+        original.EnsureAdditionalCapacity(256);
+        original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+        int capacity = original.Nodes.Capacity;
+
+        storageNodes.NoLockClear();
+        AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.Nodes, Is.Empty);
+            Assert.That(original.Nodes.Capacity, Is.EqualTo(capacity));
+            Assert.That(reused.Nodes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesSupportOverlappingAndReusedEnumerators()
+    {
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        storageNodes[(addressA, TreePath.FromHexString("12"))] = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
+        storageNodes[(addressA, TreePath.FromHexString("34"))] = new TrieNode(NodeType.Branch, TestItem.KeccakB);
+        storageNodes[(addressB, TreePath.FromHexString("56"))] = new TrieNode(NodeType.Extension, TestItem.KeccakC);
+
+        AddressStorageNodeDictionary.Enumerator first = storageNodes.GetEnumerator();
+        AddressStorageNodeDictionary.Enumerator second = storageNodes.GetEnumerator();
+        int firstCount = Count(ref first);
+        int secondCount = Count(ref second);
+        first.Dispose();
+        second.Dispose();
+
+        AddressStorageNodeDictionary.Enumerator reused = storageNodes.GetEnumerator();
+        int reusedCount = Count(ref reused);
+        reused.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCount, Is.EqualTo(3));
+            Assert.That(secondCount, Is.EqualTo(3));
+            Assert.That(reusedCount, Is.EqualTo(3));
+        }
+
+        static int Count(ref AddressStorageNodeDictionary.Enumerator enumerator)
+        {
+            int count = 0;
+            while (enumerator.MoveNext()) count++;
+            return count;
+        }
+    }
+
+    [Test]
     public void PublicTrieNodeSettersPreserveWriteBehavior()
     {
         using SnapshotBundle bundle = new(

@@ -18,14 +18,26 @@ namespace Nethermind.State.Flat;
 /// </remarks>
 public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
 {
+    private const int MaxPooledNodeDictionaries = 1_024;
+    private const int MaxPooledNodeCapacity = 4_096;
+
     private readonly ConcurrentDictionary<Hash256AsKey, AddressNodes> _byAddress = new();
+    private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _cachedAddressEnumerator;
 
     public int Count
     {
         get
         {
             int count = 0;
-            foreach (KeyValuePair<Hash256AsKey, AddressNodes> address in _byAddress) count += address.Value.Nodes.Count;
+            IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> addresses = RentAddressEnumerator();
+            try
+            {
+                while (addresses.MoveNext()) count += addresses.Current.Value.Nodes.Count;
+            }
+            finally
+            {
+                ReturnAddressEnumerator(addresses);
+            }
             return count;
         }
     }
@@ -35,8 +47,15 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         set => GetOrAddAddress(key.Key.Item1).Set(key.Key.Item2, value);
     }
 
-    internal AddressNodes GetOrAddAddress(Hash256 address) =>
-        _byAddress.GetOrAdd(address, static _ => new AddressNodes());
+    internal AddressNodes GetOrAddAddress(Hash256 address)
+    {
+        if (_byAddress.TryGetValue(address, out AddressNodes? nodes)) return nodes;
+
+        AddressNodes candidate = AddressNodesPool.Rent();
+        nodes = _byAddress.GetOrAdd(address, candidate);
+        if (!ReferenceEquals(nodes, candidate)) AddressNodesPool.Return(candidate);
+        return nodes;
+    }
 
     public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node)
     {
@@ -53,14 +72,39 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
     public void Clear() => _byAddress.Clear();
 
-    internal void NoLockClear() => _byAddress.NoLockClear();
+    internal void NoLockClear()
+    {
+        IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> addresses = RentAddressEnumerator();
+        try
+        {
+            while (addresses.MoveNext()) AddressNodesPool.Return(addresses.Current.Value);
+        }
+        finally
+        {
+            ReturnAddressEnumerator(addresses);
+        }
 
-    public Enumerator GetEnumerator() => new(_byAddress.GetEnumerator());
+        _byAddress.NoLockClear();
+    }
+
+    public Enumerator GetEnumerator() => new(this, RentAddressEnumerator());
 
     IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>.GetEnumerator() =>
         GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> RentAddressEnumerator() =>
+        Interlocked.Exchange(ref _cachedAddressEnumerator, null) ?? _byAddress.GetEnumerator();
+
+    private void ReturnAddressEnumerator(IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> enumerator)
+    {
+        enumerator.Reset();
+        if (Interlocked.CompareExchange(ref _cachedAddressEnumerator, enumerator, null) is not null)
+        {
+            enumerator.Dispose();
+        }
+    }
 
     internal sealed class AddressNodes
     {
@@ -72,15 +116,50 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         internal void Set(in TreePath path, TrieNode node) => Nodes[path] = node;
     }
 
+    private static class AddressNodesPool
+    {
+        private static readonly ConcurrentQueue<AddressNodes> Pool = [];
+        private static int _count;
+
+        public static AddressNodes Rent()
+        {
+            if (Volatile.Read(ref _count) > 0 && Pool.TryDequeue(out AddressNodes? nodes))
+            {
+                Interlocked.Decrement(ref _count);
+                return nodes;
+            }
+
+            return new AddressNodes();
+        }
+
+        public static void Return(AddressNodes nodes)
+        {
+            if (nodes.Nodes.Capacity > MaxPooledNodeCapacity) return;
+
+            if (Interlocked.Increment(ref _count) > MaxPooledNodeDictionaries)
+            {
+                Interlocked.Decrement(ref _count);
+                return;
+            }
+
+            nodes.Nodes.Clear();
+            Pool.Enqueue(nodes);
+        }
+    }
+
     public struct Enumerator : IEnumerator<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
     {
-        private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> _addresses;
+        private AddressStorageNodeDictionary? _owner;
+        private IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? _addresses;
         private Dictionary<HashedKey<TreePath>, TrieNode>.Enumerator _nodes;
         private Hash256 _address;
         private bool _hasNodes;
 
-        internal Enumerator(IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> addresses)
+        internal Enumerator(
+            AddressStorageNodeDictionary owner,
+            IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> addresses)
         {
+            _owner = owner;
             _addresses = addresses;
             _nodes = default;
             _address = null!;
@@ -102,7 +181,7 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         {
             if (_hasNodes && _nodes.MoveNext()) return true;
 
-            while (_addresses.MoveNext())
+            while (_addresses!.MoveNext())
             {
                 KeyValuePair<Hash256AsKey, AddressNodes> address = _addresses.Current;
                 _address = address.Key;
@@ -118,8 +197,14 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
         public void Dispose()
         {
+            IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>>? addresses = _addresses;
+            if (addresses is null) return;
+
+            _addresses = null;
             _nodes.Dispose();
-            _addresses.Dispose();
+            AddressStorageNodeDictionary owner = _owner!;
+            _owner = null;
+            owner.ReturnAddressEnumerator(addresses);
         }
     }
 }
