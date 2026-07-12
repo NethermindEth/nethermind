@@ -672,7 +672,7 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, head: null, syncing: false, lastScanned: null, scanning: false, button: null };
+            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, head: null, headChangedAt: null, stalled: false, syncing: false, lastScanned: null, scanning: false, button: null };
         }
 
         // ---------- persistence (per chain) ----------
@@ -1460,9 +1460,10 @@
 
         function updateChainButton(node) {
             if (!node.button) return;
-            node.button.classList.toggle('syncing', Boolean(node.syncing));
+            node.button.classList.toggle('syncing', Boolean(node.syncing || node.stalled));
             const head = node.head ? BigInt(node.head).toLocaleString('en-US') : '?';
             node.button.title = `${node.meta.name} · head ${head}${node.syncing ? ' · syncing' : ''}`
+                + (node.stalled ? ' · stalled (head not advancing)' : '')
                 + (node.unreachable ? ' · unreachable' : '')
                 + (node.enabled ? '' : ' · hidden (click to show)');
         }
@@ -1751,6 +1752,11 @@
 
         let pollTick = 0;
 
+        // a head frozen this long (several slots on the slowest chain) means the node
+        // stopped following the chain — e.g. its consensus client died — even though
+        // eth_syncing may still report false
+        const STALL_AFTER_MS = 90 * 1000;
+
         // Nethermind can keep returning a sync object while already processing at head
         // (background stages like state heal); treat "at head" as synced so balances show
         function isNodeSyncing(syncingResult, headHex) {
@@ -1770,13 +1776,19 @@
                     const [head, syncing] = await rpcBatch([['eth_blockNumber', []], ['eth_syncing', []]], node.rpcPath);
                     node.unreachable = head === null && syncing === null;
                     node.syncing = !node.unreachable && isNodeSyncing(syncing, head);
-                    if (node === own() && !multi() && head !== null) $('headBlock').textContent = BigInt(head).toLocaleString('en-US');
-                    updateChainButton(node);
-                    if (node.enabled && head !== null && head !== node.head) {
+                    if (head !== null && head !== node.head) {
                         node.head = head;
-                        changed = true;
-                        scanForActivity(node, head);
+                        node.headChangedAt = Date.now();
+                        if (node.enabled) {
+                            changed = true;
+                            scanForActivity(node, head);
+                        }
                     }
+                    node.stalled = !node.unreachable && node.headChangedAt !== null && Date.now() - node.headChangedAt > STALL_AFTER_MS;
+                    if (node === own() && !multi() && head !== null) {
+                        $('headBlock').textContent = BigInt(head).toLocaleString('en-US') + (node.stalled ? ' · stalled' : '');
+                    }
+                    updateChainButton(node);
                 } catch (e) {
                     node.unreachable = true;
                     node.syncing = false;
