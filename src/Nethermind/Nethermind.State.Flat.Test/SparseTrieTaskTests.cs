@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,8 +13,11 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -775,8 +779,170 @@ public class SparseTrieTaskTests
         Assert.That(recoveredResult.StateRoot, Is.EqualTo(state.State.ParentRoot));
     }
 
+    [Test]
+    public async Task SnapshotStorageProofs_AreBoundedAndFinishDrainsWhileOwnerRemainsResponsive()
+    {
+        MultiContractTestState state = BuildMultiContractState(contractCount: 4, slotsPerContract: 4);
+        using BlockingSnapshotPersistenceReader reader = new(state.NodeStorage);
+        using SnapshotBundle bundle = CreateSnapshotBundle(reader);
+        reader.BlockStorageReads();
+        await using SparseTrieWorker worker = CreateWorker(storageProofWorkerCount: 2);
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
+
+        for (int i = 0; i < state.Contracts.Length; i++)
+            EnqueueStorageTouch(block, state.Contracts[i], slot: 0);
+
+        Assert.That(reader.WaitForActiveStorageReads(2, TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(block.TryEnqueueAccountTouch(state.Contracts[3].Address.ToAccountPath), Is.True);
+        Assert.That(
+            SpinWait.SpinUntil(() => reader.StateReads != 0, TimeSpan.FromSeconds(5)),
+            Is.True,
+            "The owner did not process account work while storage proofs were blocked.");
+
+        Task<SparseTrieBlockResult> finishTask = block.FinishAsync(new SparseTrieFinalState([], []));
+        Task first = await Task.WhenAny(finishTask, Task.Delay(TimeSpan.FromMilliseconds(100)));
+        Assert.That(first, Is.Not.SameAs(finishTask), "Finish did not wait for in-flight storage proofs.");
+
+        reader.ReleaseStorageReads();
+        SparseTrieBlockResult result = await finishTask;
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(state.StateRoot));
+            Assert.That(reader.MaxActiveStorageReads, Is.EqualTo(2));
+            Assert.That(reader.MaxActiveReadsPerAccount, Is.EqualTo(1));
+            Assert.That(reader.DisposedDuringActiveRead, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task SnapshotStorageProofs_SerializeSameAccountAndQueuedFinishWins()
+    {
+        MultiContractTestState state = BuildMultiContractState(contractCount: 1, slotsPerContract: 4);
+        MultiContractState contract = state.Contracts[0];
+        using BlockingSnapshotPersistenceReader reader = new(state.NodeStorage);
+        using SnapshotBundle bundle = CreateSnapshotBundle(reader);
+        reader.BlockStorageReads();
+        await using SparseTrieWorker worker = CreateWorker(storageProofWorkerCount: 2);
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
+
+        EnqueueStorageTouch(block, contract, slot: 0);
+        Assert.That(reader.WaitForActiveStorageReads(1, TimeSpan.FromSeconds(5)), Is.True);
+        EnqueueStorageTouch(block, contract, slot: 1);
+        Assert.That(
+            SpinWait.SpinUntil(() => reader.MaxActiveReadsPerAccount > 1, TimeSpan.FromMilliseconds(100)),
+            Is.False,
+            "Two proof jobs mutated the same storage trie concurrently.");
+
+        Task<SparseTrieBlockResult> finishTask = block.FinishAsync(new SparseTrieFinalState([], []));
+        reader.ReleaseStorageReads();
+        SparseTrieBlockResult result = await finishTask;
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(state.StateRoot));
+            Assert.That(reader.MaxActiveReadsPerAccount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task SnapshotStorageProofs_AbortDrainsBeforeBundleCanBeDisposed()
+    {
+        MultiContractTestState state = BuildMultiContractState(contractCount: 2, slotsPerContract: 4);
+        using BlockingSnapshotPersistenceReader reader = new(state.NodeStorage);
+        using SnapshotBundle bundle = CreateSnapshotBundle(reader);
+        reader.BlockStorageReads();
+        await using SparseTrieWorker worker = CreateWorker(storageProofWorkerCount: 2);
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
+
+        EnqueueStorageTouch(block, state.Contracts[0], slot: 0);
+        EnqueueStorageTouch(block, state.Contracts[1], slot: 0);
+        Assert.That(reader.WaitForActiveStorageReads(2, TimeSpan.FromSeconds(5)), Is.True);
+
+        Task abortTask = block.AbortAsync();
+        Task first = await Task.WhenAny(abortTask, Task.Delay(TimeSpan.FromMilliseconds(100)));
+        Assert.That(first, Is.Not.SameAs(abortTask), "Abort did not wait for in-flight storage proofs.");
+
+        reader.ReleaseStorageReads();
+        await abortTask;
+        bundle.Dispose();
+        Assert.That(reader.DisposedDuringActiveRead, Is.False);
+    }
+
+    [Test]
+    public async Task SnapshotStorageProofFailure_PoisonsOnlySessionAndWorkerCanRecover()
+    {
+        MultiContractTestState state = BuildMultiContractState(contractCount: 1, slotsPerContract: 4);
+        await using SparseTrieWorker worker = CreateWorker(storageProofWorkerCount: 2);
+
+        using (BlockingSnapshotPersistenceReader failingReader = new(state.NodeStorage, failStorageReads: true))
+        using (SnapshotBundle failingBundle = CreateSnapshotBundle(failingReader))
+        await using (SparseTrieBlockHandle poisoned = worker.BeginBlock(state.StateRoot, failingBundle))
+        {
+            EnqueueStorageTouch(poisoned, state.Contracts[0], slot: 0);
+            Assert.That(
+                SpinWait.SpinUntil(() => failingReader.StorageReads != 0, TimeSpan.FromSeconds(5)),
+                Is.True);
+
+            Func<Task> finish = async () => await poisoned.FinishAsync(new SparseTrieFinalState([], []));
+            Assert.ThrowsAsync<InvalidOperationException>(finish);
+            await poisoned.AbortAsync();
+        }
+
+        using BlockingSnapshotPersistenceReader recoveredReader = new(state.NodeStorage);
+        using SnapshotBundle recoveredBundle = CreateSnapshotBundle(recoveredReader);
+        await using SparseTrieBlockHandle recovered = worker.BeginBlock(state.StateRoot, recoveredBundle);
+        SparseTrieBlockResult recoveredResult = await recovered.FinishAsync(new SparseTrieFinalState([], []));
+        await recovered.PrepareCommitAsync();
+        await recovered.AcceptAsync();
+
+        Assert.That(recoveredResult.StateRoot, Is.EqualTo(state.StateRoot));
+    }
+
     private static SparseTrieWorker CreateWorker() =>
         new(LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+    private static SparseTrieWorker CreateWorker(int storageProofWorkerCount) =>
+        new(
+            LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(),
+            CancellationToken.None,
+            maxRetainedNodes: 4_000_000,
+            storageProofWorkerCount);
+
+    private static SnapshotBundle CreateSnapshotBundle(IPersistence.IPersistenceReader reader)
+    {
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
+        ReadOnlySnapshotBundle readOnlyBundle = new(
+            new SnapshotPooledList(1),
+            reader,
+            recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
+        return new SnapshotBundle(
+            readOnlyBundle,
+            Substitute.For<ITrieNodeCache>(),
+            pool,
+            ResourcePool.Usage.MainBlockProcessing);
+    }
+
+    private static void EnqueueStorageTouch(
+        SparseTrieBlockHandle block,
+        MultiContractState contract,
+        int slot)
+    {
+        ValueHash256 slotPath = default;
+        UInt256 storageSlot = (UInt256)slot;
+        StorageTree.ComputeKeyWithLookup(storageSlot, ref slotPath);
+        Assert.That(
+            block.TryEnqueueStorageTouch(
+                contract.Address.ToAccountPath.ToCommitment(),
+                contract.StorageRoot,
+                slotPath),
+            Is.True);
+    }
 
     public enum PendingFinalStorageChange
     {
@@ -882,7 +1048,8 @@ public class SparseTrieTaskTests
         int slotsPerContract)
     {
         MemDb db = new();
-        RawTrieStore store = new(db);
+        RecordingNodeStorage nodeStorage = new(new NodeStorage(db));
+        RawTrieStore store = new(nodeStorage);
         PatriciaTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
         MultiContractState[] contracts = new MultiContractState[contractCount];
 
@@ -924,7 +1091,8 @@ public class SparseTrieTaskTests
             stateTree,
             contracts,
             stateTree.RootHash,
-            new HalfPathTrieNodeReader(new NodeStorage(db)));
+            new HalfPathTrieNodeReader(nodeStorage),
+            nodeStorage);
     }
 
     private static Hash256 ApplyAccount(PatriciaTree tree, Address address, Account account)
@@ -956,12 +1124,14 @@ public class SparseTrieTaskTests
         PatriciaTree stateTree,
         MultiContractState[] contracts,
         Hash256 stateRoot,
-        HalfPathTrieNodeReader reader)
+        HalfPathTrieNodeReader reader,
+        RecordingNodeStorage nodeStorage)
     {
         public PatriciaTree StateTree { get; } = stateTree;
         public MultiContractState[] Contracts { get; } = contracts;
         public Hash256 StateRoot { get; set; } = stateRoot;
         public HalfPathTrieNodeReader Reader { get; } = reader;
+        public RecordingNodeStorage NodeStorage { get; } = nodeStorage;
     }
 
     private sealed class MultiContractState(
@@ -976,6 +1146,180 @@ public class SparseTrieTaskTests
         public StorageTree StorageTree { get; } = storageTree;
         public Hash256 StorageRoot { get; set; } = storageRoot;
         public Dictionary<int, byte[]> Slots { get; } = slots;
+    }
+
+    private sealed class RecordingNodeStorage(INodeStorage inner) : INodeStorage
+    {
+        private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), byte[]> _nodes = new();
+
+        public INodeStorage.KeyScheme Scheme
+        {
+            get => inner.Scheme;
+            set => inner.Scheme = value;
+        }
+
+        public bool RequirePath => inner.RequirePath;
+
+        public byte[]? Get(
+            Hash256? address,
+            in TreePath path,
+            in ValueHash256 keccak,
+            ReadFlags readFlags = ReadFlags.None) =>
+            inner.Get(address, path, keccak, readFlags);
+
+        public void Set(
+            Hash256? address,
+            in TreePath path,
+            in ValueHash256 hash,
+            ReadOnlySpan<byte> data,
+            WriteFlags writeFlags = WriteFlags.None)
+        {
+            inner.Set(address, path, hash, data, writeFlags);
+            Record(address, path, data);
+        }
+
+        public INodeStorage.IWriteBatch StartWriteBatch() =>
+            new RecordingWriteBatch(this, inner.StartWriteBatch());
+
+        public bool KeyExists(
+            in ValueHash256? address,
+            in TreePath path,
+            in ValueHash256 hash) =>
+            inner.KeyExists(address, path, hash);
+
+        public void Flush(bool onlyWal) => inner.Flush(onlyWal);
+
+        public void Compact() => inner.Compact();
+
+        public byte[]? TryGetLatest(Hash256? address, in TreePath path) =>
+            _nodes.TryGetValue((address, path), out byte[]? rlp) ? rlp : null;
+
+        private void Record(Hash256? address, in TreePath path, ReadOnlySpan<byte> data)
+        {
+            if (data.IsEmpty)
+                _nodes.TryRemove((address, path), out _);
+            else
+                _nodes[(address, path)] = data.ToArray();
+        }
+
+        private sealed class RecordingWriteBatch(
+            RecordingNodeStorage parent,
+            INodeStorage.IWriteBatch innerBatch) : INodeStorage.IWriteBatch
+        {
+            public void Set(
+                Hash256? address,
+                in TreePath path,
+                in ValueHash256 currentNodeKeccak,
+                ReadOnlySpan<byte> data,
+                WriteFlags writeFlags)
+            {
+                innerBatch.Set(address, path, currentNodeKeccak, data, writeFlags);
+                parent.Record(address, path, data);
+            }
+
+            public void Dispose() => innerBatch.Dispose();
+        }
+    }
+
+    private sealed class BlockingSnapshotPersistenceReader(
+        RecordingNodeStorage nodeStorage,
+        bool failStorageReads = false) : IPersistence.IPersistenceReader
+    {
+        private readonly ManualResetEventSlim _releaseStorageReads = new(initialState: true);
+        private readonly ConcurrentDictionary<Hash256, int> _activeStorageReadsByAccount = new();
+        private int _activeStorageReads;
+        private int _maxActiveStorageReads;
+        private int _maxActiveReadsPerAccount;
+        private int _stateReads;
+        private int _storageReads;
+        private int _disposed;
+        private int _disposedDuringActiveRead;
+
+        public int MaxActiveStorageReads => Volatile.Read(ref _maxActiveStorageReads);
+        public int MaxActiveReadsPerAccount => Volatile.Read(ref _maxActiveReadsPerAccount);
+        public int StateReads => Volatile.Read(ref _stateReads);
+        public int StorageReads => Volatile.Read(ref _storageReads);
+        public bool DisposedDuringActiveRead => Volatile.Read(ref _disposedDuringActiveRead) != 0;
+
+        public void BlockStorageReads() => _releaseStorageReads.Reset();
+
+        public void ReleaseStorageReads() => _releaseStorageReads.Set();
+
+        public bool WaitForActiveStorageReads(int count, TimeSpan timeout) =>
+            SpinWait.SpinUntil(() => Volatile.Read(ref _activeStorageReads) >= count, timeout);
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _stateReads);
+            return nodeStorage.TryGetLatest(address: null, path);
+        }
+
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _storageReads);
+            int active = Interlocked.Increment(ref _activeStorageReads);
+            int activeForAccount = _activeStorageReadsByAccount.AddOrUpdate(
+                address,
+                addValue: 1,
+                static (_, current) => current + 1);
+            UpdateMaximum(ref _maxActiveStorageReads, active);
+            UpdateMaximum(ref _maxActiveReadsPerAccount, activeForAccount);
+
+            try
+            {
+                if (failStorageReads)
+                    throw new InvalidOperationException("Expected storage proof failure.");
+                _releaseStorageReads.Wait();
+                return nodeStorage.TryGetLatest(address, path);
+            }
+            finally
+            {
+                _activeStorageReadsByAccount.AddOrUpdate(
+                    address,
+                    addValue: 0,
+                    static (_, current) => current - 1);
+                Interlocked.Decrement(ref _activeStorageReads);
+            }
+        }
+
+        private static void UpdateMaximum(ref int maximum, int value)
+        {
+            int current = Volatile.Read(ref maximum);
+            while (current < value)
+            {
+                int observed = Interlocked.CompareExchange(ref maximum, value, current);
+                if (observed == current)
+                    return;
+                current = observed;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+            if (Volatile.Read(ref _activeStorageReads) != 0)
+                Volatile.Write(ref _disposedDuringActiveRead, 1);
+            _releaseStorageReads.Set();
+            _releaseStorageReads.Dispose();
+        }
+
+        public Account? GetAccount(Address address) => null;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => StateId.PreGenesis;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(
+            in ValueHash256 addrHash,
+            in ValueHash256 slotHash,
+            ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(
+            in ValueHash256 startKey,
+            in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(
+            in ValueHash256 accountKey,
+            in ValueHash256 startSlotKey,
+            in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
     }
 
     private class CountingTrieNodeReader(ITrieNodeReader inner) : ITrieNodeReader, IDisposable
