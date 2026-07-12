@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -268,7 +269,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list()
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list_before_fork()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         Block block = Build.A.Block
@@ -285,6 +286,59 @@ public partial class EngineModuleTests
             [],
             Keccak.Zero,
             []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_payload_for_empty_block_access_list_before_fork()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+        block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        block.Header.Hash = block.Header.CalculateHash();
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+        executionPayload.BlockAccessList = [];
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV4(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+        }
+    }
+
+    [Test]
+    public async Task NewPayloadV3_returns_invalid_params_for_block_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Cancun.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+        executionPayload.BlockAccessList = Bytes.FromHexString("0xc0");
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV3(
+            executionPayload,
+            [],
+            Keccak.Zero);
 
         using (Assert.EnterMultipleScope())
         {

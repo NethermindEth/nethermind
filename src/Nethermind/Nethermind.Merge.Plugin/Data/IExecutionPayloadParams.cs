@@ -92,6 +92,20 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
+        if (executionPayload.BlockAccessList is { } encodedBlockAccessList)
+        {
+            // A pre-fork V4 payload can use empty bytes while its header still carries the
+            // forbidden BAL hash. Block reconstruction must classify that as INVALID.
+            bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
+                !spec.BlockLevelAccessListsEnabled &&
+                encodedBlockAccessList.Length == 0;
+            if (!isEmptyPreForkV4 &&
+                !ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error))
+            {
+                return ValidationResult.Fail;
+            }
+        }
+
         Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
         if (transactionDecodingResult.IsError)
         {
@@ -119,14 +133,22 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
     {
+        if (version < EngineApiVersions.NewPayload.V4 && executionPayload.BlockAccessList is not null)
+        {
+            error = "Block access list must not be set before engine_newPayloadV4";
+            return ValidationResult.Fail;
+        }
+
+        if (version == EngineApiVersions.NewPayload.V4 &&
+            !spec.BlockLevelAccessListsEnabled &&
+            executionPayload.BlockAccessList is { Length: > 0 })
+        {
+            error = "Block access list must not be set before engine_newPayloadV5";
+            return ValidationResult.Fail;
+        }
+
         if (version < EngineApiVersions.NewPayload.V5)
         {
-            if (executionPayload.BlockAccessList is not null)
-            {
-                error = "Block access list must not be set before engine_newPayloadV5";
-                return ValidationResult.Fail;
-            }
-
             if (executionPayload.SlotNumber is not null)
             {
                 error = "Slot number must not be set before engine_newPayloadV5";

@@ -37,14 +37,12 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         Block block = baseResult.Data;
         if (BlockAccessList is not null)
         {
-            try
+            if (!TryDecodeBlockAccessList(BlockAccessList, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
             {
-                block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(BlockAccessList);
+                return Result<Block>.Fail(error!);
             }
-            catch (RlpException e)
-            {
-                return Result<Block>.Fail($"Error decoding block access list: {e}");
-            }
+
+            block.BlockAccessList = blockAccessList;
         }
 
         block.EncodedBlockAccessList = BlockAccessList;
@@ -52,6 +50,25 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
+    }
+
+    internal static bool TryDecodeBlockAccessList(
+        byte[] encodedBlockAccessList,
+        out ReadOnlyBlockAccessList? blockAccessList,
+        out string? error)
+    {
+        try
+        {
+            blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList);
+            error = null;
+            return true;
+        }
+        catch (RlpException e)
+        {
+            blockAccessList = null;
+            error = $"Error decoding block access list: {e}";
+            return false;
+        }
     }
 
     public override bool ValidateFork(ISpecProvider specProvider)

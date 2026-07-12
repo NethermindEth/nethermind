@@ -237,6 +237,35 @@ public partial class EngineModuleTests
         }
     }
 
+    [TestCase("0x")]
+    [TestCase("0x80")]
+    [TestCase("0xc1")]
+    public async Task NewPayloadV5_returns_invalid_params_for_malformed_block_access_list(string encodedBlockAccessList)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithSlotNumber(1)
+            .TestObject;
+        ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
+        executionPayload.BlockAccessList = Bytes.FromHexString(encodedBlockAccessList);
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(
+            executionPayload,
+            [],
+            Keccak.Zero,
+            []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
     [TestCase(
         "0x9d101a431b3af94e5ee308d6a29151bdcd58880470890f74b92bec3d55861767",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
