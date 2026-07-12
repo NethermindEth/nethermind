@@ -280,7 +280,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
             try
             {
-                ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name) ?? new ColumnFamilyOptions();
+                ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
+                    ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
                 IntPtr writer = Native.Instance.rocksdb_sstfilewriter_create(s_envOptions.Handle, writerOptions.Handle);
                 try
                 {
