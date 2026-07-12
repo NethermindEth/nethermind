@@ -385,5 +385,50 @@ namespace Nethermind.Evm.Test
             Assert.That(gas.FloorGas, Is.EqualTo(expectedFloor));   // 21600
             Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
         }
+
+    // Prewarmer, parallel executors and the serial validation loop compute the same
+    // intrinsic gas within one block; the memo must serve hits only for the exact
+    // (spec, block gas limit) pair and die with the transaction bytes.
+    [TestCase(true, true, true, TestName = "Memo_ForSameSpecAndLimit_ServesTheCachedResult")]
+    [TestCase(false, true, false, TestName = "Memo_ForDifferentSpec_Recomputes")]
+    [TestCase(true, false, false, TestName = "Memo_ForDifferentBlockGasLimit_Recomputes")]
+    public void IntrinsicGasMemo_AtGivenKey_HitsOnlyOnExactMatch(bool sameSpec, bool sameLimit, bool expectHit)
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
+        IntrinsicGas<EthereumGasPolicy> first = EthereumGasPolicy.CalculateIntrinsicGas(tx, Prague.Instance, 30_000_000);
+        object? memoAfterFirst = tx.IntrinsicGasMemo;
+        Assert.That(memoAfterFirst, Is.Not.Null, "precondition: the first computation populates the memo");
+
+        IReleaseSpec spec = sameSpec ? Prague.Instance : Cancun.Instance;
+        ulong limit = sameLimit ? 30_000_000UL : 60_000_000UL;
+        IntrinsicGas<EthereumGasPolicy> second = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, limit);
+
+        Transaction fresh = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
+        IntrinsicGas<EthereumGasPolicy> expected = EthereumGasPolicy.CalculateIntrinsicGas(fresh, spec, limit);
+        Assert.That(second, Is.EqualTo(expected), "a hit or a recompute must be indistinguishable from a fresh computation");
+
+        if (expectHit)
+        {
+            Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memoAfterFirst), "an exact-key hit must not rebuild the memo");
+            Assert.That(second, Is.EqualTo(first));
+        }
+        else
+        {
+            Assert.That(tx.IntrinsicGasMemo, Is.Not.SameAs(memoAfterFirst), "a key mismatch must recompute and replace the memo");
+        }
+    }
+
+    [Test]
+    public void IntrinsicGasMemo_WhenTheTransactionBytesChange_IsInvalidated()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        EthereumGasPolicy.CalculateIntrinsicGas(tx, Prague.Instance, 30_000_000);
+        Assert.That(tx.IntrinsicGasMemo, Is.Not.Null, "precondition: the memo is populated");
+
+        tx.SetPreHash([1, 2, 3]);
+
+        Assert.That(tx.IntrinsicGasMemo, Is.Null, "new transaction bytes must not serve a stale intrinsic gas");
+    }
+
     }
 }

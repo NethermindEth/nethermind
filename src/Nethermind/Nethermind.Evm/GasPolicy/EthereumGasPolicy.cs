@@ -504,6 +504,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
+        // The computation scans the whole calldata and is repeated for the same transaction by
+        // the prewarmer, the parallel executors and the serial validation loop within one block.
+        if (tx.IntrinsicGasMemo is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec) && memo.BlockGasLimit == blockGasLimit)
+        {
+            return memo.Gas;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> gas = Calculate(tx, spec, blockGasLimit);
+        tx.IntrinsicGasMemo = new IntrinsicGasMemo(spec, blockGasLimit, gas);
+        return gas;
+    }
+
+    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, ulong BlockGasLimit, IntrinsicGas<EthereumGasPolicy> Gas);
+
+    private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
+    {
         ulong tokensInCallData = IntrinsicGasCalculator.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IntrinsicGasCalculator.CalculateFloorTokensInAccessList(tx, spec);
         (ulong authRegularCost, long authStateCost) = IntrinsicGasCalculator.AuthorizationListCost(tx, spec);
