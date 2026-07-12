@@ -305,7 +305,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Metrics.SparseFallbacks++;
         AbortSparseBlock();
         journal.ReplayPatricia();
-        _stateTree.UpdateRootHash();
         journal.Release();
 
         _fallbackJournal = null;
@@ -844,11 +843,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void ReplayPatricia()
         {
-            foreach (FlatStorageTree.SparseStorageBatch storageBatch in _sparseStorageBatches)
-                storageBatch.ReplayFallback();
+            bool previousHashAwareReads = scope._snapshotBundle.HashAwareTrieReads;
+            scope._snapshotBundle.HashAwareTrieReads = true;
+            try
+            {
+                foreach (FlatStorageTree.SparseStorageBatch storageBatch in _sparseStorageBatches)
+                    storageBatch.ReplayFallback();
 
-            ApplyDirtyStorageRoots(sparseMode: false);
-            ApplyPatriciaAccounts();
+                ApplyDirtyStorageRoots(sparseMode: false);
+                ApplyPatriciaAccounts();
+                scope._stateTree.UpdateRootHash();
+            }
+            finally
+            {
+                scope._snapshotBundle.HashAwareTrieReads = previousHashAwareReads;
+            }
         }
 
         private void ApplyPatriciaAccounts()

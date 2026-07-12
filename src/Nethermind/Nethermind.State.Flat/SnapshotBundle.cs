@@ -28,6 +28,7 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
+    internal bool HashAwareTrieReads { get; set; }
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -145,6 +146,21 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         HashedKey<TreePath> key = new(path);
+
+        if (HashAwareTrieReads)
+        {
+            if (_trieChanged &&
+                _changedStateNodes.TryGetValue(key, out TrieNode? changed) &&
+                changed.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return changed;
+            }
+
+            return TryFindCommittedStateNode(path, hash, out TrieNode? committed)
+                ? committed
+                : new TrieNode(NodeType.Unknown, hash);
+        }
 
         if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
@@ -268,6 +284,21 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
+        if (HashAwareTrieReads)
+        {
+            if (_trieChanged &&
+                _changedStorageNodes.TryGetValue(key, out TrieNode? changed) &&
+                changed.Keccak == hash)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return changed;
+            }
+
+            return TryFindCommittedStorageNode(address, path, hash, out TrieNode? committed)
+                ? committed
+                : new TrieNode(NodeType.Unknown, hash);
+        }
+
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
@@ -335,14 +366,18 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
+        return HashAwareTrieReads
+            ? _readOnlySnapshotBundle.TryLoadStateRlpMatching(path, hash, flags)
+            : _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
-        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+        return HashAwareTrieReads
+            ? _readOnlySnapshotBundle.TryLoadStorageRlpMatching(address, path, hash, flags)
+            : _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
     internal byte[]? TryLoadCommittedStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)

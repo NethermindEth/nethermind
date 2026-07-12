@@ -168,6 +168,73 @@ public class SparseTrieTaskTests
     }
 
     [Test]
+    public async Task SequentialAcceptedBlocks_RetainStorageTrie()
+    {
+        StorageTestState state = BuildStorageState();
+        byte[] firstValue = [0x33];
+        state.StorageTree.Set(state.ChangedSlot, firstValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 firstStorageRoot = state.StorageTree.RootHash;
+        Account firstAccount = state.ParentAccount.WithChangedStorageRoot(firstStorageRoot);
+        Hash256 firstStateRoot = ApplyAccount(state.State.StateTree, state.Address, firstAccount);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using (SparseTrieBlockHandle first = worker.BeginBlock(state.State.ParentRoot, state.State.Reader))
+        {
+            first.EnqueueDelta(new SparseTriePhaseDelta(
+                [],
+                [new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    firstValue)]));
+            SparseTrieBlockResult result = await first.FinishAsync(new SparseTrieFinalState(
+                [new SparseTrieFinalStorageBatch(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    Clear: false,
+                    [new SparseTrieFinalSlot(state.ChangedSlot, firstValue)])],
+                [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
+            Assert.That(result.StateRoot, Is.EqualTo(firstStateRoot));
+            await first.PrepareCommitAsync();
+            await first.AcceptAsync();
+        }
+
+        byte[] secondValue = [0x44];
+        state.StorageTree.Set(state.UnchangedSlot, secondValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 secondStorageRoot = state.StorageTree.RootHash;
+        Account secondAccount = firstAccount.WithChangedStorageRoot(secondStorageRoot);
+        Hash256 secondStateRoot = ApplyAccount(state.State.StateTree, state.Address, secondAccount);
+
+        await using SparseTrieBlockHandle second = worker.BeginBlock(firstStateRoot, state.State.Reader);
+        second.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                firstStorageRoot,
+                state.UnchangedSlot,
+                secondValue)]));
+        SparseTrieBlockResult secondResult = await second.FinishAsync(new SparseTrieFinalState(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                firstStorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(state.UnchangedSlot, secondValue)])],
+            [new SparseTrieFinalAccount(state.Address, firstAccount)]));
+        await second.PrepareCommitAsync();
+        await second.AcceptAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondResult.StorageRoots[state.Address], Is.EqualTo(secondStorageRoot));
+            Assert.That(secondResult.StateRoot, Is.EqualTo(secondStateRoot));
+        }
+    }
+
+    [Test]
     public async Task DeletedAccountWithoutStorageBatch_CanBeRecreatedFromEmptyStorage()
     {
         StorageTestState state = BuildStorageState();

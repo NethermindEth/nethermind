@@ -102,6 +102,13 @@ public partial class BlockProcessor(
             return;
         }
 
+        if (_logger.IsWarn)
+        {
+            _logger.Warn(
+                $"Computed state root {processedBlock.Header.StateRoot} differs from expected {expectedRoot}; " +
+                "recalculating with the world-state fallback.");
+        }
+
         using (MetricsTimer<StateRootTimeSink> _ = new())
         {
             _stateProvider.RecalculateStateRoot();
