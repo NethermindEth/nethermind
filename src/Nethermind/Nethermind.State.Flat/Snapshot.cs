@@ -28,8 +28,8 @@ public class Snapshot : RefCountingDisposable
     private readonly SnapshotContent? _mutable;
     private readonly SortedSnapshotContent? _sorted;
     private readonly bool _isSorted;
-    // Counts sealed on first observation: ConcurrentDictionary.Count acquires every stripe lock, so
-    // serving live counts would stall concurrent writers on each estimate, and the repository's
+    // Counts sealed on first observation: counting the concurrently written maps acquires their stripe locks, so
+    // serving live counts would stall writers on each estimate, and the repository's
     // add/remove memory ledger needs the same value on both sides even if stragglers still write.
     // Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
     // construct-then-populate contract working: population always precedes the first count observation.
@@ -131,8 +131,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
+    public readonly AddressStorageNodeDictionary StorageNodes = new();
 
     public void Reset()
     {
@@ -142,14 +142,14 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Accounts.NoResizeClear();
         Storages.NoResizeClear();
         SelfDestructedStorageAddresses.NoResizeClear();
-        StateNodes.NoResizeClear();
-        StorageNodes.NoResizeClear();
+        StateNodes.Clear();
+        StorageNodes.Clear();
     }
 
     /// <summary>
-    /// Captures the five map counts in one pass. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
-    /// acquires every stripe lock, so callers should capture once at a writer-quiescent boundary and
-    /// reuse the result instead of re-reading live counts.
+    /// Captures all map counts in one pass. Counting the concurrently written maps acquires every stripe lock, so
+    /// callers should capture once at a writer-quiescent boundary and reuse the result instead of re-reading live
+    /// counts.
     /// </summary>
     public SnapshotContentCounts CaptureCounts() => new(
         Accounts.Count,

@@ -24,8 +24,8 @@ public sealed class SnapshotBundle : IDisposable
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
-    private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
-    private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _changedStorageNodes = null!;
+    private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
@@ -299,8 +299,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    // This is called only during trie commit
-    public void SetStateNode(in TreePath path, TrieNode newNode)
+    internal void SetStateNode(in TreePath path, TrieNode newNode)
     {
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
@@ -308,23 +307,44 @@ public sealed class SnapshotBundle : IDisposable
         // Note: Hot path
         _trieChanged = true;
         _changedStateNodes[path] = newNode;
-
-        // Note to self:
-        // Skipping the cached resource update and doing it in background in TrieNodeCache barely make a dent
-        // to block processing time but increase the trie node add time by 3x.
         _transientResource.UpdateStateNode(path, newNode);
     }
 
-    // This is called only during trie commit
-    public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
+    internal void PublishStateNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        {
+            foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
+        }
+    }
+
+    internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
+        _changedStorageNodes.GetOrAddAddress(address);
+
+    internal void SetStorageNode(
+        AddressStorageNodeDictionary.AddressNodes nodes,
+        Hash256 addr,
+        in TreePath path,
+        TrieNode newNode)
     {
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStorageNodes[(addr, path)] = newNode;
+        nodes.Set(path, newNode);
         _transientResource.UpdateStorageNode(addr, path, newNode);
+    }
+
+    internal void PublishStorageNodes(
+        AddressStorageNodeDictionary.AddressNodes nodes,
+        Hash256 address,
+        IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    {
+        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        {
+            foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
+        }
     }
 
     public void SetAccount(Address address, Account? account) =>
@@ -363,20 +383,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (!isNewAccount)
         {
-            // Collect keys first to avoid modifying during iteration
-            using ArrayPoolListRef<HashedKey<(Hash256, TreePath)>> storageKeysToRemove = new(16);
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in _changedStorageNodes)
-            {
-                if (kvp.Key.Key.Item1 == addressHash)
-                {
-                    storageKeysToRemove.Add(kvp.Key);
-                }
-            }
-
-            foreach (HashedKey<(Hash256, TreePath)> key in storageKeysToRemove)
-            {
-                _changedStorageNodes.TryRemove(key, out _);
-            }
+            _changedStorageNodes.RemoveAddress(addressHash);
 
             using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
@@ -457,6 +464,8 @@ public sealed class SnapshotBundle : IDisposable
             _transientResource.Reset();
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
+            ExpandCurrentPooledContent();
+            _trieChanged = false;
 
             return (null, null);
         }

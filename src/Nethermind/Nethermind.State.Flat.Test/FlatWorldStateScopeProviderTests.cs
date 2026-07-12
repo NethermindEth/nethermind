@@ -507,6 +507,35 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StorageRootAfterParallelCommitMatchesRawTrie()
+    {
+        const int slotCount = 1024;
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 1; i <= slotCount; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        }
+
+        scope.Commit(1);
+
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
+        for (int i = 1; i <= slotCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        expectedTree.UpdateRootHash();
+
+        Account? account = scope.Get(address);
+        Assert.That(account, Is.Not.Null);
+        Assert.That(account!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void TestStorageRootAfterMultipleCommits()
     {
         using TestContext ctx = new();
