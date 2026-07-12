@@ -126,13 +126,13 @@ public class SparseTrieTaskTests
     }
 
     [Test]
-    public async Task ProvisionalStorage_IsReconciledWithExactFinalValues()
+    public async Task RepeatedProvisionalStorageWrites_AreReconciledWithExactFinalValues()
     {
         StorageTestState state = BuildStorageState();
-        byte[] provisionalValue = [0x99];
-        byte[] finalChangedValue = [0x33];
+        byte[] finalUnchangedValue = state.UnchangedValue;
+        byte[] finalDeletedValue = [0];
 
-        state.StorageTree.Set(state.ChangedSlot, finalChangedValue);
+        state.StorageTree.Set(state.ChangedSlot, finalDeletedValue);
         state.StorageTree.UpdateRootHash();
         state.StorageTree.Commit();
         Hash256 expectedStorageRoot = state.StorageTree.RootHash;
@@ -143,11 +143,46 @@ public class SparseTrieTaskTests
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, state.State.Reader);
         block.EnqueueDelta(new SparseTriePhaseDelta(
             [],
-            [new SparseTrieStorageDelta(
-                state.Address,
-                state.ParentStorageRoot,
-                state.UnchangedSlot,
-                provisionalValue)]));
+            [
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.UnchangedSlot,
+                    [0x99]),
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    [0x77]),
+            ]));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.UnchangedSlot,
+                    [0x88]),
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    [0x66]),
+            ]));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.UnchangedSlot,
+                    finalUnchangedValue),
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    finalDeletedValue),
+            ]));
 
         SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
             [new SparseTrieFinalStorageBatch(
@@ -155,8 +190,8 @@ public class SparseTrieTaskTests
                 state.ParentStorageRoot,
                 Clear: false,
                 [
-                    new SparseTrieFinalSlot(state.UnchangedSlot, state.UnchangedValue, Changed: false),
-                    new SparseTrieFinalSlot(state.ChangedSlot, finalChangedValue),
+                    new SparseTrieFinalSlot(state.UnchangedSlot, finalUnchangedValue, Changed: false),
+                    new SparseTrieFinalSlot(state.ChangedSlot, finalDeletedValue),
                 ])],
             [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
 

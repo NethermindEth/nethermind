@@ -359,16 +359,15 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
             ValueHash256 slotPath = default;
             StorageTree.ComputeKeyWithLookup(storageDelta.Slot, ref slotPath);
-            provisional!.TouchedSlots.Add(slotPath);
-            LeafUpdate encodedValue = EncodeStorageValue(storageDelta.Value);
-            provisional.LatestSlotValues[slotPath] = encodedValue;
+            if (!provisional!.TouchedSlots.Add(slotPath))
+                continue;
 
             if (!storageUpdates.TryGetValue(accountHash, out Dictionary<ValueHash256, LeafUpdate>? updates))
             {
                 updates = [];
                 storageUpdates.Add(accountHash, updates);
             }
-            updates[slotPath] = encodedValue;
+            updates[slotPath] = LeafUpdate.Touched();
         }
 
         computer.ApplyAccountChanges(accountUpdates);
@@ -579,18 +578,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 StorageTree.ComputeKeyWithLookup(slot.Slot, ref slotPath);
                 if (!finalSlots.Add(slotPath))
                     throw new InvalidOperationException($"Duplicate final storage slot for {batch.Address}.");
-                LeafUpdate finalValue = EncodeStorageValue(slot.Value);
-                LeafUpdate latestValue = default;
-                bool hasProvisionalValue = provisional is not null &&
-                    provisional.LatestSlotValues.TryGetValue(slotPath, out latestValue);
-                bool shouldApply = batch.Clear ||
-                    (hasProvisionalValue
-                        ? !LeafUpdatesEqual(latestValue, finalValue)
-                        : slot.Changed);
-                if (shouldApply)
-                {
-                    updates[slotPath] = finalValue;
-                }
+                if (batch.Clear || slot.Changed)
+                    updates[slotPath] = EncodeStorageValue(slot.Value);
             }
 
             if (!batch.Clear && provisional is not null &&
@@ -604,11 +593,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             if (batch.Clear)
                 effectiveParentRoot = Keccak.EmptyTreeHash;
 
-            bool hasAppliedProvisional = !batch.Clear && provisional is not null && provisional.TouchedSlots.Count != 0;
             storageJobs[i] = new StorageRootJob(
                 batch.Address,
                 accountHash,
-                updates.Count == 0 && !hasAppliedProvisional ? effectiveParentRoot : null,
+                updates.Count == 0 ? effectiveParentRoot : null,
                 effectiveParentRoot,
                 updates,
                 Wipe: batch.Clear);
@@ -739,10 +727,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         byte[] encoded = Rlp.Encode(value).Bytes;
         return encoded.Length == 0 ? LeafUpdate.Deleted() : LeafUpdate.Changed(encoded);
     }
-
-    private static bool LeafUpdatesEqual(in LeafUpdate left, in LeafUpdate right) =>
-        left.Kind == right.Kind &&
-        (left.Kind != LeafUpdateKind.Changed || left.Value.AsSpan().SequenceEqual(right.Value));
 
     private void PrepareCommit(WorkerSession session)
     {
@@ -1007,7 +991,6 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public Address Address { get; } = address;
         public Hash256 ParentStorageRoot { get; } = parentStorageRoot;
         public HashSet<ValueHash256> TouchedSlots { get; } = [];
-        public Dictionary<ValueHash256, LeafUpdate> LatestSlotValues { get; } = [];
     }
 
     internal readonly record struct StorageTouch(
