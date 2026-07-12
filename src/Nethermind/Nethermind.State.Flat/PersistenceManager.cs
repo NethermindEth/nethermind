@@ -107,11 +107,9 @@ public class PersistenceManager(
     ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
-    /// A positive <c>MaxInMemorySnapshotBytes</c> adds byte-pressure relief once the estimated
-    /// in-memory snapshot bytes exceed it: the finalized trigger engages below
-    /// <c>MinReorgDepth</c>, and between Phase 1 and Phase 2 a reorg-safe conversion is attempted
-    /// first (when long finality is on), falling back to a forced persist that keeps a
-    /// <c>MinReorgDepth</c> floor.
+    /// A positive <c>MaxInMemorySnapshotBytes</c> adds byte-pressure relief: the finalized trigger
+    /// engages below <c>MinReorgDepth</c>, then a reorg-safe conversion is attempted (long finality
+    /// on), then a forced persist that keeps a <c>MinReorgDepth</c> floor.
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
     /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
     /// </remarks>
@@ -134,10 +132,6 @@ public class PersistenceManager(
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         ulong nextBoundary = schedule.NextFullCompactionAfter(in currentPersistedState);
 
-        // Byte budget: when the estimated in-memory snapshot bytes exceed MaxInMemorySnapshotBytes,
-        // persistence/conversion engages even below the block-count thresholds, so heavy blocks shrink
-        // the retained window instead of exhausting memory. Depth caps alone are size-blind — the same
-        // MinReorgDepth that costs ~1 GB of light blocks holds tens of GB of heavy ones.
         bool overByteBudget = _maxInMemorySnapshotBytes > 0
             && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes;
 
@@ -180,12 +174,8 @@ public class PersistenceManager(
             }
         }
 
-        // Byte-pressure relief for the unfinalized window. Reorg-safe conversion into the
-        // persisted-snapshot tier is preferred (it still serves reorgs); the forced persist is the
-        // fallback and keeps a MinReorgDepth floor — unlike the count backstop it is not
-        // self-limiting (the byte mass can sit at the head), so without the floor a repeated drain
-        // would persist unfinalized state up to the committed head and a routine shallow reorg
-        // would then orphan the flat base.
+        // The MinReorgDepth floor is load-bearing: without it a repeated byte-pressure drain could
+        // persist unfinalized state up to the head, and a shallow reorg would orphan the flat base.
         if (overByteBudget)
         {
             if (_enableLongFinality)

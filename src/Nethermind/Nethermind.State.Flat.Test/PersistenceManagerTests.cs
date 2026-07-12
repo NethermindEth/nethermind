@@ -334,8 +334,7 @@ public class PersistenceManagerTests
         toPersist?.Dispose();
     }
 
-    // The byte budget engages the finalized trigger even below MinReorgDepth: depth 40 (+16 = 56)
-    // fails the count gate (64), so only an exceeded MaxInMemorySnapshotBytes lets the persist through.
+    // Depth 40 (+16 compact) = 56 fails the count gate (MinReorgDepth 64), so only the byte budget can persist.
     [TestCase(0UL, false, TestName = "DetermineSnapshotAction_ByteBudgetDisabled_CountGateHolds")]
     [TestCase(1UL, true, TestName = "DetermineSnapshotAction_OverByteBudget_PersistsBelowMinReorgDepth")]
     public void DetermineSnapshotAction_ByteBudget_EngagesFinalizedTriggerBelowMinReorgDepth(ulong byteBudget, bool expectPersist)
@@ -401,8 +400,6 @@ public class PersistenceManagerTests
             Substitute.For<IProcessExitSource>());
     }
 
-    // With finality stalled and long finality ON, byte pressure must take the reorg-safe path:
-    // conversion into the persisted-snapshot tier, not a forced persist of unfinalized state.
     [Test]
     public void DetermineSnapshotAction_FinalityStalled_OverByteBudget_PrefersConversion()
     {
@@ -420,8 +417,6 @@ public class PersistenceManagerTests
         toConvert.Base?.Dispose();
     }
 
-    // With long finality OFF the byte backstop force-persists — but only above the MinReorgDepth
-    // floor, so a repeated drain can never zero the reorg window.
     [TestCase(0UL, 100UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_NoByteBudget_ReturnsNull")]
     [TestCase(1UL, 100UL, true, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_ForcesPersistAboveFloor")]
     [TestCase(1UL, 50UL, false, TestName = "DetermineSnapshotAction_FinalityStalled_OverByteBudget_FloorHoldsBelowMinReorgDepth")]
