@@ -509,25 +509,31 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void StorageRootAfterParallelCommitMatchesRawTrie()
     {
-        const int slotCount = 1024;
+        const int slotsPerCommit = 1024;
+        const int commitCount = 2;
         using TestContext ctx = new();
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
 
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        for (int commit = 0; commit < commitCount; commit++)
         {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
-            for (int i = 1; i <= slotCount; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
-        }
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(commit + 1))
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotsPerCommit);
+                int firstSlot = commit * slotsPerCommit + 1;
+                int lastSlot = firstSlot + slotsPerCommit;
+                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+            }
 
-        scope.Commit(1);
+            scope.Commit((ulong)(commit + 1));
+        }
 
         TestMemDb testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
-        for (int i = 1; i <= slotCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
         expectedTree.UpdateRootHash();
 
         Account? account = scope.Get(address);
