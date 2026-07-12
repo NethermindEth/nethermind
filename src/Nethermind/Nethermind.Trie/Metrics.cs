@@ -9,10 +9,6 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie
 {
-    // Per-node counters are incremented from the parallel commit/resolve paths (trie commit tasks,
-    // ParallelUnbalancedWork encode workers, prewarm scopes) as well as the block-processing thread,
-    // so they use the main/other split on cache-line-padded slots: the block thread updates a line
-    // no other thread touches, and the counters do not false-share with each other.
     public static class Metrics
     {
         private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
