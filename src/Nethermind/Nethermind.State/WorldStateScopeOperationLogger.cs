@@ -28,8 +28,34 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
     }
 
-    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
+    private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ISparseDeltaSink
     {
+        private IWorldStateScopeProvider.ISparseDeltaSink? SparseDeltaSink =>
+            innerScope as IWorldStateScopeProvider.ISparseDeltaSink;
+
+        public bool WantsCommittedDeltas => SparseDeltaSink?.WantsCommittedDeltas == true;
+        public bool WantsCommittedStorageDeltas => SparseDeltaSink?.WantsCommittedStorageDeltas == true;
+
+        public void OnCommittedAccount(Address address, Account? account)
+        {
+            SparseDeltaSink?.OnCommittedAccount(address, account);
+            logger.Trace($"{scopeId}: Sparse account delta {address} -> {account}");
+        }
+
+        public void OnCommittedStorage(in StorageCell cell, byte[] value)
+        {
+            SparseDeltaSink?.OnCommittedStorage(in cell, value);
+            logger.Trace($"{scopeId}: Sparse storage delta {cell} -> {value.ToHexString()}");
+        }
+
+        public void OnCommitPhaseCompleted(bool isFinal)
+        {
+            SparseDeltaSink?.OnCommitPhaseCompleted(isFinal);
+            logger.Trace($"{scopeId}: Sparse commit phase completed, final={isFinal}");
+        }
+
         public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
@@ -141,6 +167,12 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         {
             writeBatch.Set(in index, value);
             logger.Trace($"{scopeId}: {address}, Set {index} to {value?.ToHexString()}");
+        }
+
+        public void ObserveFinalValue(in UInt256 index, byte[] value)
+        {
+            writeBatch.ObserveFinalValue(in index, value);
+            logger.Trace($"{scopeId}: {address}, Observe final {index} as {value?.ToHexString()}");
         }
 
         public void Clear()

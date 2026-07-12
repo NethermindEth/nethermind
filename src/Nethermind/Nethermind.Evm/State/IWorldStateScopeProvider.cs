@@ -25,19 +25,25 @@ public interface IWorldStateScopeProvider
     IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     /// <summary>
-    /// Optional capability for receiving committed account deltas while execution is still
-    /// running. Implementations can hash raw keys and update an incremental root off-thread.
+    /// Optional capability for receiving committed account and storage deltas while execution is
+    /// still running. Implementations can hash raw keys and update an incremental root off-thread.
     /// </summary>
     public interface ISparseDeltaSink
     {
         /// <summary>True while this scope wants committed deltas for the active block.</summary>
         bool WantsCommittedDeltas { get; }
 
+        /// <summary>True while this scope also wants committed storage values.</summary>
+        bool WantsCommittedStorageDeltas => false;
+
         /// <summary>Reports a committed account leaf. A null account is deleted.</summary>
         void OnCommittedAccount(Address address, Account? account);
 
+        /// <summary>Reports a committed storage write.</summary>
+        void OnCommittedStorage(in StorageCell cell, byte[] value) { }
+
         /// <summary>
-        /// Publishes the committed account notifications accumulated for one commit phase.
+        /// Publishes the committed account and storage notifications accumulated for one commit phase.
         /// The final phase is followed by the exact write-batch reconciliation barrier.
         /// </summary>
         void OnCommitPhaseCompleted(bool isFinal);
@@ -220,6 +226,12 @@ public interface IWorldStateScopeProvider
     public interface IStorageWriteBatch : IDisposable
     {
         void Set(in UInt256 index, byte[] value);
+
+        /// <summary>
+        /// Reports an exact final value which did not require a backend write. Incremental root
+        /// builders use it to reconcile provisional changes; other backends can ignore it.
+        /// </summary>
+        void ObserveFinalValue(in UInt256 index, byte[] value) { }
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

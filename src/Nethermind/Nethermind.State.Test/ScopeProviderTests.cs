@@ -383,6 +383,50 @@ public class ScopeProviderTests(bool useFlat)
         inner.Received(1).HintWarmSlot(addressA, (UInt256)1);
     }
 
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void Test_ScopeDecorators_ForwardSparseDeltasOnlyForMainScope(
+        bool isPrewarmer,
+        bool expectedForwarding)
+    {
+        IWorldStateScopeProvider.IScope inner = Substitute.For<
+            IWorldStateScopeProvider.IScope,
+            IWorldStateScopeProvider.ISparseDeltaSink>();
+        IWorldStateScopeProvider.ISparseDeltaSink innerSink =
+            (IWorldStateScopeProvider.ISparseDeltaSink)inner;
+        innerSink.WantsCommittedDeltas.Returns(true);
+        innerSink.WantsCommittedStorageDeltas.Returns(true);
+
+        IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
+        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
+        IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
+            new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
+        PrewarmerScopeProvider provider = new(
+            decorated,
+            new PreBlockCaches(),
+            LimboLogs.Instance,
+            isPrewarmer);
+
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
+        IWorldStateScopeProvider.ISparseDeltaSink exposedSink =
+            (IWorldStateScopeProvider.ISparseDeltaSink)scope;
+        Account account = new(1, (UInt256)1_000);
+        UInt256 slot = 1;
+        StorageCell cell = new(TestItem.AddressA, in slot);
+        byte[] value = [0x12];
+
+        Assert.That(exposedSink.WantsCommittedDeltas, Is.EqualTo(expectedForwarding));
+        Assert.That(exposedSink.WantsCommittedStorageDeltas, Is.EqualTo(expectedForwarding));
+        exposedSink.OnCommittedAccount(TestItem.AddressA, account);
+        exposedSink.OnCommittedStorage(in cell, value);
+        exposedSink.OnCommitPhaseCompleted(isFinal: true);
+
+        int expectedCalls = expectedForwarding ? 1 : 0;
+        innerSink.Received(expectedCalls).OnCommittedAccount(TestItem.AddressA, account);
+        innerSink.Received(expectedCalls).OnCommittedStorage(in cell, value);
+        innerSink.Received(expectedCalls).OnCommitPhaseCompleted(isFinal: true);
+    }
+
     [Test]
     public void Test_PopulatorGetMiss_PushesAccountTrieWarmHint()
     {

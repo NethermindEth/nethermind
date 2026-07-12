@@ -21,8 +21,22 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
 
-    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
+    private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ISparseDeltaSink
     {
+        private IWorldStateScopeProvider.ISparseDeltaSink? SparseDeltaSink =>
+            baseScope as IWorldStateScopeProvider.ISparseDeltaSink;
+
+        public bool WantsCommittedDeltas => SparseDeltaSink?.WantsCommittedDeltas == true;
+        public bool WantsCommittedStorageDeltas => SparseDeltaSink?.WantsCommittedStorageDeltas == true;
+        public void OnCommittedAccount(Address address, Account? account) =>
+            SparseDeltaSink?.OnCommittedAccount(address, account);
+        public void OnCommittedStorage(in StorageCell cell, byte[] value) =>
+            SparseDeltaSink?.OnCommittedStorage(in cell, value);
+        public void OnCommitPhaseCompleted(bool isFinal) =>
+            SparseDeltaSink?.OnCommitPhaseCompleted(isFinal);
+
         public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
 
         public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);

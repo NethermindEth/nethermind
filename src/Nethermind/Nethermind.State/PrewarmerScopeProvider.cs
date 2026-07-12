@@ -60,7 +60,9 @@ public class PrewarmerScopeProvider(
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !isPrewarmer;
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) :
+        IWorldStateScopeProvider.IScope,
+        IWorldStateScopeProvider.ISparseDeltaSink
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -74,6 +76,18 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels = isPrewarmer ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
+
+        private IWorldStateScopeProvider.ISparseDeltaSink? SparseDeltaSink =>
+            !isPrewarmer ? baseScope as IWorldStateScopeProvider.ISparseDeltaSink : null;
+
+        public bool WantsCommittedDeltas => SparseDeltaSink?.WantsCommittedDeltas == true;
+        public bool WantsCommittedStorageDeltas => SparseDeltaSink?.WantsCommittedStorageDeltas == true;
+        public void OnCommittedAccount(Address address, Account? account) =>
+            SparseDeltaSink?.OnCommittedAccount(address, account);
+        public void OnCommittedStorage(in StorageCell cell, byte[] value) =>
+            SparseDeltaSink?.OnCommittedStorage(in cell, value);
+        public void OnCommitPhaseCompleted(bool isFinal) =>
+            SparseDeltaSink?.OnCommitPhaseCompleted(isFinal);
 
         public void Dispose()
         {
