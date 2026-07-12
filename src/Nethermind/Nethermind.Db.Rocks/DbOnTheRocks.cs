@@ -560,6 +560,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             // Must go through the options string: the rocksdb_get_options_from_string merge below rewrites
             // block_based_table_factory fields set via the C# table-options API.
+            // Deliberately self-contained: some keys duplicate RocksDbOptions defaults so the
+            // partitioned-index setup holds even when users override RocksDbOptions without them.
             rocksDbOptions +=
                 "block_based_table_factory.cache_index_and_filter_blocks=true;" +
                 "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
