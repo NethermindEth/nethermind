@@ -35,5 +35,6 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
     public bool UseSparseRootComputation { get; set; } = false;
+    public bool UseSparseStorageRootComputation { get; set; } = false;
     public long SparseTrieMaxRetainedNodes { get; set; } = 4_000_000;
 }

@@ -36,7 +36,7 @@ internal sealed record SparseTriePhaseDelta(
     IReadOnlyList<SparseTrieAccountDelta> Accounts,
     IReadOnlyList<SparseTrieStorageDelta> StorageDeltas);
 
-internal readonly record struct SparseTrieFinalSlot(UInt256 Slot, byte[] Value);
+internal readonly record struct SparseTrieFinalSlot(UInt256 Slot, byte[] Value, bool Changed = true);
 
 internal sealed record SparseTrieFinalStorageBatch(
     Address Address,
@@ -165,6 +165,26 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         return false;
     }
 
+    internal bool TryEnqueueStorageTouch(
+        WorkerSession session,
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath)
+    {
+        if (!session.HintedStorage.TryAdd((accountHash, slotPath), 0))
+            return true;
+
+        session.PendingStorageTouches.Enqueue(new StorageTouch(accountHash, parentStorageRoot, slotPath));
+        if (Interlocked.CompareExchange(ref session.StorageTouchCommandQueued, 1, 0) != 0)
+            return true;
+
+        if (_commands.Writer.TryWrite(new StorageTouchesCommand(session)))
+            return true;
+
+        session.Poison(new ObjectDisposedException(nameof(SparseTrieWorker)));
+        return false;
+    }
+
     internal Task<SparseTrieBlockResult> FinishAsync(
         WorkerSession session,
         SparseTrieFinalState finalState)
@@ -253,6 +273,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                     if (touches.Session!.Error is null)
                         ProcessAccountTouches(touches.Session!);
                     break;
+                case StorageTouchesCommand touches:
+                    EnsureActive(touches.Session!);
+                    if (touches.Session!.Error is null)
+                        ProcessStorageTouches(touches.Session!);
+                    break;
                 case FinishCommand finish:
                     Finish(finish);
                     break;
@@ -312,6 +337,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         {
             ValueHash256 accountPath = storageDelta.Address.ToAccountPath;
             Hash256 accountHash = accountPath.ToCommitment();
+            session.RetainedStorageHashes.Add(accountHash);
             AddAccountTouch(session, accountUpdates, accountPath);
 
             ref ProvisionalStorage? provisional = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
@@ -331,13 +357,15 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             ValueHash256 slotPath = default;
             StorageTree.ComputeKeyWithLookup(storageDelta.Slot, ref slotPath);
             provisional!.TouchedSlots.Add(slotPath);
+            LeafUpdate encodedValue = EncodeStorageValue(storageDelta.Value);
+            provisional.LatestSlotValues[slotPath] = encodedValue;
 
             if (!storageUpdates.TryGetValue(accountHash, out Dictionary<ValueHash256, LeafUpdate>? updates))
             {
                 updates = [];
                 storageUpdates.Add(accountHash, updates);
             }
-            updates[slotPath] = EncodeStorageValue(storageDelta.Value);
+            updates[slotPath] = encodedValue;
         }
 
         computer.ApplyAccountChanges(accountUpdates);
@@ -377,6 +405,41 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
     }
 
+    private static void ProcessStorageTouches(WorkerSession session)
+    {
+        while (true)
+        {
+            Dictionary<Hash256, StorageTouchGroup> groups = [];
+            while (session.PendingStorageTouches.TryDequeue(out StorageTouch touch))
+            {
+                if (!groups.TryGetValue(touch.AccountHash, out StorageTouchGroup? group))
+                {
+                    group = new StorageTouchGroup(touch.ParentStorageRoot);
+                    groups.Add(touch.AccountHash, group);
+                }
+                else if (group.ParentStorageRoot != touch.ParentStorageRoot)
+                {
+                    throw new InvalidOperationException(
+                        $"Conflicting hinted storage roots for account {touch.AccountHash}.");
+                }
+
+                group.Updates[touch.SlotPath] = LeafUpdate.Touched();
+                session.RetainedStorageHashes.Add(touch.AccountHash);
+            }
+
+            SparseRootComputer computer = session.GetComputer();
+            foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in groups)
+                computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
+
+            Volatile.Write(ref session.StorageTouchCommandQueued, 0);
+            if (session.PendingStorageTouches.IsEmpty ||
+                Interlocked.CompareExchange(ref session.StorageTouchCommandQueued, 1, 0) != 0)
+            {
+                return;
+            }
+        }
+    }
+
     private void Finish(FinishCommand command)
     {
         WorkerSession session = command.Session!;
@@ -404,6 +467,15 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         SparseTrieFinalState finalState)
     {
         SparseRootComputer computer = session.GetComputer();
+        Dictionary<AddressAsKey, Account?> authoritativeAccounts = new(
+            finalState.Accounts.Count,
+            AddressAsKey.EqualityComparer);
+        foreach (SparseTrieFinalAccount finalAccount in finalState.Accounts)
+        {
+            if (!authoritativeAccounts.TryAdd(finalAccount.Address, finalAccount.Account))
+                throw new InvalidOperationException($"Duplicate final account for {finalAccount.Address}.");
+        }
+
         int storageCount = finalState.StorageBatches.Count;
         StorageRootJob[] storageJobs = new StorageRootJob[storageCount];
         HashSet<Hash256> finalizedStorage = [];
@@ -415,8 +487,19 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             Hash256 accountHash = accountPath.ToCommitment();
             if (!finalizedStorage.Add(accountHash))
                 throw new InvalidOperationException($"Duplicate final storage batch for {batch.Address}.");
+            if (!authoritativeAccounts.TryGetValue(batch.Address, out Account? storageOwner))
+                throw new InvalidOperationException($"Final accounts omit storage owner {batch.Address}.");
+            if (storageOwner is null)
+            {
+                computer.WipeStorage(accountHash);
+                session.DirtyStorageHashes.Add(accountHash);
+                session.RetainedStorageHashes.Add(accountHash);
+                storageJobs[i] = new StorageRootJob(batch.Address, accountHash, Keccak.EmptyTreeHash);
+                continue;
+            }
 
             session.DirtyStorageHashes.Add(accountHash);
+            session.RetainedStorageHashes.Add(accountHash);
 
             if (session.ProvisionalStorage.TryGetValue(accountHash, out ProvisionalStorage? provisional) &&
                 provisional.ParentStorageRoot != batch.ParentStorageRoot)
@@ -433,7 +516,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 StorageTree.ComputeKeyWithLookup(slot.Slot, ref slotPath);
                 if (!finalSlots.Add(slotPath))
                     throw new InvalidOperationException($"Duplicate final storage slot for {batch.Address}.");
-                updates[slotPath] = EncodeStorageValue(slot.Value);
+                LeafUpdate finalValue = EncodeStorageValue(slot.Value);
+                LeafUpdate latestValue = default;
+                bool hasProvisionalValue = provisional is not null &&
+                    provisional.LatestSlotValues.TryGetValue(slotPath, out latestValue);
+                bool shouldApply = batch.Clear ||
+                    (hasProvisionalValue
+                        ? !LeafUpdatesEqual(latestValue, finalValue)
+                        : slot.Changed);
+                if (shouldApply)
+                {
+                    updates[slotPath] = finalValue;
+                }
             }
 
             if (!batch.Clear && provisional is not null &&
@@ -455,18 +549,28 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             else
                 computer.AddStorageChanges(accountHash, effectiveParentRoot, updates);
 
+            bool hasAppliedProvisional = !batch.Clear && provisional is not null && provisional.TouchedSlots.Count != 0;
             storageJobs[i] = new StorageRootJob(
                 batch.Address,
                 accountHash,
-                updates.Count == 0 ? effectiveParentRoot : null);
+                updates.Count == 0 && !hasAppliedProvisional ? effectiveParentRoot : null);
         }
 
         foreach (KeyValuePair<Hash256, ProvisionalStorage> provisional in session.ProvisionalStorage)
         {
             if (!finalizedStorage.Contains(provisional.Key))
             {
-                throw new InvalidOperationException(
-                    $"Final state omits provisionally changed storage for {provisional.Value.Address}.");
+                if (authoritativeAccounts.TryGetValue(provisional.Value.Address, out Account? account) && account is null)
+                {
+                    computer.WipeStorage(provisional.Key);
+                    session.DirtyStorageHashes.Add(provisional.Key);
+                    session.RetainedStorageHashes.Add(provisional.Key);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Final state omits provisionally changed storage for {provisional.Value.Address}.");
+                }
             }
         }
 
@@ -491,13 +595,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             mutableStorageRoots.Add(storageJobs[i].Address, storageRoots[i]);
 
         Dictionary<ValueHash256, LeafUpdate> accountUpdates = new(finalState.Accounts.Count);
-        HashSet<AddressAsKey> finalAccounts = new(AddressAsKey.EqualityComparer);
         foreach (SparseTrieFinalAccount finalAccount in finalState.Accounts)
         {
             AddressAsKey address = finalAccount.Address;
-            if (!finalAccounts.Add(address))
-                throw new InvalidOperationException($"Duplicate final account for {finalAccount.Address}.");
-
             ValueHash256 accountPath = finalAccount.Address.ToAccountPath;
             Account? account = finalAccount.Account;
             if (account is null)
@@ -505,6 +605,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 Hash256 accountHash = accountPath.ToCommitment();
                 computer.WipeStorage(accountHash);
                 session.DirtyStorageHashes.Add(accountHash);
+                session.RetainedStorageHashes.Add(accountHash);
             }
             if (account is not null &&
                 mutableStorageRoots.TryGetValue(address, out Hash256? storageRoot) &&
@@ -522,13 +623,13 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
         foreach (AddressAsKey storageAddress in mutableStorageRoots.Keys)
         {
-            if (!finalAccounts.Contains(storageAddress))
+            if (!authoritativeAccounts.ContainsKey(storageAddress))
                 throw new InvalidOperationException($"Final accounts omit storage owner {storageAddress}.");
         }
 
         foreach (AddressAsKey provisionalAddress in session.ProvisionalAccountValues.Keys)
         {
-            if (!finalAccounts.Contains(provisionalAddress))
+            if (!authoritativeAccounts.ContainsKey(provisionalAddress))
                 throw new InvalidOperationException(
                     $"Final accounts omit provisionally updated account {provisionalAddress}.");
         }
@@ -566,6 +667,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         byte[] encoded = Rlp.Encode(value).Bytes;
         return encoded.Length == 0 ? LeafUpdate.Deleted() : LeafUpdate.Changed(encoded);
     }
+
+    private static bool LeafUpdatesEqual(in LeafUpdate left, in LeafUpdate right) =>
+        left.Kind == right.Kind &&
+        (left.Kind != LeafUpdateKind.Changed || left.Value.AsSpan().SequenceEqual(right.Value));
 
     private void PrepareCommit(WorkerSession session)
     {
@@ -633,7 +738,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private void UpdateRetainedSize(WorkerSession session)
     {
-        foreach (Hash256 accountHash in session.DirtyStorageHashes)
+        foreach (Hash256 accountHash in session.RetainedStorageHashes)
         {
             _storageArenaHighWater.TryGetValue(accountHash, out int previous);
             int current = _trie.StorageTries.TryGetValue(accountHash, out SparsePatriciaTree? storageTrie)
@@ -788,8 +893,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public HashSet<ValueHash256> RevealedAccounts { get; } = [];
         public ConcurrentDictionary<ValueHash256, byte> HintedAccounts { get; } = [];
         public ConcurrentQueue<ValueHash256> PendingAccountTouches { get; } = [];
+        public ConcurrentDictionary<(Hash256 AccountHash, ValueHash256 SlotPath), byte> HintedStorage { get; } = [];
+        public ConcurrentQueue<StorageTouch> PendingStorageTouches { get; } = [];
         public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
+        public HashSet<Hash256> RetainedStorageHashes { get; } = [];
         public SparseTrieBlockResult? Result { get; set; }
         public TaskCompletionSource<SparseTrieBlockResult>? FinishCompletion { get; set; }
         public Exception? Error => Volatile.Read(ref _error);
@@ -797,6 +905,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public bool Prepared { get; set; }
         public bool Completed { get; set; }
         public int AccountTouchCommandQueued;
+        public int StorageTouchCommandQueued;
 
         public SparseRootComputer GetComputer() =>
             Computer ?? throw new InvalidOperationException("Sparse trie block has not started.");
@@ -813,6 +922,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public Address Address { get; } = address;
         public Hash256 ParentStorageRoot { get; } = parentStorageRoot;
         public HashSet<ValueHash256> TouchedSlots { get; } = [];
+        public Dictionary<ValueHash256, LeafUpdate> LatestSlotValues { get; } = [];
+    }
+
+    internal readonly record struct StorageTouch(
+        Hash256 AccountHash,
+        Hash256 ParentStorageRoot,
+        ValueHash256 SlotPath);
+
+    private sealed class StorageTouchGroup(Hash256 parentStorageRoot)
+    {
+        public Hash256 ParentStorageRoot { get; } = parentStorageRoot;
+        public Dictionary<ValueHash256, LeafUpdate> Updates { get; } = [];
     }
 
     private readonly record struct StorageRootJob(
@@ -824,6 +945,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
     private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record DeltaCommand(WorkerSession BlockSession, SparseTriePhaseDelta Delta) : Command(BlockSession);
     private sealed record AccountTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
+    private sealed record StorageTouchesCommand(WorkerSession BlockSession) : Command(BlockSession);
     private sealed record FinishCommand(
         WorkerSession BlockSession,
         SparseTrieFinalState FinalState,
@@ -872,6 +994,23 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
             if (_finishTask is not null || _completionTask is not null || _terminal)
                 return false;
             return _worker.TryEnqueueAccountTouch(_session, accountPath);
+        }
+    }
+
+    public bool TryEnqueueStorageTouch(
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath)
+    {
+        lock (_gate)
+        {
+            if (_finishTask is not null || _completionTask is not null || _terminal)
+                return false;
+            return _worker.TryEnqueueStorageTouch(
+                _session,
+                accountHash,
+                parentStorageRoot,
+                slotPath);
         }
     }
 

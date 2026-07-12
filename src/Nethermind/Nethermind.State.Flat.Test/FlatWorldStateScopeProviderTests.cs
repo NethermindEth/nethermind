@@ -943,11 +943,16 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
-    [Test]
-    public void SparseWriteBatch_MatchesPatriciaBeforeAndAfterFallback()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SparseWriteBatch_MatchesPatriciaBeforeAndAfterFallback(bool sparseStorage)
     {
         using TestContext ctx = new(
-            new FlatDbConfig { UseSparseRootComputation = true },
+            new FlatDbConfig
+            {
+                UseSparseRootComputation = true,
+                UseSparseStorageRootComputation = sparseStorage,
+            },
             new NoopTrieWarmer());
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
@@ -963,6 +968,11 @@ public class FlatWorldStateScopeProviderTests
         expectedState.UpdateRootHash();
 
         sink.OnCommittedAccount(address, account);
+        if (sparseStorage)
+        {
+            StorageCell cell = new(address, in slot);
+            sink.OnCommittedStorage(in cell, value);
+        }
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -983,11 +993,16 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash), "Patricia fallback root");
     }
 
-    [Test]
-    public async Task SparseWriteBatch_ConcurrentStorageCallbacksMatchPatricia()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SparseWriteBatch_ConcurrentStorageCallbacksMatchPatricia(bool sparseStorage)
     {
         using TestContext ctx = new(
-            new FlatDbConfig { UseSparseRootComputation = true },
+            new FlatDbConfig
+            {
+                UseSparseRootComputation = true,
+                UseSparseStorageRootComputation = sparseStorage,
+            },
             new NoopTrieWarmer());
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
@@ -1003,6 +1018,13 @@ public class FlatWorldStateScopeProviderTests
 
         sink.OnCommittedAccount(firstAddress, firstAccount);
         sink.OnCommittedAccount(secondAddress, secondAccount);
+        if (sparseStorage)
+        {
+            StorageCell firstCell = new(firstAddress, in firstSlot);
+            StorageCell secondCell = new(secondAddress, in secondSlot);
+            sink.OnCommittedStorage(in firstCell, firstValue);
+            sink.OnCommittedStorage(in secondCell, secondValue);
+        }
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
@@ -1033,11 +1055,16 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.RootHash, Is.EqualTo(expectedState.RootHash));
     }
 
-    [Test]
-    public void SparseWriteBatch_DoesNotResolveNewStorageRootBeforeSnapshotCommit()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SparseWriteBatch_DoesNotResolveNewStorageRootBeforeSnapshotCommit(bool sparseStorage)
     {
         using TestContext ctx = new(
-            new FlatDbConfig { UseSparseRootComputation = true },
+            new FlatDbConfig
+            {
+                UseSparseRootComputation = true,
+                UseSparseStorageRootComputation = sparseStorage,
+            },
             new NoopTrieWarmer());
 
         Address address = TestItem.AddressA;
@@ -1074,6 +1101,11 @@ public class FlatWorldStateScopeProviderTests
 
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.ISparseDeltaSink sink = scope;
+        if (sparseStorage)
+        {
+            StorageCell cell = new(address, in slot);
+            sink.OnCommittedStorage(in cell, newValue);
+        }
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
@@ -1185,11 +1217,17 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    [Test]
-    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SparseWorldState_MultiPhaseStorageAcrossBlocks_MatchesPatricia(bool sparseStorage)
     {
         using TestContext ctx = new(
-            new FlatDbConfig { UseSparseRootComputation = true, VerifyWithTrie = true },
+            new FlatDbConfig
+            {
+                UseSparseRootComputation = true,
+                UseSparseStorageRootComputation = sparseStorage,
+                VerifyWithTrie = true,
+            },
             new NoopTrieWarmer());
         FlatWorldStateScope scope = ctx.Scope;
         WorldState worldState = new(new ExistingScopeProvider(scope), LimboLogs.Instance);

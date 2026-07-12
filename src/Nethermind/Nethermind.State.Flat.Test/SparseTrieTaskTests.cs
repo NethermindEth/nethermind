@@ -155,7 +155,7 @@ public class SparseTrieTaskTests
                 state.ParentStorageRoot,
                 Clear: false,
                 [
-                    new SparseTrieFinalSlot(state.UnchangedSlot, state.UnchangedValue),
+                    new SparseTrieFinalSlot(state.UnchangedSlot, state.UnchangedValue, Changed: false),
                     new SparseTrieFinalSlot(state.ChangedSlot, finalChangedValue),
                 ])],
             [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
@@ -253,7 +253,11 @@ public class SparseTrieTaskTests
         {
             deleted.EnqueueDelta(new SparseTriePhaseDelta(
                 [new SparseTrieAccountDelta(state.Address, null)],
-                []));
+                [new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    [0x77])]));
             SparseTrieBlockResult result = await deleted.FinishAsync(
                 new SparseTrieFinalState([], [new SparseTrieFinalAccount(state.Address, null)]));
             Assert.That(result.StateRoot, Is.EqualTo(deletedStateRoot));

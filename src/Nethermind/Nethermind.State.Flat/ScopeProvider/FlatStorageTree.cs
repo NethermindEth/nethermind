@@ -23,6 +23,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private readonly FlatWorldStateScope _scope;
     private readonly SnapshotBundle _bundle;
     private readonly Hash256 _addressHash;
+    private readonly Hash256 _parentRootHash;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -43,6 +44,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _bundle = bundle;
         _address = address;
         _addressHash = address.ToAccountPath.ToHash256();
+        _parentRootHash = storageRoot;
         _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
@@ -62,6 +64,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     }
 
     public Hash256 RootHash => _tree.RootHash;
+
+    internal Hash256 ParentRootHash => _parentRootHash;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -125,6 +129,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
                 _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                if (_scope.HintSequenceId == sequenceId && !_scope._pausePrewarmer)
+                    _scope.TryEnqueueSparseStorageTouch(_addressHash, _parentRootHash, key);
                 return true;
             }
             finally
@@ -151,6 +157,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
+        if (_scope.CollectSparseStorageBatches)
+            return new SparseStorageBatch(this, estimatedEntries, onRootUpdated);
+
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
                 estimatedEntries,
                 _tree,
@@ -181,5 +190,107 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
 
         public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+    }
+
+    internal sealed class SparseStorageBatch(
+        FlatStorageTree storageTree,
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private readonly Dictionary<UInt256, SlotValue> _slots = new(estimatedEntries);
+        private SparseTrieFinalStorageBatch? _finalState;
+        private bool _clear;
+        private bool _disposed;
+
+        internal SparseTrieFinalStorageBatch FinalState =>
+            _finalState ?? throw new InvalidOperationException("Sparse storage batch is not finalized.");
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _slots[index] = new SlotValue(value, Changed: true);
+            storageTree.Set(index, value);
+        }
+
+        public void ObserveFinalValue(in UInt256 index, byte[] value)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _slots.TryAdd(index, new SlotValue(value, Changed: false));
+        }
+
+        public void Clear()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_slots.Count != 0)
+                throw new InvalidOperationException("Must call clear first in a storage write batch.");
+            _clear = true;
+            storageTree.SelfDestruct();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+
+            SparseTrieFinalSlot[] exactSlots = new SparseTrieFinalSlot[_slots.Count];
+            int index = 0;
+            foreach (KeyValuePair<UInt256, SlotValue> entry in _slots)
+                exactSlots[index++] = new SparseTrieFinalSlot(
+                    entry.Key,
+                    entry.Value.Value,
+                    entry.Value.Changed);
+
+            _finalState = new SparseTrieFinalStorageBatch(
+                storageTree._address,
+                storageTree._parentRootHash,
+                _clear,
+                exactSlots);
+            storageTree._scope.RegisterSparseStorageBatch(this);
+        }
+
+        internal void ApplySparseRoot(Hash256 root)
+        {
+            SetUnresolvedRoot(storageTree._tree, root);
+            SetUnresolvedRoot(storageTree._warmupStorageTree, root);
+            onRootUpdated(storageTree._address, root);
+        }
+
+        internal void ReplayFallback()
+        {
+            storageTree._tree.SetRootHash(storageTree._parentRootHash, resetObjects: true);
+            storageTree._warmupStorageTree.SetRootHash(storageTree._parentRootHash, resetObjects: true);
+
+            int changedCount = 0;
+            foreach (SlotValue value in _slots.Values)
+            {
+                if (value.Changed)
+                    changedCount++;
+            }
+
+            using TrieStoreScopeProvider.StorageTreeBulkWriteBatch patriciaBatch = new(
+                changedCount,
+                storageTree._tree,
+                onRootUpdated,
+                storageTree._address,
+                commit: true);
+
+            if (_clear)
+                patriciaBatch.Clear();
+
+            foreach (KeyValuePair<UInt256, SlotValue> entry in _slots)
+            {
+                if (entry.Value.Changed)
+                    patriciaBatch.Set(entry.Key, entry.Value.Value);
+            }
+        }
+
+        private static void SetUnresolvedRoot(PatriciaTree tree, Hash256 root)
+        {
+            tree.SetRootHash(root, resetObjects: false);
+            tree.RootRef = root == Keccak.EmptyTreeHash ? null : new TrieNode(NodeType.Unknown, root);
+        }
+
+        private readonly record struct SlotValue(byte[] Value, bool Changed);
     }
 }

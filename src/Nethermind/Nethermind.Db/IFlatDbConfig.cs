@@ -88,8 +88,11 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
 
-    [ConfigItem(Description = "Enable streamed sparse-trie state and storage root computation with exact trie-node persistence. The worker overlaps proof-backed trie updates with execution, retains an exact cross-block anchor, and falls back to Patricia on task failure or validation mismatch. TrieWarmer remains enabled independently because it warms the FlatDB and trie pages consumed by both paths.", DefaultValue = "false")]
+    [ConfigItem(Description = "Enable streamed sparse state-root computation with exact trie-node persistence. The worker overlaps proof-backed trie updates with execution, retains an exact cross-block anchor, and falls back to Patricia on task failure or validation mismatch. TrieWarmer remains enabled independently because it warms the FlatDB and trie pages consumed by both paths.", DefaultValue = "false")]
     bool UseSparseRootComputation { get; set; }
+
+    [ConfigItem(Description = "Compute storage roots in the streamed sparse worker instead of the warmed Patricia storage trees. Requires UseSparseRootComputation and retains Patricia batches for fallback.", DefaultValue = "false")]
+    bool UseSparseStorageRootComputation { get; set; }
 
     [ConfigItem(Description = "Maximum combined account and storage arena-node high-water count retained by SparseTrie across blocks. Once exceeded, the accepted trie is safely discarded after its exact nodes are persisted and the next block starts cold. 0 disables cross-block retention.", DefaultValue = "4000000")]
     long SparseTrieMaxRetainedNodes { get; set; }

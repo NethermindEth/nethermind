@@ -38,6 +38,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private readonly Dictionary<AddressAsKey, Account?> _pendingSparseAccounts = new(AddressAsKey.EqualityComparer);
     private readonly Dictionary<AddressAsKey, Account?> _provisionalSparseAccounts = new(AddressAsKey.EqualityComparer);
+    private readonly List<SparseTrieStorageDelta> _pendingSparseStorage = [];
     private SparseTrieBlockHandle? _sparseBlock;
     private WriteBatch? _activeWriteBatch;
     private WriteBatch? _fallbackJournal;
@@ -177,6 +178,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public bool WantsCommittedDeltas => _sparseBlock is not null && _acceptSparseDeltas;
 
+    public bool WantsCommittedStorageDeltas =>
+        WantsCommittedDeltas && _configuration.UseSparseStorageRootComputation;
+
     public void OnCommittedAccount(Address address, Account? account)
     {
         if (_sparseBlock is not null && _acceptSparseDeltas)
@@ -186,23 +190,41 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    public void OnCommittedStorage(in StorageCell cell, byte[] value)
+    {
+        if (_sparseBlock is null || !_acceptSparseDeltas ||
+            !_configuration.UseSparseStorageRootComputation)
+        {
+            return;
+        }
+
+        FlatStorageTree storage = CreateStorageTreeImpl(cell.Address);
+        _pendingSparseStorage.Add(new SparseTrieStorageDelta(
+            cell.Address,
+            storage.ParentRootHash,
+            cell.Index,
+            value));
+    }
+
     public void OnCommitPhaseCompleted(bool isFinal)
     {
         SparseTrieBlockHandle? block = _sparseBlock;
         if (block is null || !_acceptSparseDeltas)
             return;
 
-        if (_pendingSparseAccounts.Count != 0)
+        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0)
         {
             List<SparseTrieAccountDelta> accounts = new(_pendingSparseAccounts.Count);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in _pendingSparseAccounts)
                 accounts.Add(new SparseTrieAccountDelta(entry.Key.Value, entry.Value));
 
+            List<SparseTrieStorageDelta> storage = [.. _pendingSparseStorage];
             _pendingSparseAccounts.Clear();
+            _pendingSparseStorage.Clear();
 
             try
             {
-                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, []));
+                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage));
             }
             catch (Exception exception)
             {
@@ -212,6 +234,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         if (isFinal)
             _acceptSparseDeltas = false;
+    }
+
+    internal bool CollectSparseStorageBatches =>
+        _configuration.UseSparseStorageRootComputation &&
+        _sparseBlock is not null &&
+        _activeWriteBatch?.CollectsSparseStorage == true;
+
+    internal void RegisterSparseStorageBatch(FlatStorageTree.SparseStorageBatch batch)
+    {
+        WriteBatch? writeBatch = _activeWriteBatch;
+        if (writeBatch is null || !writeBatch.UsesSparse)
+            throw new InvalidOperationException("Sparse storage batch has no active world-state write batch.");
+
+        writeBatch.RegisterSparseStorageBatch(batch);
     }
 
     private void StartSparseBlock(Hash256 parentRoot)
@@ -239,6 +275,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _acceptSparseDeltas = false;
         _pendingSparseAccounts.Clear();
         _provisionalSparseAccounts.Clear();
+        _pendingSparseStorage.Clear();
         AbortSparseBlock();
     }
 
@@ -495,6 +532,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
+    internal bool TryEnqueueSparseStorageTouch(
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath) =>
+        _configuration.UseSparseStorageRootComputation &&
+        (_sparseBlock?.TryEnqueueStorageTouch(accountHash, parentStorageRoot, slotPath) ?? false);
+
     public void HintWarmAccount(in ValueAddress address)
     {
         if (IsDisposed || _pausePrewarmer) return;
@@ -699,11 +743,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        private readonly ConcurrentQueue<FlatStorageTree.SparseStorageBatch> _sparseStorageBatches = new();
         private Exception? _sparsePublishException;
+        private bool _replayingPatricia;
         private bool _disposed;
         private bool _released;
 
         public bool UsesSparse { get; } = useSparse;
+        public bool CollectsSparseStorage => UsesSparse && !_replayingPatricia;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -722,6 +769,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
+            if (scope.CollectSparseStorageBatches)
+            {
+                return scope
+                    .CreateStorageTreeImpl(address)
+                    .CreateWriteBatch(
+                        estimatedEntries,
+                        onRootUpdated: MarkDirty);
+            }
+
             // The final write batch starts after StateProvider.Commit, so this account value is
             // stable while independent storage roots finish and can safely be combined with them.
             Account? sparseAccount = null;
@@ -737,10 +793,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot, sparseAccount));
+                    onRootUpdated: (address, newRoot) => MarkDirtyAndPublish(address, newRoot, sparseAccount));
         }
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash, Account? sparseAccount)
+        public void RegisterSparseStorageBatch(FlatStorageTree.SparseStorageBatch batch) =>
+            _sparseStorageBatches.Enqueue(batch);
+
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
+            _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
+
+        private void MarkDirtyAndPublish(Address address, Hash256 storageTreeRootHash, Account? sparseAccount)
         {
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
             if (UsesSparse && sparseAccount is not null)
@@ -748,7 +810,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 try
                 {
                     scope._sparseBlock!.EnqueueDelta(new SparseTriePhaseDelta(
-                        [new SparseTrieAccountDelta(address.Value, sparseAccount.WithChangedStorageRoot(storageTreeRootHash))],
+                        [new SparseTrieAccountDelta(address, sparseAccount.WithChangedStorageRoot(storageTreeRootHash))],
                         []));
                 }
                 catch (Exception exception)
@@ -788,14 +850,34 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             SparseTrieBlockHandle block = scope._sparseBlock
                 ?? throw new InvalidOperationException("Sparse write batch lost its block session.");
 
-            // TrieWarmer shares resolved nodes with these Patricia storage trees; re-proving
-            // their paths in the sparse worker would turn warm root updates into cold DB reads.
-            ApplyDirtyStorageRoots(sparseMode: true);
+            List<FlatStorageTree.SparseStorageBatch> storageBatches = [.. _sparseStorageBatches];
+            if (storageBatches.Count == 0)
+            {
+                ApplyDirtyStorageRoots(sparseMode: true);
+            }
+            else
+            {
+                foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                {
+                    AddressAsKey address = storageBatch.FinalState.Address;
+                    if (!_dirtyAccounts.ContainsKey(address))
+                    {
+                        _dirtyAccounts[address] = scope._provisionalSparseAccounts.TryGetValue(address, out Account? account)
+                            ? account
+                            : scope._snapshotBundle.GetAccount(address.Value);
+                    }
+                }
+            }
+
             foreach (AddressAsKey address in scope._provisionalSparseAccounts.Keys)
             {
                 if (!_dirtyAccounts.ContainsKey(address))
                     _dirtyAccounts[address] = scope.Get(address.Value);
             }
+
+            List<SparseTrieFinalStorageBatch> finalStorage = new(storageBatches.Count);
+            foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                finalStorage.Add(storageBatch.FinalState);
 
             List<SparseTrieFinalAccount> finalAccounts = new(_dirtyAccounts.Count);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in _dirtyAccounts)
@@ -811,7 +893,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 try
                 {
                     result = block
-                        .FinishAsync(new SparseTrieFinalState([], finalAccounts))
+                        .FinishAsync(new SparseTrieFinalState(finalStorage, finalAccounts))
                         .GetAwaiter()
                         .GetResult();
                 }
@@ -819,6 +901,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     Metrics.SparseForegroundWaitTime.Observe(Stopwatch.GetTimestamp() - waitStartedAt);
                 }
+
+                foreach (FlatStorageTree.SparseStorageBatch storageBatch in storageBatches)
+                {
+                    AddressAsKey address = storageBatch.FinalState.Address;
+                    if (!result.StorageRoots.TryGetValue(address, out Hash256? storageRoot) || storageRoot is null)
+                        throw new TrieException($"Sparse result omitted storage root for {address}.");
+
+                    storageBatch.ApplySparseRoot(storageRoot);
+                }
+
+                if (storageBatches.Count != 0)
+                    ApplyDirtyStorageRoots(sparseMode: true);
 
                 scope._sparseComputedRoot = result.StateRoot;
                 scope._sparseRootReturned = false;
@@ -838,14 +932,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             bool previousHashAwareReads = scope._snapshotBundle.HashAwareTrieReads;
             scope._snapshotBundle.HashAwareTrieReads = true;
+            _replayingPatricia = true;
             try
             {
+                foreach (FlatStorageTree.SparseStorageBatch storageBatch in _sparseStorageBatches)
+                    storageBatch.ReplayFallback();
+
                 ApplyDirtyStorageRoots(sparseMode: false);
                 ApplyPatriciaAccounts();
                 scope._stateTree.UpdateRootHash();
             }
             finally
             {
+                _replayingPatricia = false;
                 scope._snapshotBundle.HashAwareTrieReads = previousHashAwareReads;
             }
         }
@@ -894,6 +993,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _released = true;
             _dirtyAccounts.Clear();
             while (_dirtyStorageTree.TryDequeue(out _)) { }
+            while (_sparseStorageBatches.TryDequeue(out _)) { }
             OnAccountUpdated = null;
         }
 
