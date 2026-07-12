@@ -34,7 +34,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
-    private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
+    internal readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;

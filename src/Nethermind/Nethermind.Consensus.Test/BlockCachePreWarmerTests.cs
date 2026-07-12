@@ -80,22 +80,28 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Verifies that envs evicted from the pool during real block processing are disposed
-    /// immediately. With pool capacity 1 and two parallel sender groups, the second worker
-    /// to return its env triggers eviction — that env must be disposed on the spot.
+    /// Verifies that an env returned to a full pool is disposed immediately.
     /// </summary>
     [Test]
-    public async Task PreWarmCaches_WhenPoolEvicts_EvictedEnvsAreDisposed()
+    public void EnvPool_ReturnedBeyondCapacity_IsDisposedImmediately()
     {
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
 
-        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        IReadOnlyTxProcessorSource first = preWarmer._envPool.Get();
+        IReadOnlyTxProcessorSource second = preWarmer._envPool.Get();
+        Assert.That(created.Count, Is.EqualTo(2), "precondition: an empty pool must create one env per overlapping rental");
 
-        // With pool capacity 1 and two parallel workers, at least one eviction must occur.
-        Assert.That(created.Count, Is.GreaterThanOrEqualTo(2), "two distinct senders must have exercised two concurrent workers");
-        int evictedCount = created.Count - 1; // at most 1 retained in pool
-        Assert.That(disposed.Count, Is.GreaterThanOrEqualTo(evictedCount), "all envs evicted from the pool must have Dispose() called immediately");
+        preWarmer._envPool.Return(first);
+        preWarmer._envPool.Return(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposed.Count, Is.EqualTo(1), "the env returned beyond pool capacity must be disposed on the spot");
+            Assert.That(disposed, Does.Contain(second), "the first return fills the capacity-1 pool, so the second is the evicted one");
+        }
+
+        preWarmer.Dispose();
     }
 
     /// <summary>
