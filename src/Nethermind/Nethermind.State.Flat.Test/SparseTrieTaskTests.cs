@@ -302,6 +302,186 @@ public class SparseTrieTaskTests
         }
     }
 
+    private static IEnumerable<TestCaseData> PersistentWorkerCases()
+    {
+        yield return new TestCaseData(17, 2, 2, 2)
+            .SetName("PersistentWorker_SmallestMultiBlockMultiStorageCase");
+        yield return new TestCaseData(7_331, 8, 6, 3)
+            .SetName("PersistentWorker_BroadDeterministicCase");
+    }
+
+    [TestCaseSource(nameof(PersistentWorkerCases))]
+    public async Task PersistentWorker_StreamedPhasesAndFinalReconciliation_MatchPatricia(
+        int seed,
+        int blockCount,
+        int contractCount,
+        int phaseCount)
+    {
+        MultiContractTestState state = BuildMultiContractState(contractCount, slotsPerContract: 4);
+        await using SparseTrieWorker worker = CreateWorker();
+
+        for (int blockNumber = 0; blockNumber < blockCount; blockNumber++)
+        {
+            Hash256 parentStateRoot = state.StateRoot;
+            int selectedCount = Math.Min(3, contractCount);
+            int[] selectedContracts = new int[selectedCount];
+            for (int ordinal = 0; ordinal < selectedCount; ordinal++)
+                selectedContracts[ordinal] = (blockNumber + ordinal) % contractCount;
+
+            List<SparseTriePhaseDelta> phases = new(phaseCount);
+            Dictionary<int, HashSet<int>> touchedSlots = new(selectedCount);
+            for (int ordinal = 0; ordinal < selectedCount; ordinal++)
+                touchedSlots.Add(selectedContracts[ordinal], []);
+
+            for (int phase = 0; phase < phaseCount; phase++)
+            {
+                List<SparseTrieAccountDelta> accountDeltas = new(selectedCount);
+                List<SparseTrieStorageDelta> storageDeltas = new(selectedCount * 2);
+
+                for (int ordinal = 0; ordinal < selectedCount; ordinal++)
+                {
+                    int contractIndex = selectedContracts[ordinal];
+                    MultiContractState contract = state.Contracts[contractIndex];
+                    Account provisionalAccount = new(
+                        contract.Account.Nonce + (ulong)(100 + phase),
+                        (UInt256)(50_000 + blockNumber * 1_000 + phase * 100 + contractIndex),
+                        contract.StorageRoot,
+                        contract.Account.CodeHash);
+                    accountDeltas.Add(new SparseTrieAccountDelta(contract.Address, provisionalAccount));
+
+                    int stableSlot = (blockNumber + ordinal) % contract.Slots.Count;
+                    int rotatingSlot = (stableSlot + phase + 1) % contract.Slots.Count;
+                    AddProvisionalStorageDelta(
+                        storageDeltas,
+                        touchedSlots[contractIndex],
+                        contract,
+                        stableSlot,
+                        DeterministicValue(seed, blockNumber, phase, contractIndex, stableSlot, salt: 11));
+                    if (rotatingSlot != stableSlot)
+                    {
+                        AddProvisionalStorageDelta(
+                            storageDeltas,
+                            touchedSlots[contractIndex],
+                            contract,
+                            rotatingSlot,
+                            DeterministicValue(seed, blockNumber, phase, contractIndex, rotatingSlot, salt: 29));
+                    }
+                }
+
+                phases.Add(new SparseTriePhaseDelta(accountDeltas, storageDeltas));
+            }
+
+            List<SparseTrieFinalStorageBatch> finalStorage = new(selectedCount);
+            List<SparseTrieFinalAccount> finalAccounts = new(selectedCount);
+            Dictionary<int, Hash256> expectedStorageRoots = new(selectedCount);
+
+            for (int ordinal = 0; ordinal < selectedCount; ordinal++)
+            {
+                int contractIndex = selectedContracts[ordinal];
+                MultiContractState contract = state.Contracts[contractIndex];
+                Hash256 parentStorageRoot = contract.StorageRoot;
+                bool clear = blockNumber % 5 == 4 && ordinal == 0;
+                if (clear)
+                {
+                    contract.StorageTree.Clear();
+                    for (int slot = 0; slot < contract.Slots.Count; slot++)
+                        contract.Slots[slot] = [0];
+                }
+
+                int stableSlot = (blockNumber + ordinal) % contract.Slots.Count;
+                int[] finalSlotIndexes = new int[touchedSlots[contractIndex].Count];
+                touchedSlots[contractIndex].CopyTo(finalSlotIndexes);
+                Array.Sort(finalSlotIndexes);
+                List<SparseTrieFinalSlot> finalSlots = new(finalSlotIndexes.Length);
+                for (int slotOrdinal = 0; slotOrdinal < finalSlotIndexes.Length; slotOrdinal++)
+                {
+                    int slot = finalSlotIndexes[slotOrdinal];
+                    byte[] finalValue;
+                    if (!clear && slot == stableSlot)
+                    {
+                        finalValue = CloneValue(contract.Slots[slot]);
+                    }
+                    else if ((seed + blockNumber + contractIndex + slot) % 5 == 0)
+                    {
+                        finalValue = [0];
+                    }
+                    else
+                    {
+                        finalValue = DeterministicValue(
+                            seed,
+                            blockNumber,
+                            phaseCount,
+                            contractIndex,
+                            slot,
+                            salt: 47);
+                    }
+
+                    UInt256 storageSlot = (UInt256)slot;
+                    contract.StorageTree.Set(storageSlot, finalValue);
+                    contract.Slots[slot] = CloneValue(finalValue);
+                    finalSlots.Add(new SparseTrieFinalSlot(storageSlot, CloneValue(finalValue)));
+                }
+
+                contract.StorageTree.UpdateRootHash();
+                contract.StorageTree.Commit();
+                Hash256 storageRoot = contract.StorageTree.RootHash;
+                expectedStorageRoots.Add(contractIndex, storageRoot);
+
+                Account finalAccount = (blockNumber + ordinal) % 4 == 0
+                    ? contract.Account
+                    : new Account(
+                        contract.Account.Nonce + (ulong)(blockNumber + ordinal + 1),
+                        (UInt256)(100_000 + seed + blockNumber * 100 + contractIndex),
+                        contract.StorageRoot,
+                        contract.Account.CodeHash);
+                Account expectedAccount = finalAccount.WithChangedStorageRoot(storageRoot);
+                state.StateTree.Set(
+                    contract.Address.ToAccountPath.Bytes,
+                    AccountDecoder.Instance.Encode(expectedAccount).Bytes);
+
+                finalStorage.Add(new SparseTrieFinalStorageBatch(
+                    contract.Address,
+                    parentStorageRoot,
+                    clear,
+                    finalSlots));
+                finalAccounts.Add(new SparseTrieFinalAccount(contract.Address, finalAccount));
+                contract.Account = expectedAccount;
+                contract.StorageRoot = storageRoot;
+            }
+
+            state.StateTree.UpdateRootHash();
+            state.StateTree.Commit();
+            Hash256 expectedStateRoot = state.StateTree.RootHash;
+
+            await using SparseTrieBlockHandle block = worker.BeginBlock(parentStateRoot, state.Reader);
+            foreach (SparseTriePhaseDelta phase in phases)
+                block.EnqueueDelta(phase);
+
+            SparseTrieBlockResult result = await block.FinishAsync(
+                new SparseTrieFinalState(finalStorage, finalAccounts));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    result.StateRoot,
+                    Is.EqualTo(expectedStateRoot),
+                    $"seed={seed}, block={blockNumber}, contracts={contractCount}, phases={phaseCount}");
+                foreach (KeyValuePair<int, Hash256> expectedStorage in expectedStorageRoots)
+                {
+                    MultiContractState contract = state.Contracts[expectedStorage.Key];
+                    Assert.That(
+                        result.StorageRoots[contract.Address],
+                        Is.EqualTo(expectedStorage.Value),
+                        $"seed={seed}, block={blockNumber}, contract={expectedStorage.Key}");
+                }
+            }
+
+            await block.PrepareCommitAsync();
+            await block.AcceptAsync();
+            state.StateRoot = expectedStateRoot;
+        }
+    }
+
     [Test]
     public async Task IncompleteFinalStorage_PoisonsResultAndWorkerCanRecoverAfterAbort()
     {
@@ -334,6 +514,37 @@ public class SparseTrieTaskTests
 
     private static SparseTrieWorker CreateWorker() =>
         new(LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+    private static void AddProvisionalStorageDelta(
+        List<SparseTrieStorageDelta> deltas,
+        HashSet<int> touchedSlots,
+        MultiContractState contract,
+        int slot,
+        byte[] value)
+    {
+        touchedSlots.Add(slot);
+        deltas.Add(new SparseTrieStorageDelta(
+            contract.Address,
+            contract.StorageRoot,
+            (UInt256)slot,
+            value));
+    }
+
+    private static byte[] DeterministicValue(
+        int seed,
+        int block,
+        int phase,
+        int contract,
+        int slot,
+        int salt)
+    {
+        int value = unchecked(
+            seed * 31 + block * 43 + phase * 59 + contract * 71 + slot * 89 + salt * 101);
+        return [(byte)(1 + (value & 0xfe))];
+    }
+
+    private static byte[] CloneValue(byte[] value) =>
+        (byte[])value.Clone();
 
     private static TestState BuildState(int accountCount)
     {
@@ -395,6 +606,56 @@ public class SparseTrieTaskTests
             unchangedValue);
     }
 
+    private static MultiContractTestState BuildMultiContractState(
+        int contractCount,
+        int slotsPerContract)
+    {
+        MemDb db = new();
+        RawTrieStore store = new(db);
+        PatriciaTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
+        MultiContractState[] contracts = new MultiContractState[contractCount];
+
+        for (int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+        {
+            UInt256 addressNumber = (UInt256)(10_000 + contractIndex);
+            Address address = Address.FromNumber(in addressNumber);
+            Hash256 addressHash = address.ToAccountPath.ToCommitment();
+            StorageTree storageTree = new(store.GetTrieStore(addressHash), LimboLogs.Instance);
+            Dictionary<int, byte[]> slots = new(slotsPerContract);
+            for (int slot = 0; slot < slotsPerContract; slot++)
+            {
+                byte[] value = [(byte)(1 + contractIndex * slotsPerContract + slot)];
+                UInt256 storageSlot = (UInt256)slot;
+                storageTree.Set(storageSlot, value);
+                slots.Add(slot, value);
+            }
+            storageTree.UpdateRootHash();
+            storageTree.Commit();
+
+            Hash256 codeHash = Keccak.Compute([(byte)(0xa0 + contractIndex)]);
+            Account account = new(
+                (ulong)contractIndex,
+                (UInt256)(1_000 + contractIndex),
+                storageTree.RootHash,
+                codeHash);
+            stateTree.Set(address.ToAccountPath.Bytes, AccountDecoder.Instance.Encode(account).Bytes);
+            contracts[contractIndex] = new MultiContractState(
+                address,
+                account,
+                storageTree,
+                storageTree.RootHash,
+                slots);
+        }
+
+        stateTree.UpdateRootHash();
+        stateTree.Commit();
+        return new MultiContractTestState(
+            stateTree,
+            contracts,
+            stateTree.RootHash,
+            new HalfPathTrieNodeReader(new NodeStorage(db)));
+    }
+
     private static Hash256 ApplyAccount(PatriciaTree tree, Address address, Account account)
     {
         tree.Set(address.ToAccountPath.Bytes, AccountDecoder.Instance.Encode(account).Bytes);
@@ -419,4 +680,30 @@ public class SparseTrieTaskTests
         UInt256 UnchangedSlot,
         UInt256 ChangedSlot,
         byte[] UnchangedValue);
+
+    private sealed class MultiContractTestState(
+        PatriciaTree stateTree,
+        MultiContractState[] contracts,
+        Hash256 stateRoot,
+        HalfPathTrieNodeReader reader)
+    {
+        public PatriciaTree StateTree { get; } = stateTree;
+        public MultiContractState[] Contracts { get; } = contracts;
+        public Hash256 StateRoot { get; set; } = stateRoot;
+        public HalfPathTrieNodeReader Reader { get; } = reader;
+    }
+
+    private sealed class MultiContractState(
+        Address address,
+        Account account,
+        StorageTree storageTree,
+        Hash256 storageRoot,
+        Dictionary<int, byte[]> slots)
+    {
+        public Address Address { get; } = address;
+        public Account Account { get; set; } = account;
+        public StorageTree StorageTree { get; } = storageTree;
+        public Hash256 StorageRoot { get; set; } = storageRoot;
+        public Dictionary<int, byte[]> Slots { get; } = slots;
+    }
 }

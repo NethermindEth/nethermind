@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie.Sparse;
 using NUnit.Framework;
@@ -152,5 +154,100 @@ public class SparseTrieRegressionTests
         tree.Commit();
 
         Assert.That(sparseHash, Is.EqualTo(tree.RootHash));
+    }
+
+    [TestCase(17)]
+    [TestCase(7331)]
+    public void ReusedSparseTrie_WithDeletesAndInserts_MatchesPatricia(int seed)
+    {
+        const int keyCount = 24;
+        const int blockCount = 80;
+        Random random = new(seed);
+        MemDb db = new();
+        PatriciaTree patricia = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        Hash256[] keys = CreateKeys(keyCount);
+        bool[] present = new bool[keyCount];
+        int[] versions = new int[keyCount];
+
+        for (int i = 0; i < keyCount; i++)
+        {
+            if (i % 3 == 0)
+                continue;
+            present[i] = true;
+            patricia.Set(keys[i].Bytes, CreateValue(i, versions[i]));
+        }
+        patricia.UpdateRootHash();
+        patricia.Commit();
+
+        Hash256 parentRoot = patricia.RootHash;
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        using SparseStateTrie sparse = new();
+
+        for (int block = 0; block < blockCount; block++)
+        {
+            Dictionary<ValueHash256, LeafUpdate> updates = [];
+            int operationCount = 1 + random.Next(3);
+            string operations = string.Empty;
+
+            for (int operation = 0; operation < operationCount; operation++)
+            {
+                int keyIndex = random.Next(keyCount);
+                ValueHash256 key = keys[keyIndex].ValueHash256;
+                if (present[keyIndex] && random.Next(3) == 0)
+                {
+                    present[keyIndex] = false;
+                    patricia.Set(keys[keyIndex].Bytes, []);
+                    updates[key] = LeafUpdate.Deleted();
+                    operations += $" delete({keyIndex})";
+                }
+                else
+                {
+                    present[keyIndex] = true;
+                    versions[keyIndex]++;
+                    byte[] value = CreateValue(keyIndex, versions[keyIndex]);
+                    patricia.Set(keys[keyIndex].Bytes, value);
+                    updates[key] = LeafUpdate.Changed(value);
+                    operations += $" set({keyIndex},{versions[keyIndex]})";
+                }
+            }
+
+            patricia.UpdateRootHash();
+            patricia.Commit();
+            Hash256 expectedRoot = patricia.RootHash;
+
+            using SparseRootComputer computer = new(sparse, reader, parentRoot);
+            computer.SetAccountChanges(updates);
+            Hash256 actualRoot = computer.ComputeStateRoot();
+
+            Assert.That(
+                actualRoot,
+                Is.EqualTo(expectedRoot),
+                $"seed={seed}, block={block}, parent={parentRoot}, operations:{operations}");
+            parentRoot = expectedRoot;
+        }
+    }
+
+    private static Hash256[] CreateKeys(int count)
+    {
+        Hash256[] keys = new Hash256[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[32];
+            bytes[28] = (byte)(i / 8);
+            bytes[29] = (byte)(i / 4);
+            bytes[30] = (byte)(i / 2);
+            bytes[31] = (byte)i;
+            keys[i] = new Hash256(bytes);
+        }
+        return keys;
+    }
+
+    private static byte[] CreateValue(int key, int version)
+    {
+        byte[] value = new byte[40];
+        BitConverter.TryWriteBytes(value, key);
+        BitConverter.TryWriteBytes(value.AsSpan(sizeof(int)), version);
+        value[^1] = 0x7f;
+        return value;
     }
 }
