@@ -186,9 +186,11 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         long blockCachePinned = Prop("rocksdb.block-cache-pinned-usage");
         long liveSst = Prop("rocksdb.live-sst-files-size");
         long numKeys = Prop("rocksdb.estimate-num-keys");
-        long liveFiles = Prop("rocksdb.num-files-at-level0") + Prop("rocksdb.num-files-at-level1")
-            + Prop("rocksdb.num-files-at-level2") + Prop("rocksdb.num-files-at-level3")
-            + Prop("rocksdb.num-files-at-level4") + Prop("rocksdb.num-files-at-level5") + Prop("rocksdb.num-files-at-level6");
+        long liveFiles = 0;
+        for (int level = 0; level <= 6; level++)
+        {
+            liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
+        }
 
         logger.Info($"[RocksDbMem] {dbName}: table_readers={tableReaders / MB:F0}MB memtables={memtables / MB:F0}MB " +
                     $"block_cache={blockCache / MB:F0}MB(pinned {blockCachePinned / MB:F0}MB) " +
