@@ -24,8 +24,8 @@ namespace Nethermind.Consensus.Processing
     public class BlockStatistics
     {
         public long BlockCount { get; set; }
-        public long BlockFrom { get; set; }
-        public long BlockTo { get; set; }
+        public ulong BlockFrom { get; set; }
+        public ulong BlockTo { get; set; }
         public double ProcessingMs { get; set; }
         public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Processing
         public float MedianGas { get; set; }
         public float AveGas { get; set; }
         public float MaxGas { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
     }
     //TODO Consult on disabling of such metrics from configuration
     public class ProcessingStats : IProcessingStats
@@ -103,9 +103,9 @@ namespace Nethermind.Consensus.Processing
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
-        private long _chunkBlobs;
+        private ulong _chunkBlobs;
         private long _chunkBlocks;
-        private long _chunkFirstBlockNumber = -1;
+        private ulong _chunkFirstBlockNumber = ulong.MaxValue;
         private long _opCodes;
         private long _callOps;
         private long _emptyCalls;
@@ -214,9 +214,9 @@ namespace Nethermind.Consensus.Processing
             if (blocks.Count == 0) return;
 
             Block lastBlock = blocks[^1];
-            long gasUsed = 0;
+            ulong gasUsed = 0;
             long transactionCount = 0;
-            long blobCount = 0;
+            ulong blobCount = 0;
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -225,7 +225,7 @@ namespace Nethermind.Consensus.Processing
                 transactionCount += transactions.Length;
                 for (int j = 0; j < transactions.Length; j++)
                 {
-                    blobCount += transactions[j].GetBlobCount();
+                    blobCount += (ulong)transactions[j].GetBlobCount();
                 }
             }
 
@@ -336,7 +336,7 @@ namespace Nethermind.Consensus.Processing
             Block? block = data.Block;
             if (block is null) return;
 
-            long blockNumber = data.Block.Number;
+            ulong blockNumber = data.Block.Number;
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here
@@ -362,8 +362,8 @@ namespace Nethermind.Consensus.Processing
             double chunkMicroseconds = (_chunkProcessingMicroseconds += data.ProcessingMicroseconds);
             double chunkTx = (_chunkTx += data.TransactionCount);
 
-            long chunkFirstBlockNumber = _chunkFirstBlockNumber;
-            if (chunkFirstBlockNumber == -1)
+            ulong chunkFirstBlockNumber = _chunkFirstBlockNumber;
+            if (chunkFirstBlockNumber == ulong.MaxValue)
             {
                 chunkFirstBlockNumber = data.FirstBlockNumber;
                 _chunkFirstBlockNumber = chunkFirstBlockNumber;
@@ -401,7 +401,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             _chunkBlobs += data.BlobCount;
-            long blobs = _chunkBlobs;
+            ulong blobs = _chunkBlobs;
             if (blobs > 0)
             {
                 _showBlobs = true;
@@ -445,7 +445,7 @@ namespace Nethermind.Consensus.Processing
 
             _chunkBlobs = 0;
             _chunkBlocks = 0;
-            _chunkFirstBlockNumber = -1;
+            _chunkFirstBlockNumber = ulong.MaxValue;
             _chunkMGas = 0;
             _chunkTx = 0;
             _chunkProcessingMicroseconds = 0;
@@ -478,7 +478,27 @@ namespace Nethermind.Consensus.Processing
             double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
-            string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N3} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N3}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N3}) .. {Evm.Metrics.BlockMaxGasPrice:N3}" : "";
+            string blockGas = "";
+            // Read the stable gauges (published once per block, never reset) rather than the transient
+            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
+            // block's ResetBlockStats has already cleared the transient values.
+            if (Evm.Metrics.GasPriceMax != 0f)
+            {
+                float minGas = Evm.Metrics.GasPriceMin;
+                float medianGas = Math.Max(minGas, Evm.Metrics.GasPriceMedian);
+                float aveGas = Evm.Metrics.GasPriceAve;
+                float maxGas = Evm.Metrics.GasPriceMax;
+                // Step the unit down (gwei -> mwei -> kwei -> wei) so small gas prices stay visible at :N3
+                // instead of all rendering 0.000 on low-base-fee chains.
+                (string unit, float scale) = minGas switch
+                {
+                    0f or >= 0.001f => ("gwei", 1f),
+                    >= 0.000_001f => ("mwei", 1_000f),
+                    >= 0.000_000_001f => ("kwei", 1_000_000f),
+                    _ => ("wei", 1_000_000_000f),
+                };
+                blockGas = $"⛽ Gas {unit}: {minGas * scale:N3} .. {whiteText}{medianGas * scale:N3}{resetColor} ({aveGas * scale:N3}) .. {maxGas * scale:N3}";
+            }
             string mgasColor = whiteText;
 
             NewProcessingStatistics?.Invoke(this, new BlockStatistics()
@@ -490,10 +510,10 @@ namespace Nethermind.Consensus.Processing
                 ProcessingMs = chunkMs,
                 SlotMs = runMs,
                 MGasPerSecond = mgasPerSecond,
-                MinGas = Evm.Metrics.BlockMinGasPrice,
-                MedianGas = Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice),
-                AveGas = Evm.Metrics.BlockAveGasPrice,
-                MaxGas = Evm.Metrics.BlockMaxGasPrice,
+                MinGas = Evm.Metrics.GasPriceMin,
+                MedianGas = Math.Max(Evm.Metrics.GasPriceMin, Evm.Metrics.GasPriceMedian),
+                AveGas = Evm.Metrics.GasPriceAve,
+                MaxGas = Evm.Metrics.GasPriceMax,
                 GasLimit = block.GasLimit
             });
 
@@ -581,13 +601,17 @@ namespace Nethermind.Consensus.Processing
                     _ => $"       {bps,10:F2} Blk/s "
                 };
 
+                // Exec-mode indicator: chains for parallel BAL, link for sequential. BlockAccessList is
+                // null pre-Amsterdam, so a parallel-configured node correctly shows sequential pre-fork.
+                string execMode = _parallelExecution && block.BlockAccessList is not null ? " ⛓️" : " 🔗";
+
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
             }
 
@@ -847,10 +871,10 @@ namespace Nethermind.Consensus.Processing
             public Block Block;
             public BlockHeader? BaseBlock;
             public long BlockCount;
-            public long FirstBlockNumber;
-            public long GasUsed;
+            public ulong FirstBlockNumber;
+            public ulong GasUsed;
             public long TransactionCount;
-            public long BlobCount;
+            public ulong BlobCount;
             public long CurrentOpCodes;
             public long CurrentSLoadOps;
             public long CurrentSStoreOps;

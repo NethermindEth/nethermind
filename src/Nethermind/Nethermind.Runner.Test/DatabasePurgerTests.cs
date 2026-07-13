@@ -36,7 +36,7 @@ public class DatabasePurgerTests
         {
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.True, "peers should be preserved");
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.True, "discoveryNodes should be preserved");
-            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.False, "legacy discoveryV5Nodes should be deleted");
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.True, "discoveryV5Nodes should be preserved");
         }
     }
 
@@ -90,6 +90,7 @@ public class DatabasePurgerTests
         {
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.PeersDb)), Is.False);
             Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryNodes)), Is.False);
+            Assert.That(Directory.Exists(Path.Combine(_tempDir, DbNames.DiscoveryV5Nodes)), Is.False);
         }
     }
 

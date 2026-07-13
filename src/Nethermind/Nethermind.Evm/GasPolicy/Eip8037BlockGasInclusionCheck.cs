@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.GasPolicy;
 
@@ -14,42 +15,33 @@ public static class Eip8037BlockGasInclusionCheck
     public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
     public static Outcome Validate(
-        long blockGasLimit,
-        long cumulativeBlockRegular,
-        long cumulativeBlockState,
-        long txGas,
-        long intrinsicRegular,
-        long intrinsicState)
+        ulong blockGasLimit,
+        ulong cumulativeBlockRegular,
+        ulong cumulativeBlockState,
+        ulong txGas)
     {
-        long regularAvailable = blockGasLimit - cumulativeBlockRegular;
-        long stateAvailable = blockGasLimit - cumulativeBlockState;
+        // A cumulative dimension that already exceeded the block limit must reject — silent saturation
+        // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
+        if (cumulativeBlockRegular > blockGasLimit) return Outcome.RegularDimensionExceeded;
+        if (cumulativeBlockState > blockGasLimit) return Outcome.StateDimensionExceeded;
 
-        // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
-        long worstCaseRegular = Math.Max(0, txGas - intrinsicState);
-        if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
-            worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong regularAvailable = blockGasLimit - cumulativeBlockRegular;
+        ulong stateAvailable = blockGasLimit - cumulativeBlockState;
+
+        // EIP-8037: reserve the full gas limit in each dimension (no intrinsic subtraction). Only the
+        // regular dimension is bounded by the EIP-7825 per-tx cap; state work can exceed it via the reservoir.
+        ulong worstCaseRegular = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
-        // The state dimension has no per-tx equivalent of EIP-7825's DefaultTxGasLimitCap;
-        // state-heavy work may be funded by the state reservoir above that regular-dimension cap.
-        long worstCaseState = Math.Max(0, txGas - intrinsicRegular);
-        if (worstCaseState > stateAvailable)
+        if (txGas > stateAvailable)
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;
     }
 
-    public static long CalculateBlockRegularGas(
-        long intrinsicRegularGas,
-        long initialRegularGas,
-        long remainingRegularGas,
-        long stateGasSpill,
-        long stateGasSpillReclassified,
-        long floorGas)
-    {
-        long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
-        long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
-        return Math.Max(blockRegularGas, floorGas);
-    }
+    // tx_regular_gas = tx_gas_used_before_refund - max(0, tx_state_gas) (EIP-8037's EIP-7778 form;
+    // both are assumed active together). The calldata floor is sender-only and must not inflate this.
+    public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas)
+        => preRefundGas.SaturatingSub(blockStateGas);
 }

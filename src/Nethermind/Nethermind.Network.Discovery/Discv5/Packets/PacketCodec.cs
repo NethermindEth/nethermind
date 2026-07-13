@@ -18,7 +18,6 @@ namespace Nethermind.Network.Discovery.Discv5.Packets;
 
 public sealed class PacketCodec(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-    INodeRecordProvider nodeRecordProvider,
     ICryptoRandom cryptoRandom,
     IEcdsa ecdsa) : IDisposable
 {
@@ -46,8 +45,7 @@ public sealed class PacketCodec(
 
     private readonly PrivateKey _privateKey = nodeKey.Unprotect();
     private readonly PublicKey _publicKey = nodeKey.PublicKey;
-    private readonly Hash256 _localNodeId = nodeKey.PublicKey.Hash;
-    private readonly INodeRecordProvider _nodeRecordProvider = nodeRecordProvider;
+    private readonly ValueHash256 _localNodeId = nodeKey.PublicKey.Hash.ValueHash256;
     private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
     private readonly IEcdsa _ecdsa = ecdsa;
     private readonly ObjectPool<Aes> _decodeMaskingAesPool = CreateDecodeMaskingAesPool(nodeKey.PublicKey.Hash.Bytes[..AesKeySize]);
@@ -62,20 +60,18 @@ public sealed class PacketCodec(
         => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId.Bytes, encryptionKey, message);
 
     [SkipLocalsInit]
-    internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence, out Challenge challenge)
+    internal byte[] EncodeWhoAreYou(ReadOnlySpan<byte> destinationNodeId, ReadOnlySpan<byte> requestNonce, ulong enrSequence)
     {
-        byte[] idNonce = _cryptoRandom.GenerateRandomBytes(IdNonceSize);
         Span<byte> authData = stackalloc byte[WhoAreYouAuthDataSize];
-        idNonce.CopyTo(authData);
+        Span<byte> idNonce = authData[..IdNonceSize];
+        _cryptoRandom.GenerateRandomBytes(idNonce);
         BinaryPrimitives.WriteUInt64BigEndian(authData[IdNonceSize..], enrSequence);
 
-        byte[] packet = EncodePacket(destinationNodeId, PacketFlag.WhoAreYou, requestNonce, authData, default, null, out byte[] challengeData);
-        challenge = new Challenge(requestNonce.ToArray(), idNonce, enrSequence, challengeData);
-        return packet;
+        return EncodePacket(destinationNodeId, PacketFlag.WhoAreYou, requestNonce, authData, default, null);
     }
 
     [SkipLocalsInit]
-    internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, out Session session)
+    internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, NodeRecord currentNodeRecord, out Session session)
     {
         using PrivateKey ephemeralKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
         DeriveKeys(
@@ -88,8 +84,8 @@ public sealed class PacketCodec(
             out byte[] recipientKey);
 
         byte[] ephemeralPublicKey = ephemeralKey.CompressedPublicKey.Bytes;
-        byte[] record = challenge.EnrSequence < _nodeRecordProvider.Current.EnrSequence
-            ? _nodeRecordProvider.Current.ToRlpBytes()
+        byte[] record = challenge.EnrSequence < currentNodeRecord.EnrSequence
+            ? currentNodeRecord.ToRlpBytes()
             : [];
 
         int authDataLength = HandshakeAuthDataHeadSize + IdSignatureSize + EphemeralPublicKeySize + record.Length;
@@ -213,10 +209,10 @@ public sealed class PacketCodec(
         }
     }
 
-    internal bool TryDecryptMessage(Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
-        => TryDecryptMessageForTest(packet, encryptionKey, out message);
+    internal bool TryDecryptMessage(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
+        => TryDecryptMessageForTest(in packet, encryptionKey, out message);
 
-    internal static bool TryDecryptMessageForTest(Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
+    internal static bool TryDecryptMessageForTest(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
     {
         message = null!;
         ReadOnlySpan<byte> encryptedMessage = packet.Message.Span;
@@ -261,20 +257,19 @@ public sealed class PacketCodec(
         }
     }
 
-    internal Challenge DecodeWhoAreYou(Packet packet)
+    internal Challenge DecodeWhoAreYou(scoped in Packet packet)
     {
         if (packet.AuthData.Length != WhoAreYouAuthDataSize)
         {
             throw new RlpException("Invalid WHOAREYOU authdata length.");
         }
 
-        byte[] idNonce = packet.AuthData.Span[..IdNonceSize].ToArray();
         ulong enrSequence = BinaryPrimitives.ReadUInt64BigEndian(packet.AuthData.Span[IdNonceSize..]);
-        return new Challenge(packet.Nonce.ToArray(), idNonce, enrSequence, packet.ChallengeData.ToArray());
+        return new Challenge(enrSequence, packet.ChallengeData);
     }
 
     internal bool TryDecryptHandshake(
-        Packet packet,
+        scoped in Packet packet,
         Challenge challenge,
         NodeRecord? knownRecord,
         out Session session,
@@ -285,7 +280,7 @@ public sealed class PacketCodec(
         message = null!;
         nodeRecord = null;
 
-        if (!TryReadHandshakeAuthData(packet.AuthData, out Hash256? sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey? ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
+        if (!TryReadHandshakeAuthData(packet.AuthData, out ValueHash256 sourceNodeId, out ReadOnlyMemory<byte> idSignature, out CompressedPublicKey? ephemeralPublicKey, out ReadOnlyMemory<byte> recordBytes))
         {
             return false;
         }
@@ -310,7 +305,7 @@ public sealed class PacketCodec(
         }
 
         PublicKey remotePublicKey = remoteCompressedPublicKey.Decompress();
-        if (!remotePublicKey.Hash.Equals(sourceNodeId))
+        if (remotePublicKey.Hash != sourceNodeId)
         {
             return false;
         }
@@ -322,7 +317,7 @@ public sealed class PacketCodec(
 
         DeriveKeys(ephemeralPublicKey, sourceNodeId.Bytes, _localNodeId.Bytes, challenge.ChallengeData, out byte[] initiatorKey, out byte[] recipientKey);
 
-        if (!TryDecryptMessage(packet, initiatorKey, out message))
+        if (!TryDecryptMessage(in packet, initiatorKey, out message))
         {
             return false;
         }
@@ -331,16 +326,16 @@ public sealed class PacketCodec(
         return true;
     }
 
-    internal static bool TryGetSourceNodeId(Packet packet, [NotNullWhen(true)] out Hash256? sourceNodeId)
+    internal static bool TryGetSourceNodeId(scoped in Packet packet, out ValueHash256 sourceNodeId)
     {
-        sourceNodeId = null;
+        sourceNodeId = default;
         switch (packet.Flag)
         {
             case PacketFlag.Ordinary when packet.AuthData.Length == NodeIdSize:
-                sourceNodeId = new Hash256(packet.AuthData.Span);
+                sourceNodeId = new ValueHash256(packet.AuthData.Span);
                 return true;
             case PacketFlag.Handshake when packet.AuthData.Length >= HandshakeAuthDataHeadSize:
-                sourceNodeId = new Hash256(packet.AuthData.Span[..NodeIdSize]);
+                sourceNodeId = new ValueHash256(packet.AuthData.Span[..NodeIdSize]);
                 return true;
             default:
                 return false;
@@ -354,24 +349,14 @@ public sealed class PacketCodec(
         ReadOnlySpan<byte> authData,
         ReadOnlySpan<byte> encryptionKey,
         Discv5Message? message)
-        => EncodePacket(destinationNodeId, flag, nonce, authData, encryptionKey, message, out _);
-
-    private byte[] EncodePacket(
-        ReadOnlySpan<byte> destinationNodeId,
-        PacketFlag flag,
-        ReadOnlySpan<byte> nonce,
-        ReadOnlySpan<byte> authData,
-        ReadOnlySpan<byte> encryptionKey,
-        Discv5Message? message,
-        out byte[] messageAd)
     {
         if (message is null)
         {
-            return EncodePacketCore(destinationNodeId, flag, nonce, authData, default, default, out messageAd);
+            return EncodePacketCore(destinationNodeId, flag, nonce, authData, default, default);
         }
 
-        using NettyRlpStream encodedMessage = MessageCodec.Encode(message);
-        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage.AsSpan(), out messageAd);
+        using ArrayPoolSpan<byte> encodedMessage = MessageCodec.Encode(message);
+        return EncodePacketCore(destinationNodeId, flag, nonce, authData, encryptionKey, encodedMessage);
     }
 
     [SkipLocalsInit]
@@ -381,8 +366,7 @@ public sealed class PacketCodec(
         ReadOnlySpan<byte> nonce,
         ReadOnlySpan<byte> authData,
         ReadOnlySpan<byte> encryptionKey,
-        ReadOnlySpan<byte> plaintext,
-        out byte[] messageAd)
+        ReadOnlySpan<byte> plaintext)
     {
         int headerLength = StaticHeaderSize + authData.Length;
         int messageAdLength = MaskingIvSize + headerLength;
@@ -413,9 +397,6 @@ public sealed class PacketCodec(
             }
 
             AesCtrTransform(destinationNodeId[..AesKeySize], maskingIv, messageAdBuffer.Slice(MaskingIvSize, headerLength), packet.AsSpan(MaskingIvSize, headerLength));
-            messageAd = plaintext.IsEmpty
-                ? messageAdBuffer.ToArray()
-                : [];
             return packet;
         }
         finally
@@ -674,12 +655,12 @@ public sealed class PacketCodec(
 
     private static bool TryReadHandshakeAuthData(
         ReadOnlyMemory<byte> authDataMemory,
-        [NotNullWhen(true)] out Hash256? sourceNodeId,
+        out ValueHash256 sourceNodeId,
         out ReadOnlyMemory<byte> idSignature,
         [NotNullWhen(true)] out CompressedPublicKey? ephemeralPublicKey,
         out ReadOnlyMemory<byte> record)
     {
-        sourceNodeId = null;
+        sourceNodeId = default;
         idSignature = ReadOnlyMemory<byte>.Empty;
         ephemeralPublicKey = null;
         record = ReadOnlyMemory<byte>.Empty;
@@ -690,7 +671,7 @@ public sealed class PacketCodec(
             return false;
         }
 
-        sourceNodeId = new Hash256(authData[..NodeIdSize]);
+        sourceNodeId = new ValueHash256(authData[..NodeIdSize]);
         int signatureSize = authData[NodeIdSize];
         int ephemeralKeySize = authData[NodeIdSize + 1];
         if (signatureSize != IdSignatureSize || ephemeralKeySize != EphemeralPublicKeySize)

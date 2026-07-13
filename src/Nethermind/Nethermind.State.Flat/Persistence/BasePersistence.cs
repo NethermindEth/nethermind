@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -48,14 +49,14 @@ public static class BasePersistence
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
-            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
-            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+            ? new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
     internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }
@@ -328,8 +329,8 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -351,8 +352,8 @@ public static class BasePersistence
                 return;
             }
 
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addr.ToAccountPath, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
@@ -367,8 +368,8 @@ public static class BasePersistence
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account)
         {
-            using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
-            _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
+            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            _flatWriteBatch.SetAccount(addrHash, rlp);
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
@@ -397,7 +398,7 @@ public static class BasePersistence
                 return null;
             }
 
-            Rlp.ValueDecoderContext ctx = new(valueBuffer[..responseSize]);
+            RlpReader ctx = new(valueBuffer[..responseSize]);
             return _accountDecoder.Decode(ref ctx);
         }
 
@@ -514,10 +515,10 @@ public static class BasePersistence
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriter.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
+            _trieWriteBatch.DeleteStateTrieNodeRange(from, to);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to);
     }
 }

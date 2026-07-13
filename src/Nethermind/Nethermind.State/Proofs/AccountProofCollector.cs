@@ -90,6 +90,33 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
+        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys)
+        {
+            _accountProof = new AccountProof
+            {
+                StorageProofs = new StorageProof[storageKeys.Count],
+                Address = _address = address ?? throw new ArgumentNullException(nameof(address))
+            };
+            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+            _fullStoragePaths = new Nibble[storageKeys.Count][];
+            _storageProofItems = new List<byte[]>[storageKeys.Count];
+
+            byte[] keyBuffer = new byte[32];
+            int j = 0;
+            foreach (UInt256 storageKey in storageKeys)
+            {
+                storageKey.ToBigEndian(keyBuffer);
+                _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer).Bytes);
+                _storageProofItems[j] = [];
+                _accountProof.StorageProofs![j] = new StorageProof
+                {
+                    Key = keyBuffer.ToHexString(true, true),
+                    Value = Bytes.ZeroByte
+                };
+                j++;
+            }
+        }
+
         public AccountProof BuildResult()
         {
             // EIP-1186 distinguishes a non-existent account from an empty existing account by
@@ -156,7 +183,7 @@ namespace Nethermind.State.Proofs
             for (int i = 0; i < _fullStoragePaths.Length; i++)
             {
                 if (IsFullPathMatch(_fullStoragePaths[i], ctx.Path, node.Key))
-                    _accountProof.StorageProofs[i].Value = new Rlp.ValueDecoderContext(node.Value.AsSpan()).DecodeByteArray();
+                    _accountProof.StorageProofs[i].Value = new RlpReader(node.Value.AsSpan()).DecodeByteArray();
             }
         }
 

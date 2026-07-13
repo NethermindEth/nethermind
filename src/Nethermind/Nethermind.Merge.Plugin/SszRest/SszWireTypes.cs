@@ -97,6 +97,7 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
 }
 
 [SszContainer]
@@ -205,6 +206,13 @@ public partial struct BlobsBundleV2Wire
 }
 
 [SszContainer]
+public partial struct BuiltPayloadParisWire
+{
+    public SszExecutionPayloadV1 ExecutionPayload { get; set; }
+    public UInt256 BlockValue { get; set; }
+}
+
+[SszContainer]
 public partial struct GetPayloadResponseV2Wire
 {
     public SszExecutionPayloadV2 ExecutionPayload { get; set; }
@@ -220,14 +228,15 @@ public partial struct GetPayloadResponseV3Wire
     public bool ShouldOverrideBuilder { get; set; }
 }
 
+// Field order: execution_requests precedes should_override_builder (diverges from JSON-RPC).
 [SszContainer]
 public partial struct GetPayloadResponseV4Wire
 {
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV1Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -236,8 +245,8 @@ public partial struct GetPayloadResponseV5Wire
     public SszExecutionPayloadV3 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -246,8 +255,8 @@ public partial struct GetPayloadResponseV6Wire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public UInt256 BlockValue { get; set; }
     public BlobsBundleV2Wire BlobsBundle { get; set; }
-    public bool ShouldOverrideBuilder { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
 }
 
 [SszContainer]
@@ -396,24 +405,6 @@ public partial struct GetBlobsV2ResponseWire
     [SszList(128)] public BlobV2EntryWire[]? Entries { get; set; }
 }
 
-/// <summary>
-/// <c>BlobV3Entry = BlobV2Entry { available: Boolean; contents: BlobAndProofV2 }</c> per spec.
-/// Unlike V2 (all-or-nothing), V3 supports partial responses: missing blobs have
-/// <c>Available = false</c>; only a full EL outage returns 204.
-/// </summary>
-[SszContainer]
-public partial struct BlobV3EntryWire
-{
-    public bool Available { get; set; }
-    public BlobAndProofV2Wire Contents { get; set; }
-}
-
-[SszContainer]
-public partial struct GetBlobsV3ResponseWire
-{
-    [SszList(128)] public BlobV3EntryWire[]? Entries { get; set; }
-}
-
 [SszContainer]
 public partial struct GetBlobsV4RequestWire
 {
@@ -454,4 +445,24 @@ public partial struct BlobV4EntryWire
 public partial struct GetBlobsV4ResponseWire
 {
     [SszList(128)] public BlobV4EntryWire[]? Entries { get; set; }
+}
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessItem
+{
+    [SszList(1048576)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct ExecutionWitnessV1Wire
+{
+    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+}
+
+[SszContainer]
+public partial struct PayloadStatusWithWitnessWire
+{
+    public PayloadStatusWire PayloadStatus { get; set; }
+    [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
 }

@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Discovery.Kademlia;
@@ -14,7 +15,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// <summary>
 /// Specifies the protocol-specific Kademlia services used by discv5.
 /// </summary>
-public sealed class KademliaModule(PublicKey masterNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(masterNode, bootNodes)
+public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryV5Nodes)
 {
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
         .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)

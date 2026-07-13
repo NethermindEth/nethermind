@@ -21,7 +21,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -70,7 +69,7 @@ public class BlockProcessorTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
-                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
                     Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
                 }
             });
@@ -127,6 +126,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching,
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -197,6 +197,7 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching,
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -255,7 +256,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), CodeInfoRepositoryFactories.Caching);
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -406,13 +407,9 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        // After Process returns, the event handler should be unsubscribed.
-        // Verify by checking that firing the event doesn't cause issues
-        // (if still subscribed, it would try to cancel a disposed CTS).
         int externalHandlerCallCount = 0;
         processor.TransactionsExecuted += () => externalHandlerCallCount++;
 
-        // Process another block to trigger the event — only our handler should fire
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
@@ -444,7 +441,6 @@ public class BlockProcessorTests
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
-        // Should not throw
         Action handler = () => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
@@ -492,6 +488,7 @@ public class BlockProcessorTests
 
         public CacheType ClearCaches() => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
     }
 
@@ -503,9 +500,9 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(long gasRemaining, bool shouldThrow)
+    [TestCase(2000ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -515,7 +512,8 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching);
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -526,7 +524,7 @@ public class BlockProcessorTests
             .TestObject;
 
         Block block = Build.A.Block
-            .WithNumber(1)
+            .WithNumber(1ul)
             .WithGasUsed(gasRemaining)
             .WithBlockAccessList(suggestedBal)
             .TestObject;
@@ -558,7 +556,8 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching);
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -1000,7 +999,7 @@ public class BlockProcessorTests
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit(txCount * 1_000_000L)
+            .WithGasLimit((ulong)txCount * 1_000_000ul)
             .WithTransactions(transactions)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
@@ -1036,9 +1035,8 @@ public class BlockProcessorTests
     [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
+        gasResults[0].TrySetResult(new GasValidationResult(1, 2, null));
 
         BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
 
@@ -1059,7 +1057,9 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            CodeInfoRepositoryFactories.Caching,
+            readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
     {
@@ -1094,11 +1094,8 @@ public class BlockProcessorTests
     }
 
     private static GasValidationResult
-        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
-    }
+        GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
+        new(blockGasUsed, blockStateGasUsed, exception);
 
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {
@@ -1107,7 +1104,7 @@ public class BlockProcessorTests
         balManager.Setup(block);
     }
 
-    private static GasValidationResultSlot[] BuildGasResults(Block block, params (long Gas, long StateGas, InvalidBlockException? Exception)[] rows)
+    private static GasValidationResultSlot[] BuildGasResults(Block block, params (ulong Gas, ulong StateGas, InvalidBlockException? Exception)[] rows)
     {
         GasValidationResultSlot[] slots = ResultsForCount(rows.Length);
         for (int i = 0; i < rows.Length; i++)
@@ -1120,11 +1117,11 @@ public class BlockProcessorTests
     private static Transaction[] CreateParallelValidationTransactions(int txCount)
     {
         Transaction[] transactions = new Transaction[txCount];
-        for (int i = 0; i < transactions.Length; i++)
+        for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
-                .WithGasLimit(21_000)
+                 .WithNonce(i)
+                 .WithGasLimit(21_000ul)
                 .TestObject;
         }
 
@@ -1132,8 +1129,8 @@ public class BlockProcessorTests
     }
 
     private static Transaction CreateTxForExecutionOrder(
-        int nonce,
-        long gasLimit,
+        uint nonce,
+        ulong gasLimit,
         int dataLength = 0,
         int authorizationCount = 0,
         int accessListStorageKeys = 0,
@@ -1141,7 +1138,7 @@ public class BlockProcessorTests
     {
         byte[] data = dataLength == 0 ? [] : new byte[dataLength];
         TransactionBuilder<Transaction> builder = Build.A.Transaction
-            .WithNonce((UInt256)nonce)
+            .WithNonce(nonce)
             .WithGasLimit(gasLimit);
 
         if (contractCreation)
@@ -1282,7 +1279,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void SpendGas(long gas)
+        public void SpendGas(ulong gas)
         {
         }
 
@@ -1331,10 +1328,6 @@ public class BlockProcessorTests
         public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
         {
         }
-
-        public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
-        {
-        }
     }
 
     private sealed class BalIndexRecordingTransactionProcessorAdapter(
@@ -1347,7 +1340,7 @@ public class BlockProcessorTests
             int txIndex = (int)transaction.Nonce;
             balIndexes.Add((txIndex, balIndex));
 
-            long gasUsed = 21_000 + txIndex;
+            ulong gasUsed = 21_000ul + (ulong)txIndex;
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 
@@ -1439,7 +1432,7 @@ public class BlockProcessorTests
         {
             public override bool IsTracingInstructions => true;
 
-            public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+            public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
                 blockTracer.RecordOpcode();
         }
     }

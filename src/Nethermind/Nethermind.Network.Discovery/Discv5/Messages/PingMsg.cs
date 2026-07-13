@@ -12,8 +12,8 @@ internal sealed record PingMsg : Discv5Message
     {
     }
 
-    public PingMsg(RequestId requestId, ulong enrSequence, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public PingMsg(in RequestId requestId, ulong enrSequence, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
         => EnrSequence = enrSequence;
 
     public override MessageType MessageType => MessageType.Ping;

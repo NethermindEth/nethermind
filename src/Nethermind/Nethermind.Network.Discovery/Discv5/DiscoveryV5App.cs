@@ -39,25 +39,29 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     public DiscoveryV5App(
         ILifetimeScope rootScope,
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         IIPResolver ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
         IProcessExitSource processExitSource,
         ILogManager logManager,
         Action<ContainerBuilder>? configureDiscv5Services = null)
-        : base("discv5", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
+        : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
-        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(ipResolver.ExternalIp);
+        IPAddress externalIp = enode.HostIp;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
-        List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig);
+        bool useDefaultBootnodes = ShouldUseDefaultDiscv5Bootnodes(externalIp, discoveryConfig);
+        List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig, useDefaultBootnodes);
         ITimestamper timestamper = rootScope.ResolveOptional<ITimestamper>() ?? Timestamper.Default;
 
         _discv5Services = rootScope.BeginLifetimeScope(builder =>
         {
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
+            Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
             builder
-                .AddModule(new Discv5KademliaModule(nodeKey.PublicKey, bootNodes))
+                .AddModule(new Discv5KademliaModule(currentNode, bootNodes))
                 .AddSingleton<DiscV5Services>();
 
             configureDiscv5Services?.Invoke(builder);
@@ -84,6 +88,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     internal List<Node> CreateBootNodes(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig)
+        => CreateBootNodes(networkConfig, discoveryConfig, discoveryConfig.UseDefaultDiscv5Bootnodes);
+
+    private List<Node> CreateBootNodes(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, bool useDefaultBootnodes)
     {
         List<Node> bootNodes = [];
         using PooledSet<Hash256> seen = new(networkConfig.Bootnodes.Length);
@@ -96,7 +103,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             configuredStats.Record(AddBootNode(bootNodes, seen, configuredBootnodes[i]));
         }
 
-        if (discoveryConfig.UseDefaultDiscv5Bootnodes)
+        if (useDefaultBootnodes)
         {
             string[] defaultBootnodes = GetDefaultBootnodes();
             for (int i = 0; i < defaultBootnodes.Length; i++)
@@ -107,7 +114,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         if (Logger.IsInfo)
         {
-            Logger.Info($"Discv5 bootnodes accepted: {bootNodes.Count} ({configuredStats.Added}/{configuredStats.Total} configured, {defaultStats.Added}/{defaultStats.Total} default, duplicates: {configuredStats.Duplicates + defaultStats.Duplicates}, skipped: {configuredStats.Skipped + defaultStats.Skipped}, use default discv5 bootnodes: {discoveryConfig.UseDefaultDiscv5Bootnodes}).");
+            Logger.Info($"Discv5 bootnodes accepted: {bootNodes.Count} ({configuredStats.Added}/{configuredStats.Total} configured, {defaultStats.Added}/{defaultStats.Total} default, duplicates: {configuredStats.Duplicates + defaultStats.Duplicates}, skipped: {configuredStats.Skipped + defaultStats.Skipped}, use default discv5 bootnodes: {useDefaultBootnodes}).");
         }
 
         if (bootNodes.Count == 0 && Logger.IsWarn)
@@ -120,14 +127,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     public override void AddNodeToDiscovery(Node node)
     {
-        if (string.IsNullOrEmpty(node.Enr))
+        if (node.Enr is not { Signature: not null } record)
         {
             return;
         }
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(node.Enr);
             if (!TryGetAcceptableNodeFromEnr(record, out Node? enrNode))
             {
                 return;
@@ -154,19 +160,14 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return AddBootNode(bootNodes, seen, networkNode.Enr);
         }
 
-        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.DiscoveryPort);
+        Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port, networkNode.DiscoveryPort);
         return AddBootNode(bootNodes, seen, node);
     }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
-    {
-        if (TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
-        {
-            return AddBootNode(bootNodes, seen, node);
-        }
-
-        return BootNodeAddResult.Skipped;
-    }
+        => TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node)
+            ? AddBootNode(bootNodes, seen, node)
+            : BootNodeAddResult.Skipped;
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {
@@ -178,7 +179,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         node.IsBootnode = true;
         bootNodes.Add(node);
-        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {!string.IsNullOrEmpty(node.Enr)}.");
+        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {node.Enr is not null}.");
         return BootNodeAddResult.Added;
     }
 
@@ -194,7 +195,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
-        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.Address.Address, _allowNonRoutableEnrs))
+        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.DiscoveryAddress.Address, _allowNonRoutableEnrs))
         {
             node = enrNode;
             return true;
@@ -212,17 +213,17 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             return false;
         }
 
-        if (IPAddressClassifier.IsMulticast(ipAddress))
+        if (ipAddress.IsMulticast)
         {
             return false;
         }
 
-        if (IPAddressClassifier.IsSpecialUseAddress(ipAddress))
+        if (ipAddress.IsSpecialUseAddress)
         {
             return false;
         }
 
-        return allowNonRoutable || !IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+        return allowNonRoutable || !ipAddress.IsLoopbackOrPrivateOrLinkLocal;
     }
 
     internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
@@ -231,10 +232,17 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     internal static bool IsConsensusOnlyNodeRecord(NodeRecord enr)
         => enr.HasEntry(EnrContentKey.Eth2) && !enr.HasEntry(EnrContentKey.Eth);
 
+    internal static bool ShouldUseDefaultDiscv5Bootnodes(IPAddress externalIp, IDiscoveryConfig discoveryConfig)
+        => discoveryConfig.UseDefaultDiscv5Bootnodes && !IsKnownPrivateDiscoveryAddress(externalIp);
+
     private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
+        => IsKnownPrivateDiscoveryAddress(externalIp);
+
+    private static bool IsKnownPrivateDiscoveryAddress(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)
+            && !IPAddress.IPv6Any.Equals(externalIp)
             && !IPAddress.None.Equals(externalIp)
-            && IPAddressClassifier.IsLoopbackOrPrivateOrLinkLocal(externalIp);
+            && externalIp.IsLoopbackOrPrivateOrLinkLocal;
 
     public override void InitializeChannel(IChannel channel)
     {
@@ -302,7 +310,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         Skipped
     }
 
-    private sealed class BootNodeStats
+    private struct BootNodeStats
     {
         public int Total { get; private set; }
         public int Added { get; private set; }

@@ -4,6 +4,9 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Evm;
+using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -45,29 +48,30 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WriteNumberValue((byte)value.OpcodeRaw);
 
         writer.WritePropertyName("gas");
-        writer.WriteStringValue($"0x{value.Gas:x}");
+        HexWriter.WriteUlongHexStringValue(writer, value.Gas);
 
         writer.WritePropertyName("gasCost");
-        writer.WriteStringValue($"0x{value.GasCost:x}");
+        HexWriter.WriteUlongHexStringValue(writer, value.GasCost);
 
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
 
-        if ((value.Memory?.Length ?? 0) != 0)
+        if (value.Memory is { Length: > 0 } mem)
         {
-            string memory = string.Concat(value.Memory);
-
             writer.WritePropertyName("memory");
-            writer.WriteStringValue($"0x{memory}");
+            WriteMemoryBlob(writer, mem);
         }
 
-        if (value.Stack is not null)
+        if (value.Stack is { Length: > 0 } stack)
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
-            foreach (string s in value.Stack)
-                writer.WriteStringValue(s);
+            ReadOnlySpan<byte> stackSpan = stack.Span;
+            for (int offset = 0; offset < stackSpan.Length; offset += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer,
+                    new UInt256(stackSpan.Slice(offset, EvmStack.WordSize), isBigEndian: true),
+                    zeroPadded: false, addHexPrefix: true);
 
             writer.WriteEndArray();
         }
@@ -99,4 +103,8 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.Flush();
         writer.Reset();
     }
+
+    // The file format renders memory as a single contiguous 0x-prefixed hex blob, not a per-word array.
+    private static void WriteMemoryBlob(Utf8JsonWriter writer, ReadOnlyMemory<byte> memory) =>
+        HexWriter.WriteHexStringValue(writer, memory.Span);
 }

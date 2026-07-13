@@ -51,6 +51,11 @@ public class KademliaConfig<TNode>
     public TimeSpan RefreshPingTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Delay before pinging the oldest node in a full bucket to give incoming traffic a chance to refresh it first.
+    /// </summary>
+    public TimeSpan RefreshPingDelay { get; set; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
     /// Starting boot nodes.
     /// </summary>
     public IReadOnlyList<TNode> BootNodes { get; set; } = [];

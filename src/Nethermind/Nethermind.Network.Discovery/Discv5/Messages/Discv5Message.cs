@@ -14,7 +14,7 @@ internal abstract record Discv5Message : IDisposable
     private ArrayPoolSpan<byte> _owner;
     private bool _hasOwner;
 
-    protected Discv5Message(RequestId requestId, ArrayPoolSpan<byte>? owner = null)
+    protected Discv5Message(in RequestId requestId, ArrayPoolSpan<byte>? owner = null)
     {
         RequestId = requestId;
         if (owner is { } ownerValue)

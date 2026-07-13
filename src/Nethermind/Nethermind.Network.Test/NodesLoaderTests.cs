@@ -3,11 +3,12 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -21,7 +22,7 @@ public class NodesLoaderTests
     private NetworkConfig _networkConfig;
     private INodeStatsManager _statsManager;
     private INetworkStorage _peerStorage;
-    private IRlpxHost _rlpxHost;
+    private IEnode _enode;
     private NodesLoader _loader;
 
     [SetUp]
@@ -30,12 +31,12 @@ public class NodesLoaderTests
         _networkConfig = new NetworkConfig();
         _statsManager = Substitute.For<INodeStatsManager>();
         _peerStorage = Substitute.For<INetworkStorage>();
-        _rlpxHost = Substitute.For<IRlpxHost>();
+        _enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
         _loader = CreateLoader();
     }
 
     private NodesLoader CreateLoader(bool loadBootnodesAsPeerCandidates = true) =>
-        new(_networkConfig, _statsManager, _peerStorage, _rlpxHost, LimboLogs.Instance,
+        new(_networkConfig, _statsManager, _peerStorage, _enode, LimboLogs.Instance,
             new NodesLoaderOptions(LoadBootnodesAsPeerCandidates: loadBootnodesAsPeerCandidates));
 
     [Test]

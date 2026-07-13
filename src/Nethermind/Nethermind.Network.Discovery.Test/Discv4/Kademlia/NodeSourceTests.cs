@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -13,11 +14,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Kademlia;
+using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
@@ -26,8 +30,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
     [TestFixture]
     public class NodeSourceTests
     {
+        private const uint CompatibleForkHash = 0x11111111;
+        private const uint IncompatibleForkHash = 0x22222222;
+
         private TestKademlia _kademlia = null!;
-        private IIteratorNodeLookup<PublicKey, Node> _lookup = null!;
+        private TestKademliaDiscovery _kademliaDiscovery = null!;
         private IKademliaAdapter _discv4Adapter = null!;
         private NodeSource _nodeSource = null!;
         private NodeSession _nodeSession = null!;
@@ -35,12 +42,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private ManualTimestamper _timestamper = null!;
         private DiscoveryConfig _discoveryConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
+        private IForkInfo _forkInfo = null!;
 
         [SetUp]
         public void Setup()
         {
             _kademlia = new();
-            _lookup = Substitute.For<IIteratorNodeLookup<PublicKey, Node>>();
+            _kademliaDiscovery = new();
             _discv4Adapter = Substitute.For<IKademliaAdapter>();
 
             _discoveryConfig = new DiscoveryConfig
@@ -49,7 +57,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             };
             _kademliaConfig = new()
             {
-                CurrentNodeId = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+                CurrentNodeId = new Node(TestItem.PublicKeyD, "127.0.0.1", 30303),
                 KSize = 1
             };
 
@@ -60,12 +68,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _nodeSession = new(_nodeStats, _timestamper);
             _discv4Adapter.GetSession(Arg.Any<Node>()).Returns(_nodeSession);
 
+            _forkInfo = Substitute.For<IForkInfo>();
+            _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
+
             _nodeSource = new NodeSource(
                 _kademlia,
-                _lookup,
+                _kademliaDiscovery,
                 _discv4Adapter,
                 _discoveryConfig,
                 _kademliaConfig,
+                _forkInfo,
                 LimboLogs.Instance);
         }
 
@@ -74,26 +86,25 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task DiscoverNodes_should_use_lookup_to_find_nodes(CancellationToken token)
+        public async Task DiscoverNodes_should_use_kademlia_discovery_to_find_nodes(CancellationToken token)
         {
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
             _nodeSession.OnPongReceived(node1.Address);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node1, node2));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node1, node2);
             _discv4Adapter.Ping(node1, Arg.Any<CancellationToken>())
                 .Returns(true);
             _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
                 .Returns(true);
 
-            IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node1));
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
-            _lookup.Received().Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>());
+            Assert.That(_kademliaDiscovery.DiscoverNodesCalls, Is.GreaterThanOrEqualTo(1));
         }
 
         [Test]
@@ -104,11 +115,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _discv4Adapter.Ping(node, Arg.Any<CancellationToken>())
                 .Returns(true);
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             // Assert - Verify that ping was called
@@ -135,12 +145,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             // Set up session2 to have received a pong
             session2.OnPongReceived(node2.Address);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node1, node2));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node1, node2);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
@@ -162,12 +171,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _discv4Adapter.Ping(node2, Arg.Any<CancellationToken>())
                 .Returns(true);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node1, node2));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node1, node2);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             Assert.That(enumerator.Current, Is.EqualTo(node2));
 
@@ -181,6 +189,36 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_skip_nodes_with_incompatible_fork_id(CancellationToken token)
+        {
+            Node incompatibleNode = CreateNodeWithForkId(TestItem.PrivateKeys[0], "192.168.1.1", IncompatibleForkHash);
+            Node compatibleNode = CreateNodeWithForkId(TestItem.PrivateKeys[1], "192.168.1.2", CompatibleForkHash);
+            _nodeSession.OnPongReceived(incompatibleNode.Address);
+
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(incompatibleNode, compatibleNode);
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(compatibleNode));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task DiscoverNodes_should_keep_nodes_when_fork_id_check_fails(CancellationToken token)
+        {
+            Node node = CreateNodeWithForkId(TestItem.PrivateKeys[0], "192.168.1.1", IncompatibleForkHash);
+            _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Throws(new InvalidOperationException("Fork info unavailable"));
+            _nodeSession.OnPongReceived(node.Address);
+
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node);
+
+            await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
+            await enumerator.MoveNextAsync();
+            Assert.That(enumerator.Current, Is.EqualTo(node));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task DiscoverNodes_should_emit_nodes_from_kademlia_events(CancellationToken token)
         {
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
@@ -188,12 +226,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             _nodeSession.OnPongReceived(node1.Address);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node1));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node1);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             _kademlia.RaiseNodeAdded(node2);
@@ -212,13 +249,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             _nodeSession.OnPongReceived(node.Address);
 
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node, node));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node, node);
 
             using AutoCancelTokenSource shortTimeout = token.CreateChildTokenSource(TimeSpan.FromMilliseconds(100));
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(shortTimeout.Token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
 
             Assert.ThrowsAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync().AsTask());
@@ -226,34 +262,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task DiscoverNodes_should_use_multiple_concurrent_discovery_jobs(CancellationToken token)
+        public async Task DiscoverNodes_should_pass_concurrent_discovery_jobs_to_kademlia_discovery(CancellationToken token)
         {
             Node node1 = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             Node node2 = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
 
             _nodeSession.OnPongReceived(node1.Address);
 
-            // Set up the lookup to return different nodes for different calls
-            int callCount = 0;
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(_ =>
-                {
-                    callCount++;
-                    return callCount == 1
-                        ? CreateAsyncEnumerable(node1)
-                        : CreateAsyncEnumerable(node2);
-                });
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node1, node2);
 
             IAsyncEnumerable<Node> discoveryEnumerable = _nodeSource.DiscoverNodes(token);
 
-            IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator();
+            await using IAsyncEnumerator<Node> enumerator = discoveryEnumerable.GetAsyncEnumerator(token);
             await enumerator.MoveNextAsync();
             await enumerator.MoveNextAsync();
 
-            // Assert - Verify that lookup was called at least twice
-            _lookup.Received(2).Lookup(
-                Arg.Any<PublicKey>(),
-                Arg.Any<CancellationToken>());
+            Assert.That(_kademliaDiscovery.ConcurrentDiscoveryJobs, Is.EqualTo(_discoveryConfig.ConcurrentDiscoveryJob));
         }
 
         [Test]
@@ -263,8 +287,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _discoveryConfig.ConcurrentDiscoveryJob = 1;
             Node node = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
             _nodeSession.OnPongReceived(node.Address);
-            _lookup.Lookup(Arg.Any<PublicKey>(), Arg.Any<CancellationToken>())
-                .Returns(CreateAsyncEnumerable(node));
+            _kademliaDiscovery.DiscoverNodesHandler = (_, _, _) => CreateAsyncEnumerable(node);
 
             List<Node> nodes = await _nodeSource.DiscoverNodes(CancellationToken.None).Take(1).ToListAsync(token);
 
@@ -325,6 +348,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             return new Node(new PublicKey(publicKey), $"192.168.{index / 256}.{index % 256}", 30303);
         }
 
+        private static Node CreateNodeWithForkId(PrivateKey privateKey, string host, uint forkHash) =>
+            new(privateKey.PublicKey, host, 30303)
+            {
+                Enr = TestEnrBuilder.BuildSigned(
+                    privateKey,
+                    IPAddress.Parse(host),
+                    configureExtras: enr => enr.SetEntry(new EthEntry(new ForkId(forkHash, 0).HashBytes, 0)))
+            };
+
         private sealed class TestKademlia : IKademlia<PublicKey, Node>
         {
             public event EventHandler<Node>? OnNodeAdded;
@@ -343,11 +375,31 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             public Task<Node[]> LookupNodesClosest(PublicKey key, CancellationToken token, int? k = null) =>
                 Task.FromResult(Array.Empty<Node>());
 
+            public IAsyncEnumerable<Node> LookupNodes(PublicKey key, CancellationToken token, int? maxResults = null) =>
+                throw new NotSupportedException();
+
             public Node[] GetKNeighbour(PublicKey target, Node? excluding = null, bool excludeSelf = false) => [];
 
             public Node[] GetAllAtDistance(int distance) => [];
 
             public IEnumerable<Node> IterateNodes() => [];
+        }
+
+        private sealed class TestKademliaDiscovery : IKademliaDiscovery<PublicKey, Node>
+        {
+            public int DiscoverNodesCalls { get; private set; }
+
+            public int ConcurrentDiscoveryJobs { get; private set; }
+
+            public Func<int, int, CancellationToken, IAsyncEnumerable<Node>> DiscoverNodesHandler { private get; set; } =
+                (_, _, _) => CreateAsyncEnumerable<Node>();
+
+            public IAsyncEnumerable<Node> DiscoverNodes(int concurrentDiscoveryJobs, int lookupResultLimit, CancellationToken token)
+            {
+                DiscoverNodesCalls++;
+                ConcurrentDiscoveryJobs = concurrentDiscoveryJobs;
+                return DiscoverNodesHandler(concurrentDiscoveryJobs, lookupResultLimit, token);
+            }
         }
     }
 }

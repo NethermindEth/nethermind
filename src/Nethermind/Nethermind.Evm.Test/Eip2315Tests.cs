@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Test
 {
     public class Eip2315Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [TestCase("0x60045e005c5d", Description = "Simple routine")]

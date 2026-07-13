@@ -37,13 +37,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 
         builder
             // Enr discovery uses DNS to get some bootnodes.
-            .AddSingleton<EnrDiscovery, IEthereumEcdsa, ILogManager>((ethereumEcdsa, logManager) =>
-            {
-                // I do not use the key here -> API is broken - no sense to use the node signer here
-                NodeRecordSigner nodeRecordSigner = new(ethereumEcdsa, new PrivateKeyGenerator().Generate());
-                EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-                return new EnrDiscovery(enrRecordParser, networkConfig, logManager); // initialize with a proper network
-            })
+            .AddSingleton<EnrDiscovery, IEthereumEcdsa, IForkInfo, ILogManager>((ethereumEcdsa, forkInfo, logManager) =>
+                CreateEnrDiscovery(ethereumEcdsa, forkInfo, logManager))
 
             // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.
             .AddSingleton<NodeSourceToDiscV4Feeder>()
@@ -57,6 +52,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 new TrustedNodesManager(initConfig.TrustedNodesPath.GetApplicationResourcePath(initConfig.DataDir), logManager))
 
             .Bind<INodeSource, IStaticNodesManager>()
+            .Bind<INodeSource, ITrustedNodesManager>()
 
             // Used by NodesLoader, and ProtocolsManager which add entry on sync peer connected
             .AddNetworkStorage(DbNames.PeersDb, DbNames.PeersDb)
@@ -111,6 +107,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
+                .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)
 
                 ;
 
@@ -128,5 +125,12 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             builder.Bind<INodeSource, IDiscoveryApp>();
             if (networkConfig.EnableEnrDiscovery) builder.Bind<INodeSource, EnrDiscovery>();
         }
+    }
+
+    private EnrDiscovery CreateEnrDiscovery(IEthereumEcdsa ethereumEcdsa, IForkInfo forkInfo, ILogManager logManager)
+    {
+        NodeRecordSigner nodeRecordSigner = new(ethereumEcdsa, new PrivateKeyGenerator().Generate());
+        EnrRecordParser enrRecordParser = new(nodeRecordSigner);
+        return new EnrDiscovery(enrRecordParser, networkConfig, forkInfo, logManager);
     }
 }

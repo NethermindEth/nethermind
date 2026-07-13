@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 
@@ -21,10 +22,32 @@ public static class StatelessExecutor
 {
     public static byte[] Execute(ReadOnlySpan<byte> data)
     {
-        StatelessPayload payload = InputDecoder.Decode(data);
+        byte[] output = StatelessValidationResult.Encode(_defaultFailureResult);
+        FailureOutput = output;
+        StatelessPayload payload;
+
+        try
+        {
+            payload = InputDecoder.Decode(data);
+        }
+        catch (Exception ex)
+        {
+            Debug.Fail(ex.Message);
+            return output;
+        }
+
         ReadOnlySpan<SszPublicKeys> publicKeys = payload.PublicKeys.Span;
         Transaction[] transactions = payload.Block.Transactions;
+        StatelessValidationResult result = new()
+        {
+            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
+            IsSuccess = false,
+            ChainConfig = payload.ChainConfig
+        };
+        output = StatelessValidationResult.Encode(result);
         bool success = false;
+
+        FailureOutput = output;
 
         if (transactions.Length == publicKeys.Length)
         {
@@ -49,14 +72,13 @@ public static class StatelessExecutor
             }
         }
 
-        StatelessValidationResult result = new()
+        if (success)
         {
-            NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
-            IsSuccess = success,
-            ChainConfig = payload.ChainConfig
-        };
+            result.IsSuccess = true;
+            output = StatelessValidationResult.Encode(result);
+        }
 
-        return StatelessValidationResult.Encode(result);
+        return output;
     }
 
     public static bool Execute(Block suggestedBlock, Witness witness, ISpecProvider specProvider)
@@ -119,19 +141,49 @@ public static class StatelessExecutor
         return true;
     }
 
+    /// <summary>
+    /// Gets the encoded failure result of the current execution. Intended for zkVM guests.
+    /// </summary>
+    /// <remarks>
+    /// As there's no exception unwinding in the zkVM runtime, an exception thrown during execution
+    /// never reaches the catch block in <see cref="Execute(ReadOnlySpan{byte})"/>;
+    /// instead, the runtime invokes the guest's <c>ZkvmThrow</c> callback.
+    /// The failure result is therefore encoded up front, before execution begins, so the
+    /// callback can access it.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
+
+    private static readonly StatelessValidationResult _defaultFailureResult = new()
+    {
+        NewPayloadRequestRoot = Hash256.Zero,
+        IsSuccess = false,
+        ChainConfig = new ChainConfig
+        {
+            ChainId = 0,
+            ActiveFork = new ForkConfig
+            {
+                Fork = 0,
+                Activation = new() { BlockNumber = [], Timestamp = [] },
+                BlobSchedule = []
+            }
+        }
+    };
+
     private static ISpecProvider GetSpecProvider(ChainConfig chainConfig)
     {
-        if (!ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider))
-            throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
 
-        // Empty arrays mean ActiveFork was omitted — use the base provider as-is.
+        // No ActiveFork: nothing to pin, so use the chain's own schedule; an unknown chain id can't proceed.
         if (chainConfig.ActiveFork.Fork == 0 &&
             chainConfig.ActiveFork.Activation.BlockNumber.Length == 0 &&
             chainConfig.ActiveFork.Activation.Timestamp.Length == 0)
         {
-            return baseProvider;
+            return baseProvider ?? throw new ArgumentException($"Unknown chain id: {chainConfig.ChainId}", nameof(chainConfig));
         }
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ActiveFork);
+        // ActiveFork pins the spec by name on any compatible schedule; unknown chains (e.g. devnets) use Mainnet rules.
+        baseProvider ??= MainnetSpecProvider.Instance;
+
+        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork);
     }
 }

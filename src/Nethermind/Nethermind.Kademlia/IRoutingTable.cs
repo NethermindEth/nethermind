@@ -12,7 +12,7 @@ public interface IRoutingTable<TNode, TKadKey>
     TNode[] GetKNearestNeighbour(TKadKey hash, bool excludeSelf = false);
     TNode[] GetKNearestNeighbourExcluding(TKadKey hash, TKadKey exclude, bool excludeSelf = false);
     TNode[] GetAllAtDistance(int i);
-    IEnumerable<(TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket)> IterateBuckets();
+    IEnumerable<RoutingTableBucket<TNode, TKadKey>> IterateBuckets();
     TNode? GetByHash(TKadKey nodeId);
     void LogDebugInfo();
     event EventHandler<TNode>? OnNodeAdded;

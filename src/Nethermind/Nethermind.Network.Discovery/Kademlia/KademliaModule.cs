@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Core;
 using Nethermind.Kademlia;
 
@@ -33,11 +35,12 @@ public class KademliaModule<TKey, TNode, TKadKey> : Module
         base.Load(builder);
 
         builder
+            .AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance)
             .AddSingleton<IKademlia<TKey, TNode>, Kademlia<TKey, TNode, TKadKey>>()
+            .AddSingleton<IKademliaDiscovery<TKey, TNode>, RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>()
             .AddSingleton<ILookupAlgo<TNode, TKadKey>, LookupKNearestNeighbour<TKey, TNode, TKadKey>>()
             .AddSingleton<INodeHashProvider<TNode, TKadKey>, FromKeyNodeHashProvider<TKey, TNode, TKadKey>>()
             .AddSingleton<IRoutingTable<TNode, TKadKey>, KBucketTree<TNode, TKadKey>>()
-            .AddSingleton<IIteratorNodeLookup<TKey, TNode>, IteratorNodeLookup<TKey, TNode, TKadKey>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode, TKadKey>>();
     }
 }

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
@@ -14,18 +15,28 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     IRoutingTable<TNode, TKadKey> routingTable,
     INodeHashProvider<TNode, TKadKey> nodeHashProvider,
     IKademliaMessageSender<TKey, TNode> kademliaMessageSender,
-    ILogManager? logManager = null
+    ILoggerFactory loggerFactory
 ) : INodeHealthTracker<TNode>, IDisposable, IAsyncDisposable
     where TNode : notnull
     where TKadKey : notnull
 {
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
+    public NodeHealthTracker(
+        KademliaConfig<TNode> config,
+        IRoutingTable<TNode, TKadKey> routingTable,
+        INodeHashProvider<TNode, TKadKey> nodeHashProvider,
+        IKademliaMessageSender<TKey, TNode> kademliaMessageSender)
+        : this(config, routingTable, nodeHashProvider, kademliaMessageSender, NullLoggerFactory.Instance)
+    {
+    }
+
+    private readonly ILogger _logger = loggerFactory.CreateLogger<NodeHealthTracker<TKey, TNode, TKadKey>>();
 
     private readonly ConcurrentDictionary<TKadKey, bool> _isRefreshing = new();
     private readonly ConcurrentDictionary<TKadKey, Task> _refreshTasks = new();
     private readonly PeerFailureCache _peerFailures = new(1024);
     private readonly TKadKey _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
     private readonly TimeSpan _refreshPingTimeout = config.RefreshPingTimeout;
+    private readonly TimeSpan _refreshPingDelay = config.RefreshPingDelay;
     private readonly CancellationTokenSource _refreshCancellation = new();
 
     private int _disposed;
@@ -52,7 +63,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         try
         {
             // First, we delay in case any new message come and clear the refresh task, so we don't need to send any ping.
-            await Task.Delay(100, token);
+            await Task.Delay(_refreshPingDelay, token);
             if (!_isRefreshing.ContainsKey(nodeHash))
             {
                 return;
@@ -73,7 +84,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             catch (Exception e)
             {
                 OnRequestFailed(toRefresh);
-                if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}: {e}");
+                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Error while refreshing node {toRefresh}: {e}");
             }
 
             if (_isRefreshing.TryRemove(nodeHash, out _))
@@ -153,7 +164,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             completed = true;
             if (!HasOnlyCancellationExceptions(e))
             {
-                if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while disposing node health tracker: {e}");
             }
         }
 
@@ -184,7 +195,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         catch (Exception e)
         {
             completed = true;
-            if (_logger.IsDebug) _logger.Debug($"Error while disposing node health tracker: {e}");
+            if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Error while disposing node health tracker: {e}");
         }
 
         if (completed)

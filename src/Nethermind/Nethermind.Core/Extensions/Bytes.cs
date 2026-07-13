@@ -1041,7 +1041,7 @@ namespace Nethermind.Core.Extensions
 
         private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            if (oddMod == 0 && BitConverter.IsLittleEndian)
+            if (oddMod == 0)
             {
                 if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
                 {

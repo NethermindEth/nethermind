@@ -3,7 +3,7 @@
 
 using System.Diagnostics;
 using Collections.Pooled;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Kademlia;
 
@@ -41,7 +41,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         ILookupAlgo<TNode, TKadKey> lookupAlgo,
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config,
-        ILogManager? logManager = null,
+        ILoggerFactory loggerFactory,
         TimeProvider? timeProvider = null)
     {
         _keyOperator = keyOperator;
@@ -49,7 +49,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _nodeHealthTracker = nodeHealthTracker;
-        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<Kademlia<TKey, TNode, TKadKey>>();
+        _logger = loggerFactory.CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
@@ -82,17 +82,30 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         return _lookupAlgo.Lookup(
             keyHash,
             k ?? _kSize,
-            async (nextNode, token) =>
-            {
-                if (SameAsSelf(nextNode))
-                {
-                    return _routingTable.GetKNearestNeighbour(keyHash);
-                }
-
-                return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
-            },
+            (nextNode, token) => FindNeighbours(key, keyHash, nextNode, token),
             token
         );
+    }
+
+    public IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null)
+    {
+        TKadKey keyHash = _keyOperator.GetKeyHash(key);
+        return _lookupAlgo.LookupNodes(
+            keyHash,
+            maxResults ?? _kSize,
+            (nextNode, token) => FindNeighbours(key, keyHash, nextNode, token),
+            token
+        );
+    }
+
+    private async Task<TNode[]?> FindNeighbours(TKey key, TKadKey keyHash, TNode nextNode, CancellationToken token)
+    {
+        if (SameAsSelf(nextNode))
+        {
+            return _routingTable.GetKNearestNeighbour(keyHash);
+        }
+
+        return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
     }
 
     public async Task Run(CancellationToken token)
@@ -109,7 +122,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Bootstrap iteration failed.", e);
+                _logger.LogError(e, "Bootstrap iteration failed.");
             }
 
             await Task.Delay(_refreshInterval, token);
@@ -130,7 +143,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
                 // Should be added on Pong.
                 if (await _kademliaMessageSender.Ping(node, token))
                 {
-                    System.Threading.Interlocked.Increment(ref onlineBootNodes);
+                    Interlocked.Increment(ref onlineBootNodes);
                 }
             }
             catch (OperationCanceledException)
@@ -139,14 +152,11 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Bootnode ping failed for {node}: {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootnode ping failed for {node}: {e}");
             }
         });
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Online bootnodes: {onlineBootNodes}");
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Online bootnodes: {onlineBootNodes}");
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);
@@ -156,27 +166,24 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         // Refresh stale non-empty buckets one by one. Protocols whose wire lookup target cannot be synthesized from a
         // bucket prefix may return a best-effort random lookup key here; discv4 public keys are one example.
         using PooledSet<TKadKey> activeBucketPrefixes = new();
-        foreach ((TKadKey Prefix, int Distance, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
+        foreach (RoutingTableBucket<TNode, TKadKey> bucket in _routingTable.IterateBuckets())
         {
-            activeBucketPrefixes.Add(Prefix);
-            if (!ShouldRefreshBucket(Prefix, Bucket)) continue;
+            activeBucketPrefixes.Add(bucket.Prefix);
+            if (!ShouldRefreshBucket(bucket.Prefix, bucket.Count)) continue;
 
-            TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(Prefix, Distance);
+            TKey? keyToLookup = _keyOperator.CreateRandomKeyAtDistance(bucket.Prefix, bucket.Distance);
             await LookupNodesClosest(keyToLookup, token);
         }
 
         PruneLastBucketRefreshTicks(activeBucketPrefixes);
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Bootstrap completed. Took {sw.Elapsed}.");
-            _routingTable.LogDebugInfo();
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootstrap completed. Took {sw.Elapsed}.");
+        if (_logger.IsEnabled(LogLevel.Debug)) _routingTable.LogDebugInfo();
     }
 
-    private bool ShouldRefreshBucket(TKadKey prefix, KBucket<TNode, TKadKey> bucket)
+    private bool ShouldRefreshBucket(TKadKey prefix, int bucketCount)
     {
-        if (bucket.Count == 0) return false;
+        if (bucketCount == 0) return false;
 
         long nowTicks = _timeProvider.GetUtcNow().Ticks;
         lock (_lastBucketRefreshLock)
@@ -233,9 +240,9 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
     public IEnumerable<TNode> IterateNodes()
     {
-        foreach ((TKadKey _, int _, KBucket<TNode, TKadKey> Bucket) in _routingTable.IterateBuckets())
+        foreach (RoutingTableBucket<TNode, TKadKey> bucket in _routingTable.IterateBuckets())
         {
-            foreach (TNode node in Bucket.GetAll())
+            foreach (TNode node in bucket.Nodes)
             {
                 yield return node;
             }

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
@@ -42,12 +44,41 @@ namespace Nethermind.Network.Discovery.Test
             byte[] data = [1, 2, 3];
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            await _handler.SendAsync(data, to);
+            await _handler.SendAsync(data, to, CancellationToken.None);
 
             DatagramPacket packet = _channel.ReadOutbound<DatagramPacket>();
-            Assert.That(packet, Is.Not.Null);
-            Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(data));
-            Assert.That(packet.Recipient, Is.EqualTo(to));
+            try
+            {
+                Assert.That(packet, Is.Not.Null);
+                Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(data));
+                Assert.That(packet.Recipient, Is.EqualTo(to));
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(packet);
+            }
+        }
+
+        [Test]
+        public void DoesNotSendWhenTokenIsAlreadyCanceled()
+        {
+            byte[] data = [1, 2, 3];
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            using CancellationTokenSource cancellationSource = new();
+            cancellationSource.Cancel();
+
+            Assert.ThrowsAsync<OperationCanceledException>(
+                async () => await _handler.SendAsync(data, to, cancellationSource.Token));
+
+            DatagramPacket? packet = _channel.ReadOutbound<DatagramPacket>();
+            try
+            {
+                Assert.That(packet, Is.Null);
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(packet);
+            }
         }
 
         [Test]

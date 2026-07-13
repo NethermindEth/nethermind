@@ -48,14 +48,16 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
         }
     }
 
-    public async Task SendAsync(byte[] data, IPEndPoint destination)
+    public async Task SendAsync(byte[] data, IPEndPoint destination, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+
         DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
 
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
-            await Channel.WriteAndFlushAsync(packet);
+            await Channel.WriteAndFlushAsync(packet).WaitAsync(token);
         }
         catch (SocketException exception)
         {

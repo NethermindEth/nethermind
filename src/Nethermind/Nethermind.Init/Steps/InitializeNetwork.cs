@@ -4,22 +4,18 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery.Discv4;
-using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Stats;
-using Nethermind.Stats.Model;
+using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 
@@ -33,63 +29,76 @@ public static class NettyMemoryEstimator
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
 
-    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
+    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
-    typeof(ResolveIps),
-    typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
 #pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
 {
-    protected readonly IApiWithNetwork _api;
-    protected readonly INodeStatsManager NodeStatsManager;
     protected readonly ISynchronizer _synchronizer;
     protected readonly ISyncPeerPool _syncPeerPool;
     protected readonly IDiscoveryApp _discoveryApp;
     protected readonly Lazy<IPeerPool> _peerPool;
-    protected readonly INetworkStorage _peerStorage;
     protected readonly INetworkConfig _networkConfig;
+
+    private readonly IBlockTree _blockTree;
+    private readonly IRlpxHost _rlpxPeer;
+    private readonly IPeerManager _peerManager;
+    private readonly ISessionMonitor _sessionMonitor;
+    private readonly IStaticNodesManager _staticNodesManager;
+    private readonly ITrustedNodesManager _trustedNodesManager;
+    private readonly IEnode _enode;
+    private readonly Lazy<IProtocolsManager> _protocolsManager;
 
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
-    protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
+    private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
 
     public InitializeNetwork(
-        INethermindApi api,
-        INodeStatsManager nodeStatsManager,
         ISyncServer _, // Need to be resolved at least once
         ISynchronizer synchronizer,
         ISyncPeerPool syncPeerPool,
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-        IProtocolHandlerFactory[] protocolHandlerFactories,
+        IBlockTree blockTree,
+        IRlpxHost rlpxPeer,
+        IPeerManager peerManager,
+        ISessionMonitor sessionMonitor,
+        IStaticNodesManager staticNodesManager,
+        ITrustedNodesManager trustedNodesManager,
+        IEnode enode,
+        Lazy<IProtocolsManager> protocolsManager,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
         ILogManager logManager
     )
     {
-        _api = api;
-        NodeStatsManager = nodeStatsManager;
         _synchronizer = synchronizer;
         _syncPeerPool = syncPeerPool;
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
-        _peerStorage = peerStorage;
-        _protocolHandlerFactories = protocolHandlerFactories;
+        _blockTree = blockTree;
+        _rlpxPeer = rlpxPeer;
+        _peerManager = peerManager;
+        _sessionMonitor = sessionMonitor;
+        _staticNodesManager = staticNodesManager;
+        _trustedNodesManager = trustedNodesManager;
+        _enode = enode;
+        _protocolsManager = protocolsManager;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
+        _logManager = logManager;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -98,8 +107,6 @@ public class InitializeNetwork : IStep
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
         if (_syncConfig.StaticSnapPivot)
         {
             if (!_syncConfig.SnapSync)
@@ -115,7 +122,7 @@ public class InitializeNetwork : IStep
 
         if (NetworkDiagTracer.IsEnabled)
         {
-            NetworkDiagTracer.Start(_api.LogManager);
+            NetworkDiagTracer.Start(_logManager);
         }
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -133,15 +140,6 @@ public class InitializeNetwork : IStep
                 _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
             }
         });
-
-        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
-        {
-            SnapCapabilitySwitcher snapCapabilitySwitcher =
-                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            _api.DisposeStack.Push(snapCapabilitySwitcher);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -183,18 +181,13 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
-        if (_api.Enode is null)
-        {
-            throw new InvalidOperationException("Cannot initialize network without knowing own enode");
-        }
-
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port} ");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info} ");
-        ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
+        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
     }
 
     private Task StartDiscovery()
@@ -213,32 +206,27 @@ public class InitializeNetwork : IStep
 
     private void StartPeer()
     {
-        if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
-        if (_api.SessionMonitor is null) throw new StepDependencyException(nameof(_api.SessionMonitor));
-
-        if (!_api.Config<IInitConfig>().PeerManagerEnabled)
+        if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
         _peerPool.Value.Start();
-        _api.PeerManager.Start();
-        _api.SessionMonitor.Start();
+        _peerManager.Start();
+        _sessionMonitor.Start();
         if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
     }
 
     private Task StartSync()
     {
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
         if (_syncConfig.NetworkingEnabled)
         {
             _syncPeerPool.Start();
 
             if (_syncConfig.SynchronizationEnabled)
             {
-                if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_blockTree.Head?.Header.ToString(BlockHeader.Format.Short)}.");
                 _synchronizer.Start();
             }
             else
@@ -254,44 +242,21 @@ public class InitializeNetwork : IStep
 
     protected virtual async Task InitPeer()
     {
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
+        // Force creation so the protocols manager subscribes to session events before the RLPx listener starts.
+        _ = _protocolsManager.Value;
 
-        _api.ProtocolsManager = CreateProtocolManager();
-
-        if (_syncConfig.SnapServingEnabled == true)
-        {
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
             _ = _enrDiscoveryAppFeeder.Run();
         }
 
-        foreach (INethermindPlugin plugin in _api.Plugins)
-        {
-            await plugin.InitNetworkProtocol();
-        }
-
-        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise
         // early sessions can negotiate only the default ETH version and never upgrade.
-        await _api.RlpxPeer.Init();
+        await _rlpxPeer.Init();
 
-        await _api.StaticNodesManager.InitAsync();
+        await _staticNodesManager.InitAsync();
 
-        await _api.TrustedNodesManager.InitAsync();
+        await _trustedNodesManager.InitAsync();
     }
-
-    protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(
-            _api.SyncPeerPool!,
-            _api.TxPool!,
-            _discoveryApp,
-            _api.RlpxPeer,
-            NodeStatsManager,
-            _api.ProtocolValidator,
-            _peerStorage,
-            _protocolHandlerFactories,
-            _api.LogManager);
 }

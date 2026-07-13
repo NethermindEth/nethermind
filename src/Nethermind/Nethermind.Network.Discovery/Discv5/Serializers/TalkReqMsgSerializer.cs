@@ -7,17 +7,17 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Serializers;
 
-internal sealed class TalkReqMsgSerializer : MsgSerializerBase<TalkReqMsg>
+internal sealed class TalkReqMsgSerializer() : MsgSerializerBase<TalkReqMsg>(MessageType.TalkReq, requiresOwnedMemory: true)
 {
     protected override int GetContentLengthCore(TalkReqMsg msg)
         => Rlp.LengthOf(msg.Protocol) + Rlp.LengthOf(msg.Request);
 
-    protected override void SerializeCore(NettyRlpStream stream, TalkReqMsg msg)
+    protected override void SerializeCore<TWriter>(ref TWriter writer, TalkReqMsg msg)
     {
-        stream.Encode(msg.Protocol);
-        stream.Encode(msg.Request);
+        writer.Encode(msg.Protocol);
+        writer.Encode(msg.Request);
     }
 
-    protected override TalkReqMsg DeserializeCore(RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    protected override TalkReqMsg DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => new(requestId, DecodeByteMemory(ref ctx, ownedMessage), DecodeByteMemory(ref ctx, ownedMessage), owner);
 }

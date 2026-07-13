@@ -43,12 +43,20 @@ public interface IKademlia<TKey, TNode>
     Task<TNode[]> LookupNodesClosest(TKey key, CancellationToken token, int? k = null);
 
     /// <summary>
+    /// Looks up nodes near <paramref name="key"/> and streams newly discovered candidates as soon as they are seen.
+    /// </summary>
+    /// <param name="key">Protocol-specific lookup key.</param>
+    /// <param name="token">Cancellation token for the lookup.</param>
+    /// <param name="maxResults">Optional maximum number of candidates to emit. Defaults to <see cref="KademliaConfig{TNode}.KSize"/>.</param>
+    IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null);
+
+    /// <summary>
     /// Returns the closest routing-table entries to <paramref name="target"/> without traversing the network.
     /// </summary>
     /// <param name="target">Protocol-specific lookup key.</param>
     /// <param name="excluding">Optional node to exclude from the result.</param>
     /// <param name="excludeSelf">Whether to exclude the local node from the result.</param>
-    /// <remarks>The returned array is not sorted and may be an internal routing-table array.</remarks>
+    /// <remarks>The returned array is not sorted.</remarks>
     TNode[] GetKNeighbour(TKey target, TNode? excluding = default, bool excludeSelf = false);
 
     /// <summary>

@@ -1,12 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using System.Net;
-using Convert = System.Convert;
 
 namespace Nethermind.Network.Enr;
 
@@ -25,20 +27,13 @@ public class NodeRecord
 
     private Signature? _signature;
 
-    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(System.StringComparer.Ordinal);
+    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new(StringComparer.Ordinal);
 
     internal byte[]? OriginalRlp { get; set; }
 
     /// <summary>
-    /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
-    /// In such cases we do not know the RLP serialization format of such an entry and we store the original RLP
-    /// in order to be able to verify the signature. I think that we may replace it by Keccak(OriginalContentRlp).
-    /// </summary>
-    public byte[]? OriginalContentRlp { get; set; }
-
-    /// <summary>
     /// Represents the version / id / sequence of the node record data. It should be increased by one with each
-    /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
+    /// update to the node data. Setting sequence on this class wipes out <see cref="ToString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
     public ulong EnrSequence
@@ -57,16 +52,9 @@ public class NodeRecord
     }
 
     /// <summary>
-    /// A base64 string representing a node record with the 'enr:' prefix
-    /// enr:-IS4QHCYrYZbAK(...)WM0xOIN1ZHCCdl8
+    /// Returns a base64 string representing a signed node record with the <c>enr:</c> prefix.
     /// </summary>
-    public string EnrString
-    {
-        get
-        {
-            return _enrString ??= CreateEnrString();
-        }
-    }
+    public override string ToString() => _enrString ??= CreateEnrString();
 
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
@@ -81,14 +69,9 @@ public class NodeRecord
 
     private Hash256 CalculateContentHash()
     {
-        if (OriginalContentRlp is not null)
-        {
-            return ValueKeccak.Compute(OriginalContentRlp).ToCommitment();
-        }
-
-        KeccakRlpStream rlpStream = new();
-        EncodeContent(rlpStream);
-        return rlpStream.GetHash();
+        KeccakRlpWriter writer = new();
+        EncodeContent(ref writer);
+        return writer.GetHash();
     }
 
     /// <summary>
@@ -101,7 +84,6 @@ public class NodeRecord
         {
             _signature = value;
             OriginalRlp = null;
-            OriginalContentRlp = null;
             _enrString = null;
             _contentHash = null;
         }
@@ -112,13 +94,12 @@ public class NodeRecord
     public NodeRecord() => SetEntry(IdEntry.Instance);
 
     /// <summary>
-    /// Gets the IP address advertised for discovery traffic.
+    /// Gets the IP address advertised for node traffic.
     /// </summary>
-    /// <remarks>
-    /// IPv4 is preferred when both <c>ip</c> and <c>udp</c> are present. Otherwise IPv6 is returned when it has a
-    /// discovery port, with <c>udp</c> as the EIP-778 fallback.
-    /// </remarks>
-    public IPAddress? DiscoveryIp => GetDiscoveryEndpoint().Ip;
+    public IPAddress? Ip =>
+        TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) ? tcpEndpoint.Address :
+        TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) ? discoveryEndpoint.Address :
+        GetObj<IPAddress>(EnrContentKey.Ip) ?? GetObj<IPAddress>(EnrContentKey.Ip6);
 
     /// <summary>
     /// Gets the UDP port advertised for discovery traffic.
@@ -126,16 +107,7 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>udp6</c> is preferred and <c>udp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? DiscoveryPort => GetDiscoveryEndpoint().Port;
-
-    /// <summary>
-    /// Gets the IP address advertised for RLPx TCP traffic.
-    /// </summary>
-    /// <remarks>
-    /// IPv4 is preferred when both <c>ip</c> and <c>tcp</c> are present. Otherwise IPv6 is returned when it has a
-    /// TCP port, with <c>tcp</c> as the EIP-778 fallback.
-    /// </remarks>
-    public IPAddress? TcpIp => GetTcpEndpoint().Ip;
+    public int? DiscoveryPort => TryGetDiscoveryEndpoint(out IPEndPoint? endpoint) ? endpoint.Port : null;
 
     /// <summary>
     /// Gets the TCP port advertised for RLPx traffic.
@@ -143,46 +115,55 @@ public class NodeRecord
     /// <remarks>
     /// For IPv6, <c>tcp6</c> is preferred and <c>tcp</c> is used as the EIP-778 fallback.
     /// </remarks>
-    public int? TcpPort => GetTcpEndpoint().Port;
+    public int? TcpPort => TryGetTcpEndpoint(out IPEndPoint? endpoint) ? endpoint.Port : null;
 
-    private (IPAddress? Ip, int? Port) GetDiscoveryEndpoint()
+    /// <summary>
+    /// Tries to get the UDP discovery endpoint from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="endpoint">The discovery endpoint when the ENR contains a usable UDP endpoint.</param>
+    /// <returns><see langword="true"/> when a usable discovery endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetDiscoveryEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Udp, EnrContentKey.Udp6, out endpoint);
+
+    /// <summary>
+    /// Tries to get the TCP RLPx endpoint from matching ENR address and port entries.
+    /// </summary>
+    /// <param name="endpoint">The TCP endpoint when the ENR contains a usable RLPx endpoint.</param>
+    /// <returns><see langword="true"/> when a usable TCP endpoint is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetTcpEndpoint([MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, out endpoint);
+
+    private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
         IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        int? udp = GetValue<int>(EnrContentKey.Udp);
-        if (ip is not null && udp is not null)
+        if (ip is not null && TryGetPort(ipv4PortKey, out int port))
         {
-            return (ip, udp);
+            endpoint = new IPEndPoint(ip, port);
+            return true;
         }
 
         IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? udp6 = GetValue<int>(EnrContentKey.Udp6);
-        if (ip6 is not null)
+        if (ip6 is not null && (TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port)))
         {
-            int? port = udp6 ?? udp;
-            return port is null ? (null, null) : (ip6, port);
+            endpoint = new IPEndPoint(ip6, port);
+            return true;
         }
 
-        return (null, null);
+        endpoint = null;
+        return false;
     }
 
-    private (IPAddress? Ip, int? Port) GetTcpEndpoint()
+    private bool TryGetPort(string portKey, out int port)
     {
-        IPAddress? ip = GetObj<IPAddress>(EnrContentKey.Ip);
-        int? tcp = GetValue<int>(EnrContentKey.Tcp);
-        if (ip is not null && tcp is not null)
+        int? value = GetValue<int>(portKey);
+        if (value is null || value.Value == 0 || (uint)value.Value > ushort.MaxValue)
         {
-            return (ip, tcp);
+            port = 0;
+            return false;
         }
 
-        IPAddress? ip6 = GetObj<IPAddress>(EnrContentKey.Ip6);
-        int? tcp6 = GetValue<int>(EnrContentKey.Tcp6);
-        if (ip6 is not null)
-        {
-            int? port = tcp6 ?? tcp;
-            return port is null ? (null, null) : (ip6, port);
-        }
-
-        return (null, null);
+        port = value.Value;
+        return true;
     }
 
     public static NodeRecord FromEnrString(string enrString)
@@ -219,9 +200,9 @@ public class NodeRecord
         ArgumentNullException.ThrowIfNull(ecdsa);
 
         NodeRecordSigner signer = new(ecdsa);
-        Rlp.ValueDecoderContext ctx = new(bytes);
-        NodeRecord nodeRecord = signer.Deserialize(ref ctx);
-        if (ctx.Position != bytes.Length)
+        RlpReader reader = new(bytes);
+        NodeRecord nodeRecord = signer.Deserialize(ref reader);
+        if (reader.Position != bytes.Length)
         {
             throw new RlpException("Unexpected trailing bytes in ENR.");
         }
@@ -247,7 +228,6 @@ public class NodeRecord
 
         Entries[entry.Key] = entry;
         OriginalRlp = null;
-        OriginalContentRlp = null;
         _enrString = null;
         _contentHash = null;
         _signature = null;
@@ -326,15 +306,16 @@ public class NodeRecord
     /// <summary>
     /// Applies Rlp([seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    private void EncodeContent(RlpStream rlpStream)
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    private void EncodeContent<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int contentLength = GetContentLengthWithoutSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(EnrSequence);
+        writer.StartSequence(contentLength);
+        writer.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -353,32 +334,33 @@ public class NodeRecord
 
         int rlpLength = GetRlpLengthWithSignature();
         byte[] bytes = GC.AllocateUninitializedArray<byte>(rlpLength);
-        RlpStream rlpStream = new(bytes);
-        Encode(rlpStream);
+        RlpWriter writer = new(bytes);
+        Encode(ref writer);
         return bytes;
     }
 
     /// <summary>
     /// Applies Rlp([signature, seq, k, v, ...]]).
     /// </summary>
-    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
-    public void Encode(RlpStream rlpStream)
+    /// <param name="writer">An RLP writer to encode the content to.</param>
+    public void Encode<TWriter>(ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (OriginalRlp is not null)
         {
-            rlpStream.Write(OriginalRlp);
+            writer.Write(OriginalRlp);
             return;
         }
 
         RequireSignature();
 
         int contentLength = GetContentLengthWithSignature();
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
+        writer.StartSequence(contentLength);
+        writer.Encode(Signature!.Bytes);
+        writer.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries)
         {
-            contentEntry.Encode(rlpStream);
+            contentEntry.Encode(ref writer);
         }
     }
 
@@ -387,9 +369,15 @@ public class NodeRecord
         RequireSignature();
 
         const string prefix = "enr:";
-        string base64String = Convert.ToBase64String(ToRlpBytes()).Replace('+', '-').Replace('/', '_');
-        int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0;
-        return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
+        if (OriginalRlp is not null)
+        {
+            return string.Concat(prefix, Base64Url.EncodeToString(OriginalRlp));
+        }
+
+        using ArrayPoolSpan<byte> bytes = new(GetRlpLengthWithSignature());
+        RlpWriter writer = new(bytes);
+        Encode(ref writer);
+        return string.Concat(prefix, Base64Url.EncodeToString(bytes));
     }
 
     private void RequireSignature()
@@ -399,4 +387,5 @@ public class NodeRecord
             throw new Exception("Cannot encode a node record with an empty signature.");
         }
     }
+
 }

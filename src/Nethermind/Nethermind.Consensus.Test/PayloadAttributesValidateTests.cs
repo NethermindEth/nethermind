@@ -20,6 +20,7 @@ public class PayloadAttributesValidateTests
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
         SlotNumber = withSlotNumber ? 42UL : null,
+        TargetGasLimit = withSlotNumber ? 30_000_000L : null,
     };
 
     private static ISpecProvider MakeSpecProvider(bool isAmsterdam)
@@ -42,6 +43,8 @@ public class PayloadAttributesValidateTests
         new object[] { /* isAmsterdam */ true,  /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V4,
             PayloadAttributesValidationResult.Success, null!, null! },
         new object[] { /* isAmsterdam */ false, /* withSlot */ true,  /* fcu */ PayloadAttributesVersions.V3,
+            PayloadAttributesValidationResult.InvalidPayloadAttributes, null!, null! },
+        new object[] { /* isAmsterdam */ true, /* withSlot */ false, /* fcu */ PayloadAttributesVersions.V3,
             PayloadAttributesValidationResult.UnsupportedFork, null!, null! },
     ];
 

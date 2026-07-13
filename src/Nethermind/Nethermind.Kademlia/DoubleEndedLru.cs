@@ -44,7 +44,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         }
     }
 
-    public BucketAddResult AddOrRefresh(in TKey key, TValue value) => AddOrRefresh(key, value, out _);
+    public BucketAddResult AddOrRefresh(in TKey key, TValue value) => AddOrRefresh(in key, value, out _);
 
     /// <param name="previous">The value previously stored under <paramref name="key"/> when the entry is refreshed; default otherwise.</param>
     public BucketAddResult AddOrRefresh(in TKey key, TValue value, out TValue? previous)

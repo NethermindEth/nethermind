@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,10 +15,7 @@ namespace Nethermind.Network.Enr.Test;
 
 public class NodeRecordSignerTests
 {
-    [SetUp]
-    public void Setup()
-    {
-    }
+    private const string TestPrivateKey = "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291";
 
     [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]
     public void Is_correct_on_eip_test_vector()
@@ -39,7 +37,7 @@ public class NodeRecordSignerTests
         Console.WriteLine("expected: " + expectedHexString);
 
         Ecdsa ecdsa = new();
-        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        PrivateKey privateKey = new(TestPrivateKey);
         NodeRecordSigner signer = new(ecdsa, privateKey);
         NodeRecord nodeRecord = new();
         nodeRecord.SetEntry(new IpEntry(
@@ -52,7 +50,7 @@ public class NodeRecordSignerTests
         nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
-        string enrString = nodeRecord.EnrString;
+        string enrString = nodeRecord.ToString();
         Assert.That(enrString, Is.EqualTo(expectedEnrString));
     }
 
@@ -75,7 +73,7 @@ public class NodeRecordSignerTests
         Console.WriteLine("expected: " + expectedHexString);
 
         Ecdsa ecdsa = new();
-        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        PrivateKey privateKey = new(TestPrivateKey);
 
         NodeRecordSigner signer = new(ecdsa, privateKey);
         NodeRecord nodeRecord = new();
@@ -96,73 +94,17 @@ public class NodeRecordSignerTests
         Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
-    [TestCase]
-    public void Throws_when_record_is_t()
-    {
-        Ecdsa ecdsa = new();
-        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
-        NodeRecordSigner signer = new(ecdsa, privateKey);
-        Span<byte> bytes = Bytes.FromHexString("540b38f8b160f23b1cd30972338a09ba4a296e2f0cb63f76ce0b38201a8dd9aa2a9c306370904877ddab397f7845ff67ea0a1dbf094b86794bb5d739e6bda891a486098717e2fb744e04c4665d307a590c6e4141a3805de15eb1eb62b0c6ff0aa75db9559545e294e158b7dc9e4a118cf0c2c6259af2df7c1742731064df376182b2df2e714df9e87ec6492effb4de8e2a92bdb405bbe3d8ddf96622bbcb11592fdb2600356cb39fd2c36cac66e19cd1b136ac3be993ef0ed07905d95f16cc67cfbe9bc7c180b90023d55d9218bef9e052c9f655a5c2464abe24271cc1dc2f3df7d3abd926f4657b724b0435868a09f7136ec115cbc3ec1c675972315e4cc140907e4772c118d51917b16a00a7809cfa767ea3ae5557c0b972c37f77d85062910e3e15ae4613cac178220deadc6d729da20c85166e8532d8f88cd246e6102f5268cd5e29796d06713d0f684e096e5edfca6b6c7adf9e51e10f5140d92216123eb31984a61d5a9caf904a2e12f3f479b27d75aeafe0d35b8995468aa12ba7d8f17fbb0aeea63b4d2c74e43b60e06a62bed5ee3ae34f5d74465087b5932865a2cb41f1fdaa9b2b9143fe1923d7f0e4b18a3139ee469df8e6cfea46101674e5fde4c84f9f9d77dee3d0545897a69d9eb42ccc48b699baa9d932dc36783da3580a78abc68b20a1f8bda90afb5ed78a9ac46e63792182b7669e4daaf3ca7e9b5690a3bbf0a184b14470f899582d4a0423897a295441b4bf27db3d2e8adf41824538942198a064bc489fd0936e11f5266146432a8efc992e1d304a4ab6bf661fa1ab3b59d1f14155c5e6a8d1e9eed717bee86a9b6bdabde638c0d1");
-        RlpStream rlpStream = new(600);
-        rlpStream.StartSequence(500);
-        rlpStream.Encode(bytes[..500]);
-        rlpStream.Position = 0;
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_encoded_record_is_bigger_than_300_bytes()
+    [TestCaseSource(nameof(InvalidRecordRlpCases))]
+    public void Throws_when_record_is_invalid(Func<byte[]> createRecord, Type exceptionType)
     {
         NodeRecordSigner signer = new(new Ecdsa());
-        byte[] filler = FindFillerForOversizedEncodedRecord();
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
-            ("z", stream => stream.Encode(filler), Rlp.LengthOf(filler)));
-
-        Assert.That(rlpStream.Data.Length, Is.GreaterThan(300));
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_keys_are_not_sorted()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Udp, static stream => stream.Encode(30303), Rlp.LengthOf(30303)),
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_keys_are_duplicated()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_id_is_missing()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            ("z", static stream => stream.Encode(Array.Empty<byte>()), Rlp.LengthOf(Array.Empty<byte>())));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
-    }
-
-    [Test]
-    public void Throws_when_id_is_not_v4()
-    {
-        NodeRecordSigner signer = new(new Ecdsa());
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v5"), Rlp.LengthOf("v5")));
-
-        Assert.That(() => signer.Deserialize(rlpStream), Throws.TypeOf<RlpException>());
+        Assert.That(
+            () =>
+            {
+                RlpReader reader = new(createRecord());
+                signer.Deserialize(ref reader);
+            },
+            Throws.TypeOf(exceptionType));
     }
 
     [TestCase("f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f")]
@@ -171,10 +113,10 @@ public class NodeRecordSignerTests
     public void Can_deserialize_and_verify_real_world_cases(string testCase)
     {
         Ecdsa ecdsa = new();
-        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        PrivateKey privateKey = new(TestPrivateKey);
         NodeRecordSigner signer = new(ecdsa, privateKey);
-        RlpStream rlpStream = Bytes.FromHexString(testCase).AsRlpStream();
-        NodeRecord nodeRecord = signer.Deserialize(rlpStream);
+        RlpReader reader = new(Bytes.FromHexString(testCase));
+        NodeRecord nodeRecord = signer.Deserialize(ref reader);
         string hex = nodeRecord.GetHex();
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
@@ -183,56 +125,265 @@ public class NodeRecordSignerTests
     }
 
     [Test]
-    public void FromBytes_throws_when_record_has_trailing_bytes()
+    public void Can_serialize_eth_entry_as_nested_fork_id_list()
     {
-        byte[] recordBytes = Bytes.FromHexString(
-            "f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f");
-        byte[] recordWithTrailingBytes = [.. recordBytes, 0x80];
+        byte[] forkHash = [1, 2, 3, 4];
+        const ulong next = 0x0506;
+        byte[] expectedEntryBytes = Bytes.FromHexString("83657468c9c88401020304820506");
 
-        Assert.That(() => NodeRecord.FromBytes(recordWithTrailingBytes), Throws.TypeOf<RlpException>());
+        Ecdsa ecdsa = new();
+        PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new EthEntry(forkHash, next));
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(nodeRecord);
+
+        byte[] recordBytes = nodeRecord.ToRlpBytes();
+        Assert.That(recordBytes.AsSpan().IndexOf(expectedEntryBytes), Is.GreaterThanOrEqualTo(0));
+
+        NodeRecord decoded = NodeRecord.FromBytes(recordBytes, ecdsa);
+        ForkId? forkId = decoded.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
+        Assert.That(forkId.Value.Next, Is.EqualTo(next));
     }
 
     [Test]
-    public void FromBytes_throws_rlp_exception_when_signature_cannot_recover()
+    public void Can_deserialize_and_verify_eth_entry_with_future_trailing_values()
     {
-        byte[] publicKey = new byte[CompressedPublicKey.LengthInBytes];
-        RlpStream rlpStream = CreateRecord(
-            (EnrContentKey.Id, static stream => stream.Encode("v4"), Rlp.LengthOf("v4")),
-            (EnrContentKey.SecP256k1, stream => stream.Encode(publicKey), Rlp.LengthOf(publicKey)));
+        byte[] forkHash = [1, 2, 3, 4];
+        const ulong next = ulong.MaxValue;
 
-        Assert.That(() => NodeRecord.FromBytes(rlpStream.Data), Throws.TypeOf<RlpException>());
+        Ecdsa ecdsa = new();
+        PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new FutureEthEntry(forkHash, next));
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(nodeRecord);
+        byte[] recordBytes = nodeRecord.ToRlpBytes();
+
+        NodeRecord decoded = NodeRecord.FromBytes(recordBytes, ecdsa);
+        ForkId? forkId = decoded.GetValue<ForkId>(EnrContentKey.Eth);
+
+        Assert.That(forkId, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.Value.ForkHash, Is.EqualTo(forkHash));
+            Assert.That(forkId.Value.Next, Is.EqualTo(next));
+            Assert.That(decoded.ToRlpBytes(), Is.EqualTo(recordBytes));
+        }
     }
+
+    [TestCase(0)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void Eth_entry_rejects_fork_hash_with_wrong_length(int forkHashLength)
+    {
+        byte[] forkHash = new byte[forkHashLength];
+        Assert.That(() => new EthEntry(forkHash, 0UL), Throws.TypeOf<ArgumentException>());
+    }
+
+    [TestCaseSource(nameof(InvalidRecordByteCases))]
+    public void FromBytes_throws_when_record_bytes_are_invalid(Func<byte[]> createRecordBytes)
+        => Assert.That(() => NodeRecord.FromBytes(createRecordBytes()), Throws.TypeOf<RlpException>());
 
     [Test]
     public void Cannot_verify_when_signature_missing()
     {
-        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        PrivateKey privateKey = new(TestPrivateKey);
         NodeRecordSigner signer = new(new Ecdsa(), privateKey);
         NodeRecord nodeRecord = new();
         Assert.Throws<Exception>(() => _ = signer.Verify(nodeRecord));
     }
 
-    private static RlpStream CreateRecord(params (string Key, Action<RlpStream> EncodeValue, int ValueLength)[] entries)
+    private static byte[] CreateRecord(params (string Key, Rlp Value)[] entries)
     {
         byte[] signature = new byte[64];
         int contentLength = Rlp.LengthOf(signature) + Rlp.LengthOf(1UL);
-        foreach ((string key, _, int valueLength) in entries)
+        foreach ((string key, Rlp value) in entries)
         {
-            contentLength += Rlp.LengthOf(key) + valueLength;
+            contentLength += Rlp.LengthOf(key) + value.Length;
         }
 
-        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(signature);
-        rlpStream.Encode(1UL);
-        foreach ((string key, Action<RlpStream> encodeValue, _) in entries)
+        byte[] record = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(record);
+        writer.StartSequence(contentLength);
+        writer.Encode(signature);
+        writer.Encode(1UL);
+        foreach ((string key, Rlp value) in entries)
         {
-            rlpStream.Encode(key);
-            encodeValue(rlpStream);
+            writer.Encode(key);
+            writer.Encode(value);
         }
 
-        rlpStream.Position = 0;
-        return rlpStream;
+        return record;
+    }
+
+    private static IEnumerable<TestCaseData> InvalidRecordRlpCases()
+    {
+        yield return InvalidRecordCase(
+            CreateNonSequenceRecord,
+            typeof(RlpException),
+            "Throws_when_record_is_not_a_sequence");
+
+        yield return InvalidRecordCase(
+            CreateRecordWithDeclaredLengthOverLimit,
+            typeof(RlpException),
+            "Throws_when_declared_record_payload_is_bigger_than_300_bytes");
+
+        yield return InvalidRecordCase(
+            CreateEncodedRecordOverLimit,
+            typeof(RlpException),
+            "Throws_when_encoded_record_is_bigger_than_300_bytes");
+
+        yield return InvalidRecordCase(
+            CreateRecordWithOversizedSignature,
+            typeof(RlpLimitException),
+            "Throws_when_signature_is_too_long");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                (EnrContentKey.Udp, Rlp.Encode(30303)),
+                (EnrContentKey.Id, EncodeString("v4"))),
+            typeof(RlpException),
+            "Throws_when_keys_are_not_sorted");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("v4")),
+                (EnrContentKey.Id, EncodeString("v4"))),
+            typeof(RlpException),
+            "Throws_when_keys_are_duplicated");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                ("z", Rlp.Encode(Array.Empty<byte>()))),
+            typeof(RlpException),
+            "Throws_when_id_is_missing");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString(string.Empty))),
+            typeof(RlpException),
+            "Throws_when_id_is_empty");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("V4"))),
+            typeof(RlpException),
+            "Throws_when_id_has_wrong_case");
+
+        yield return InvalidRecordCase(
+            static () => CreateRecord(
+                (EnrContentKey.Id, EncodeString("v5"))),
+            typeof(RlpException),
+            "Throws_when_id_is_not_v4");
+    }
+
+    private static IEnumerable<TestCaseData> InvalidRecordByteCases()
+    {
+        yield return new TestCaseData((Func<byte[]>)CreateRecordWithTrailingBytes)
+            .SetName("FromBytes_throws_when_record_has_trailing_bytes");
+
+        yield return new TestCaseData((Func<byte[]>)CreateRecordWithUnrecoverableSignature)
+            .SetName("FromBytes_throws_when_signature_cannot_recover");
+
+        yield return new TestCaseData((Func<byte[]>)CreateRecordWithInvalidSignature)
+            .SetName("FromBytes_throws_when_signature_does_not_match_public_key");
+    }
+
+    private static byte[] CreateNonSequenceRecord() => EncodeString(EnrContentKey.Id).Bytes;
+
+    private static byte[] CreateRecordWithDeclaredLengthOverLimit()
+    {
+        Span<byte> bytes = Bytes.FromHexString("540b38f8b160f23b1cd30972338a09ba4a296e2f0cb63f76ce0b38201a8dd9aa2a9c306370904877ddab397f7845ff67ea0a1dbf094b86794bb5d739e6bda891a486098717e2fb744e04c4665d307a590c6e4141a3805de15eb1eb62b0c6ff0aa75db9559545e294e158b7dc9e4a118cf0c2c6259af2df7c1742731064df376182b2df2e714df9e87ec6492effb4de8e2a92bdb405bbe3d8ddf96622bbcb11592fdb2600356cb39fd2c36cac66e19cd1b136ac3be993ef0ed07905d95f16cc67cfbe9bc7c180b90023d55d9218bef9e052c9f655a5c2464abe24271cc1dc2f3df7d3abd926f4657b724b0435868a09f7136ec115cbc3ec1c675972315e4cc140907e4772c118d51917b16a00a7809cfa767ea3ae5557c0b972c37f77d85062910e3e15ae4613cac178220deadc6d729da20c85166e8532d8f88cd246e6102f5268cd5e29796d06713d0f684e096e5edfca6b6c7adf9e51e10f5140d92216123eb31984a61d5a9caf904a2e12f3f479b27d75aeafe0d35b8995468aa12ba7d8f17fbb0aeea63b4d2c74e43b60e06a62bed5ee3ae34f5d74465087b5932865a2cb41f1fdaa9b2b9143fe1923d7f0e4b18a3139ee469df8e6cfea46101674e5fde4c84f9f9d77dee3d0545897a69d9eb42ccc48b699baa9d932dc36783da3580a78abc68b20a1f8bda90afb5ed78a9ac46e63792182b7669e4daaf3ca7e9b5690a3bbf0a184b14470f899582d4a0423897a295441b4bf27db3d2e8adf41824538942198a064bc489fd0936e11f5266146432a8efc992e1d304a4ab6bf661fa1ab3b59d1f14155c5e6a8d1e9eed717bee86a9b6bdabde638c0d1");
+        byte[] rlp = new byte[600];
+        RlpWriter writer = new(rlp);
+        writer.StartSequence(500);
+        writer.Encode(bytes[..500]);
+        return rlp.AsSpan(0, writer.Position).ToArray();
+    }
+
+    private static byte[] CreateEncodedRecordOverLimit()
+    {
+        byte[] filler = FindFillerForOversizedEncodedRecord();
+        return CreateRecord(
+            (EnrContentKey.Id, EncodeString("v4")),
+            ("z", Rlp.Encode(filler)));
+    }
+
+    private static byte[] CreateRecordWithOversizedSignature()
+        => CreateRecordWithSignatureLength(66,
+            (EnrContentKey.Id, EncodeString("v4")));
+
+    private static byte[] CreateRecordWithSignatureLength(
+        int signatureLength,
+        params (string Key, Rlp Value)[] entries)
+    {
+        byte[] signature = new byte[signatureLength];
+        int contentLength = Rlp.LengthOf(signature) + Rlp.LengthOf(1UL);
+        foreach ((string key, Rlp value) in entries)
+        {
+            contentLength += Rlp.LengthOf(key) + value.Length;
+        }
+
+        byte[] record = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(record);
+        writer.StartSequence(contentLength);
+        writer.Encode(signature);
+        writer.Encode(1UL);
+        foreach ((string key, Rlp value) in entries)
+        {
+            writer.Encode(key);
+            writer.Encode(value);
+        }
+
+        return record;
+    }
+
+    private static byte[] CreateRecordWithTrailingBytes()
+    {
+        byte[] recordBytes = Bytes.FromHexString(
+            "f897b840421561b4ed5de28a7100e0a5005ecc0ba6ba6cc18528061e811704c8794fec965cba63831051d134bdc801c0c90d31a30d241074095311ffe6628d5545478b770a83657468c7c68496516d06808269648276348269708436ed0a0a89736563703235366b31a103f5c110132b0374805d4453f55577cc9c58bb1a08f822b9b3722132e3095f69728374637082765f8375647082765f");
+        return [.. recordBytes, 0x80];
+    }
+
+    private static byte[] CreateRecordWithUnrecoverableSignature()
+    {
+        byte[] publicKey = new byte[CompressedPublicKey.LengthInBytes];
+        byte[] record = CreateRecord(
+            (EnrContentKey.Id, EncodeString("v4")),
+            (EnrContentKey.SecP256k1, Rlp.Encode(publicKey)));
+
+        return record;
+    }
+
+    private static byte[] CreateRecordWithInvalidSignature()
+    {
+        Ecdsa ecdsa = new();
+        PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecordSigner signer = new(ecdsa, privateKey);
+        NodeRecord nodeRecord = new();
+        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        signer.Sign(nodeRecord);
+
+        byte[] recordBytes = nodeRecord.ToRlpBytes().AsSpan().ToArray();
+        recordBytes[4] ^= 0x01;
+        return recordBytes;
+    }
+
+    private static TestCaseData InvalidRecordCase(Func<byte[]> createRecord, Type exceptionType, string name)
+        => new TestCaseData(createRecord, exceptionType).SetName(name);
+
+    private static Rlp EncodeString(string value)
+    {
+        byte[] bytes = new byte[Rlp.LengthOf(value)];
+        RlpWriter writer = new(bytes);
+        writer.Encode(value);
+        return new Rlp(bytes);
     }
 
     private static byte[] FindFillerForOversizedEncodedRecord()
@@ -254,5 +405,30 @@ public class NodeRecordSignerTests
         }
 
         throw new InvalidOperationException("Could not create oversized ENR fixture.");
+    }
+
+    private sealed class FutureEthEntry(byte[] forkHash, ulong next) : EnrContentEntry<ForkId>(new ForkId(forkHash, next))
+    {
+        private const string FutureValue = "future";
+
+        public override string Key => EnrContentKey.Eth;
+
+        protected override int GetRlpLengthOfValue()
+        {
+            int forkIdContentLength = Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.Next);
+            int contentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(FutureValue);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        protected override void EncodeValue<TWriter>(ref TWriter writer)
+        {
+            int forkIdContentLength = Rlp.LengthOf(Value.ForkHash) + Rlp.LengthOf(Value.Next);
+            int contentLength = Rlp.LengthOfSequence(forkIdContentLength) + Rlp.LengthOf(FutureValue);
+            writer.StartSequence(contentLength);
+            writer.StartSequence(forkIdContentLength);
+            writer.Encode(Value.ForkHash);
+            writer.Encode(Value.Next);
+            writer.Encode(FutureValue);
+        }
     }
 }

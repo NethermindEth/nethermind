@@ -13,8 +13,8 @@ public class Olympic() : NamedReleaseSpec<Olympic>(null)
         spec.Name = "Olympic";
         spec.MaximumExtraDataSize = 32;
         spec.MaxCodeSize = long.MaxValue;
-        spec.MinGasLimit = 5000;
-        spec.GasLimitBoundDivisor = 0x0400;
+        spec.MinGasLimit = 5000UL;
+        spec.GasLimitBoundDivisor = 0x0400UL;
         spec.BlockReward = new UInt256(5000000000000000000ul);
         spec.DifficultyBoundDivisor = 0x0800;
         spec.IsEip3607Enabled = true;

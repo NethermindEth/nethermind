@@ -12,8 +12,8 @@ internal sealed record TalkRespMsg : Discv5Message
     {
     }
 
-    public TalkRespMsg(RequestId requestId, ReadOnlyMemory<byte> response, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public TalkRespMsg(in RequestId requestId, ReadOnlyMemory<byte> response, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
         => _response = response;
 
     public override MessageType MessageType => MessageType.TalkResp;

@@ -291,6 +291,47 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
         }
 
+        [Test]
+        public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
+        {
+            await using Context ctx = new(maxActivePeers: 20);
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20));
+
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1) { IsStatic = true });
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.5", 1) { IsTrusted = true });
+
+            Assert.That(ctx.PeerManager.MaxActivePeers, Is.EqualTo(20), "static and trusted peers do not inflate the limit");
+        }
+
+        // Migrated from ProtocolValidatorTests: the capacity policy moved into the peer manager,
+        // applied when a session completes the P2P Hello exchange.
+        [TestCase(11, 10, true)]
+        [TestCase(10, 10, false)]
+        [TestCase(9, 10, false)]
+        public async Task On_max_active_peer_limit(int activePeerCount, int maxActivePeer, bool shouldDisconnect)
+        {
+            await using Context ctx = new(maxActivePeers: maxActivePeer);
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < activePeerCount; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            if (shouldDisconnect)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            }
+        }
+
         [TestCase(true, ConnectionDirection.In)]
         [TestCase(false, ConnectionDirection.In)]
         // [TestCase(true, ConnectionDirection.Out)] // cannot create an active peer waiting for the test
@@ -454,8 +495,10 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 ctx.DiscoverNew(25);
-                await Task.Delay(_delay);
-                Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(25 * (i + 1)).After(_delayLonger, 10));
+                // The manager keeps retrying failed peers in the background, so the counter never
+                // settles — assert it reaches each cycle's threshold instead of an exact value.
+                await ctx.RlpxPeer.WaitForConnectCallsAsync(25 * (i + 1), TimeSpan.FromSeconds(30));
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.AtLeast(25 * (i + 1)));
             }
         }
 
@@ -652,7 +695,7 @@ namespace Nethermind.Network.Test
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
+            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith<NodeEventArgs>(new ExplicitNodeRemovalEventArgs(
                 new Node(staticNodes.First())));
 
             Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
@@ -726,7 +769,7 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, RlpxPeer, LimboLogs.Instance, new NodesLoaderOptions());
+                NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.MaxActivePeers = maxActivePeers;
                 NetworkConfig.PeersPersistenceInterval = 50;
@@ -741,7 +784,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager();
             }
 
-            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
+            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
@@ -934,7 +977,6 @@ namespace Nethermind.Network.Test
 
             public Task Shutdown() => Task.CompletedTask;
 
-            public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
             public int LocalPort => 0;
             public event EventHandler<SessionEventArgs> SessionCreated;
             public event SessionDisconnectedEventHandler SessionDisconnected;

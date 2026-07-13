@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -29,22 +27,25 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
     public DiscoveryApp(
         ILifetimeScope rootScope,
-        [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
+        IEnode enode,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
+        IIPResolver ipResolver,
         IProcessExitSource processExitSource,
         ILogManager logManager,
         Action<ContainerBuilder>? configureDiscv4Services = null)
-        : base("discv4", networkConfig, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
+        : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
         List<Node> bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger);
 
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
             {
+                Node currentNode = new(enode.PublicKey, enode.HostIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
+
                 builder
-                .AddModule(new KademliaModule(nodeKey.PublicKey, bootNodes))
-                .AddSingleton<DiscV4Services>();
+                    .AddModule(new KademliaModule(currentNode, bootNodes))
+                    .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
             });
@@ -79,7 +80,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 continue;
             }
 
-            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.DiscoveryPort));
+            bootNodes.Add(new(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort));
         }
 
         return bootNodes;

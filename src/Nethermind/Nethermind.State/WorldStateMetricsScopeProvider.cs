@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -18,10 +19,14 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
+        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
+
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
+
         public void Dispose()
         {
             baseScope.Dispose();
@@ -42,7 +47,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
 
-        public void Commit(long blockNumber)
+        public void Commit(ulong blockNumber)
         {
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);

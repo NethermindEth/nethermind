@@ -10,13 +10,13 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
-internal readonly record struct SessionKey(Hash256 NodeId, IPEndPoint Endpoint);
+internal readonly record struct SessionKey(ValueHash256 NodeId, IPEndPoint Endpoint);
 
-internal readonly record struct ChallengeKey(Hash256 NodeId, IPEndPoint Endpoint);
+internal readonly record struct ChallengeKey(ValueHash256 NodeId, IPEndPoint Endpoint);
 
 internal readonly record struct PendingNonceKey(IPEndPoint Endpoint, NonceKey Nonce);
 
-internal readonly record struct ResponseKey(Hash256 NodeId, RequestId RequestId, MessageType MessageType);
+internal readonly record struct ResponseKey(ValueHash256 NodeId, RequestId RequestId, MessageType MessageType);
 
 internal readonly record struct SentChallengeExpiry(ChallengeKey Key, long CreatedAtMilliseconds);
 
@@ -32,7 +32,4 @@ internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
 
 internal sealed record PendingRequest(Node Receiver, Discv5Message Message);
 
-internal readonly record struct SentChallenge(Challenge Challenge, byte[] Packet, long CreatedAtMilliseconds) : IDisposable
-{
-    public void Dispose() => Challenge.Dispose();
-}
+internal readonly record struct SentChallenge(byte[] Packet, long CreatedAtMilliseconds);

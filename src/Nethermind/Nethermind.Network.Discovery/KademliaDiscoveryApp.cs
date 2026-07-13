@@ -17,11 +17,13 @@ namespace Nethermind.Network.Discovery;
 public abstract class KademliaDiscoveryApp(
     string description,
     INetworkConfig networkConfig,
+    IIPResolver ipResolver,
     IProcessExitSource processExitSource,
     ILogger logger) : IDiscoveryApp, IAsyncDisposable
 {
     private readonly string _description = description;
     private readonly INetworkConfig _networkConfig = networkConfig;
+    private readonly IIPResolver _ipResolver = ipResolver;
     private readonly CancellationTokenSource _stopCts = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
     private IKademliaNodeSource? _kademliaNodeSource;
     private IKademlia<PublicKey, Node>? _kademlia;
@@ -35,13 +37,12 @@ public abstract class KademliaDiscoveryApp(
 
     protected IKademlia<PublicKey, Node> Kademlia => _kademlia ?? throw new InvalidOperationException("Kademlia services were not initialized.");
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
         try
         {
-            Initialize();
+            await Initialize(_stopCts.Token);
             TryStartActivation();
-            return Task.CompletedTask;
         }
         catch (Exception e)
         {
@@ -134,11 +135,13 @@ public abstract class KademliaDiscoveryApp(
         _kademlia.OnNodeRemoved += OnKademliaNodeRemoved;
     }
 
-    protected virtual void Initialize()
+    protected virtual async Task Initialize(CancellationToken cancellationToken)
     {
-        if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
 
-        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
+
+        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }
 
     protected void OnChannelActivated(object? sender, EventArgs e)

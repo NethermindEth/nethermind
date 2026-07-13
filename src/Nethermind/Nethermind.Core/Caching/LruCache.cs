@@ -4,44 +4,50 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
         private readonly string _name;
-        private readonly Action<TValue>? _onEvict;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name, Action<TValue>? onEvict = null)
+        public LruCache(int maxCapacity, int startCapacity, string name)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _name = name;
             _maxCapacity = maxCapacity;
-            _onEvict = onEvict;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
-        public LruCache(int maxCapacity, string name, Action<TValue>? onEvict = null)
-            : this(maxCapacity, 0, name, onEvict)
+        public LruCache(int maxCapacity, string name)
+            : this(maxCapacity, 0, name)
         {
         }
 
         public void Clear()
         {
-            TValue[]? evictedValues;
+            TValue[]? evictedValues = null;
             using (McsLock.Disposable lockRelease = _lock.Acquire())
             {
-                evictedValues = GetEvictedValues();
+                if (_cacheMap.Count != 0)
+                {
+                    int i = 0;
+                    evictedValues = new TValue[_cacheMap.Count];
+                    foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+                    {
+                        evictedValues[i++] = kvp.Value.Value.Value;
+                    }
+                }
+
                 _leastRecentlyUsed = null;
                 _cacheMap.Clear();
             }
@@ -249,9 +255,10 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetValues()
         {
+            using McsLock.Disposable lockRelease = _lock.Acquire();
+
             int i = 0;
             TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
@@ -263,6 +270,10 @@ namespace Nethermind.Core.Caching
         }
 
         public int Count => _cacheMap.Count;
+
+        protected virtual void Evict(TValue value)
+        {
+        }
 
         private TValue Replace(TKey key, TValue value)
         {
@@ -285,23 +296,6 @@ namespace Nethermind.Core.Caching
                     $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
         }
 
-        private TValue[]? GetEvictedValues()
-        {
-            if (_onEvict is null || _cacheMap.Count == 0)
-            {
-                return null;
-            }
-
-            int i = 0;
-            TValue[] evictedValues = new TValue[_cacheMap.Count];
-            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
-            {
-                evictedValues[i++] = kvp.Value.Value.Value;
-            }
-
-            return evictedValues;
-        }
-
         private void NotifyEvictedValues(TValue[]? evictedValues)
         {
             if (evictedValues is null)
@@ -317,9 +311,9 @@ namespace Nethermind.Core.Caching
 
         private void NotifyEvicted(TValue value)
         {
-            if (_onEvict is not null && value is not null)
+            if (value is not null)
             {
-                _onEvict(value);
+                Evict(value);
             }
         }
 

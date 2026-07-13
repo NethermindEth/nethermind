@@ -50,8 +50,8 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Witness.Headers, Is.Not.Empty);
 
         // Contractual: executed-against header is the last entry (ascending block-number order).
-        Rlp.ValueDecoderContext stream = new(result.Witness.Headers[^1]);
-        BlockHeader lastHeader = _headerDecoder.Decode(ref stream)!;
+        RlpReader reader = new(result.Witness.Headers[^1]);
+        BlockHeader lastHeader = _headerDecoder.Decode(ref reader)!;
         Assert.That(lastHeader.Hash, Is.EqualTo(head.Hash!), "the executed-against block header must be included");
     }
 
@@ -88,7 +88,7 @@ public class ProofRpcModuleCallTests
 
         using ResultWrapper<CallResultWithProof> result = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressA },
-            new BlockParameter(0L));
+            new BlockParameter(0UL));
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "genesis has no parent header for the witness walk");
         Assert.That(result.Result.Error, Does.Contain("genesis"), "the error message should explain the genesis rejection");
@@ -114,7 +114,7 @@ public class ProofRpcModuleCallTests
             .Done;
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -149,7 +149,7 @@ public class ProofRpcModuleCallTests
             .Done;
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -159,9 +159,6 @@ public class ProofRpcModuleCallTests
             new BlockParameter(blockNumber));
         CallResultWithProof result = wrapper.Data!;
 
-        // The collector walks back from the executed block to the lowest BLOCKHASH-touched block, so
-        // the header set covers the path [BLOCKHASH-touched .. executed]. With BLOCKHASH(1), the path
-        // includes the executed-against header plus at least block 1's header.
         Assert.That(result.Witness.Headers.Count, Is.GreaterThanOrEqualTo(2),
             "BLOCKHASH(1) must add at least one ancestor header beyond the executed-against header");
 
@@ -169,22 +166,22 @@ public class ProofRpcModuleCallTests
         BlockHeader executed = blockchain.BlockTree.Head!.Header;
 
         // Contractual ordering: BLOCKHASH-touched ancestor first, executed-against header last.
-        Rlp.ValueDecoderContext firstStream = new(result.Witness.Headers[0]);
-        BlockHeader firstHeader = _headerDecoder.Decode(ref firstStream)!;
+        RlpReader firstReader = new(result.Witness.Headers[0]);
+        BlockHeader firstHeader = _headerDecoder.Decode(ref firstReader)!;
         Assert.That(firstHeader.Hash, Is.EqualTo(block1.Hash),
             "the BLOCKHASH-touched ancestor must be the first witness header");
 
-        Rlp.ValueDecoderContext lastStream = new(result.Witness.Headers[^1]);
-        BlockHeader lastHeader = _headerDecoder.Decode(ref lastStream)!;
+        RlpReader lastReader = new(result.Witness.Headers[^1]);
+        BlockHeader lastHeader = _headerDecoder.Decode(ref lastReader)!;
         Assert.That(lastHeader.Hash, Is.EqualTo(executed.Hash!),
             "the executed-against header must remain the last witness header under BLOCKHASH");
 
         for (int i = 1; i < result.Witness.Headers.Count; i++)
         {
-            Rlp.ValueDecoderContext prevStream = new(result.Witness.Headers[i - 1]);
-            Rlp.ValueDecoderContext curStream = new(result.Witness.Headers[i]);
-            long prevNumber = _headerDecoder.Decode(ref prevStream)!.Number;
-            long curNumber = _headerDecoder.Decode(ref curStream)!.Number;
+            RlpReader previousReader = new(result.Witness.Headers[i - 1]);
+            RlpReader currentReader = new(result.Witness.Headers[i]);
+            ulong prevNumber = _headerDecoder.Decode(ref previousReader)!.Number;
+            ulong curNumber = _headerDecoder.Decode(ref currentReader)!.Number;
             Assert.That(curNumber, Is.GreaterThan(prevNumber),
                 $"witness header at index {i} must have a higher block number than its predecessor");
         }
@@ -196,7 +193,7 @@ public class ProofRpcModuleCallTests
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
             new BlockParameter(blockNumber));
@@ -212,24 +209,17 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Witness.Codes, Is.Not.Empty);
     }
 
-    // OOG must still return a witness — the deliberate divergence from eth_call, which would fail the RPC.
     /// <summary>
-    /// Regression guard for the deleted <c>Debug_witness_includes_trie_nodes_for_storage_set_without_prior_read_then_reverted</c>:
-    /// when a slot is written (via SSTORE → WorldState.Set) and then reverted (via REVERT → WorldState.Restore),
-    /// the cached write is discarded and the trie is never traversed during the call. The witness must
-    /// still include the storage trie nodes for the slot — <see cref="WitnessGeneratingWorldState.GetWitness"/>
-    /// re-walks touched keys via <c>MultiAccountProofCollector</c> + per-account <c>AccountProofCollector</c> to
-    /// capture them. A cross-client (geth) verifier cannot reconstruct the slot without these nodes.
+    /// A slot written then reverted in the same call never traverses the trie, yet the witness must still
+    /// carry its storage nodes — <see cref="WitnessGeneratingWorldState.GetWitness"/> re-walks the touched
+    /// keys over the pre-state trie to capture them.
     /// </summary>
     [Test]
     public async Task Proof_call_includes_trie_nodes_for_storage_sstore_then_reverted()
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
 
-        // Runtime: SSTORE(0, 0xEE) then REVERT with empty data. The slot is written then reverted
-        // in the same call — the trie is never traversed during the call. The only way the witness
-        // covers slot 0's storage trie is via the post-execution re-walk of touched keys in
-        // WitnessGeneratingWorldState.GetWitness.
+        // Runtime: SSTORE(0, 0xEE) then REVERT — slot written then reverted, so the trie isn't traversed in-call.
         byte[] runtimeCode = Prepare.EvmCode
             .PushData(0xEE)
             .PushData(0)
@@ -238,10 +228,7 @@ public class ProofRpcModuleCallTests
             .PushData(0)
             .Op(Instruction.REVERT)
             .Done;
-        // Init: SSTORE(0, 0xEE) so slot 0 is committed to the trie at deploy time. This gives the
-        // parent state a real storage trie node for slot 0 that the post-execution re-walk must
-        // find and re-capture; without it, the parent state has no slot 0 storage node and the
-        // "expected storage proof" baseline would be empty.
+        // Init: SSTORE(0, 0xEE) commits slot 0 to the parent trie, giving a real pre-state node to re-capture.
         byte[] initCode = Prepare.EvmCode
             .PushData(0xEE)
             .PushData(0)
@@ -249,7 +236,7 @@ public class ProofRpcModuleCallTests
             .ForInitOf(runtimeCode)
             .Done;
 
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
         Transaction deployTx = Build.A.Transaction
             .WithNonce(nonce)
@@ -259,7 +246,7 @@ public class ProofRpcModuleCallTests
             .TestObject;
         await blockchain.AddBlock(deployTx);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         BlockHeader sourceHeader = blockchain.BlockTree.FindHeader(blockNumber)!;
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
@@ -288,10 +275,9 @@ public class ProofRpcModuleCallTests
         Assert.That(expectedStorageProofNodes, Is.Not.Empty,
             "the contract should have a non-empty storage proof for slot 0 in the parent state");
 
-        // The witness must contain every expected storage trie node by hash. If the
-        // MultiAccountProofCollector / per-account AccountProofCollector re-walk were dropped, this
-        // would fail because the SSTORE was reverted (the trie was never traversed during the call)
-        // and only the re-walk could have captured these nodes.
+        // The witness must contain every expected storage trie node by hash. If the post-execution
+        // generator walk were dropped, this would fail because the SSTORE was reverted (the trie was
+        // never traversed during the call) and only walking the touched keys could capture these nodes.
         HashSet<Hash256> witnessNodeHashes = result.Witness.State
             .Select(Keccak.Compute)
             .ToHashSet();
@@ -303,11 +289,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard for the deleted <c>Debug_executionWitnessCall_without_gas_field_still_records_full_witness</c>:
-    /// the <c>gas</c> field is documented as optional in the call request, and callers reasonably assume
-    /// the witness is recorded the same whether or not they pass gas explicitly. If that symmetry breaks
-    /// again, a caller who omits gas gets a near-empty witness that silently succeeds but fails
-    /// stateless re-execution downstream. Seen in the wild with surge-raiko's L1STATICCALL preflight.
+    /// The <c>gas</c> field is optional; omitting it must record the same witness as passing it. A
+    /// regression here gives a caller who omits gas a near-empty witness that fails stateless re-execution.
     /// </summary>
     [Test]
     public async Task Proof_call_with_and_without_gas_field_produces_same_witness_shape()
@@ -316,9 +299,8 @@ public class ProofRpcModuleCallTests
         await CreateTransferTx(blockchain);
         Address contractAddress = await DeploySloadReturningContract(blockchain, 0x55);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
 
-        // With gas explicitly passed — the control case.
         using ResultWrapper<CallResultWithProof> withGas = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -327,8 +309,6 @@ public class ProofRpcModuleCallTests
             },
             new BlockParameter(blockNumber));
 
-        // Without gas — what most call sites end up sending. `{to}` is the natural shape for a view
-        // call, and callers don't want to have to know the block's gas limit.
         using ResultWrapper<CallResultWithProof> withoutGas = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -343,7 +323,6 @@ public class ProofRpcModuleCallTests
         Assert.That(withoutGas.Data.Result, Is.Not.Null.And.Not.Empty,
             "omitting gas must still execute the call to completion");
 
-        // The two paths must produce witnesses of the same shape.
         Assert.That(withoutGas.Data.Witness.State, Is.Not.Empty,
             "omitting gas must not empty the state node set");
         Assert.That(withoutGas.Data.Witness.Codes, Is.Not.Empty,
@@ -369,7 +348,7 @@ public class ProofRpcModuleCallTests
             .Done;
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {
@@ -413,7 +392,7 @@ public class ProofRpcModuleCallTests
             .ForInitOf(runtimeCode)
             .Done;
 
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
         Transaction deployTx = Build.A.Transaction
             .WithNonce(nonce)
@@ -423,7 +402,7 @@ public class ProofRpcModuleCallTests
             .TestObject;
         await blockchain.AddBlock(deployTx);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         BlockHeader sourceHeader = blockchain.BlockTree.FindHeader(blockNumber)!;
 
         using ResultWrapper<CallResultWithProof> proofWrapper = blockchain.ProofRpcModule.proof_call(
@@ -439,8 +418,8 @@ public class ProofRpcModuleCallTests
         Assert.That(proof.Result![^1], Is.EqualTo(0xAB));
 
         // The executed-against header must be present (used by the verifier to bind state root → block).
-        Rlp.ValueDecoderContext lastHeaderStream = new(proof.Witness.Headers[^1]);
-        BlockHeader witnessHeader = _headerDecoder.Decode(ref lastHeaderStream)!;
+        RlpReader lastHeaderReader = new(proof.Witness.Headers[^1]);
+        BlockHeader witnessHeader = _headerDecoder.Decode(ref lastHeaderReader)!;
         Assert.That(witnessHeader.Hash, Is.EqualTo(sourceHeader.Hash!));
         Assert.That(witnessHeader.StateRoot, Is.EqualTo(sourceHeader.StateRoot!));
 
@@ -466,8 +445,8 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression guard: a single-slot call must still capture the state-root node (via the
-    /// <c>MultiAccountProofCollector</c> walk); without it, tiny-call witnesses fail stateless re-execution.
+    /// Regression guard: a single-slot call must still capture the state-root node (via the generator
+    /// walk over the touched keys); without it, tiny-call witnesses fail stateless re-execution.
     /// </summary>
     [Test]
     public async Task Proof_call_single_slot_includes_state_root_in_witness()
@@ -480,7 +459,7 @@ public class ProofRpcModuleCallTests
             .PushData(32).PushData(0).Op(Instruction.RETURN).Done;
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         BlockHeader head = blockchain.BlockTree.FindHeader(blockNumber)!;
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
@@ -529,16 +508,15 @@ public class ProofRpcModuleCallTests
     }
 
     /// <summary>
-    /// Regression: a call touching two accounts must capture the storage trie for both. The pre-fix
-    /// <c>MultiAccountProofCollector</c> keyed its storage-walk discriminator by an address hash
-    /// the visitor never provided, so the second account's storage was silently dropped.
+    /// Regression: a call touching two accounts must capture the storage trie for both — the witness
+    /// walk runs per touched account, so neither account's storage is dropped.
     /// </summary>
     [Test]
     public async Task Proof_call_with_two_accounts_captures_storage_trie_for_each()
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Address contract = await DeploySloadReturningContract(blockchain, 0x77);
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
 
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contract, Gas = 200_000 },
@@ -572,7 +550,7 @@ public class ProofRpcModuleCallTests
             .Done;
         Address caller = await DeployContract(blockchain, callerCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = caller, Gas = 200_000 },
             new BlockParameter(blockNumber));
@@ -580,8 +558,8 @@ public class ProofRpcModuleCallTests
 
         Assert.That(proof.Witness.State, Is.Not.Empty);
 
-        Rlp.ValueDecoderContext stream = new(proof.Witness.Headers[^1]);
-        BlockHeader witnessHeader = _headerDecoder.Decode(ref stream)!;
+        RlpReader reader = new(proof.Witness.Headers[^1]);
+        BlockHeader witnessHeader = _headerDecoder.Decode(ref reader)!;
         IWorldState statelessWorld = new WorldState(
             new TrieStoreScopeProvider(
                 new RawTrieStore(proof.Witness.CreateNodeStorage()),
@@ -605,15 +583,14 @@ public class ProofRpcModuleCallTests
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
 
         Address contract = await DeploySloadReturningContract(blockchain, 0xAA);
-        long deployBlock = blockchain.BlockTree.Head!.Number;
+        ulong deployBlock = blockchain.BlockTree.Head!.Number;
 
         await CreateTransferTx(blockchain);
         await CreateTransferTx(blockchain);
         await CreateTransferTx(blockchain);
-        long laterBlock = blockchain.BlockTree.Head!.Number;
+        ulong laterBlock = blockchain.BlockTree.Head!.Number;
         Assert.That(laterBlock, Is.GreaterThan(deployBlock));
 
-        // Interleave calls between the two block heights several times.
         for (int round = 0; round < 8; round++)
         {
             using ResultWrapper<CallResultWithProof> atDeploy = blockchain.ProofRpcModule.proof_call(
@@ -627,12 +604,12 @@ public class ProofRpcModuleCallTests
             Assert.That(atLater.Data.Result![^1], Is.EqualTo(0xAA), $"round {round}: later-block call");
 
             // Each witness must reference its own block (a stale state root or scope leak would mismatch).
-            Rlp.ValueDecoderContext deployStream = new(atDeploy.Data.Witness.Headers[^1]);
-            BlockHeader deployHdr = _headerDecoder.Decode(ref deployStream)!;
+            RlpReader deployReader = new(atDeploy.Data.Witness.Headers[^1]);
+            BlockHeader deployHdr = _headerDecoder.Decode(ref deployReader)!;
             Assert.That(deployHdr.Number, Is.EqualTo(deployBlock), $"round {round}: header at deploy-block call");
 
-            Rlp.ValueDecoderContext laterStream = new(atLater.Data.Witness.Headers[^1]);
-            BlockHeader laterHdr = _headerDecoder.Decode(ref laterStream)!;
+            RlpReader laterReader = new(atLater.Data.Witness.Headers[^1]);
+            BlockHeader laterHdr = _headerDecoder.Decode(ref laterReader)!;
             Assert.That(laterHdr.Number, Is.EqualTo(laterBlock), $"round {round}: header at later-block call");
         }
     }
@@ -650,19 +627,19 @@ public class ProofRpcModuleCallTests
     {
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Address contract = await DeploySloadReturningContract(blockchain, 0xBB);
-        long deployBlock = blockchain.BlockTree.Head!.Number;
+        ulong deployBlock = blockchain.BlockTree.Head!.Number;
 
         await CreateTransferTx(blockchain);
         await CreateTransferTx(blockchain);
-        long laterBlock = blockchain.BlockTree.Head!.Number;
+        ulong laterBlock = blockchain.BlockTree.Head!.Number;
 
         // Interleave same-block and cross-block requests; a torn-witness regression would surface
         // as either an exception in one of the tasks or an assertion failure below.
         int requestCount = Environment.ProcessorCount * 2;
-        Task<(long block, byte result)>[] tasks = new Task<(long, byte)>[requestCount];
+        Task<(ulong block, byte result)>[] tasks = new Task<(ulong, byte)>[requestCount];
         for (int i = 0; i < requestCount; i++)
         {
-            long block = (i & 1) == 0 ? deployBlock : laterBlock;
+            ulong block = (i & 1) == 0 ? deployBlock : laterBlock;
             tasks[i] = Task.Run(async () =>
             {
                 using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
@@ -674,14 +651,14 @@ public class ProofRpcModuleCallTests
 
                 // Header must match the requested block — a scope leak between two concurrent
                 // rents would manifest as a mismatched block number here.
-                Rlp.ValueDecoderContext stream = new(result.Witness.Headers[^1]);
-                BlockHeader hdr = _headerDecoder.Decode(ref stream)!;
+                RlpReader reader = new(result.Witness.Headers[^1]);
+                BlockHeader hdr = _headerDecoder.Decode(ref reader)!;
                 Assert.That(hdr.Number, Is.EqualTo(block), $"task {i}: header number");
                 return (block, result.Result[^1]);
             });
         }
 
-        (long, byte)[] all = await Task.WhenAll(tasks);
+        (ulong, byte)[] all = await Task.WhenAll(tasks);
         Assert.That(all.Length, Is.EqualTo(requestCount));
     }
 
@@ -696,7 +673,7 @@ public class ProofRpcModuleCallTests
             .PushData(markerValue).PushData(0).Op(Instruction.SSTORE)
             .ForInitOf(runtimeCode).Done;
 
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
         Transaction deployTx = Build.A.Transaction
             .WithNonce(nonce).WithCode(initCode).WithGasLimit(500_000)
@@ -707,7 +684,7 @@ public class ProofRpcModuleCallTests
 
     private static async Task CreateTransferTx(TestRpcBlockchain blockchain)
     {
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         Transaction transferTx = Build.A.Transaction
             .WithNonce(nonce)
             .To(TestItem.AddressB)
@@ -719,7 +696,7 @@ public class ProofRpcModuleCallTests
 
     private static async Task<Address> DeployContract(TestRpcBlockchain blockchain, byte[] runtimeCode)
     {
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
         Address contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
 
@@ -782,7 +759,7 @@ public class ProofRpcModuleCallTests
             .Done;
         Address contractAddress = await DeployContract(blockchain, runtimeCode);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = contractAddress, Gas = 200_000 },
             new BlockParameter(blockNumber));
@@ -806,7 +783,7 @@ public class ProofRpcModuleCallTests
         using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         Address contract = await DeploySloadReturningContract(blockchain, 0x42);
 
-        long blockNumber = blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = blockchain.BlockTree.Head!.Number;
         using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
             new Facade.Eth.RpcTransaction.LegacyTransactionForRpc
             {

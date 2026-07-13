@@ -31,6 +31,7 @@ namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
+    IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -42,9 +43,10 @@ public class TestingRpcModule(
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
-    // Persistent producer env is safe across calls because BranchProcessor.Process opens
-    // a fresh world-state scope on entry, so no mutable state leaks between commits.
-    private readonly IBlockProducerEnv _env = blockProducerEnvFactory.CreatePersistent();
+    // The commit pass updates the head without re-processing, so it must run on the main
+    // world state to persist the produced post-state. Reuse across calls is safe because
+    // BranchProcessor.Process opens a fresh world-state scope on entry.
+    private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -85,9 +87,8 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            // Must NOT set ReadOnlyChain — empirically, the producer pass under FlatDb
-            // only appends a snapshot bundle when the chain is not read-only; without
-            // it the next commit's BeginScope(parent) fails with "Unable to gather snapshots".
+            // ForceProcessing: the produced block is not yet better than the current head.
+            // Persistence is decided by the env's (main) world state, not by these options.
             const ProcessingOptions ProducerOptions =
                 ProcessingOptions.NoValidation
                 | ProcessingOptions.ForceProcessing
@@ -95,7 +96,7 @@ public class TestingRpcModule(
                 | ProcessingOptions.StoreReceipts;
 
             ResultWrapper<ProducedBlock> produced = ProduceBlock(
-                _env, chainHead, payloadAttributes, txRlps, extraData,
+                _commitEnv, chainHead, payloadAttributes, txRlps, extraData,
                 nameof(testing_commitBlockV1), exitToken,
                 NullBlockTracer.Instance, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)
@@ -193,7 +194,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent),
+            payloadAttributes.GetGasLimit(parent, gasLimitCalculator),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {

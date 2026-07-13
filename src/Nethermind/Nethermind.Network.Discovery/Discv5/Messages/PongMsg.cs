@@ -13,8 +13,8 @@ internal sealed record PongMsg : Discv5Message
     {
     }
 
-    public PongMsg(RequestId requestId, ulong enrSequence, IPAddress recipientIp, int recipientPort, ArrayPoolSpan<byte>? owner = null)
-        : base(requestId, owner)
+    public PongMsg(in RequestId requestId, ulong enrSequence, IPAddress recipientIp, int recipientPort, ArrayPoolSpan<byte>? owner = null)
+        : base(in requestId, owner)
     {
         EnrSequence = enrSequence;
         RecipientIp = recipientIp;

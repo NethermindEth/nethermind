@@ -34,13 +34,13 @@ public class RpcModuleTests
     private XdcRpcModule _rpcModule;
 
 
-    private EpochSwitchInfo[] GenerateEpochSwitchInfos(long begin, long end, int switchEpoch, int epochLength)
+    private EpochSwitchInfo[] GenerateEpochSwitchInfos(ulong begin, ulong end, ulong switchEpoch, ulong epochLength)
     {
         List<EpochSwitchInfo> epochSwitchInfos = [];
-        for (long blockNum = begin; blockNum <= end; blockNum += epochLength)
+        for (ulong blockNum = begin; blockNum <= end; blockNum += epochLength)
         {
-            ulong epochNumber = (ulong)(blockNum / epochLength);
-            if (epochNumber >= (ulong)switchEpoch)
+            ulong epochNumber = blockNum / epochLength;
+            if (epochNumber >= switchEpoch)
             {
                 epochSwitchInfos.Add(new EpochSwitchInfo(
                     Array.Empty<Address>(),
@@ -53,13 +53,13 @@ public class RpcModuleTests
     }
 
     private IXdcReleaseSpec CreateDummyXdcReleaseSpec(
-        int? switchEpoch = null,
-        int? epochLength = null,
-        long? switchBlock = null,
+        ulong? switchEpoch = null,
+        ulong? epochLength = null,
+        ulong? switchBlock = null,
         int? maxMasternodes = null,
         double? certThreshold = null,
         int? timeoutPeriod = null,
-        int? minePeriod = null,
+        ulong? minePeriod = null,
         int? configsCount = null)
     {
         List<V2ConfigParams> v2Configs = [];
@@ -185,7 +185,7 @@ public class RpcModuleTests
         ulong epochNumber = 5;
         Hash256 expectedHash = TestItem.KeccakA;
         ulong expectedRound = 100;
-        long expectedBlockNumber = 500;
+        ulong expectedBlockNumber = 500;
 
         BlockRoundInfo blockRoundInfo = new(expectedHash, expectedRound, expectedBlockNumber);
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
@@ -213,7 +213,7 @@ public class RpcModuleTests
         ulong epochNumber = 5;
         Hash256 expectedHash = TestItem.KeccakA;
         ulong expectedRound = 100;
-        long expectedBlockNumber = 500;
+        ulong expectedBlockNumber = 500;
 
         BlockRoundInfo blockRoundInfo = new(expectedHash, expectedRound, expectedBlockNumber);
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(blockRoundInfo);
@@ -249,8 +249,8 @@ public class RpcModuleTests
     {
         // Arrange
         ulong epochNumber = 3;
-        long headNumber = 100;
-        int switchEpoch = 5;
+        ulong headNumber = 100;
+        ulong switchEpoch = 5;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = headNumber;
@@ -272,8 +272,8 @@ public class RpcModuleTests
     {
         // Arrange
         ulong epochNumber = 10;
-        long headNumber = 100;
-        int switchEpoch = 5;
+        ulong headNumber = 100;
+        ulong switchEpoch = 5;
 
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = headNumber;
@@ -298,8 +298,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnSuccess_WhenValidRange()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
         beginHeader.Number = begin;
@@ -331,8 +331,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenBeginHeaderNotFound()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         _blockTree.FindHeader(begin).Returns((BlockHeader?)null);
 
@@ -348,8 +348,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenEndHeaderNotFound()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
         beginHeader.Number = begin;
@@ -369,8 +369,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenBeginGreaterThanEnd()
     {
         // Arrange
-        long begin = 200;
-        long end = 100;
+        ulong begin = 200;
+        ulong end = 100;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
         beginHeader.Number = begin;
@@ -393,8 +393,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenRangeExceedsLimit()
     {
         // Arrange
-        long begin = 100;
-        long end = 50_101;
+        ulong begin = 100;
+        ulong end = 50_101;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().TestObject;
         beginHeader.Number = begin;
@@ -417,8 +417,8 @@ public class RpcModuleTests
     public void GetEpochNumbersBetween_ShouldReturnFail_WhenHeadersAreNotXdcHeaders()
     {
         // Arrange
-        long begin = 100;
-        long end = 200;
+        ulong begin = 100;
+        ulong end = 200;
 
         BlockHeader beginHeader = Build.A.BlockHeader.TestObject;
         beginHeader.Number = begin;
@@ -615,7 +615,7 @@ public class RpcModuleTests
     public void GetMasternodesByNumber_ShouldReturnFail_WhenInvalidBlockNumber()
     {
         // Arrange
-        BlockParameter blockParameter = new(-1);
+        BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.GetMasternodesByNumber(blockParameter);
@@ -734,7 +734,7 @@ public class RpcModuleTests
     public void GetSigners_ShouldReturnFail_WhenInvalidBlockNumber()
     {
         // Arrange
-        BlockParameter blockParameter = new(-1);
+        BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
         ResultWrapper<Address[]> result = _rpcModule.GetSigners(blockParameter);
@@ -764,7 +764,7 @@ public class RpcModuleTests
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
     {
         // Arrange
-        BlockParameter blockParameter = new(-1);
+        BlockParameter blockParameter = new(ulong.MaxValue);
 
         // Act
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.GetMissedRoundsInEpochByBlockNum(blockParameter);
@@ -806,14 +806,13 @@ public class RpcModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
-
     [Test]
     public void GetRewardByAccount_ShouldReturnSuccess_WhenRewardsExist()
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
         const ulong epoch1 = 120;
         const ulong epoch2 = 180;
 
@@ -830,23 +829,15 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = epoch1;
-                callInfo[1] = epoch2;
-                return true;
-            });
-
-        _rewardsStore.HasEpochRewards(epoch1).Returns(true);
-        _rewardsStore.HasEpochRewards(epoch2).Returns(true);
-        _rewardsStore.TryGetAccountReward(account, epoch1, out Arg.Any<UInt256>())
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(true);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakB).Returns(true);
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakA, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)10;
                 return true;
             });
-        _rewardsStore.TryGetAccountReward(account, epoch2, out Arg.Any<UInt256>())
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakB, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)20;
@@ -867,51 +858,12 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRequestIsPruned()
-    {
-        // Arrange
-        Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
-        const ulong requestedEpoch = 120;
-        const ulong oldestRetained = 150;
-        const ulong newestRetained = 300;
-
-        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
-        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
-
-        _blockTree.FindHeader(begin).Returns(beginHeader);
-        _blockTree.FindHeader(end).Returns(endHeader);
-
-        EpochSwitchInfo[] epochSwitchInfos =
-        [
-            new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakA, 1, (long)requestedEpoch)),
-        ];
-
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = oldestRetained;
-                callInfo[1] = newestRetained;
-                return true;
-            });
-
-        // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
-
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
-    }
-
-    [Test]
     public void GetRewardByAccount_ShouldReturnFail_WhenRewardsMissingForEpoch()
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
         const ulong epoch = 120;
 
         XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
@@ -926,8 +878,7 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
-        _rewardsStore.HasEpochRewards(epoch).Returns(false);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(false);
 
         // Act
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
@@ -942,8 +893,8 @@ public class RpcModuleTests
     {
         // Arrange
         Address account = TestItem.AddressA;
-        const long begin = 100;
-        const long end = 200;
+        const ulong begin = 100;
+        const ulong end = 200;
 
         BlockHeader beginHeader = Build.A.BlockHeader.WithNumber(begin).TestObject;
         BlockHeader endHeader = Build.A.BlockHeader.WithNumber(end).TestObject;
