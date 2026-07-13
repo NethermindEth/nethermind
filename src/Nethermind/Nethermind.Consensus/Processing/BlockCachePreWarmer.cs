@@ -53,13 +53,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
+    private readonly IHasAccessList[] _systemAccessLists;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager
+        ILogManager logManager,
+        IHasAccessList[]? systemAccessLists = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -68,7 +70,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         nodeStorageCache,
         preBlockCaches,
         logManager,
-        blocksConfig.MempoolPreWarmConcurrency) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        blocksConfig.MempoolPreWarmConcurrency,
+        systemAccessLists) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -78,8 +81,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        int speculativeConcurrency = 0)
+        int speculativeConcurrency = 0,
+        IHasAccessList[]? systemAccessLists = null)
     {
+        _systemAccessLists = systemAccessLists ?? [];
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -89,7 +94,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _nodeStorageCache = nodeStorageCache;
     }
 
-    public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+    public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
         if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
 
@@ -111,7 +116,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, systemAccessLists);
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
     }
 
     private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -562,22 +567,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try
             {
-                if (SystemTxAccessLists is not null)
+                Address? beneficiary = block.Header.GasBeneficiary;
+                if (SystemTxAccessLists is not null || beneficiary is not null)
                 {
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
 
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        WarmupSender(beneficiary, null, scope.WorldState);
+
+                        if (SystemTxAccessLists is not null)
                         {
-                            scope.WorldState.WarmUp(list);
+                            foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                            {
+                                scope.WorldState.WarmUp(list);
+                            }
                         }
                     }
                     finally
                     {
                         envPool.Return(env);
-                        SystemTxAccessLists.Dispose();
+                        SystemTxAccessLists?.Dispose();
                     }
                 }
 

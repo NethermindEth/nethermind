@@ -278,7 +278,6 @@ public class BlockProcessorTests
             processor,
             HoodiSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             preWarmer);
@@ -480,7 +479,7 @@ public class BlockProcessorTests
         public CancellationToken CapturedToken { get; private set; }
 
         public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
-            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+            CancellationToken cancellationToken = default)
         {
             CapturedToken = cancellationToken;
             return Task.CompletedTask;
