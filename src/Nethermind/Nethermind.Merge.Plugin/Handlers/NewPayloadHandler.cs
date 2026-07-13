@@ -372,8 +372,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             try
             {
-                // Senders recovered on mempool ingress are reused here via the cache inside
-                // RecoverAddress — a pooled transaction becomes a lock-free lookup on block arrival.
                 _senderRecovery.RecoverData(txs, spec);
             }
             catch (Exception e)

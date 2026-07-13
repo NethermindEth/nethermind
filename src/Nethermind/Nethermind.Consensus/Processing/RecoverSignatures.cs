@@ -35,7 +35,6 @@ namespace Nethermind.Consensus.Processing
             RecoverData(txs, releaseSpec);
         }
 
-        // Exact per-tx check so a partially recovered block is completed, not skipped.
         private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
@@ -96,7 +95,6 @@ namespace Nethermind.Consensus.Processing
 
         private void Recover(Transaction tx, IReleaseSpec releaseSpec)
         {
-            // Compute the lazily-deferred keccak here, off the serial processing path.
             _ = tx.Hash;
             tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
             RecoverAuthorities(tx, releaseSpec);
