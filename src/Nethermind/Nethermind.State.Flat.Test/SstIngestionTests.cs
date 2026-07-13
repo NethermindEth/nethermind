@@ -240,6 +240,59 @@ public class SstIngestionTests
     }
 
     [Test]
+    public void Failed_ingest_after_first_column_keeps_marker_and_rolls_forward_on_reopen()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        TreePath topPath = new(Keccak.Compute("top"), 4);
+        TreePath deepPath = new(Keccak.Compute("deep"), 10);
+        TreePath fallbackPath = new(Keccak.Compute("fallback"), 20);
+        Hash256 storageAccount = TestItem.KeccakA;
+        TreePath storagePath = new(Keccak.Compute("storage"), 8);
+        byte[] payload = [0x02, 0x02];
+        SlotValue v2 = Slot(0x22);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        ColumnDb storageColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Storage);
+        storageColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot2, v2);
+            batch.SetStateTrieNode(topPath, payload);
+            batch.SetStateTrieNode(deepPath, payload);
+            batch.SetStateTrieNode(fallbackPath, payload);
+            batch.SetStorageTrieNode(storageAccount, storagePath, payload);
+        }, Throws.InstanceOf<IOException>());
+
+        storageColumn._testIngestFailureHook = null;
+
+        (StateId To, string[] Files)? marker = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
+        Assert.That(marker, Is.Not.Null);
+        Assert.That(marker!.Value.To, Is.EqualTo(s2));
+        Assert.That(StagedSstFiles(), Is.Not.Empty);
+
+        Reopen();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        Assert.That(reader.CurrentState, Is.EqualTo(s2));
+        Assert.That(reader.GetAccount(Addr)!.Balance, Is.EqualTo((UInt256)200));
+        AssertSlot(reader, Slot2, v2);
+        Assert.That(reader.TryLoadStateRlp(topPath, ReadFlags.None), Is.EqualTo(payload));
+        Assert.That(reader.TryLoadStateRlp(deepPath, ReadFlags.None), Is.EqualTo(payload));
+        Assert.That(reader.TryLoadStateRlp(fallbackPath, ReadFlags.None), Is.EqualTo(payload));
+        Assert.That(reader.TryLoadStorageRlp(storageAccount, storagePath, ReadFlags.None), Is.EqualTo(payload));
+        Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+        Assert.That(StagedSstFiles(), Is.Empty);
+    }
+
+    [Test]
     public void Crash_between_column_ingests_rolls_forward_on_reopen()
     {
         StateId s1 = State(1, 1);
