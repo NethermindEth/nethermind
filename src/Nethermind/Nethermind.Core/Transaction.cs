@@ -83,11 +83,6 @@ namespace Nethermind.Core
             AuthorizationList is not null &&
             AuthorizationList.Length > 0;
 
-        /// <summary>
-        /// Single-entry memo for the fork-dependent intrinsic-gas computation (an immutable box
-        /// owned by the gas policy). Written and read with plain accesses: the box is immutable
-        /// after construction and a lost race merely recomputes.
-        /// </summary>
         [JsonIgnore]
         public object? IntrinsicGasMemo;
 

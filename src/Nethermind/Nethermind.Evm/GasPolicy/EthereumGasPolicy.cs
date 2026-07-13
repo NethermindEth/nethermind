@@ -509,10 +509,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
-        // The computation scans the whole calldata and is repeated for the same transaction by
-        // the prewarmer, the parallel executors and the serial validation loop within one block.
-        // Volatile pairs publish the box's fields with the reference; the spec key is a per-fork
-        // singleton, so a reference match proves the memo belongs to this fork.
         if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec))
         {
             return memo.Gas;

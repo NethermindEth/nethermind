@@ -386,9 +386,6 @@ namespace Nethermind.Evm.Test
             Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
         }
 
-        // Prewarmer, parallel executors and the serial validation loop compute the same
-        // intrinsic gas within one block; the memo keys on the per-fork spec singleton and
-        // must die whenever the transaction's bytes or identity change.
         [TestCase(true, true, true, TestName = "Memo_ForSameSpec_ServesTheCachedResult")]
         [TestCase(false, true, false, TestName = "Memo_ForDifferentSpec_Recomputes")]
         [TestCase(true, false, true, TestName = "Memo_ForDifferentBlockGasLimit_StillHits")]
@@ -418,9 +415,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        // SetPreHash* covers small decoded transactions; the Hash setter covers >32KB decodes
-        // and the object pool's reset — a stale memo on a reused pooled object would serve the
-        // previous transaction's intrinsic gas.
         [TestCase(true, TestName = "Memo_WhenNewBytesArrive_IsInvalidated")]
         [TestCase(false, TestName = "Memo_WhenTheHashIsReassigned_IsInvalidated")]
         public void IntrinsicGasMemo_WhenTheTransactionChanges_IsInvalidated(bool viaPreHash)
