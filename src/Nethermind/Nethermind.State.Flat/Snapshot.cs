@@ -130,19 +130,22 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
+    public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
+    public readonly AddressStorageNodeDictionary StorageNodes = new();
 
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
 
-        Accounts.NoResizeClear();
-        Storages.NoResizeClear();
-        SelfDestructedStorageAddresses.NoResizeClear();
-        StateNodes.NoResizeClear();
-        StorageNodes.NoResizeClear();
+        // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
+        // bundle returning its current content on disposal), so no writer can hold a stripe;
+        // the lock-free clear skips ~thousands of inflated Monitor acquisitions per return.
+        Accounts.NoLockClear();
+        Storages.NoLockClear();
+        SelfDestructedStorageAddresses.NoLockClear();
+        StateNodes.Clear();
+        StorageNodes.NoLockClear();
     }
 
     /// <summary>
