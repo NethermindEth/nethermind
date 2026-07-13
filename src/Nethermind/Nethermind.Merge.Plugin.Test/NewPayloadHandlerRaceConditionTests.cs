@@ -335,7 +335,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             stateReader,
             Substitute.For<IEthereumEcdsa>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<ITxPool>(),
+            Substitute.For<IPendingTxLookup>(),
             LimboLogs.Instance);
     }
 }

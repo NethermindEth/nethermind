@@ -11,7 +11,7 @@ using Nethermind.Network.Contract.Messages;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPool
+    public interface ITxPool : IPendingTxLookup
     {
         int GetPendingTransactionsCount();
         int GetPendingBlobTransactionsCount();
@@ -51,7 +51,6 @@ namespace Nethermind.TxPool
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
-        bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,

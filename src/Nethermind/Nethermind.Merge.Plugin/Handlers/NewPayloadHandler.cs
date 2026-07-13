@@ -52,7 +52,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
-    private readonly ITxPool _txPool;
+    private readonly IPendingTxLookup _pendingTxLookup;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
@@ -81,7 +81,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IStateReader stateReader,
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
-        ITxPool txPool,
+        IPendingTxLookup pendingTxLookup,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -96,7 +96,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
         _specProvider = specProvider;
-        _txPool = txPool;
+        _pendingTxLookup = pendingTxLookup;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -380,7 +380,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 {
                     if (tx.SenderAddress is null
                         && tx.Hash is not null
-                        && _txPool.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
+                        && _pendingTxLookup.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
                         && pooled.SenderAddress is not null)
                     {
                         tx.SenderAddress = pooled.SenderAddress;
