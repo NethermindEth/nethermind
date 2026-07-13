@@ -47,6 +47,11 @@ public class ResourcePool : IResourcePool
             { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
             { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
         };
+
+        if (flatConfig.GcPaceIntervalMs > 0)
+        {
+            GcPacer.Start(flatConfig.GcPaceIntervalMs, flatConfig.GcPaceWarmupSeconds, flatConfig.GcPaceGen2IntervalMs, flatConfig.GcPaceGen0IntervalMs);
+        }
     }
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();

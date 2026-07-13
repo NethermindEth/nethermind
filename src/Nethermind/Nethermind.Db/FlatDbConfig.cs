@@ -18,6 +18,10 @@ public class FlatDbConfig : IFlatDbConfig
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxReorgDepth { get; set; } = 256;
     public ulong MinReorgDepth { get; set; } = 128;
+    public long GcPaceIntervalMs { get; set; } = 0;
+    public long GcPaceGen0IntervalMs { get; set; } = 0;
+    public long GcPaceGen2IntervalMs { get; set; } = 0;
+    public long GcPaceWarmupSeconds { get; set; } = 0;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;
