@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -24,7 +23,6 @@ namespace Nethermind.HealthChecks
         public bool MustInitialize => true;
         public bool Enabled => true; // Always enabled
 
-        public Task Init(INethermindApi api) => Task.CompletedTask;
 
         public IModule Module => new HealthCheckPluginModule();
     }

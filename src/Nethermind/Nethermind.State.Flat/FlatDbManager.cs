@@ -389,6 +389,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
+                // Block processing is now stalled waiting for the compactor to drain the queue; measure how long.
+                long stallStart = Stopwatch.GetTimestamp();
+
                 // This wait only occurs after several blocks have already entered the queue without blocking,
                 // so attempting to not block here to avoid blocking block processing is redundant.
                 TimeSpan delay = _compactorStallTimeout;
@@ -409,6 +412,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                         if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
                     }
                 }
+
+                Metrics.CompactorStallTime.Observe(Stopwatch.GetTimestamp() - stallStart);
             }
         }
     }

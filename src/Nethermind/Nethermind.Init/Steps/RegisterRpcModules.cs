@@ -21,7 +21,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializePlugins))]
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializeBlockProducer))]
 public class RegisterRpcModules(
     Lazy<IRpcModuleProvider> rpcModuleProvider, // Lazy because it could be disabled, in which case don't resolve it.
 

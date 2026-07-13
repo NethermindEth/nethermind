@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 
 namespace Nethermind.Api.Test
@@ -11,7 +10,6 @@ namespace Nethermind.Api.Test
         public string Name { get; }
         public string Description { get; }
         public string Author { get; }
-        public Task Init(INethermindApi nethermindApi) => throw new System.NotImplementedException();
 
         public bool Enabled => true;
     }
