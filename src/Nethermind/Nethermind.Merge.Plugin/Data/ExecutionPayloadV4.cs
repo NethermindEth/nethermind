@@ -16,6 +16,9 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<ExecutionPayloadV4>
 {
+    private byte[]? _decodedBlockAccessListSource;
+    private ReadOnlyBlockAccessList? _decodedBlockAccessList;
+
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV4, new()
     {
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
@@ -37,7 +40,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         Block block = baseResult.Data;
         if (BlockAccessList is not null)
         {
-            if (!TryDecodeBlockAccessList(BlockAccessList, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+            if (!TryDecodeBlockAccessList(out ReadOnlyBlockAccessList? blockAccessList, out string? error))
             {
                 return Result<Block>.Fail(error!);
             }
@@ -50,6 +53,28 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
+    }
+
+    internal bool TryDecodeBlockAccessList(
+        out ReadOnlyBlockAccessList? blockAccessList,
+        out string? error)
+    {
+        byte[] encodedBlockAccessList = BlockAccessList!;
+        if (ReferenceEquals(encodedBlockAccessList, _decodedBlockAccessListSource))
+        {
+            blockAccessList = _decodedBlockAccessList;
+            error = null;
+            return true;
+        }
+
+        if (!TryDecodeBlockAccessList(encodedBlockAccessList, out blockAccessList, out error))
+        {
+            return false;
+        }
+
+        _decodedBlockAccessListSource = encodedBlockAccessList;
+        _decodedBlockAccessList = blockAccessList;
+        return true;
     }
 
     internal static bool TryDecodeBlockAccessList(

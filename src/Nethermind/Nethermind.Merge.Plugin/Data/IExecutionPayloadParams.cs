@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -92,17 +93,22 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
+        bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
+            !spec.BlockLevelAccessListsEnabled &&
+            executionPayload.BlockAccessList is { Length: 0 };
         if (executionPayload.BlockAccessList is { } encodedBlockAccessList)
         {
             // A pre-fork V4 payload can use empty bytes while its header still carries the
             // forbidden BAL hash. Block reconstruction must classify that as INVALID.
-            bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
-                !spec.BlockLevelAccessListsEnabled &&
-                encodedBlockAccessList.Length == 0;
-            if (!isEmptyPreForkV4 &&
-                !ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error))
+            if (!isEmptyPreForkV4)
             {
-                return ValidationResult.Fail;
+                bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
+                    ? executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error);
+                if (!decoded)
+                {
+                    return ValidationResult.Fail;
+                }
             }
         }
 
@@ -127,6 +133,22 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
 
+        if (isEmptyPreForkV4)
+        {
+            Result<Block> reconstructedBlock = executionPayload.TryGetBlock();
+            if (reconstructedBlock.IsError)
+            {
+                error = reconstructedBlock.Error;
+                return ValidationResult.Invalid;
+            }
+
+            if (reconstructedBlock.Data.CalculateHash() == executionPayload.BlockHash)
+            {
+                error = "Block access list must not be set before engine_newPayloadV5";
+                return ValidationResult.Fail;
+            }
+        }
+
         error = null;
         return ValidationResult.Success;
     }
@@ -140,7 +162,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         if (version == EngineApiVersions.NewPayload.V4 &&
-            !spec.BlockLevelAccessListsEnabled &&
             executionPayload.BlockAccessList is { Length: > 0 })
         {
             error = "Block access list must not be set before engine_newPayloadV5";
