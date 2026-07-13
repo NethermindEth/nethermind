@@ -40,6 +40,18 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     ulong MinReorgDepth { get; set; }
 
+    [ConfigItem(Description = "When positive, forces a non-compacting gen1 collection at this interval (skipped when an ephemeral collection already ran within it), so young objects referenced from the long-lived snapshot maps are promoted in many small pauses instead of accumulating for minutes and being promoted in one multi-second induced collection. 0 disables.", DefaultValue = "0")]
+    long GcPaceIntervalMs { get; set; }
+
+    [ConfigItem(Description = "When positive, the GC pacer induces a gen0 collection at this cadence (skipped when the runtime already collected within the interval). Block processing at very large block sizes allocates gigabytes per block while the regions GC ignores GCGen0MaxBudget, so a whole block's survivors are otherwise promoted in one multi-hundred-ms gen0 pause — the read-path p99. Splitting the copy into short paced slices trades a few percent of throughput for tail latency. 0 disables.", DefaultValue = "0")]
+    long GcPaceGen0IntervalMs { get; set; }
+
+    [ConfigItem(Description = "When positive, the GC pacer starts a concurrent background gen2 collection at this cadence (skipped when one already ran in the interim). The paced gen1 sweeps never collect gen2, so dead promoted mass would otherwise accumulate until GC-heap-hard-limit pressure forces a multi-second blocking full collection. 0 disables. Only meaningful when GcPaceIntervalMs is set.", DefaultValue = "0")]
+    long GcPaceGen2IntervalMs { get; set; }
+
+    [ConfigItem(Description = "Warm-up window, in seconds from startup, during which the GC pacer runs at double cadence and starts a concurrent background gen2 every 32s — sweeping the LOH backlog of the pool-convergence allocation burst before it can race the GC heap hard limit into a blocking full collection. 0 disables the warm-up phase. Only meaningful when GcPaceIntervalMs is set.", DefaultValue = "0")]
+    long GcPaceWarmupSeconds { get; set; }
+
     [ConfigItem(Description = "Lower bound, in bytes, for the RocksDB write buffer (memtable) size of the flat-state columns. The per-batch adjuster never shrinks a column's memtable below this value. Raising it lets frequent small persistence batches (small CompactSize) coalesce and deduplicate in the memtable instead of churning L0, decoupling write amplification from CompactSize.", DefaultValue = "16777216")]
     long PersistenceWriteBufferFloor { get; set; }
 
