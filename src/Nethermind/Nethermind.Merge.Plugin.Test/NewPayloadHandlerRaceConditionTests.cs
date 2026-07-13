@@ -25,7 +25,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -335,7 +334,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             stateReader,
             Substitute.For<IEthereumEcdsa>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<IPendingTxLookup>(),
             LimboLogs.Instance);
     }
 }

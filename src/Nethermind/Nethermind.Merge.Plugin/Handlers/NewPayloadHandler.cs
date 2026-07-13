@@ -27,7 +27,6 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
-using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -52,7 +51,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
-    private readonly IPendingTxLookup _pendingTxLookup;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, (bool valid, string? message)>? _latestBlocks;
@@ -81,7 +79,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IStateReader stateReader,
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
-        IPendingTxLookup pendingTxLookup,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -96,7 +93,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
         _specProvider = specProvider;
-        _pendingTxLookup = pendingTxLookup;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -376,17 +372,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             try
             {
-                foreach (Transaction tx in txs)
-                {
-                    if (tx.SenderAddress is null
-                        && tx.Hash is not null
-                        && _pendingTxLookup.TryGetPendingTransaction(tx.Hash, out Transaction? pooled)
-                        && pooled.SenderAddress is not null)
-                    {
-                        tx.SenderAddress = pooled.SenderAddress;
-                    }
-                }
-
+                // Senders recovered on mempool ingress are reused here via the cache inside
+                // RecoverAddress — a pooled transaction becomes a lock-free lookup on block arrival.
                 _senderRecovery.RecoverData(txs, spec);
             }
             catch (Exception e)
