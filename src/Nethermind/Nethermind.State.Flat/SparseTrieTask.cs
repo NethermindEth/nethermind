@@ -475,6 +475,9 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
             session.PendingStorageRootComputations.Add(entry.Key);
         }
+
+        if (delta.IsFinal && session.RevealedAccounts.Count != 0)
+            computer.ComputeAppliedStateRoot();
     }
 
     private static void AddAccountTouch(
