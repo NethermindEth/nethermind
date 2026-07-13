@@ -777,6 +777,63 @@ public class RpcModuleTests
 
 
     [Test]
+    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds()
+    {
+        const long epochBlockNumber = 1800;
+        const ulong epochRound = 900;
+        XdcBlockHeader epochHeader = BuildHeader(epochBlockNumber, epochRound, Hash256.Zero);
+        XdcBlockHeader block1801 = BuildHeader(1801, 901, epochHeader.Hash!);
+        XdcBlockHeader block1802 = BuildHeader(1802, 902, block1801.Hash!);
+        XdcBlockHeader block1803 = BuildHeader(1803, 905, block1802.Hash!);
+        Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        _blockTree.FindHeader(1803).Returns(block1803);
+        _blockTree.FindHeader(block1802.Hash!).Returns(block1802);
+        _blockTree.FindHeader(block1801.Hash!).Returns(block1801);
+        _blockTree.FindHeader(epochHeader.Hash!).Returns(epochHeader);
+        _epochSwitchManager.GetEpochSwitchInfo(block1803).Returns(new EpochSwitchInfo(
+            masternodes,
+            [],
+            [],
+            new BlockRoundInfo(epochHeader.Hash!, epochRound, epochBlockNumber)));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(CreateDummyXdcReleaseSpec(epochLength: 900));
+
+        ResultWrapper<PublicApiMissedRoundsMetadata> result =
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(1803));
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        PublicApiMissedRoundsMetadata data = result.Data!;
+        Assert.That(data.MissedRounds, Is.Not.Null);
+        MissedRoundInfo[] missedRounds = data.MissedRounds!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.EpochRound, Is.EqualTo(epochRound));
+            Assert.That(data.EpochBlockNumber, Is.EqualTo((UInt256)epochBlockNumber));
+            Assert.That(missedRounds, Has.Length.EqualTo(2));
+            Assert.That(missedRounds[0].Round, Is.EqualTo(903));
+            Assert.That(missedRounds[0].Miner, Is.EqualTo(TestItem.AddressA));
+            Assert.That(missedRounds[0].CurrentBlockHash, Is.EqualTo(block1803.Hash));
+            Assert.That(missedRounds[0].CurrentBlockNum, Is.EqualTo((UInt256)1803));
+            Assert.That(missedRounds[0].ParentBlockHash, Is.EqualTo(block1802.Hash));
+            Assert.That(missedRounds[0].ParentBlockNum, Is.EqualTo((UInt256)1802));
+            Assert.That(missedRounds[1].Round, Is.EqualTo(904));
+            Assert.That(missedRounds[1].Miner, Is.EqualTo(TestItem.AddressB));
+            Assert.That(missedRounds[1].CurrentBlockHash, Is.EqualTo(block1803.Hash));
+            Assert.That(missedRounds[1].CurrentBlockNum, Is.EqualTo((UInt256)1803));
+            Assert.That(missedRounds[1].ParentBlockHash, Is.EqualTo(block1802.Hash));
+            Assert.That(missedRounds[1].ParentBlockNum, Is.EqualTo((UInt256)1802));
+        }
+
+        static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
+            Build.A.XdcBlockHeader()
+                .WithNumber(number)
+                .WithParentHash(parentHash)
+                .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+    }
+
+    [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
     {
         // Arrange
