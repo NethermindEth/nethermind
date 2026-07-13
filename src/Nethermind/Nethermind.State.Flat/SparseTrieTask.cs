@@ -310,6 +310,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 do
                 {
                     int commandsProcessed = 0;
+                    bool processedDelta = false;
                     while (commandsProcessed < MaxCommandsPerPass &&
                            _commands.Reader.TryRead(out Command? command))
                     {
@@ -322,11 +323,19 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
                         ProcessCommand(command);
                         commandsProcessed++;
+                        if (command is DeltaCommand delta &&
+                            (delta.Delta.Accounts.Count != 0 ||
+                             delta.Delta.StorageDeltas.Count != 0 ||
+                             delta.Delta.IsFinal))
+                        {
+                            processedDelta = true;
+                            break;
+                        }
                     }
 
                     continueProcessing = TryProcessSpeculativeTouches();
-                    if (!continueProcessing && !_commands.Reader.TryPeek(out _))
-                        continueProcessing = TryApplyPendingStorageUpdate();
+                    if (processedDelta || (!continueProcessing && !_commands.Reader.TryPeek(out _)))
+                        continueProcessing = TryApplyPendingStorageUpdate() || continueProcessing;
                     if (!continueProcessing && !_commands.Reader.TryPeek(out _))
                         continueProcessing = TryPrecomputeStorageRoot();
                     if (!continueProcessing && !_commands.Reader.TryPeek(out _))

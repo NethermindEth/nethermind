@@ -901,13 +901,23 @@ public class SparseTrieTaskTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SnapshotBackedStorageUpdates_ForThreeAccounts_MatchPatricia(
-        bool publishBeforeFinal)
+    [TestCase(false, 3, false, false)]
+    [TestCase(true, 3, true, false)]
+    [TestCase(true, 1, false, true)]
+    public async Task SnapshotBackedStorageUpdates_MatchPatricia(
+        bool publishBeforeFinal,
+        int contractCount,
+        bool waitForIdle,
+        bool warmAccountProof)
     {
-        const int contractCount = 3;
         MultiContractTestState state = BuildMultiContractState(contractCount, slotsPerContract: 4);
+        List<WarmedTrieNode>? accountProof = null;
+        if (warmAccountProof)
+        {
+            accountProof = [];
+            MultiContractState contract = state.Contracts[0];
+            state.StateTree.WarmUpPath(contract.Address.ToAccountPath.BytesAsSpan, accountProof);
+        }
         ProofPersistenceReader persistenceReader = new(state);
         ReadOnlySnapshotBundle readOnlyBundle = new(
             new SnapshotPooledList(0),
@@ -964,19 +974,54 @@ public class SparseTrieTaskTests
 
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
+        TaskCompletionSource? accountProofStarted = null;
+        TaskCompletionSource? releaseAccountProof = null;
+        if (accountProof is not null)
+        {
+            MultiContractState contract = state.Contracts[0];
+            accountProofStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            releaseAccountProof = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            CallbackReadOnlyList<WarmedTrieNode> blockedAccountProof = new(
+                accountProof,
+                () =>
+                {
+                    accountProofStarted.TrySetResult();
+                    releaseAccountProof.Task.GetAwaiter().GetResult();
+                });
+            Assert.That(
+                block.TryEnqueueAccountTouch(contract.Address.ToAccountPath, blockedAccountProof),
+                Is.True);
+        }
+        Task<bool>? queuedPreparation = null;
         if (publishBeforeFinal)
         {
             block.EnqueueDelta(new SparseTriePhaseDelta(accountDeltas, storageDeltas));
-            Assert.That(
-                SpinWait.SpinUntil(
-                    () => persistenceReader.StateLoads > 0 &&
-                        persistenceReader.StorageLoads >= contractCount,
-                    TimeSpan.FromSeconds(5)),
-                Is.True,
-                "worker-idle exact proofs did not complete");
+            if (accountProofStarted is not null)
+            {
+                try
+                {
+                    await accountProofStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    queuedPreparation = block.PrepareFinalAsync(finalState);
+                }
+                finally
+                {
+                    releaseAccountProof!.TrySetResult();
+                }
+            }
+            else if (waitForIdle)
+            {
+                Assert.That(
+                    SpinWait.SpinUntil(
+                        () => persistenceReader.StateLoads > 0 &&
+                            persistenceReader.StorageLoads >= contractCount,
+                        TimeSpan.FromSeconds(5)),
+                    Is.True,
+                    "worker-idle exact proofs did not complete");
+            }
         }
 
-        Assert.That(await block.PrepareFinalAsync(finalState), Is.EqualTo(!publishBeforeFinal));
+        queuedPreparation ??= block.PrepareFinalAsync(finalState);
+        Assert.That(await queuedPreparation, Is.EqualTo(!publishBeforeFinal));
         SparseTrieBlockResult result = await block.FinishAsync(finalState);
 
         using (Assert.EnterMultipleScope())
@@ -989,7 +1034,9 @@ public class SparseTrieTaskTests
                     result.StorageRoots[contract.Address],
                     Is.EqualTo(expectedStorageRoots[contract.Address]));
             }
-            Assert.That(persistenceReader.StateLoads, Is.GreaterThan(0));
+            Assert.That(
+                persistenceReader.StateLoads,
+                warmAccountProof ? Is.Zero : Is.GreaterThan(0));
             Assert.That(persistenceReader.StorageLoads, Is.GreaterThanOrEqualTo(contractCount));
         }
     }
