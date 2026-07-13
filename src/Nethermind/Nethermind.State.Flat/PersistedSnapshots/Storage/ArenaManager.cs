@@ -160,8 +160,6 @@ public sealed class ArenaManager : IArenaManager
         // file. OnWriteCompleted / OnWriteCancelledShared re-adds the id if room remains.
         // Dedicated files never enter the mutable pool. Route off file.Small (not the small
         // arg) so the remove always targets the same pool the file was scanned from.
-        // WriterActive keeps MarkDead from tearing the file down if every previously-live
-        // byte dies while this write is in flight.
         if (!dedicated)
         {
             PoolFor(file).Remove(file.Id);
@@ -202,9 +200,7 @@ public sealed class ArenaManager : IArenaManager
     /// <summary>
     /// Bookkeeping after a cancelled write on a shared (non-dedicated) arena: return the id
     /// to the mutable pool (the writer didn't advance the frontier, so by construction it
-    /// still has the same headroom it had when picked), unless every previously-live byte
-    /// died mid-write — then finish the removal <see cref="MarkDead(ArenaFile, long)"/>
-    /// deferred while the writer held the file.
+    /// still has the same headroom it had when picked).
     /// </summary>
     internal void OnWriteCancelledShared(ArenaFile file)
     {
@@ -270,19 +266,11 @@ public sealed class ArenaManager : IArenaManager
         // Sole caller is ArenaReservation.CleanUp, so one call == one reservation released.
         if (_logger.IsDebug) _logger.Debug($"Released arena reservation on arena {file.Id} ({deadSize} bytes)");
         file.DeadBytes += deadSize;
-        // An active writer has in-flight bytes not yet published to Frontier, so "all bytes
-        // dead" cannot be concluded here — tearing the file down would delete it mid-write and
-        // re-adding its id to the pool on write completion would poison the pool scan.
-        // OnWriteCompleted publishes the new frontier (making the arena legitimately live
-        // again); OnWriteCancelledShared re-runs the fully-dead check.
         if (file.DeadBytes < file.Frontier || file.WriterActive) return true;
         RemoveFullyDeadArena(file);
         return false;
     }
 
-    // Drop a shared arena whose bytes are all dead: pool + dict removal, metric update, and the
-    // manager's lease release (the file self-deletes once the last outstanding lease is gone).
-    // Caller must hold _lock.
     private void RemoveFullyDeadArena(ArenaFile file)
     {
         PoolFor(file).Remove(file.Id);
