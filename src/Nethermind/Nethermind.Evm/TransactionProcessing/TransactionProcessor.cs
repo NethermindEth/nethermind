@@ -166,7 +166,10 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            // Warmup must take the real execution path: the system processor's no-op fee/nonce
+            // handling made same-sender warm sequences run with undebited balances and unbumped
+            // nonces, so deploy chains computed wrong CREATE addresses and warmed the wrong state.
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
             }
@@ -179,7 +182,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
             }

@@ -54,8 +54,9 @@ public static class ITransactionProcessorExtensions
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         /// <summary>
-        /// Call transaction, no validations, don't commit state.
-        /// Will NOT charge gas from sender account.
+        /// Call transaction with real fee and nonce semantics but no validations, don't commit
+        /// state. Runs in a throwaway scope: charging gas and bumping nonces there keeps
+        /// same-sender sequences warming the state the real execution will touch.
         /// </summary>
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
