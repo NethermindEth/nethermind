@@ -562,22 +562,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try
             {
-                if (SystemTxAccessLists is not null)
+                Address? beneficiary = block.Header.GasBeneficiary;
+                if (SystemTxAccessLists is not null || beneficiary is not null)
                 {
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
 
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        WarmupSender(beneficiary, null, scope.WorldState);
+
+                        if (SystemTxAccessLists is not null)
                         {
-                            scope.WorldState.WarmUp(list);
+                            foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                            {
+                                scope.WorldState.WarmUp(list);
+                            }
                         }
                     }
                     finally
                     {
                         envPool.Return(env);
-                        SystemTxAccessLists.Dispose();
+                        SystemTxAccessLists?.Dispose();
                     }
                 }
 
