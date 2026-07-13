@@ -8,10 +8,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
+    /// <param name="warmSiblings">When the hint is a slot deletion, also warm the deepest branch's
+    /// other children — branch collapse resolves a surviving sibling that no read path touches.</param>
     public bool PushSlotJob(
         IStorageWarmer storageTree,
         in UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool warmSiblings = false);
 
     /// <summary>
     /// Like <see cref="PushSlotJob"/>, but safe to call from multiple producer threads.
@@ -21,7 +24,8 @@ public interface ITrieWarmer
     public bool PushSlotJobMpmc(
         IStorageWarmer storageTree,
         in UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool warmSiblings = false);
 
     public bool PushAddressJob(
         IAddressWarmer scope,
@@ -38,6 +42,6 @@ public interface ITrieWarmer
 
     public interface IStorageWarmer
     {
-        bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+        bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool warmSiblings = false);
     }
 }

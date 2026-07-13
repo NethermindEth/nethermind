@@ -384,7 +384,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool warmSiblings = false)
         {
             byte[]? array = null;
             try
@@ -400,7 +400,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root);
+                DoWarmUpPath(nibbles, ref emptyPath, root, warmSiblings);
             }
             catch (TrieException e)
             {
@@ -973,9 +973,15 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool warmSiblings = false)
         {
             int originalPathLength = path.Length;
+
+            // Deepest branch on the walk: a delete collapsing it must resolve the surviving
+            // sibling, which lies on no read path — warm it here when requested.
+            TrieNode? lastBranch = null;
+            int lastBranchPathLength = 0;
+            int lastBranchNib = -1;
 
             try
             {
@@ -998,6 +1004,10 @@ namespace Nethermind.Trie
                         {
                             if (node.IsLeaf)
                             {
+                                if (warmSiblings && lastBranch is not null)
+                                {
+                                    WarmUpBranchSiblings(lastBranch, ref path, lastBranchPathLength, lastBranchNib);
+                                }
                                 // Done
                                 return;
                             }
@@ -1017,6 +1027,13 @@ namespace Nethermind.Trie
 
                     int nextNib = remainingKey[0];
 
+                    if (warmSiblings)
+                    {
+                        lastBranch = node;
+                        lastBranchPathLength = path.Length;
+                        lastBranchNib = nextNib;
+                    }
+
                     path.AppendMut(nextNib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
 
@@ -1028,6 +1045,29 @@ namespace Nethermind.Trie
             finally
             {
                 path.TruncateMut(originalPathLength);
+            }
+        }
+
+        private void WarmUpBranchSiblings(TrieNode branch, ref TreePath leafPath, int branchPathLength, int takenNib)
+        {
+            TreePath branchPath = leafPath;
+            branchPath.TruncateMut(branchPathLength);
+
+            for (int i = 0; i < 16; i++)
+            {
+                if (i == takenNib) continue;
+
+                branchPath.AppendMut(i);
+                try
+                {
+                    TrieNode? sibling = branch.GetChildWithChildPath(TrieStore, ref branchPath, i, keepChildRef: true);
+                    sibling?.ResolveNode(TrieStore, branchPath);
+                }
+                catch (TrieException)
+                {
+                    // Warm-up is best-effort; the commit resolves nodes authoritatively.
+                }
+                branchPath.TruncateMut(branchPathLength);
             }
         }
 

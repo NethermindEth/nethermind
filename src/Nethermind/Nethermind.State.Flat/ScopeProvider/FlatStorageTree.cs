@@ -89,21 +89,24 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
+    public void HintSet(in UInt256 index, byte[]? value) =>
+        // A zero write is a delete: its commit collapses a branch and resolves a surviving sibling
+        // that no read path touches, so ask the warmer to pull the siblings in too.
+        WarmUpSlot(index, warmSiblings: value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes));
 
-    private void WarmUpSlot(UInt256 index)
+    private void WarmUpSlot(UInt256 index, bool warmSiblings)
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
             // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
-                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
+            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId, warmSiblings)
+                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId, warmSiblings))
                 _scope.IncrementOutstandingWarmups();
         }
     }
 
     // Called by trie warmer.
-    public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
+    public bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool warmSiblings = false)
     {
         try
         {
@@ -124,7 +127,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                _warmupStorageTree.WarmUpPath(key.BytesAsSpan, warmSiblings);
                 return true;
             }
             finally
