@@ -106,6 +106,12 @@ on:
           Leave empty for whole-run profiling.
         required: false
         default: ""
+      client_env:
+        description: >-
+          Extra environment variables for the Nethermind client container (KEY=VALUE, comma-separated),
+          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Single-image runs only.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -150,6 +156,7 @@ jobs:
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
+      client_env: ${{ steps.resolve.outputs.client_env }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -178,6 +185,7 @@ jobs:
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
+          DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
           set -euo pipefail
 
@@ -223,6 +231,7 @@ jobs:
               fi
               dottrace="true"   # tracing specific blocks implies dotTrace
             fi
+            client_env="${DISPATCH_CLIENT_ENV:-}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -248,6 +257,7 @@ jobs:
             run_count="1"
             dottrace="false"
             trace_blocks=""
+            client_env=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -264,6 +274,7 @@ jobs:
             run_count="1"
             dottrace="false"
             trace_blocks=""
+            client_env=""
           fi
 
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
@@ -370,6 +381,7 @@ jobs:
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
             echo "trace_blocks=${trace_blocks}"
+            echo "client_env=${client_env}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -601,6 +613,7 @@ jobs:
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -681,6 +694,19 @@ jobs:
           if [[ -n "${TRACE_BLOCKS:-}" ]]; then
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_PROFILE_BLOCKS = \"${TRACE_BLOCKS}\"" "${RENDERED_CONFIG_FILE}"
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="$(printf '%s' "${entry}" | xargs)"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.\"${env_key}\" = \"${env_value}\"" "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
           fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
