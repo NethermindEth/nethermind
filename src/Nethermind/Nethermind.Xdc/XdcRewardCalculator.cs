@@ -82,7 +82,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         if (!spec.IsTipUpgradeRewardEnabled)
         {
-            UInt256 chainReward = ApplyRewardInflation((UInt256)spec.Reward * Unit.Ether, number);
+            UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
             AddDistributedRewards(foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.Rewards);
         }
@@ -92,13 +92,13 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             CopySigners(observerSigners, rpcRewards.SignersObserver);
 
             Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
-                ApplyRewardInflation(spec.MasternodeReward, number),
+                spec.MasternodeReward,
                 masternodeSigners);
             Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
-                ApplyRewardInflation(spec.ProtectorReward, number),
+                spec.ProtectorReward,
                 protectorSigners);
             Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
-                ApplyRewardInflation(spec.ObserverReward, number),
+                spec.ObserverReward,
                 observerSigners);
 
             AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.Rewards);
@@ -393,16 +393,5 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         {
             destination[signer.ToString()] = rewardLog;
         }
-    }
-
-    private static UInt256 ApplyRewardInflation(UInt256 reward, ulong number)
-    {
-        if (XdcConstants.BlocksPerYear * 2 <= number && number < XdcConstants.BlocksPerYear * 5)
-            return reward / 2;
-
-        if (XdcConstants.BlocksPerYear * 5 <= number)
-            return reward / 4;
-
-        return reward;
     }
 }
