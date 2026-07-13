@@ -68,6 +68,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 {
     private const int MaxCommandsPerPass = 8;
     private const int MaxSpeculativeTouchesPerPass = 64;
+    private const int MaxPendingAccountUpdates = 100;
     private const int MaxDeferredAccountProofs = 2_048;
     private const int MaxDeferredStorageProofs = 8_192;
 
@@ -416,7 +417,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             session.ExecutionFinished = true;
 
         SparseRootComputer computer = session.GetComputer();
-        Dictionary<ValueHash256, LeafUpdate> accountUpdates = [];
+        Dictionary<ValueHash256, LeafUpdate> accountTouches = [];
 
         foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
         {
@@ -424,17 +425,17 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             session.RequiredAccountProofs.Add(accountPath);
             session.RevealedAccounts.Add(accountPath);
             session.ProvisionalAccountValues[accountDelta.Address] = accountDelta.Account;
-            accountUpdates[accountPath] = accountDelta.Account is null
-                ? LeafUpdate.Deleted()
-                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(accountDelta.Account).Bytes);
+            session.PendingAccountValues[accountPath] = accountDelta.Account;
         }
+        if (delta.Accounts.Count != 0)
+            session.PendingAccountPhases++;
 
         foreach (SparseTrieStorageDelta storageDelta in delta.StorageDeltas)
         {
             ValueHash256 accountPath = storageDelta.Address.ToAccountPath;
             Hash256 accountHash = accountPath.ToCommitment();
             session.RetainedStorageHashes.Add(accountHash);
-            AddAccountTouch(session, accountUpdates, accountPath);
+            AddAccountTouch(session, accountTouches, accountPath);
             session.RequiredAccountProofs.Add(accountPath);
 
             ref ProvisionalStorage? provisional = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
@@ -458,12 +459,40 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             session.HintedStorage.TryAdd((accountHash, slotPath), 0);
         }
 
-        foreach (ValueHash256 accountPath in accountUpdates.Keys)
+        foreach (ValueHash256 accountPath in accountTouches.Keys)
             RevealDeferredAccountProof(session, accountPath);
-        computer.ApplyAccountChanges(accountUpdates);
+        computer.ApplyAccountChanges(accountTouches);
+
+        if (session.PendingAccountPhases >= MaxPendingAccountUpdates ||
+            session.PendingAccountValues.Count >= MaxPendingAccountUpdates ||
+            delta.IsFinal)
+        {
+            FlushPendingAccountValues(session);
+        }
 
         if (delta.IsFinal)
             ApplyProvisionalStorageChanges(session);
+    }
+
+    private static void FlushPendingAccountValues(WorkerSession session)
+    {
+        if (session.PendingAccountValues.Count == 0)
+            return;
+
+        Dictionary<ValueHash256, LeafUpdate> updates = new(session.PendingAccountValues.Count);
+        foreach (KeyValuePair<ValueHash256, Account?> entry in session.PendingAccountValues)
+        {
+            RevealDeferredAccountProof(session, entry.Key);
+            updates.Add(
+                entry.Key,
+                entry.Value is null
+                    ? LeafUpdate.Deleted()
+                    : LeafUpdate.Changed(AccountDecoder.Instance.Encode(entry.Value).Bytes));
+        }
+
+        session.GetComputer().ApplyAccountChanges(updates);
+        session.PendingAccountValues.Clear();
+        session.PendingAccountPhases = 0;
     }
 
     private static void ApplyProvisionalStorageChanges(WorkerSession session)
@@ -679,6 +708,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 MarkFinalProofsRequired(session, command.FinalState);
                 ProcessPendingProofs(session);
                 RevealDeferredRequiredProofs(session);
+                FlushPendingAccountValues(session);
             }
         }
         finally
@@ -746,6 +776,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         session.PendingStorageTouches.Clear();
         session.DeferredAccountProofs.Clear();
         session.DeferredStorageProofs.Clear();
+        session.PendingAccountValues.Clear();
+        session.PendingAccountPhases = 0;
         session.PendingStorageRootComputations.Clear();
         Volatile.Write(ref session.AccountTouchCommandQueued, 0);
         Volatile.Write(ref session.StorageTouchCommandQueued, 0);
@@ -1215,6 +1247,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public Dictionary<(Hash256 AccountHash, ValueHash256 SlotPath), StorageProof> DeferredStorageProofs { get; } = [];
         public HashSet<(Hash256 AccountHash, ValueHash256 SlotPath)> RequiredStorageProofs { get; } = [];
         public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
+        public Dictionary<ValueHash256, Account?> PendingAccountValues { get; } = [];
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
         public HashSet<Hash256> RetainedStorageHashes { get; } = [];
         public HashSet<Hash256> PendingStorageRootComputations { get; } = [];
@@ -1224,6 +1257,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public bool FinishRequested { get; set; }
         public bool ExecutionFinished { get; set; }
         public bool ProvisionalStorageApplied { get; set; }
+        public int PendingAccountPhases { get; set; }
         public bool Prepared { get; set; }
         public bool Completed { get; set; }
         public int AccountTouchCommandQueued;

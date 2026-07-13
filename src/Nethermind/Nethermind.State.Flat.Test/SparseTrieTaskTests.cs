@@ -194,6 +194,128 @@ public class SparseTrieTaskTests
     }
 
     [Test]
+    public async Task RepeatedAccountPhases_AreReconciledAcrossBatchBoundary()
+    {
+        TestState state = BuildState(accountCount: 20);
+        Address address = state.Addresses[3];
+        Account originalAccount = new(3, (UInt256)1_003);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, state.Reader);
+        for (int phase = 0; phase < 98; phase++)
+        {
+            Account provisionalAccount = new(
+                (ulong)(100 + phase),
+                (UInt256)(100_000 + phase));
+            block.EnqueueDelta(new SparseTriePhaseDelta(
+                [new SparseTrieAccountDelta(address, provisionalAccount)],
+                []));
+        }
+
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, null)],
+            []));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, new Account(999, (UInt256)999_000))],
+            []));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, originalAccount)],
+            []));
+
+        SparseTrieBlockResult result = await block.FinishAsync(
+            new SparseTrieFinalState([], [new SparseTrieFinalAccount(address, originalAccount)]));
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        Assert.That(result.StateRoot, Is.EqualTo(state.ParentRoot));
+    }
+
+    [Test]
+    public async Task DistinctAccountBatch_UsesWarmedProofsWithoutReaderFallback()
+    {
+        const int changedAccountCount = 100;
+        TestState state = BuildState(accountCount: changedAccountCount + 4);
+        List<List<WarmedTrieNode>> proofs = new(changedAccountCount);
+        List<Account> accounts = new(changedAccountCount);
+        List<SparseTrieFinalAccount> finalAccounts = new(changedAccountCount);
+
+        for (int i = 0; i < changedAccountCount; i++)
+        {
+            Address address = state.Addresses[i];
+            List<WarmedTrieNode> proof = [];
+            state.StateTree.WarmUpPath(address.ToAccountPath.BytesAsSpan, proof);
+            proofs.Add(proof);
+
+            Account account = new((ulong)(1_000 + i), (UInt256)(1_000_000 + i));
+            accounts.Add(account);
+            finalAccounts.Add(new SparseTrieFinalAccount(address, account));
+            state.StateTree.Set(
+                address.ToAccountPath.Bytes,
+                AccountDecoder.Instance.Encode(account).Bytes);
+        }
+        state.StateTree.UpdateRootHash();
+        state.StateTree.Commit();
+        Hash256 expectedRoot = state.StateTree.RootHash;
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        for (int i = 0; i < changedAccountCount; i++)
+        {
+            Address address = state.Addresses[i];
+            Assert.That(
+                block.TryEnqueueAccountTouch(address.ToAccountPath, proofs[i]),
+                Is.True);
+            block.EnqueueDelta(new SparseTriePhaseDelta(
+                [new SparseTrieAccountDelta(address, accounts[i])],
+                []));
+        }
+
+        SparseTrieBlockResult result = await block.FinishAsync(
+            new SparseTrieFinalState([], finalAccounts));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task FinalStorageRootAccountDelta_IsOrderedAcrossFinalMarker(bool markerBeforeRoot)
+    {
+        TestState state = BuildState(accountCount: 20);
+        Address address = state.Addresses[3];
+        Account originalAccount = new(3, (UInt256)1_003);
+        Account provisionalAccount = originalAccount.WithChangedStorageRoot(Keccak.Compute([0x11]));
+        Account finalAccount = originalAccount.WithChangedStorageRoot(Keccak.Compute([0x22]));
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, address, finalAccount);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, state.Reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, provisionalAccount)],
+            []));
+        if (markerBeforeRoot)
+            block.EnqueueDelta(new SparseTriePhaseDelta([], [], IsFinal: true));
+
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, finalAccount)],
+            []));
+        if (!markerBeforeRoot)
+            block.EnqueueDelta(new SparseTriePhaseDelta([], [], IsFinal: true));
+
+        SparseTrieBlockResult result = await block.FinishAsync(
+            new SparseTrieFinalState([], [new SparseTrieFinalAccount(address, finalAccount)]));
+        await block.PrepareCommitAsync();
+        await block.AcceptAsync();
+
+        Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
     public async Task SequentialAcceptedBlocks_ReuseOnlyExactParentAnchor()
     {
         TestState state = BuildState(accountCount: 20);
@@ -469,9 +591,12 @@ public class SparseTrieTaskTests
         reader.BlockNextStateRead();
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
-        block.EnqueueDelta(new SparseTriePhaseDelta(
-            [new SparseTrieAccountDelta(blockerAddress, blockerAccount)],
-            []));
+        for (int phase = 0; phase < 100; phase++)
+        {
+            block.EnqueueDelta(new SparseTriePhaseDelta(
+                [new SparseTrieAccountDelta(blockerAddress, blockerAccount)],
+                []));
+        }
         if (!reader.WaitForBlockedStateRead(TimeSpan.FromSeconds(5)))
         {
             reader.ReleaseStateRead();

@@ -212,7 +212,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (block is null || !_acceptSparseDeltas)
             return;
 
-        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0)
+        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0 || isFinal)
         {
             List<SparseTrieAccountDelta> accounts = new(_pendingSparseAccounts.Count);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in _pendingSparseAccounts)
@@ -224,7 +224,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage));
+                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage, isFinal));
             }
             catch (Exception exception)
             {
@@ -874,9 +874,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             SparseTrieBlockHandle block = scope._sparseBlock
                 ?? throw new InvalidOperationException("Sparse write batch lost its block session.");
-
-            scope.WaitForOutstandingWarmups();
-            block.EnqueueDelta(new SparseTriePhaseDelta([], [], IsFinal: true));
 
             List<FlatStorageTree.SparseStorageBatch> storageBatches = [.. _sparseStorageBatches];
             if (storageBatches.Count == 0)
