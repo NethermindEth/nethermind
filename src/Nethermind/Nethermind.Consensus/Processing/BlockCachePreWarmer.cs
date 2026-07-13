@@ -428,6 +428,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error pre-warming transactions", ex);
         }
+        finally
+        {
+            int skips = Volatile.Read(ref blockState.OvertakenSkips);
+            if (skips > 0 && _logger.IsInfo)
+            {
+                _logger.Info($"[PWSKIP] block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} overtakenSkips={skips} overtakenGasM={Interlocked.Read(ref blockState.OvertakenGas) / 1_000_000.0:F2}");
+            }
+        }
     }
 
     private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
@@ -474,7 +482,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                Interlocked.Increment(ref blockState.OvertakenSkips);
+                Interlocked.Add(ref blockState.OvertakenGas, (long)tx.GasLimit);
+                return;
+            }
 
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -675,7 +688,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null)
+    {
+        // Diagnostic counters: txs whose warm-up was skipped because the main thread overtook the warmer.
+        public int OvertakenSkips;
+        public long OvertakenGas;
+    }
 
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
 }
