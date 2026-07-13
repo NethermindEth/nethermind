@@ -394,10 +394,10 @@ namespace Nethermind.Db.Test
             {
                 if (_db is ColumnDb columnDb)
                 {
-                    return columnDb._mainDb._allocatedSpan;
+                    return columnDb._mainDb._allocatedSpan.Value;
                 }
 
-                return (_db as DbOnTheRocks)._allocatedSpan;
+                return (_db as DbOnTheRocks)._allocatedSpan.Value;
             }
         }
 

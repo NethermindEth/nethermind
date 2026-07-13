@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaContractGasLimitOverride(
         IList<IBlockGasLimitContract> contracts,
-AuRaContractGasLimitOverride.Cache cache,
+        AuRaContractGasLimitOverride.Cache cache,
         bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
         IGasLimitCalculator innerCalculator,
         ILogManager logManager) : IGasLimitCalculator

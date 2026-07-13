@@ -18,5 +18,7 @@ namespace Nethermind.Consensus
             gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, gasLimit, newBlockNumber);
             return gasLimit;
         }
+
+        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit) => GetGasLimit(parentHeader);
     }
 }

@@ -401,16 +401,12 @@ public static class SszCodec
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot);
 
-    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) => new()
-    {
-        Timestamp = pa.Timestamp,
-        PrevRandao = pa.PrevRandao,
-        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
-        Withdrawals = pa.Withdrawals.ToDomain(),
-        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot,
-        SlotNumber = pa.SlotNumber,
-        TargetGasLimit = pa.TargetGasLimit
-    };
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
+        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
+            withdrawals: pa.Withdrawals.ToDomain(),
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
+            slotNumber: pa.SlotNumber,
+            targetGasLimit: pa.TargetGasLimit);
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,
@@ -419,17 +415,16 @@ public static class SszCodec
         Withdrawal[]? withdrawals = null,
         Hash256? parentBeaconBlockRoot = null,
         ulong? slotNumber = null,
-        ulong? targetGasLimit = null)
-    {
-        PayloadAttributes payloadAttributes = new() { TargetGasLimit = targetGasLimit };
-        payloadAttributes.Timestamp = timestamp;
-        payloadAttributes.PrevRandao = prevRandao;
-        payloadAttributes.SuggestedFeeRecipient = suggestedFeeRecipient;
-        payloadAttributes.Withdrawals = withdrawals;
-        payloadAttributes.ParentBeaconBlockRoot = parentBeaconBlockRoot;
-        payloadAttributes.SlotNumber = slotNumber;
-        return payloadAttributes;
-    }
+        ulong? targetGasLimit = null) => new()
+        {
+            Timestamp = timestamp,
+            PrevRandao = prevRandao,
+            SuggestedFeeRecipient = suggestedFeeRecipient,
+            Withdrawals = withdrawals,
+            ParentBeaconBlockRoot = parentBeaconBlockRoot,
+            SlotNumber = slotNumber,
+            TargetGasLimit = targetGasLimit
+        };
 
     public static Hash256[] GetBlobVersionedHashes(ExecutionPayload payload)
     {

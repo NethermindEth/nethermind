@@ -79,6 +79,7 @@ namespace Ethereum.Test.Base
             // Patricia by default (the production default); opt into the flat state layout with
             // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
             configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
