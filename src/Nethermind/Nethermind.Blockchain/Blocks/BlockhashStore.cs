@@ -21,31 +21,30 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
-        if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
+        if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
 
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!worldState.IsContract(eip2935Account)) return;
-
-        Hash256 parentBlockHash = blockHeader.ParentHash;
-        UInt256 parentBlockIndex = new((blockHeader.Number - 1) % spec.Eip2935RingBufferSize);
-        StorageCell blockHashStoreCell = new(eip2935Account, parentBlockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
-        worldState.RecordBytecodeAccess(eip2935Account);
+        worldState.Set(blockHashStoreCell, blockHeader.ParentHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.RecordBytecodeAccess(blockHashStoreCell.Address);
     }
 
-    public AccessList? GetAccessList(Block block, IReleaseSpec spec)
+    public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
+        TryGetParentHashCell(block.Header, spec, out StorageCell blockHashStoreCell)
+            ? new AccessList.Builder()
+                .AddAddress(blockHashStoreCell.Address)
+                .AddStorage(blockHashStoreCell.Index)
+                .Build()
+            : null;
+
+    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
     {
-        BlockHeader header = block.Header;
-        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return null;
+        blockHashStoreCell = default;
+        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return false;
 
         Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!worldState.IsContract(eip2935Account)) return null;
+        if (!worldState.IsContract(eip2935Account)) return false;
 
-        UInt256 parentBlockIndex = new((header.Number - 1) % spec.Eip2935RingBufferSize);
-        return new AccessList.Builder()
-            .AddAddress(eip2935Account)
-            .AddStorage(parentBlockIndex)
-            .Build();
+        blockHashStoreCell = new StorageCell(eip2935Account, new UInt256((ulong)(header.Number - 1) % spec.Eip2935RingBufferSize));
+        return true;
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
