@@ -11,7 +11,7 @@ namespace Nethermind.Xdc.RLP;
 
 internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
-    protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
+    protected TResult DecodeBase<TResult>(ref RlpReader decoderContext, Func<ulong, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -20,31 +20,10 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         }
 
         decoderContext.ReadSequenceLength();
-        long number = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
         Hash256 hash256 = decoderContext.DecodeKeccak();
-        Address[] candidates = DecodeAddressArray(ref decoderContext);
+        Address[] candidates = XdcRlpHelpers.DecodeAddressArray(ref decoderContext);
         return createSnapshot(number, hash256, candidates);
-    }
-    public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
-    {
-        if (decoderContext.IsNextItemEmptyList())
-        {
-            _ = decoderContext.ReadByte();
-            return [];
-        }
-
-        int length = decoderContext.ReadSequenceLength();
-
-        Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
-
-        int index = 0;
-        while (length > 0)
-        {
-            addresses[index++] = decoderContext.DecodeAddress();
-            length -= Rlp.LengthOfAddressRlp;
-        }
-
-        return addresses;
     }
 
     public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -52,42 +31,34 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
-    public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            stream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        EncodeContent(stream, item, rlpBehaviors);
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        EncodeContent(ref writer, item, rlpBehaviors);
     }
 
-    protected virtual void EncodeContent(RlpStream stream, T item, RlpBehaviors rlpBehaviors)
+    protected virtual void EncodeContent<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        stream.Encode(item.BlockNumber);
-        stream.Encode(item.HeaderHash);
+        writer.Encode(item.BlockNumber);
+        writer.Encode(item.HeaderHash);
 
         if (item.NextEpochCandidates is null)
-            stream.EncodeArray<Address>([]);
+            writer.StartSequence(0);
         else
-            EncodeAddressSequence(stream, item.NextEpochCandidates);
-    }
-
-    protected void EncodeAddressSequence(RlpStream stream, Address[] nextEpochCandidates)
-    {
-        int length = nextEpochCandidates.Length;
-        stream.StartSequence(Rlp.LengthOfAddressRlp * length);
-        for (int i = 0; i < length; i++)
-        {
-            stream.Encode(nextEpochCandidates[i]);
-        }
+            XdcRlpHelpers.EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }
 
     public override int GetLength(T item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
@@ -99,7 +70,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         int length = 0;
         length += Rlp.LengthOf(item.BlockNumber);
         length += Rlp.LengthOf(item.HeaderHash);
-        length += Rlp.LengthOfSequence(Rlp.LengthOfAddressRlp * item.NextEpochCandidates?.Length ?? 0);
+        length += XdcRlpHelpers.LengthOfAddressSequence(item.NextEpochCandidates);
         return length;
     }
 }

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -294,8 +295,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Block head = Build.A.Block.WithHeader(parent).TestObject;
         blockTree.Head.Returns(head);
-        blockTree.SyncPivot.Returns((0L, Keccak.Zero));
-        blockTree.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>()).Returns(parent);
+        blockTree.SyncPivot.Returns((0UL, Keccak.Zero));
+        blockTree.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
         blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(false);
         blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Returns((new BlockInfo(parent.Hash!, UInt256.Zero) { WasProcessed = true, BlockNumber = parent.Number }, null));
         blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
@@ -331,6 +332,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
+            Substitute.For<IEthereumEcdsa>(),
+            Substitute.For<ISpecProvider>(),
             LimboLogs.Instance);
     }
 }

@@ -34,9 +34,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
-        long blockNumber,
+        ulong blockNumber,
         IReleaseSpec releaseSpec)
     {
+        // state-override commits must not trigger EIP-158 deletion on accounts whose
+        // code/nonce were zeroed while storage remains — EIP-7610 collision checks need that storage.
+        releaseSpec = releaseSpec.WithoutEip158();
+
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
 
         TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
@@ -86,7 +90,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         int blockCount = payload.BlockStateCalls?.Count ?? 0;
@@ -128,7 +132,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
         List<SimulateBlockResult<TTrace>> output,
-        long gasCapLimit,
+        ulong gasCapLimit,
         CancellationToken cancellationToken)
     {
         IBlockTree blockTree = env.BlockTree;
@@ -218,7 +222,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
     {
         Block? latestBlock = blockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
+        ulong latestBlockNumber = latestBlock?.Number ?? 0;
 
         if (latestBlockNumber < parent.Number)
         {
@@ -230,10 +234,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 ? blockStateCalls[0]
                 : null;
 
-        ulong lastKnown = (ulong)latestBlockNumber;
+        ulong lastKnown = latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
-            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number - 1);
+            Block? searchResult = blockTree.FindBlock(firstBlock.BlockOverrides.Number.Value - 1);
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
@@ -258,7 +262,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             {
                 if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
-                    cachedNonce = test.Nonce.ToUInt64(null);
+                    cachedNonce = test.Nonce;
                 }
                 // else // Todo think if we shall create account here
             }
@@ -295,7 +299,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.IsPostMerge = false;
         }
 
-        IReleaseSpec spec = specProvider.GetSpec(result);
+        IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
         if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
@@ -318,4 +322,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         return (result, spec);
     }
+
+    private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
+        new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);
 }

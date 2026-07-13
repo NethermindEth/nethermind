@@ -85,9 +85,12 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, CreateRequest("1", "engine_newPayloadV4", "[{\"parentHash\":\"0x0\"},[],null,null]"), CreateHttpContext());
 
-        Assert.That(capturedMethod, Is.EqualTo("engine_newPayloadV4"));
-        Assert.That(capturedRawParams, Is.True);
-        Assert.That(capturedParamsKind, Is.EqualTo(JsonValueKind.Array));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedMethod, Is.EqualTo("engine_newPayloadV4"));
+            Assert.That(capturedRawParams, Is.True);
+            Assert.That(capturedParamsKind, Is.EqualTo(JsonValueKind.Array));
+        }
     }
 
     [Test]
@@ -135,8 +138,11 @@ public class JsonRpcProcessorTests
 
         string? methodName = KnownRpcMethodNames.Intern(ref reader);
 
-        Assert.That(methodName, Is.EqualTo("engine_newPayloadV4"));
-        Assert.That(methodName, Is.SameAs(TryGetKnownMethodName("engine_newPayloadV4")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(methodName, Is.EqualTo("engine_newPayloadV4"));
+            Assert.That(methodName, Is.SameAs(TryGetKnownMethodName("engine_newPayloadV4")));
+        }
     }
 
     [Test]
@@ -224,14 +230,17 @@ public class JsonRpcProcessorTests
             sink);
 
         List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
-        Assert.That(batchItems, Has.Count.EqualTo(3));
-        Assert.That(batchItems[0], Is.TypeOf<JsonRpcSuccessResponse>());
-        Assert.That(batchItems[1], Is.TypeOf<JsonRpcErrorResponse>());
-        Assert.That(batchItems[2], Is.TypeOf<JsonRpcErrorResponse>());
-        JsonRpcErrorResponse second = (JsonRpcErrorResponse)batchItems[1];
-        JsonRpcErrorResponse third = (JsonRpcErrorResponse)batchItems[2];
-        Assert.That(second.Id, Is.EqualTo(new JsonRpcId(2)));
-        Assert.That(third.Id, Is.EqualTo(new JsonRpcId(3)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchItems, Has.Count.EqualTo(3));
+            Assert.That(batchItems[0], Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(batchItems[1], Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(batchItems[2], Is.TypeOf<JsonRpcErrorResponse>());
+            JsonRpcErrorResponse second = (JsonRpcErrorResponse)batchItems[1];
+            JsonRpcErrorResponse third = (JsonRpcErrorResponse)batchItems[2];
+            Assert.That(second.Id, Is.EqualTo(new JsonRpcId(2)));
+            Assert.That(third.Id, Is.EqualTo(new JsonRpcId(3)));
+        }
         await service.Received(1).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -246,14 +255,37 @@ public class JsonRpcProcessorTests
         Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
     }
 
+    [TestCase(RpcEndpoint.IPC, true)]
+    [TestCase(RpcEndpoint.Ws, false)]
+    public async Task ProcessAsync_makes_the_request_context_current_for_the_handler(RpcEndpoint endpoint, bool expectedAuthenticated)
+    {
+        bool? seenAuthenticated = null;
+        IJsonRpcService service = CreateService(request =>
+        {
+            seenAuthenticated = JsonRpcContext.Current.Value?.IsAuthenticated;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        JsonRpcContext context = new(endpoint);
+        JsonRpcContext.Current.Value = null;
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), context);
+
+        Assert.That(seenAuthenticated, Is.EqualTo(expectedAuthenticated));
+    }
+
     [Test]
     public async Task Sink_processor_entry_point_reads_params_through_envelope_reader()
     {
         bool inspected = false;
         IJsonRpcService service = CreateService(request =>
         {
-            Assert.That(request.Params.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(request.Params[0].GetProperty("a").GetInt32(), Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.Params.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(request.Params[0].GetProperty("a").GetInt32(), Is.EqualTo(2));
+            }
             inspected = true;
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
@@ -263,8 +295,11 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, " \r\n" + CreateTransactionCountRequest("67", paramsJson: "[{\"a\":2}]") + "\t ", CreateHttpContext(), sink);
 
-        Assert.That(inspected, Is.True);
-        Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inspected, Is.True);
+            Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
+        }
     }
 
     private static PipeReader CreateReader(string request) =>
@@ -314,14 +349,17 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope($"{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"{methodName}\",\"params\":[1,{{\"a\":2}}],\"extra\":{{\"ignored\":true}}}}", out byte[] body);
 
-        Assert.That(envelope.JsonRpc, Is.EqualTo("2.0"));
-        Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(1)));
-        string? knownMethodName = TryGetKnownMethodName(methodName);
-        Assert.That(knownMethodName, Is.Not.Null);
-        Assert.That(envelope.Method, Is.SameAs(knownMethodName));
-        Assert.That(envelope.HasParams, Is.True);
-        Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength), Is.EqualTo("[1,{\"a\":2}]"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.JsonRpc, Is.EqualTo("2.0"));
+            Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(1)));
+            string? knownMethodName = TryGetKnownMethodName(methodName);
+            Assert.That(knownMethodName, Is.Not.Null);
+            Assert.That(envelope.Method, Is.SameAs(knownMethodName));
+            Assert.That(envelope.HasParams, Is.True);
+            Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(Encoding.UTF8.GetString(body, envelope.ParamsStart, envelope.ParamsLength), Is.EqualTo("[1,{\"a\":2}]"));
+        }
     }
 
     [Test]

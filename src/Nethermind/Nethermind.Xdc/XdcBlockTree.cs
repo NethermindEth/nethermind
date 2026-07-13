@@ -10,8 +10,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Xdc.Types;
 
@@ -27,10 +27,10 @@ internal class XdcBlockTree(
     IBlockAccessListStore? balStore,
     IChainLevelInfoRepository? chainLevelInfoRepository,
     ISpecProvider? specProvider,
-    IBloomStorage? bloomStorage,
     ISyncConfig? syncConfig,
+    IStateBoundary? stateBoundary,
     ILogManager? logManager,
-    long genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+    ulong genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, stateBoundary, logManager, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 
@@ -52,7 +52,7 @@ internal class XdcBlockTree(
         }
 
         BlockHeader current = header;
-        for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
+        while (true)
         {
             if (finalizedBlockInfo.BlockNumber >= current.Number)
                 return AddBlockResult.InvalidBlock;
@@ -64,8 +64,6 @@ internal class XdcBlockTree(
             if (current is null)
                 return AddBlockResult.UnknownParent;
         }
-        //This is not possible to reach
-        return AddBlockResult.InvalidBlock;
     }
 
     protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)

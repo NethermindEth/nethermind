@@ -21,16 +21,17 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         Hash256? unclesHash,
         Address? beneficiary,
         UInt256 difficulty,
-        long number,
-        long gasLimit,
+        ulong number,
+        ulong gasLimit,
         ulong timestamp,
         byte[]? extraData);
 
-    protected abstract void DecodeHeaderSpecificFields(ref Rlp.ValueDecoderContext decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
-    protected abstract void EncodeHeaderSpecificFields(RlpStream rlpStream, TH header, RlpBehaviors rlpBehaviors);
+    protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
+    protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
     protected abstract int GetHeaderSpecificContentLength(TH header, RlpBehaviors rlpBehaviors);
 
-    protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemEmptyList())
         {
@@ -51,9 +52,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         Hash256? receiptsRoot = decoderContext.DecodeKeccak();
         Bloom? bloom = decoderContext.DecodeBloom();
         UInt256 difficulty = decoderContext.DecodeUInt256();
-        long number = decoderContext.DecodeLong();
-        long gasLimit = decoderContext.DecodeLong();
-        long gasUsed = decoderContext.DecodeLong();
+        ulong number = decoderContext.DecodeULong();
+        ulong gasLimit = decoderContext.DecodeULong();
+        ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
         byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -81,37 +82,37 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode(RlpStream rlpStream, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
-            rlpStream.EncodeNullObject();
+            writer.EncodeNullObject();
             return;
         }
 
         if (header is not TH h)
             throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(header));
 
-        rlpStream.StartSequence(GetContentLength(h, rlpBehaviors));
+        writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
-        rlpStream.Encode(h.ParentHash);
-        rlpStream.Encode(h.UnclesHash);
-        rlpStream.Encode(h.Beneficiary);
-        rlpStream.Encode(h.StateRoot);
-        rlpStream.Encode(h.TxRoot);
-        rlpStream.Encode(h.ReceiptsRoot);
-        rlpStream.Encode(h.Bloom);
-        rlpStream.Encode(h.Difficulty);
-        rlpStream.Encode(h.Number);
-        rlpStream.Encode(h.GasLimit);
-        rlpStream.Encode(h.GasUsed);
-        rlpStream.Encode(h.Timestamp);
-        rlpStream.Encode(h.ExtraData);
-        rlpStream.Encode(h.MixHash);
-        rlpStream.Encode(h.Nonce, NonceLength);
+        writer.Encode(h.ParentHash);
+        writer.Encode(h.UnclesHash);
+        writer.Encode(h.Beneficiary);
+        writer.Encode(h.StateRoot);
+        writer.Encode(h.TxRoot);
+        writer.Encode(h.ReceiptsRoot);
+        writer.Encode(h.Bloom);
+        writer.Encode(h.Difficulty);
+        writer.Encode(h.Number);
+        writer.Encode(h.GasLimit);
+        writer.Encode(h.GasUsed);
+        writer.Encode(h.Timestamp);
+        writer.Encode(h.ExtraData);
+        writer.Encode(h.MixHash);
+        writer.Encode(h.Nonce, NonceLength);
 
-        EncodeHeaderSpecificFields(rlpStream, h, rlpBehaviors);
+        EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
     }
 
     public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -124,9 +125,10 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         if (item is not TH header)
             throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new Rlp(bytes);
     }
 
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)

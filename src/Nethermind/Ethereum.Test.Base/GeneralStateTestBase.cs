@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -32,7 +33,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger;
+        protected static ILogger _logger;
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
 
@@ -75,6 +76,10 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
+            // Patricia by default (the production default); opt into the flat state layout with
+            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
@@ -185,10 +190,15 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
+            string? txError = txResult is { TransactionExecuted: false } failedResult
+                ? failedResult.ErrorDescription
+                : blockValidationError;
+
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {
                 TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
-                StateRoot = stateProvider.StateRoot
+                StateRoot = stateProvider.StateRoot,
+                Error = differences.Count > 0 ? string.Join("; ", differences) : txError,
             };
 
             if (differences.Count > 0)

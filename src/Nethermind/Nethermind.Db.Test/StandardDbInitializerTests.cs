@@ -35,7 +35,7 @@ public class StandardDbInitializerTests
     public async Task InitializerTests_MemDbProvider(bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
-        Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
+        Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
         AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
@@ -86,7 +86,7 @@ public class StandardDbInitializerTests
             {
                 DownloadReceiptsInFastSync = useReceipts
             }))
-            .AddModule(new PruningTrieStoreModule(initConfig)) // For the full pruning db
+            .AddModule(new PruningTrieStoreModule()) // For the full pruning db
             .AddSingleton<IPruningConfig>(new PruningConfig())
             .AddSingleton<IDbConfig>(new DbConfig())
             .AddSingleton<IInitConfig>(initConfig)
@@ -105,7 +105,6 @@ public class StandardDbInitializerTests
     {
         Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BloomDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
         Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
         Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));

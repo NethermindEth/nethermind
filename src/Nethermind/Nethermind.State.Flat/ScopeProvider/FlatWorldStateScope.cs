@@ -24,6 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
 
@@ -31,6 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -53,6 +55,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
+        Lazy<WarmReadPool>? warmReadPool = null,
         bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
@@ -78,6 +81,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _configuration = configuration;
+        _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
 
@@ -137,9 +141,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Account? Get(Address address)
     {
-        Account? account = _snapshotBundle.GetAccount(address);
+        Account? account = _snapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
 
-        HintGet(address, account);
+        HintGet(address, account, promote: !isInCurrentSnapshot);
 
         if (_configuration.VerifyWithTrie)
         {
@@ -153,9 +157,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account)
+    public void HintGet(Address address, Account? account) => HintGet(address, account, promote: true);
+
+    private void HintGet(Address address, Account? account, bool promote)
     {
-        _snapshotBundle.SetAccount(address, account);
+        if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
@@ -258,6 +264,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
     {
+        // Read-only providers have no pool; sinks are only passed on the writable block-processing path.
+        if (_warmReadPool is null) return;
+
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
@@ -282,12 +291,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 jobs[idx++] = (address, selfDestructIdx, readKey);
         }
 
-        Parallel.For(0, idx, parallelOptions, (j) =>
+        // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
+        // that never see a BAL never allocate the dedicated reader threads.
+        WarmReadPool pool = _warmReadPool.Value;
+        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+
+        pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        });
+        }, parallelOptions.CancellationToken);
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
@@ -307,12 +321,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
 
-            // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
-            // this is just for warming up
-            _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+            try
+            {
+                // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
+                // this is just for warming up
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
-            return true;
+                return true;
+            }
+            finally
+            {
+                _snapshotBundle.ReleaseReadOnlyBundleLease();
+            }
         }
         finally
         {
@@ -323,6 +345,57 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
+
+    public void HintWarmAccount(in ValueAddress address)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        // The managed Address is materialized only after the dedupe bloom passes, so the
+        // allocation happens at most once per account per block.
+        if (_snapshotBundle.ShouldQueuePrewarm(address)
+            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
+
+        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
+        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
+        GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>
+        {
+            Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            return storageRoot == Keccak.EmptyTreeHash
+                ? null
+                : new FlatStorageTree(
+                    scope,
+                    scope._warmer,
+                    scope._snapshotBundle,
+                    scope._configuration,
+                    scope._concurrencyQuota,
+                    storageRoot,
+                    key.Value,
+                    scope._logManager);
+        }, this);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> GetHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? storages = Volatile.Read(ref _hintWarmStorages);
+        return storages ?? InitializeHintWarmStorages();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> InitializeHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?> newStorages = new();
+        return Interlocked.CompareExchange(ref _hintWarmStorages, newStorages, null) ?? newStorages;
+    }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
@@ -351,7 +424,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
-    public void Commit(long blockNumber)
+    public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
 
@@ -360,6 +433,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _stateTree.Commit();
 
         _storages.Clear();
+        _hintWarmStorages?.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;

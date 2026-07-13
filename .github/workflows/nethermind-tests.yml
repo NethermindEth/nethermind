@@ -88,7 +88,7 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         chunk: ['']
-        exclude: # Synchronization.Test on ARM is chunked (see include block) — its unchunked variant hits the 15-min wall.
+        exclude: # Synchronization.Test on ARM/macOS is chunked (see include block) — its unchunked variant hits the 15-min wall.
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
@@ -102,7 +102,10 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -250,35 +253,10 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-        include:
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 5of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 6of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 7of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 8of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 9of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 10of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 11of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 12of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 13of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 14of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 15of16, label: Sequential } }
-          - { runner: ubuntu-latest, test: { project: Ethereum.Blockchain.Pyspec.Test, chunk: 16of16, label: Sequential } }
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         run: git config --system core.longpaths true
-
-      - name: Free up disk space
-        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -286,7 +264,7 @@ jobs:
       - name: Fetch submodules
         uses: ./.github/actions/fetch-submodules
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -314,9 +292,20 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
+  # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
+  # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
+  # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
+  # layout runs from nethermind-tests-flat.yml.
+  nethtest:
+    name: EEST nethtest
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
+      setup_group: sequential
+
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked]
+    needs: [tests, tests-spec, tests-chunked, nethtest]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -325,7 +314,8 @@ jobs:
           [[ \
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
+            "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.nethtest.result }}" == "success" \
           ]]
 
   codecov-upload:

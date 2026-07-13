@@ -23,6 +23,7 @@ namespace Nethermind.State.Proofs
     {
         private readonly Address _address = Address.Zero;
         private readonly AccountProof _accountProof;
+        private bool _accountExists;
 
         private readonly Nibble[] _fullAccountPath;
         private readonly Nibble[][] _fullStoragePaths;
@@ -89,8 +90,43 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
+        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys)
+        {
+            _accountProof = new AccountProof
+            {
+                StorageProofs = new StorageProof[storageKeys.Count],
+                Address = _address = address ?? throw new ArgumentNullException(nameof(address))
+            };
+            _fullAccountPath = Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
+            _fullStoragePaths = new Nibble[storageKeys.Count][];
+            _storageProofItems = new List<byte[]>[storageKeys.Count];
+
+            byte[] keyBuffer = new byte[32];
+            int j = 0;
+            foreach (UInt256 storageKey in storageKeys)
+            {
+                storageKey.ToBigEndian(keyBuffer);
+                _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer).Bytes);
+                _storageProofItems[j] = [];
+                _accountProof.StorageProofs![j] = new StorageProof
+                {
+                    Key = keyBuffer.ToHexString(true, true),
+                    Value = Bytes.ZeroByte
+                };
+                j++;
+            }
+        }
+
         public AccountProof BuildResult()
         {
+            // EIP-1186 distinguishes a non-existent account from an empty existing account by
+            // returning zero hashes for the absent account case instead of the canonical empty hashes.
+            if (!_accountExists)
+            {
+                _accountProof.CodeHash = Hash256.Zero;
+                _accountProof.StorageRoot = Hash256.Zero;
+            }
+
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
@@ -147,7 +183,7 @@ namespace Nethermind.State.Proofs
             for (int i = 0; i < _fullStoragePaths.Length; i++)
             {
                 if (IsFullPathMatch(_fullStoragePaths[i], ctx.Path, node.Key))
-                    _accountProof.StorageProofs[i].Value = new Rlp.ValueDecoderContext(node.Value.AsSpan()).DecodeByteArray();
+                    _accountProof.StorageProofs[i].Value = new RlpReader(node.Value.AsSpan()).DecodeByteArray();
             }
         }
 
@@ -156,6 +192,7 @@ namespace Nethermind.State.Proofs
             // ctx.Path here already includes the leaf's key (it's leafContext, not nodeContext).
             if (!IsFullPathMatch(_fullAccountPath, ctx.Path)) return;
 
+            _accountExists = true;
             _accountProof.Nonce = account.Nonce;
             _accountProof.Balance = account.Balance;
             _accountProof.StorageRoot = account.StorageRoot.ToCommitment();

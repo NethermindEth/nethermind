@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -18,8 +19,8 @@ public class XdcBlockHeader(
     Hash256 unclesHash,
     Address beneficiary,
     in UInt256 difficulty,
-    long number,
-    long gasLimit,
+    ulong number,
+    ulong gasLimit,
     ulong timestamp,
     byte[] extraData,
     bool isSelfMined = false
@@ -77,8 +78,8 @@ public class XdcBlockHeader(
             //Check V2 consensus version in ExtraData field.
             if (ExtraData.Length < 3 || ExtraData[0] != XdcConstants.ConsensusVersion)
                 return null;
-            Rlp.ValueDecoderContext valueDecoderContext = new(ExtraData.AsSpan(1));
-            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
+            RlpReader reader = new(ExtraData.AsSpan(1));
+            _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref reader);
             return _extraFieldsV2;
         }
         internal set
@@ -90,11 +91,13 @@ public class XdcBlockHeader(
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    public virtual ValueHash256 CalculateHash()
+    internal BlockReward[]? ProcessedRewards { get; set; }
+
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
-        KeccakRlpStream rlpStream = new();
-        _headerDecoder.Encode(rlpStream, this);
-        return rlpStream.GetHash();
+        KeccakRlpWriter writer = new();
+        _headerDecoder.Encode(ref writer, this, behaviors);
+        return writer.GetHash();
     }
 
     /// <inheritdoc />
@@ -117,6 +120,47 @@ public class XdcBlockHeader(
         };
     }
 
+    internal virtual XdcBlockHeader CreateHeaderForProcessing()
+    {
+        XdcBlockHeader header = new(
+            ParentHash,
+            UnclesHash,
+            Beneficiary,
+            Difficulty,
+            Number,
+            GasLimit,
+            Timestamp,
+            ExtraData,
+            IsSelfMined);
+
+        CopyFieldsForProcessing(header);
+
+        return header;
+    }
+
+    protected void CopyFieldsForProcessing(XdcBlockHeader header)
+    {
+        header.Bloom = Bloom.Empty;
+        header.Author = Author;
+        header.Hash = Hash;
+        header.MixHash = MixHash;
+        header.Nonce = Nonce;
+        header.TxRoot = TxRoot;
+        header.TotalDifficulty = TotalDifficulty;
+        header.ReceiptsRoot = ReceiptsRoot;
+        header.BaseFeePerGas = BaseFeePerGas;
+        header.WithdrawalsRoot = WithdrawalsRoot;
+        header.RequestsHash = RequestsHash;
+        header.IsPostMerge = IsPostMerge;
+        header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
+        header.ExcessBlobGas = ExcessBlobGas;
+        header.BlobGasUsed = BlobGasUsed;
+        header.Validator = Validator;
+        header.Validators = Validators;
+        header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
+    }
+
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
         XdcBlockHeader x = new(
@@ -135,8 +179,6 @@ public class XdcBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
@@ -15,10 +14,10 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -29,15 +28,14 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), CreateBloomStorageFileStoreFactory)
-            .AddSingleton<IBloomStorage, BloomStorage>()
             .AddSingleton<IHeaderStore, HeaderStore>()
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
-            .AddSingleton<IBlockStore, BlockStore>()
+            .AddSingleton<IBlockStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
+            .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
-            .AddSingleton<IBlockAccessListStore, IDb>(CreateBalStore)
+            .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
@@ -77,18 +75,25 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         }
     }
 
-    private IFileStoreFactory CreateBloomStorageFileStoreFactory(IComponentContext ctx)
+    // Activate the DBs the writer targets before the writer itself, so Autofac's reverse-activation-order
+    // disposal drains the writer (flushing queued writes) before it closes those DBs.
+    private IDeferredBlockDataWriter CreateDeferredWriter(IComponentContext ctx)
     {
-        IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-        return initConfig.DiagnosticMode == DiagnosticMode.MemDb
-            ? new InMemoryDictionaryFileStoreFactory()
-            : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom,
-                Bloom.ByteLength);
+        if (receiptConfig.DeferredPersistence)
+        {
+            ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+            ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
+            ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
+        }
+        return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
+
+    private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockStore(blocksDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
     private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
         new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
 
-    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb) =>
-        new BlockAccessListStore(balDb);
+    private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 }

@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.HealthChecks;
@@ -21,13 +22,11 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Network;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.Stats.Model;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -101,12 +100,13 @@ public class MergePluginTests
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton(Substitute.For<IProtocolsManager>())
             .OnBuild(ctx =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue.IsEmpty.Returns(true);
+                ctx.Resolve<IBlockProcessingQueue>().IsEmpty.Returns(true);
             });
 
         configure?.Invoke(builder);
@@ -142,12 +142,9 @@ public class MergePluginTests
     public void Init_merge_plugin_does_not_throw_exception(bool enabled)
     {
         using IContainer container = BuildContainer();
-        INethermindApi api = container.Resolve<INethermindApi>();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
-        Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
+        Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
+        Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
     [Test]
@@ -187,65 +184,20 @@ public class MergePluginTests
     {
         await using IContainer container = BuildContainer();
         INethermindApi api = container.Resolve<INethermindApi>();
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
-        await _plugin.Init(api);
-        await _plugin.InitNetworkProtocol();
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
-        Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
-        _plugin.InitBlockProducer(_consensusPlugin!);
-        Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
-    }
-
-    [Test]
-    public async Task InitNetworkProtocol_adds_post_merge_eth_capabilities_when_transition_finished()
-    {
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(true);
-
-        await using IContainer container = BuildContainer(configure: builder => builder
-            .RegisterInstance(poSSwitcher)
-            .As<IPoSSwitcher>());
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
-
-        api.ProtocolsManager!.ClearReceivedCalls();
-        await _plugin.InitNetworkProtocol();
-
-        AssertPostMergeEthCapabilitiesAdded(api);
-    }
-
-    [Test]
-    public async Task InitNetworkProtocol_delays_post_merge_eth_capabilities_until_terminal_block()
-    {
-        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
-        poSSwitcher.TransitionFinished.Returns(false);
-
-        await using IContainer container = BuildContainer(configure: builder => builder
-            .RegisterInstance(poSSwitcher)
-            .As<IPoSSwitcher>());
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
-
-        api.ProtocolsManager!.ClearReceivedCalls();
-        await _plugin.InitNetworkProtocol();
-
-        api.ProtocolsManager!.DidNotReceive().AddSupportedCapability(Arg.Any<Capability>());
-
-        poSSwitcher.TerminalBlockReached += Raise.Event();
-
-        AssertPostMergeEthCapabilitiesAdded(api);
+        Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
+        IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
+        Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
+        Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
     }
 
     [Test]
     public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
     {
         await using IContainer container = BuildContainer();
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
 
         Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
     }
@@ -274,8 +226,8 @@ public class MergePluginTests
         }
 
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        Assert.That(async () => await _plugin.Init(api), Throws.TypeOf<InvalidConfigurationException>());
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
     }
 
     [Test]
@@ -293,20 +245,10 @@ public class MergePluginTests
         };
 
         await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _plugin.Init(api);
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
 
         Assert.That(jsonRpcConfig.Enabled, Is.True);
         Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);
         Assert.That(jsonRpcConfig.AdditionalRpcUrls, Is.EqualTo(new[] { "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client" }));
-    }
-
-    private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)
-    {
-        IProtocolsManager protocolsManager = api.ProtocolsManager!;
-
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 69));
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 70));
-        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 71));
     }
 }

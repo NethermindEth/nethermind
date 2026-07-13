@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -14,8 +12,6 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashPlugin(ChainSpec chainSpec, IMiningConfig miningConfig) : IConsensusPlugin
     {
-        private INethermindApi _nethermindApi;
-
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus";
@@ -24,21 +20,8 @@ namespace Nethermind.Consensus.Ethash
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi)
-        {
-            _nethermindApi = nethermindApi;
-
-            return Task.CompletedTask;
-        }
-
-        public IBlockProducer InitBlockProducer() => null;
 
         public string SealEngineType => Core.SealEngineType.Ethash;
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
-                _nethermindApi.ManualBlockProductionTrigger,
-                _nethermindApi.BlockTree,
-                blockProducer);
 
         public IModule Module => new EthHashModule(miningConfig);
     }
@@ -54,6 +37,10 @@ namespace Nethermind.Consensus.Ethash
                 .AddSingleton<IDifficultyCalculator, EthashDifficultyCalculator>()
                 .AddSingleton<IEthash, Ethash>()
                 .AddSingleton<ISealValidator, EthashSealValidator>()
+
+                .AddSingleton<EthashBlockProducerFactory>()
+                .Bind<IBlockProducerFactory, EthashBlockProducerFactory>()
+                .Bind<IBlockProducerRunnerFactory, EthashBlockProducerFactory>()
                 ;
 
             if (miningConfig.Enabled)

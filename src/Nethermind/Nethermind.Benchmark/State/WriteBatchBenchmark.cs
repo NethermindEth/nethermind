@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -51,7 +52,7 @@ public class WriteBatchBenchmark
 
         int totalAccountCount = 0;
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int accountCount = 500;
             int storageAccountCount = 10;
@@ -65,7 +66,8 @@ public class WriteBatchBenchmark
             }
 
             ReadOnlySnapshotBundle readOnly = new(
-                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
                 readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -147,7 +149,8 @@ public class WriteBatchBenchmark
         }
 
         ReadOnlySnapshotBundle readOnly = new(
-            prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+            prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
             readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

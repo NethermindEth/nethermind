@@ -46,14 +46,17 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)1));
-        Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
-        if (recipient != TestItem.AddressA)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(testCase.ExpectedVmCalls));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(tx.SpentGas, Is.EqualTo(testCase.ExpectedSpentGas));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore - testCase.ExpectedSenderDebit));
+            if (recipient != TestItem.AddressA)
+            {
+                Assert.That(_stateProvider.GetBalance(recipient), Is.EqualTo(recipientBalanceBefore + testCase.Value));
+            }
         }
     }
 
@@ -73,19 +76,22 @@ public partial class TransactionProcessorTests
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(tracer.ActionCalls, Is.EqualTo(1));
-        Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
-        Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
-        Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
-        Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
-        Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
-        Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
-        Assert.That(tracer.ActionInput, Is.Empty);
-        Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
-        Assert.That(tracer.IsPrecompileCall, Is.False);
-        Assert.That(tracer.ActionOutput, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(tracer.ActionCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+            Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+            Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
+            Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
+            Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
+            Assert.That(tracer.ActionInput, Is.Empty);
+            Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
+            Assert.That(tracer.IsPrecompileCall, Is.False);
+            Assert.That(tracer.ActionOutput, Is.Empty);
+        }
     }
 
     [Test]
@@ -101,15 +107,18 @@ public partial class TransactionProcessorTests
         Transaction tx = BuildSimpleTransfer(recipient, 7.Wei, withAuthorizationList: false);
         Block block = BuildPragueBlock(tx);
         UInt256 senderBalanceBefore = _stateProvider.GetBalance(TestItem.AddressA);
-        UInt256 senderNonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
+        ulong senderNonceBefore = _stateProvider.GetNonce(TestItem.AddressA);
 
         TransactionResult result = transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore));
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(senderNonceBefore));
-        Assert.That(_stateProvider.AccountExists(recipient), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(senderBalanceBefore));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(senderNonceBefore));
+            Assert.That(_stateProvider.AccountExists(recipient), Is.False);
+        }
     }
 
     [TestCase(false, 1ul, true, true)]
@@ -130,16 +139,20 @@ public partial class TransactionProcessorTests
 
         (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(specProvider);
 
-        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false);
+        // The gas limit must also cover the NEW_ACCOUNT state gas for the new recipient.
+        Transaction tx = BuildSimpleTransfer(recipient, (UInt256)value, withAuthorizationList: false, gasLimit: 300_000);
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(1_000_000).TestObject;
         SimpleTransferLogTracer tracer = new(isTracingLogs);
 
         TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
-        Assert.That(tracer.ReceiptLogs, Has.Length.EqualTo(expectTransferLog ? 1 : 0));
-        Assert.That(tracer.ReportLogCalls, Is.EqualTo(expectTransferLog && isTracingLogs ? 1 : 0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(tracer.ReceiptLogs, Has.Length.EqualTo(expectTransferLog ? 1 : 0));
+            Assert.That(tracer.ReportLogCalls, Is.EqualTo(expectTransferLog && isTracingLogs ? 1 : 0));
+        }
         if (expectTransferLog)
         {
             AssertLog(tracer.ReceiptLogs[0], ExpectedTransferLog(TestItem.AddressA, recipient, value));
@@ -149,6 +162,90 @@ public partial class TransactionProcessorTests
             }
         }
     }
+
+    // The EVM path must charge NEW_ACCOUNT exactly once, mirroring ExecuteSimpleTransfer.
+    [Test]
+    public void Eip8037_evm_path_value_transfer_to_dead_recipient_charges_new_account_state_gas()
+    {
+        Address liveRecipient = Address.FromNumber((UInt256)2100);
+        _stateProvider.CreateAccount(liveRecipient, 1); // exists -> not dead -> no NEW_ACCOUNT charge
+        _stateProvider.Commit(Amsterdam.Instance);
+        _stateProvider.CommitTree(0);
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        Address deadRecipient = Address.FromNumber((UInt256)2101);
+        Transaction liveTx = BuildSetCodeTransfer(liveRecipient, 1.Wei, TestItem.PrivateKeyA, TestItem.PrivateKeyB, 0);
+        Transaction deadTx = BuildSetCodeTransfer(deadRecipient, 1.Wei, TestItem.PrivateKeyA, TestItem.PrivateKeyD, 1);
+
+        Block block = BuildAmsterdamBlock(liveTx, deadTx);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        TransactionResult liveResult = transactionProcessor.Execute(liveTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult deadResult = transactionProcessor.Execute(deadTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(liveResult.TransactionExecuted, Is.True);
+            Assert.That(deadResult.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(2)); // both took the EVM path
+            Assert.That(_stateProvider.GetBalance(deadRecipient), Is.EqualTo((UInt256)1));
+            Assert.That(deadTx.SpentGas - liveTx.SpentGas, Is.EqualTo(GasCostOf.NewAccountState));
+        }
+    }
+
+    // Regression: an empty precompile pays NEW_ACCOUNT like any other dead recipient.
+    [Test]
+    public void Eip8037_value_transfer_to_dead_precompile_charges_new_account_state_gas()
+    {
+        Address precompile = Sha256Precompile.Address; // no stored account -> dead until funded
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        // First transfer materialises the (dead) precompile account; the second finds it already funded.
+        Transaction deadTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(0)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+        Transaction liveTx = Build.A.Transaction
+            .WithTo(precompile).WithValue(1.Wei).WithGasPrice(1).WithGasLimit(1_000_000).WithNonce(1)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+
+        Block block = BuildAmsterdamBlock(deadTx, liveTx);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+        TransactionResult deadResult = transactionProcessor.Execute(deadTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult liveResult = transactionProcessor.Execute(liveTx, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8037Enabled, Is.True);
+            Assert.That(deadResult.TransactionExecuted, Is.True);
+            Assert.That(liveResult.TransactionExecuted, Is.True);
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(2)); // precompile recipient enters the VM
+            Assert.That(deadTx.SpentGas - liveTx.SpentGas, Is.EqualTo(GasCostOf.NewAccountState));
+        }
+    }
+
+    private static Block BuildAmsterdamBlock(params Transaction[] txs) =>
+        Build.A.Block
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber)
+            .WithTimestamp(MainnetSpecProvider.AmsterdamBlockTimestamp)
+            .WithTransactions(txs)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+    private Transaction BuildSetCodeTransfer(Address recipient, UInt256 value, PrivateKey sender, PrivateKey authority, ulong nonce) =>
+        Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(recipient)
+            .WithValue(value)
+            .WithGasPrice(1)
+            .WithGasLimit(1_000_000)
+            .WithNonce(nonce)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, Address.Zero, 0))
+            .SignedAndResolved(_ethereumEcdsa, sender, eip155Enabled)
+            .TestObject;
 
     private (CountingVirtualMachine Vm, EthereumTransactionProcessor Processor) CreateProcessor(ISpecProvider specProvider)
     {
@@ -190,13 +287,13 @@ public partial class TransactionProcessorTests
             .SetName("Delegated recipient with executable target enters VM");
     }
 
-    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList)
+    private Transaction BuildSimpleTransfer(Address recipient, UInt256 value, bool withAuthorizationList, ulong gasLimit = 100_000)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithTo(recipient)
             .WithValue(value)
             .WithGasPrice(1)
-            .WithGasLimit(100_000);
+            .WithGasLimit(gasLimit);
 
         if (withAuthorizationList)
         {
@@ -242,7 +339,7 @@ public partial class TransactionProcessorTests
         UInt256 Value,
         bool WithAuthorizationList,
         int ExpectedVmCalls,
-        long ExpectedSpentGas,
+        ulong ExpectedSpentGas,
         UInt256 ExpectedSenderDebit);
 
     private static LogEntry ExpectedTransferLog(Address sender, Address recipient, UInt256 value) =>
@@ -250,9 +347,12 @@ public partial class TransactionProcessorTests
 
     private static void AssertLog(LogEntry actual, LogEntry expected)
     {
-        Assert.That(actual.Address, Is.EqualTo(expected.Address));
-        Assert.That(actual.Data, Is.EqualTo(expected.Data));
-        Assert.That(actual.Topics, Is.EqualTo(expected.Topics));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Address, Is.EqualTo(expected.Address));
+            Assert.That(actual.Data, Is.EqualTo(expected.Data));
+            Assert.That(actual.Topics, Is.EqualTo(expected.Topics));
+        }
     }
 
     private sealed class SimpleTransferLogTracer(bool isTracingLogs) : TxTracer
@@ -274,8 +374,8 @@ public partial class TransactionProcessorTests
         public override bool IsTracingActions { get; protected set; } = true;
         public int ActionCalls { get; private set; }
         public int ActionEndCalls { get; private set; }
-        public long ActionGas { get; private set; }
-        public long ActionEndGas { get; private set; }
+        public ulong ActionGas { get; private set; }
+        public ulong ActionEndGas { get; private set; }
         public UInt256 ActionValue { get; private set; }
         public Address ActionFrom { get; private set; } = Address.Zero;
         public Address ActionTo { get; private set; } = Address.Zero;
@@ -284,7 +384,7 @@ public partial class TransactionProcessorTests
         public bool IsPrecompileCall { get; private set; }
         public byte[] ActionOutput { get; private set; } = [];
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ActionCalls++;
             ActionGas = gas;
@@ -296,7 +396,7 @@ public partial class TransactionProcessorTests
             IsPrecompileCall = isPrecompileCall;
         }
 
-        public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
         {
             ActionEndCalls++;
             ActionEndGas = gas;

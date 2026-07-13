@@ -5,10 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Collections.Pooled;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -22,12 +24,15 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
+using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
     private readonly int _concurrencyLevel;
+    // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
+    private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
@@ -35,12 +40,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
+    private int _mainThreadTxIndex = -1;
+    internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
+
+    // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
+    private readonly Lock _speculativeLock = new();
+    private CancellationTokenSource? _speculativeCts;
+    private Task _speculativeTask = Task.CompletedTask;
+    private long _speculativeGeneration = long.MinValue;
+
+    // Written only by the loop thread and read after it is joined, so the marker and its tx-hash set need no further sync.
+    private WarmMarker? _warmMarker;
+
+    private readonly PooledSet<Hash256> _warmedTxHashes = [];
+    private readonly IHasAccessList[] _systemAccessLists;
+
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager
+        ILogManager logManager,
+        IHasAccessList[]? systemAccessLists = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -48,7 +69,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         nodeStorageCache,
         preBlockCaches,
-        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        logManager,
+        blocksConfig.MempoolPreWarmConcurrency,
+        systemAccessLists) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -57,9 +80,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool parallelExecutionBatchRead,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
-        ILogManager logManager)
+        ILogManager logManager,
+        int speculativeConcurrency = 0,
+        IHasAccessList[]? systemAccessLists = null)
     {
+        _systemAccessLists = systemAccessLists ?? [];
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
@@ -67,9 +94,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _nodeStorageCache = nodeStorageCache;
     }
 
-    public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+    public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
-        if (_preBlockCaches is not null && ShouldPreWarm(spec))
+        if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
+
+        CancelAndJoinSpeculative();
+
+        if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
+        {
+            PrewarmMetrics.MempoolPrewarmHandoffs++;
+            _nodeStorageCache.Enabled = true;
+        }
+        else
         {
             CacheType result = _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
@@ -78,25 +114,150 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
             }
-
-            if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
-            {
-                BlockState blockState = new(this, suggestedBlock, parent, spec);
-                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
-
-                // BAL makes speculative tx execution redundant — when BAL-based read warming
-                // is in use, drive warmup directly off the suggested block's access list.
-                ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
-
-                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
-                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-                // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
-            }
         }
 
-        return Task.CompletedTask;
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
+    }
+
+    private Task WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    {
+        if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
+
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(suggestedBlock, parent, spec, speculativelyWarmed, _concurrencyLevel, cancellationToken, systemAccessLists);
+        // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
+        return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+    }
+
+    private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
+    {
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, systemAccessLists: default);
+        ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
+        PreWarmCachesParallel(blockState, delta, head, spec, parallelOptions, addressWarmer, token);
+    }
+
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, BlockHeader parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, int maxDegreeOfParallelism, CancellationToken token, ReadOnlySpan<IHasAccessList> systemAccessLists)
+    {
+        BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
+        // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
+        Volatile.Write(ref _mainThreadTxIndex, -1);
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
+        // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
+        // directly off the block's access list.
+        ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
+        AddressWarmer addressWarmer = new(parallelOptions, block, parent, spec, systemAccessLists, this, bal);
+        return (blockState, parallelOptions, addressWarmer);
+    }
+
+    public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+    {
+        if (_preBlockCaches is null || !ShouldPreWarm(spec) || _concurrencyLevel <= 1) return Task.CompletedTask;
+        if (head.Hash is not Hash256 headHash) return Task.CompletedTask;
+
+        lock (_speculativeLock)
+        {
+            // An equal-or-newer session already started (out-of-order work item); don't clobber it.
+            if (generation <= _speculativeGeneration) return _speculativeTask;
+            _speculativeGeneration = generation;
+
+            CancelAndJoinSpeculativeLocked();
+
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _speculativeCts = cts;
+            CancellationToken token = cts.Token;
+
+            ClearWarmMarker();
+            _warmedTxHashes.Clear();
+            _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
+
+            return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
+        }
+    }
+
+    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    {
+        // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
+        WarmMarker marker = new(headHash, spec, _warmedTxHashes);
+        try
+        {
+            int delay = Math.Max(1, idlePassDelayMs);
+            while (!token.IsCancellationRequested)
+            {
+                Block? delta = nextDelta(token);
+                if (token.IsCancellationRequested) break;
+
+                if (delta is not null && delta.Transactions.Length > 0)
+                {
+                    WarmDeltaSync(delta, head, spec, token);
+                    // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
+                    if (token.IsCancellationRequested) break;
+                    foreach (Transaction tx in delta.Transactions)
+                    {
+                        if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                    }
+                    Volatile.Write(ref _warmMarker, marker);
+                }
+
+                // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
+                if (token.WaitHandle.WaitOne(delay)) break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Error during speculative pre-warming. {ex}");
+        }
+    }
+
+    // For tests: true once a session has published its handoff marker.
+    internal bool SpeculativeMarkerPublished => Volatile.Read(ref _warmMarker) is not null;
+
+    private void CancelAndJoinSpeculative()
+    {
+        lock (_speculativeLock)
+        {
+            CancelAndJoinSpeculativeLocked();
+        }
+    }
+
+    private void CancelAndJoinSpeculativeLocked()
+    {
+        if (_speculativeCts is null) return;
+
+        _speculativeCts.Cancel();
+        try
+        {
+            _speculativeTask.GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Warming failures are already logged inside the pass; nothing actionable here.
+        }
+        _speculativeCts.Dispose();
+        _speculativeCts = null;
+        _speculativeTask = Task.CompletedTask;
+    }
+
+    private void ClearWarmMarker() => Volatile.Write(ref _warmMarker, null);
+
+    private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
+    {
+        WarmMarker? marker = Volatile.Read(ref _warmMarker);
+        // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
+        if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
+        {
+            warmedTxHashes = marker.WarmedTxHashes;
+            Volatile.Write(ref _warmMarker, null);
+            return true;
+        }
+
+        warmedTxHashes = null;
+        return false;
     }
 
     private bool ShouldPreWarm(IReleaseSpec spec)
@@ -107,16 +268,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
 
+    /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
+    /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
+    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
+        CancelAndJoinSpeculative();
+        ClearWarmMarker();
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
         cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
 
-    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        CancelAndJoinSpeculative();
+        _warmedTxHashes.Dispose();
+        (_envPool as IDisposable)?.Dispose();
+    }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -214,7 +386,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
-                        // Get thread-local processing state for this sender's transactions
+                        // Whole group already warmed speculatively — skip; leave the rest to the reactive pass.
+                        if (blockState.SpeculativelyWarmed is { } warmed)
+                        {
+                            if (AllSpeculativelyWarmed(txList, warmed))
+                            {
+                                Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersSkipped);
+                                return tupleState;
+                            }
+                            Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersWarmed);
+                        }
+
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                         try
                         {
@@ -226,7 +408,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
                             }
                         }
                         finally
@@ -260,7 +442,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            if (tx.SenderAddress is not Address sender)
+            {
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                continue;
+            }
 
             if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
             {
@@ -273,14 +459,29 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
+    private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
+    {
+        foreach ((int _, Transaction tx) in group.AsSpan())
+        {
+            if (tx.Hash is not Hash256 hash || !warmed.Contains(hash)) return false;
+        }
+
+        return true;
+    }
+
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
-        BlockState blockState)
+        BlockState blockState,
+        CancellationToken cancellationToken)
     {
         try
         {
+            // Already started by the main thread — warming it now is redundant and contends; skip.
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+
+            // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
 
@@ -289,9 +490,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
+            // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
             if (blockState.Spec.UseTxAccessLists)
             {
-                worldState.WarmUp(tx.AccessList); // eip-2930
+                worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
@@ -365,22 +567,28 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ObjectPool<IReadOnlyTxProcessorSource> envPool = PreWarmer._envPool;
             try
             {
-                if (SystemTxAccessLists is not null)
+                Address? beneficiary = block.Header.GasBeneficiary;
+                if (SystemTxAccessLists is not null || beneficiary is not null)
                 {
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
 
-                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        WarmupSender(beneficiary, null, scope.WorldState);
+
+                        if (SystemTxAccessLists is not null)
                         {
-                            scope.WorldState.WarmUp(list);
+                            foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                            {
+                                scope.WorldState.WarmUp(list);
+                            }
                         }
                     }
                     finally
                     {
                         envPool.Return(env);
-                        SystemTxAccessLists.Dispose();
+                        SystemTxAccessLists?.Dispose();
                     }
                 }
 
@@ -478,5 +686,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+
+    private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
 }

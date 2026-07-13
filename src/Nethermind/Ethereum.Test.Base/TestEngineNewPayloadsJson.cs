@@ -12,6 +12,9 @@ namespace Ethereum.Test.Base
         public string? ForkChoiceUpdatedVersion { get; set; }
         public string? ValidationError { get; set; }
 
+        public ExecutionWitnessJson? ExecutionWitness { get; set; }
+        public bool? ExecutionWitnessMutated { get; set; }
+
         public class ParamsExecutionPayload
         {
             public string ParentHash { get; set; }
