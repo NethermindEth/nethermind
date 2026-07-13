@@ -344,31 +344,22 @@ public class SparseTrieTaskTests
                 finalValue)]);
 
         if (warmerFirst)
-        {
             Assert.That(
                 block.TryEnqueueStorageTouch(accountHash, state.ParentStorageRoot, slotPath),
                 Is.True);
-        }
-        else
-        {
-            block.EnqueueDelta(delta);
-        }
 
+        block.EnqueueDelta(delta);
+
+        if (!warmerFirst)
+            Assert.That(
+                block.TryEnqueueStorageTouch(accountHash, state.ParentStorageRoot, slotPath),
+                Is.True);
+
+        block.EnqueueDelta(new SparseTriePhaseDelta([], [], IsFinal: true));
         Assert.That(
             SpinWait.SpinUntil(() => reader.StorageLoads > 0, TimeSpan.FromSeconds(5)),
             Is.True,
-            "The worker did not process the first proof hint while idle.");
-
-        if (warmerFirst)
-        {
-            block.EnqueueDelta(delta);
-        }
-        else
-        {
-            Assert.That(
-                block.TryEnqueueStorageTouch(accountHash, state.ParentStorageRoot, slotPath),
-                Is.True);
-        }
+            "The worker did not process the storage proof before finalization.");
 
         SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
             [new SparseTrieFinalStorageBatch(

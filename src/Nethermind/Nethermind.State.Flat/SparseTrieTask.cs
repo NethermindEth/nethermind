@@ -410,12 +410,13 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private void ProcessDelta(WorkerSession session, SparseTriePhaseDelta delta)
     {
+        if (session.ExecutionFinished && delta.StorageDeltas.Count != 0)
+            throw new InvalidOperationException("Storage delta arrived after the final execution phase.");
         if (delta.IsFinal)
             session.ExecutionFinished = true;
 
         SparseRootComputer computer = session.GetComputer();
         Dictionary<ValueHash256, LeafUpdate> accountUpdates = [];
-        Dictionary<Hash256, StorageTouchGroup> storageUpdates = [];
 
         foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
         {
@@ -455,29 +456,36 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             session.RequiredStorageProofs.Add((accountHash, slotPath));
             provisional!.SlotValues[slotPath] = storageDelta.Value;
             session.HintedStorage.TryAdd((accountHash, slotPath), 0);
-
-            if (!storageUpdates.TryGetValue(accountHash, out StorageTouchGroup? group))
-            {
-                group = new StorageTouchGroup(provisional.ParentStorageRoot);
-                storageUpdates.Add(accountHash, group);
-            }
-
-            group.Updates[slotPath] = EncodeStorageValue(storageDelta.Value);
         }
 
         foreach (ValueHash256 accountPath in accountUpdates.Keys)
             RevealDeferredAccountProof(session, accountPath);
         computer.ApplyAccountChanges(accountUpdates);
-        foreach (KeyValuePair<Hash256, StorageTouchGroup> entry in storageUpdates)
+
+        if (delta.IsFinal)
+            ApplyProvisionalStorageChanges(session);
+    }
+
+    private static void ApplyProvisionalStorageChanges(WorkerSession session)
+    {
+        if (session.ProvisionalStorageApplied)
+            return;
+
+        SparseRootComputer computer = session.GetComputer();
+        foreach (KeyValuePair<Hash256, ProvisionalStorage> entry in session.ProvisionalStorage)
         {
-            foreach (ValueHash256 slotPath in entry.Value.Updates.Keys)
-                RevealDeferredStorageProof(session, entry.Key, slotPath);
-            computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, entry.Value.Updates);
+            Dictionary<ValueHash256, LeafUpdate> updates = new(entry.Value.SlotValues.Count);
+            foreach (KeyValuePair<ValueHash256, byte[]> slot in entry.Value.SlotValues)
+            {
+                RevealDeferredStorageProof(session, entry.Key, slot.Key);
+                updates.Add(slot.Key, EncodeStorageValue(slot.Value));
+            }
+
+            computer.ApplyStorageChanges(entry.Key, entry.Value.ParentStorageRoot, updates);
             session.PendingStorageRootComputations.Add(entry.Key);
         }
 
-        if (delta.IsFinal && session.RevealedAccounts.Count != 0)
-            computer.ComputeAppliedStateRoot();
+        session.ProvisionalStorageApplied = true;
     }
 
     private static void AddAccountTouch(
@@ -806,7 +814,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 bool hasProvisionalValue = !batch.Clear &&
                     provisional is not null &&
                     provisional.SlotValues.TryGetValue(slotPath, out provisionalValue);
-                bool matchesProvisional = hasProvisionalValue &&
+                bool matchesProvisional = session.ProvisionalStorageApplied &&
+                    hasProvisionalValue &&
                     provisionalValue!.AsSpan().SequenceEqual(slot.Value);
                 if (!matchesProvisional &&
                     (batch.Clear || slot.Changed || hasProvisionalValue))
@@ -1214,6 +1223,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public Exception? Error => Volatile.Read(ref _error);
         public bool FinishRequested { get; set; }
         public bool ExecutionFinished { get; set; }
+        public bool ProvisionalStorageApplied { get; set; }
         public bool Prepared { get; set; }
         public bool Completed { get; set; }
         public int AccountTouchCommandQueued;
