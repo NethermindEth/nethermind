@@ -85,7 +85,6 @@ public class PrecompileCachedCodeInfoRepository(
 
             if (survivingCache.TryGet(key, out result))
             {
-                blockCache.TryAdd(new(address, effectiveInput.ToArray(), releaseSpec), result);
                 return result;
             }
 
