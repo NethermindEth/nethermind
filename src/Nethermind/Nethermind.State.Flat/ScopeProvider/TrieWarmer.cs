@@ -18,8 +18,10 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// </summary>
 public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 {
-    private const int BufferSize = 1024 * 16;
-    private const int SlotBufferSize = 1024 * 8;
+    // Sized for mass-write blocks (e.g. XEN batch claims hint 10k+ slots): a full ring drops
+    // the hint permanently because the dedupe bloom is marked before the push.
+    private const int BufferSize = 1024 * 64;
+    private const int SlotBufferSize = 1024 * 32;
     private const int DisposeTimeoutMilliseconds = 1000;
 
     private readonly ILogger _logger;

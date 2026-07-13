@@ -99,13 +99,20 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
 
-    // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
-    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
-    public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
+    // Adds always take a stripe lock, and write-heavy blocks fan node/slot inserts out of the
+    // parallel storage-root commit, so the default CPU-count striping contends (profiled on
+    // XEN-style mass-delete blocks).
+    private static readonly int Concurrency = Environment.ProcessorCount * 4;
 
-    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new();
-    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new();
+    // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots.
+    // Pre-sized so write-heavy blocks don't pay GrowTable resizes mid-block; Reset uses
+    // NoResizeClear, so the tables are retained and the cost is one-time per pooled instance.
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new(Concurrency, 4096);
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new(Concurrency, 8192);
+    public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new(Concurrency, 256);
+
+    public readonly ConcurrentDictionary<HashedKey<TreePath>, TrieNode> StateNodes = new(Concurrency, 4096);
+    public readonly ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> StorageNodes = new(Concurrency, 8192);
 
     public void Reset()
     {
