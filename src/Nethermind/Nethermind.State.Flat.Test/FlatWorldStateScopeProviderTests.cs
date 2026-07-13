@@ -974,7 +974,6 @@ public class FlatWorldStateScopeProviderTests
             StorageCell cell = new(address, in slot);
             sink.OnCommittedStorage(in cell, value);
         }
-        sink.OnCommitPhaseCompleted(isFinal: false);
         sink.OnCommitPhaseCompleted(isFinal: true);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))

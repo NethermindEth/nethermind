@@ -21,8 +21,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer,
     IWorldStateScopeProvider.ISparseDeltaSink
 {
-    private const int SparseDeltaPublishThreshold = 100;
-
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -213,12 +211,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         SparseTrieBlockHandle? block = _sparseBlock;
         if (block is null || !_acceptSparseDeltas)
             return;
-
-        if (!isFinal &&
-            _pendingSparseAccounts.Count + _pendingSparseStorage.Count < SparseDeltaPublishThreshold)
-        {
-            return;
-        }
 
         if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0 || isFinal)
         {
