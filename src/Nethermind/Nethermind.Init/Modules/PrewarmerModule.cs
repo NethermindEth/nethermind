@@ -56,10 +56,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
 
-                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
-                // These are the actual decorated component that provide cached result
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
@@ -77,7 +75,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
-                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
+                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches : null);
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();

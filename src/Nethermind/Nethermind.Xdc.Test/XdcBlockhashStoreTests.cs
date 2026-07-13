@@ -5,10 +5,12 @@ using System;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -22,6 +24,34 @@ internal class XdcBlockhashStoreTests
         IsEip2935Enabled = true,
         Eip2935RingBufferSize = Eip2935Constants.RingBufferSize,
     };
+
+    // Dropping IHasAccessList from the decorator silently disables the inner store's prewarm hint.
+    [TestCase(true, TestName = "GetAccessList_WithHintCapableInner_ForwardsTheInnerHint")]
+    [TestCase(false, TestName = "GetAccessList_WithHintlessInner_IsNull")]
+    public void GetAccessList_AtGivenInnerCapability_ForwardsExactly(bool innerHintCapable)
+    {
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+        ReleaseSpec spec = Eip2935Spec;
+        Block block = Build.A.Block.WithNumber(42).WithParentHash(TestItem.KeccakA).TestObject;
+        IBlockhashStore inner = innerHintCapable ? new BlockhashStore(worldState) : Substitute.For<IBlockhashStore>();
+        XdcBlockhashStore store = new(inner, worldState);
+        store.ApplyBlockhashStateChanges(block.Header, spec);
+
+        AccessList? hint = store.GetAccessList(block, spec);
+
+        if (!innerHintCapable)
+        {
+            Assert.That(hint, Is.Null);
+            return;
+        }
+
+        Assert.That(hint, Is.Not.Null, "the decorator must forward the inner store's hint");
+        foreach ((Address address, AccessList.StorageKeysEnumerable _) in hint!)
+        {
+            Assert.That(address, Is.EqualTo(Eip2935Account));
+        }
+    }
 
     [Test]
     public void Deploys_history_contract_when_missing()
