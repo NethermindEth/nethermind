@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -10,10 +9,25 @@ namespace Nethermind.State.Flat.Persistence;
 
 public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null) : IPersistence
 {
+    private static readonly FlatDbColumns[] IngestColumns =
+    [
+        FlatDbColumns.Account,
+        FlatDbColumns.Storage,
+        FlatDbColumns.StateTopNodes,
+        FlatDbColumns.StateNodes,
+        FlatDbColumns.StorageNodes,
+        FlatDbColumns.FallbackNodes,
+    ];
+
+    private readonly bool _storeSupportsIngest = RecoverInterruptedIngest(db, logManager);
     private readonly WriteBufferAdjuster _adjuster = new(db, config?.PersistenceWriteBufferFloor ?? WriteBufferAdjuster.DefaultWriteBufferFloor);
     private int _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
     private readonly bool _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<RocksDbPersistence>());
     private readonly bool _useSstIngestion = config?.PersistViaSstIngestion ?? false;
+    private readonly ILogger _logger = logManager.GetClassLogger<RocksDbPersistence>();
+    // Gates new reader snapshots out of the ingest commit window (per-CF ingests + pointer write), which is
+    // not a single RocksDB sequence number the way a normal WriteBatch commit is.
+    private readonly ReaderWriterLockSlim _ingestGate = new();
 
     public void Flush() => db.Flush();
 
@@ -21,7 +35,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        IColumnDbSnapshot<FlatDbColumns> snapshot = CreateGatedSnapshot();
         try
         {
             BaseTriePersistence.Reader trieReader = new(
@@ -57,16 +71,31 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         }
     }
 
+    private IColumnDbSnapshot<FlatDbColumns> CreateGatedSnapshot()
+    {
+        if (!_useSstIngestion) return db.CreateSnapshot();
+
+        _ingestGate.EnterReadLock();
+        try
+        {
+            return db.CreateSnapshot();
+        }
+        finally
+        {
+            _ingestGate.ExitReadLock();
+        }
+    }
+
     private IPersistence.IWriteBatch CreateIngestWriteBatch(IColumnDbSnapshot<FlatDbColumns> dbSnap, StateId to)
     {
-        IWriteBatch Ingest(FlatDbColumns column) => ((ISstIngestible)db.GetColumnDb(column)).StartSstIngestBatch();
+        ISstIngestWriteBatch Ingest(FlatDbColumns column) => ((ISstIngestible)db.GetColumnDb(column)).StartSstIngestBatch();
 
-        IWriteBatch accountBatch = Ingest(FlatDbColumns.Account);
-        IWriteBatch storageBatch = Ingest(FlatDbColumns.Storage);
-        IWriteBatch stateTopNodesBatch = Ingest(FlatDbColumns.StateTopNodes);
-        IWriteBatch stateNodesBatch = Ingest(FlatDbColumns.StateNodes);
-        IWriteBatch storageNodesBatch = Ingest(FlatDbColumns.StorageNodes);
-        IWriteBatch fallbackNodesBatch = Ingest(FlatDbColumns.FallbackNodes);
+        ISstIngestWriteBatch accountBatch = Ingest(FlatDbColumns.Account);
+        ISstIngestWriteBatch storageBatch = Ingest(FlatDbColumns.Storage);
+        ISstIngestWriteBatch stateTopNodesBatch = Ingest(FlatDbColumns.StateTopNodes);
+        ISstIngestWriteBatch stateNodesBatch = Ingest(FlatDbColumns.StateNodes);
+        ISstIngestWriteBatch storageNodesBatch = Ingest(FlatDbColumns.StorageNodes);
+        ISstIngestWriteBatch fallbackNodesBatch = Ingest(FlatDbColumns.FallbackNodes);
 
         BaseTriePersistence.WriteBatch trieWriteBatch = new(
             (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
@@ -95,32 +124,150 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             trieWriteBatch,
             new Reactive.AnonymousDisposable(() =>
             {
+                ISstIngestWriteBatch[] batches = [accountBatch, storageBatch, stateTopNodesBatch, stateNodesBatch, storageNodesBatch, fallbackNodesBatch];
                 try
                 {
-                    IWriteBatch[] batches = [accountBatch, storageBatch, stateTopNodesBatch, stateNodesBatch, storageNodesBatch, fallbackNodesBatch];
-                    ExceptionDispatchInfo? firstFailure = null;
-                    foreach (IWriteBatch batch in batches)
-                    {
-                        try { batch.Dispose(); }
-                        catch (Exception e) { firstFailure ??= ExceptionDispatchInfo.Capture(e); }
-                    }
-                    firstFailure?.Throw();
-
-                    using (IColumnsWriteBatch<FlatDbColumns> metaBatch = db.StartWriteBatch())
-                    {
-                        BasePersistence.SetCurrentState(metaBatch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                        if (_rlpWrapSlots)
-                            BasePersistence.RecordLayoutOnFirstBatch(metaBatch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
-                    }
-
-                    db.Flush(onlyWal: true);
+                    CommitIngest(batches, toCopy);
                 }
                 finally
                 {
+                    foreach (ISstIngestWriteBatch batch in batches) batch.Dispose();
                     dbSnap.Dispose();
                 }
             })
         );
+    }
+
+    private void CommitIngest(ISstIngestWriteBatch[] batches, in StateId to)
+    {
+        try
+        {
+            List<string> stagedFiles = [];
+            foreach (ISstIngestWriteBatch batch in batches)
+                stagedFiles.AddRange(batch.SealToStagedFiles());
+
+            // Redo marker: durable before the first ingest so a crash anywhere below rolls forward to `to`
+            // on reopen; the pointer therefore never claims a state some column lacks.
+            using (IColumnsWriteBatch<FlatDbColumns> markerBatch = db.StartWriteBatch())
+            {
+                IWriteBatch metadata = markerBatch.GetColumnBatch(FlatDbColumns.Metadata);
+                BasePersistence.SetIngestMarker(metadata, to, stagedFiles);
+                if (_rlpWrapSlots)
+                    BasePersistence.RecordLayoutOnFirstBatch(metadata, ref _layoutPersisted, FlatLayout.Flat);
+            }
+            db.Flush(onlyWal: true);
+
+            _ingestGate.EnterWriteLock();
+            try
+            {
+                foreach (ISstIngestWriteBatch batch in batches)
+                    batch.IngestStagedFiles();
+
+                using (IColumnsWriteBatch<FlatDbColumns> pointerBatch = db.StartWriteBatch())
+                {
+                    IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
+                    BasePersistence.SetCurrentState(metadata, to);
+                    BasePersistence.ClearIngestMarker(metadata);
+                }
+                db.Flush(onlyWal: true);
+            }
+            finally
+            {
+                _ingestGate.ExitWriteLock();
+            }
+        }
+        catch
+        {
+            RollbackFailedIngest(batches);
+            throw;
+        }
+
+        // The L0 throttle stays outside the gate so reader snapshot creation is not stalled behind compaction.
+        foreach (FlatDbColumns column in IngestColumns)
+            ((ISstIngestible)db.GetColumnDb(column)).WaitForIngestCompactionHeadroom();
+    }
+
+    private void RollbackFailedIngest(ISstIngestWriteBatch[] batches)
+    {
+        try
+        {
+            // The marker must be gone before staged files are deleted: a marker surviving its files would
+            // roll the pointer forward past missing data on the next open.
+            using (IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch())
+                BasePersistence.ClearIngestMarker(batch.GetColumnBatch(FlatDbColumns.Metadata));
+            db.Flush(onlyWal: true);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Failed to clear the SST ingest marker after a failed persist; keeping staged files for startup roll-forward", e);
+            return;
+        }
+
+        foreach (ISstIngestWriteBatch batch in batches)
+            batch.DeleteStagedFiles();
+    }
+
+    /// <summary>
+    /// Startup recovery for the SST-ingest persist path. A pending marker means the process died between the
+    /// first ingest and the pointer advance: re-ingest the staged files that remain (move-ingest consumed the
+    /// rest) and complete the pointer write. Without a marker, leftover staged files are orphans and are removed.
+    /// Returns whether the store supports SST ingestion at all.
+    /// </summary>
+    private static bool RecoverInterruptedIngest(IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    {
+        if (db.GetColumnDb(FlatDbColumns.Account) is not ISstIngestible ingestible) return false;
+
+        ILogger logger = logManager.GetClassLogger<RocksDbPersistence>();
+        string stagingDir = ingestible.IngestStagingDir;
+
+        if (BasePersistence.ReadIngestMarker(db.GetColumnDb(FlatDbColumns.Metadata)) is { } pending)
+            RollForwardPendingIngest(db, stagingDir, pending, logger);
+
+        if (Directory.Exists(stagingDir))
+        {
+            string[] orphans = Directory.GetFiles(stagingDir);
+            foreach (string orphan in orphans) File.Delete(orphan);
+            if (orphans.Length > 0 && logger.IsInfo)
+                logger.Info($"Deleted {orphans.Length} orphaned SST staging file(s) from {stagingDir}");
+        }
+
+        return true;
+    }
+
+    private static void RollForwardPendingIngest(IColumnsDb<FlatDbColumns> db, string stagingDir, (StateId To, string[] Files) pending, ILogger logger)
+    {
+        Dictionary<FlatDbColumns, List<string>> byColumn = [];
+        foreach (string name in pending.Files)
+        {
+            int cut = name.LastIndexOf('_');
+            if (cut <= 0 || !Enum.TryParse(name.AsSpan(0, cut), out FlatDbColumns column) || !Enum.IsDefined(column) || column == FlatDbColumns.Metadata)
+                throw new InvalidOperationException($"Flat DB SST ingest marker references unrecognized staged file '{name}'");
+
+            string path = Path.Combine(stagingDir, name);
+            // A missing file was already ingested: move-ingest deletes its source on success.
+            if (!File.Exists(path)) continue;
+
+            if (!byColumn.TryGetValue(column, out List<string>? files)) byColumn[column] = files = [];
+            files.Add(path);
+        }
+
+        int reingested = 0;
+        foreach ((FlatDbColumns column, List<string> files) in byColumn)
+        {
+            ((ISstIngestible)db.GetColumnDb(column)).IngestStagedFiles(files);
+            reingested += files.Count;
+        }
+
+        using (IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch())
+        {
+            IWriteBatch metadata = batch.GetColumnBatch(FlatDbColumns.Metadata);
+            BasePersistence.SetCurrentState(metadata, pending.To);
+            BasePersistence.ClearIngestMarker(metadata);
+        }
+        db.Flush(onlyWal: true);
+
+        if (logger.IsInfo)
+            logger.Info($"Rolled interrupted flat DB persist forward to {pending.To}: re-ingested {reingested} of {pending.Files.Length} staged SST file(s)");
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
@@ -133,8 +280,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
         }
 
-        if (_useSstIngestion && from != StateId.Sync && to != StateId.Sync
-            && db.GetColumnDb(FlatDbColumns.Account) is ISstIngestible)
+        if (_useSstIngestion && _storeSupportsIngest && from != StateId.Sync && to != StateId.Sync)
         {
             return CreateIngestWriteBatch(dbSnap, to);
         }
