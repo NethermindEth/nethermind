@@ -1318,6 +1318,47 @@ namespace Nethermind.Trie.Test
             Assert.That(() => patriciaTree.WarmUpPath(Bytes.FromHexString("fffffffffffff")), Throws.Nothing);  // Completely different path
         }
 
+        private static IEnumerable<TestCaseData> WarmUpPathCaptureCases()
+        {
+            yield return new TestCaseData(
+                new byte[] { 0x00 },
+                new[] { TreePath.Empty, TreePath.FromNibble(new byte[] { 0 }) })
+                .SetName("WarmUpPath_CapturesResolvedNodes_ExistingKey");
+            yield return new TestCaseData(
+                new byte[] { 0x20 },
+                new[] { TreePath.Empty })
+                .SetName("WarmUpPath_CapturesResolvedNodes_AbsentBranch");
+            yield return new TestCaseData(
+                new byte[] { 0x01 },
+                new[] { TreePath.Empty, TreePath.FromNibble(new byte[] { 0 }) })
+                .SetName("WarmUpPath_CapturesResolvedNodes_DivergentLeaf");
+        }
+
+        [TestCaseSource(nameof(WarmUpPathCaptureCases))]
+        public void WarmUpPath_CapturesResolvedNodes(byte[] rawKey, TreePath[] expectedPaths)
+        {
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            patriciaTree.Set(new byte[] { 0x00 }, _longLeaf1);
+            patriciaTree.Set(new byte[] { 0x10 }, _longLeaf2);
+            trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+            List<WarmedTrieNode> resolvedNodes = [];
+            patriciaTree.WarmUpPath(rawKey, resolvedNodes);
+
+            Assert.That(resolvedNodes, Has.Count.EqualTo(expectedPaths.Length));
+            for (int i = 0; i < expectedPaths.Length; i++)
+            {
+                TreePath expectedPath = expectedPaths[i];
+                byte[] expectedRlp = patriciaTree.GetNodeByPath(expectedPath.ToNibble())!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(resolvedNodes[i].Path, Is.EqualTo(expectedPath), $"path at index {i}");
+                    Assert.That(resolvedNodes[i].Rlp, Is.SameAs(expectedRlp), $"RLP at path {expectedPath}");
+                }
+            }
+        }
+
         [Test]
         public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
         {

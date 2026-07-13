@@ -87,6 +87,21 @@ public sealed class SparseRootComputer : IDisposable
         if (updates.Count == 0)
             return;
 
+        SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
+        if (storageTrie.Subtrie.IsEmpty && previousStorageRoot != Keccak.EmptyTreeHash)
+        {
+            byte[] rootRlp = _reader.LoadStorageRlp(
+                accountPathHash,
+                TreePath.Empty,
+                previousStorageRoot);
+            storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
+        }
+
+        ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
+    }
+
+    private SparsePatriciaTree GetStorageTrie(Hash256 accountPathHash, Hash256 previousStorageRoot)
+    {
         SparsePatriciaTree storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
         if (_storageBaseRoots.TryAdd(accountPathHash, previousStorageRoot))
         {
@@ -96,15 +111,6 @@ public sealed class SparseRootComputer : IDisposable
                 _trie.WipeStorage(accountPathHash);
                 storageTrie = _trie.GetOrCreateStorageTrie(accountPathHash);
             }
-
-            if (storageTrie.Subtrie.IsEmpty && previousStorageRoot != Keccak.EmptyTreeHash)
-            {
-                byte[] rootRlp = _reader.LoadStorageRlp(
-                    accountPathHash,
-                    TreePath.Empty,
-                    previousStorageRoot);
-                storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
-            }
         }
         else if (_storageBaseRoots[accountPathHash] != previousStorageRoot)
         {
@@ -112,7 +118,61 @@ public sealed class SparseRootComputer : IDisposable
                 $"Conflicting parent storage roots for account {accountPathHash}.");
         }
 
-        ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
+        return storageTrie;
+    }
+
+    internal void RevealAccountProof(ValueHash256 accountPath, IReadOnlyList<WarmedTrieNode> nodes) =>
+        RevealWarmedPath(_trie.AccountTrie, accountPath, nodes);
+
+    internal void RevealStorageProof(
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot,
+        ValueHash256 slotPath,
+        IReadOnlyList<WarmedTrieNode> nodes)
+    {
+        SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
+        RevealWarmedPath(storageTrie, slotPath, nodes);
+    }
+
+    private void RevealWarmedPath(
+        SparsePatriciaTree trie,
+        ValueHash256 target,
+        IReadOnlyList<WarmedTrieNode> nodes)
+    {
+        if (nodes.Count == 0)
+            return;
+
+        int start = 0;
+        if (!trie.Subtrie.IsEmpty)
+        {
+            Span<byte> nibbles = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(target.Bytes, nibbles);
+            if (!trie.Subtrie.TryFindBlindedEntryOnPath(
+                    nibbles,
+                    out TreePath blindedPath,
+                    out RlpNode _,
+                    out int _))
+            {
+                return;
+            }
+
+            while (start < nodes.Count && nodes[start].Path != blindedPath)
+                start++;
+            if (start == nodes.Count)
+                return;
+        }
+
+        long startedAt = Stopwatch.GetTimestamp();
+        List<ProofNode> decoded = new(nodes.Count - start);
+        for (int i = start; i < nodes.Count; i++)
+        {
+            WarmedTrieNode node = nodes[i];
+            decoded.Add(MultiProofReader.DecodeProofNode(node.Rlp, node.Path));
+        }
+
+        trie.RevealNodes(decoded);
+        LastRevealMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        LastProofNodeCount += decoded.Count;
     }
 
     /// <summary>

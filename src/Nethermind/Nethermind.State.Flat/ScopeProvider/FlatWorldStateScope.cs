@@ -511,9 +511,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
                 ValueHash256 accountPath = address.ToAccountPath;
-                _warmupStateTree.WarmUpPath(accountPath.BytesAsSpan);
+                SparseTrieBlockHandle? sparseBlock = _sparseBlock;
+                List<WarmedTrieNode>? proof = sparseBlock is null ? null : new(16);
+                if (proof is null)
+                    _warmupStateTree.WarmUpPath(accountPath.BytesAsSpan);
+                else
+                    _warmupStateTree.WarmUpPath(accountPath.BytesAsSpan, proof);
                 if (_hintSequenceId == sequenceId && !_pausePrewarmer)
-                    _sparseBlock?.TryEnqueueAccountTouch(accountPath);
+                {
+                    if (proof is null)
+                        sparseBlock?.TryEnqueueAccountTouch(accountPath);
+                    else
+                        sparseBlock!.TryEnqueueAccountTouch(accountPath, proof);
+                }
 
                 return true;
             }
@@ -538,6 +548,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ValueHash256 slotPath) =>
         _configuration.UseSparseStorageRootComputation &&
         (_sparseBlock?.TryEnqueueStorageTouch(accountHash, parentStorageRoot, slotPath) ?? false);
+
+    internal bool WantsSparseStorageProofs =>
+        _configuration.UseSparseStorageRootComputation && _sparseBlock is not null;
+
+    internal bool TryEnqueueSparseStorageTouch(
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath,
+        IReadOnlyList<WarmedTrieNode> proof) =>
+        _configuration.UseSparseStorageRootComputation &&
+        (_sparseBlock?.TryEnqueueStorageTouch(
+            accountHash,
+            parentStorageRoot,
+            slotPath,
+            proof) ?? false);
 
     public void HintWarmAccount(in ValueAddress address)
     {

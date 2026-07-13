@@ -158,6 +158,26 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         if (!TryAddPendingAccountTouch(session, accountPath))
             return true;
 
+        return TryQueueAccountTouches(session);
+    }
+
+    internal bool TryEnqueueAccountTouch(
+        WorkerSession session,
+        ValueHash256 accountPath,
+        IReadOnlyList<WarmedTrieNode> proof)
+    {
+        bool proofAdded = session.HintedAccountProofs.TryAdd(accountPath, 0);
+        if (proofAdded)
+            session.PendingAccountProofs.Enqueue(new AccountProof(accountPath, proof));
+        bool touchAdded = TryAddPendingAccountTouch(session, accountPath);
+        if (!proofAdded && !touchAdded)
+            return true;
+
+        return TryQueueAccountTouches(session);
+    }
+
+    private bool TryQueueAccountTouches(WorkerSession session)
+    {
         if (Interlocked.CompareExchange(ref session.AccountTouchCommandQueued, 1, 0) != 0)
             return true;
 
@@ -189,6 +209,39 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             return true;
 
         session.PendingStorageTouches.Enqueue(new StorageTouch(accountHash, parentStorageRoot, slotPath));
+        return TryQueueStorageTouches(session);
+    }
+
+    internal bool TryEnqueueStorageTouch(
+        WorkerSession session,
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath,
+        IReadOnlyList<WarmedTrieNode> proof)
+    {
+        (Hash256 AccountHash, ValueHash256 SlotPath) key = (accountHash, slotPath);
+        bool proofAdded = session.HintedStorageProofs.TryAdd(key, 0);
+        if (proofAdded)
+        {
+            session.PendingStorageProofs.Enqueue(
+                new StorageProof(accountHash, parentStorageRoot, slotPath, proof));
+        }
+
+        bool touchAdded = session.HintedStorage.TryAdd(key, 0);
+        if (touchAdded)
+        {
+            session.PendingStorageTouches.Enqueue(
+                new StorageTouch(accountHash, parentStorageRoot, slotPath));
+        }
+
+        if (!proofAdded && !touchAdded)
+            return true;
+
+        return TryQueueStorageTouches(session);
+    }
+
+    private bool TryQueueStorageTouches(WorkerSession session)
+    {
         if (Interlocked.CompareExchange(ref session.StorageTouchCommandQueued, 1, 0) != 0)
             return true;
 
@@ -393,18 +446,24 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         WorkerSession? session = _activeSession;
         if (session is null || session.FinishRequested || session.Error is not null)
             return false;
-        if (session.PendingStorageTouches.IsEmpty && session.PendingAccountTouches.IsEmpty)
+        if (session.PendingStorageProofs.IsEmpty && session.PendingStorageTouches.IsEmpty &&
+            session.PendingAccountProofs.IsEmpty && session.PendingAccountTouches.IsEmpty)
             return false;
 
         try
         {
             int remaining = MaxSpeculativeTouchesPerPass;
+            if (!session.PendingStorageProofs.IsEmpty)
+                ProcessStorageProofs(session, ref remaining);
             if (!session.PendingStorageTouches.IsEmpty)
                 ProcessStorageTouches(session, ref remaining);
+            if (remaining != 0 && !session.PendingAccountProofs.IsEmpty)
+                ProcessAccountProofs(session, ref remaining);
             if (remaining != 0 && !session.PendingAccountTouches.IsEmpty)
                 ProcessAccountTouches(session, ref remaining);
 
-            return !session.PendingAccountTouches.IsEmpty || !session.PendingStorageTouches.IsEmpty;
+            return !session.PendingStorageProofs.IsEmpty || !session.PendingStorageTouches.IsEmpty ||
+                !session.PendingAccountProofs.IsEmpty || !session.PendingAccountTouches.IsEmpty;
         }
         catch (Exception exception)
         {
@@ -413,6 +472,30 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             if (_logger.IsWarn)
                 _logger.Warn($"Sparse trie worker session faulted: {exception.Message}");
             return false;
+        }
+    }
+
+    private static void ProcessAccountProofs(WorkerSession session, ref int remaining)
+    {
+        SparseRootComputer computer = session.GetComputer();
+        while (remaining > 0 && session.PendingAccountProofs.TryDequeue(out AccountProof proof))
+        {
+            remaining--;
+            computer.RevealAccountProof(proof.AccountPath, proof.Nodes);
+        }
+    }
+
+    private static void ProcessStorageProofs(WorkerSession session, ref int remaining)
+    {
+        SparseRootComputer computer = session.GetComputer();
+        while (remaining > 0 && session.PendingStorageProofs.TryDequeue(out StorageProof proof))
+        {
+            remaining--;
+            computer.RevealStorageProof(
+                proof.AccountHash,
+                proof.ParentStorageRoot,
+                proof.SlotPath,
+                proof.Nodes);
         }
     }
 
@@ -464,7 +547,15 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         if (session.FinishRequested)
             throw new InvalidOperationException("Sparse trie block session was already finalized.");
         session.FinishRequested = true;
-        DiscardSpeculativeTouches(session);
+        try
+        {
+            if (session.Error is null)
+                ProcessPendingProofs(session);
+        }
+        finally
+        {
+            DiscardSpeculativeTouches(session);
+        }
 
         if (session.Error is not null)
         {
@@ -480,9 +571,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         command.Completion.TrySetResult(result);
     }
 
+    private static void ProcessPendingProofs(WorkerSession session)
+    {
+        int remaining = int.MaxValue;
+        ProcessStorageProofs(session, ref remaining);
+        ProcessAccountProofs(session, ref remaining);
+    }
+
     private static void DiscardSpeculativeTouches(WorkerSession session)
     {
+        session.PendingAccountProofs.Clear();
         session.PendingAccountTouches.Clear();
+        session.PendingStorageProofs.Clear();
         session.PendingStorageTouches.Clear();
         Volatile.Write(ref session.AccountTouchCommandQueued, 0);
         Volatile.Write(ref session.StorageTouchCommandQueued, 0);
@@ -926,8 +1026,12 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         public Dictionary<Hash256, ProvisionalStorage> ProvisionalStorage { get; } = [];
         public HashSet<ValueHash256> RevealedAccounts { get; } = [];
         public ConcurrentDictionary<ValueHash256, byte> HintedAccounts { get; } = [];
+        public ConcurrentDictionary<ValueHash256, byte> HintedAccountProofs { get; } = [];
+        public ConcurrentQueue<AccountProof> PendingAccountProofs { get; } = [];
         public ConcurrentQueue<ValueHash256> PendingAccountTouches { get; } = [];
         public ConcurrentDictionary<(Hash256 AccountHash, ValueHash256 SlotPath), byte> HintedStorage { get; } = [];
+        public ConcurrentDictionary<(Hash256 AccountHash, ValueHash256 SlotPath), byte> HintedStorageProofs { get; } = [];
+        public ConcurrentQueue<StorageProof> PendingStorageProofs { get; } = [];
         public ConcurrentQueue<StorageTouch> PendingStorageTouches { get; } = [];
         public Dictionary<AddressAsKey, Account?> ProvisionalAccountValues { get; } = new(AddressAsKey.EqualityComparer);
         public HashSet<Hash256> DirtyStorageHashes { get; } = [];
@@ -962,6 +1066,16 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         Hash256 AccountHash,
         Hash256 ParentStorageRoot,
         ValueHash256 SlotPath);
+
+    internal readonly record struct AccountProof(
+        ValueHash256 AccountPath,
+        IReadOnlyList<WarmedTrieNode> Nodes);
+
+    internal readonly record struct StorageProof(
+        Hash256 AccountHash,
+        Hash256 ParentStorageRoot,
+        ValueHash256 SlotPath,
+        IReadOnlyList<WarmedTrieNode> Nodes);
 
     private sealed class StorageTouchGroup(Hash256 parentStorageRoot)
     {
@@ -1033,6 +1147,18 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         }
     }
 
+    public bool TryEnqueueAccountTouch(
+        ValueHash256 accountPath,
+        IReadOnlyList<WarmedTrieNode> proof)
+    {
+        lock (_gate)
+        {
+            if (_finishTask is not null || _completionTask is not null || _terminal)
+                return false;
+            return _worker.TryEnqueueAccountTouch(_session, accountPath, proof);
+        }
+    }
+
     public bool TryEnqueueStorageTouch(
         Hash256 accountHash,
         Hash256 parentStorageRoot,
@@ -1047,6 +1173,25 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
                 accountHash,
                 parentStorageRoot,
                 slotPath);
+        }
+    }
+
+    public bool TryEnqueueStorageTouch(
+        Hash256 accountHash,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath,
+        IReadOnlyList<WarmedTrieNode> proof)
+    {
+        lock (_gate)
+        {
+            if (_finishTask is not null || _completionTask is not null || _terminal)
+                return false;
+            return _worker.TryEnqueueStorageTouch(
+                _session,
+                accountHash,
+                parentStorageRoot,
+                slotPath,
+                proof);
         }
     }
 

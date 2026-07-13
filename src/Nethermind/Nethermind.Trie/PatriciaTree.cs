@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -384,7 +385,14 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey) => WarmUpPathCore(rawKey, null);
+
+        [SkipLocalsInit]
+        [DebuggerStepThrough]
+        internal void WarmUpPath(ReadOnlySpan<byte> rawKey, List<WarmedTrieNode> resolvedNodes) =>
+            WarmUpPathCore(rawKey, resolvedNodes);
+
+        private void WarmUpPathCore(ReadOnlySpan<byte> rawKey, List<WarmedTrieNode>? resolvedNodes)
         {
             byte[]? array = null;
             try
@@ -400,7 +408,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root);
+                DoWarmUpPath(nibbles, ref emptyPath, root, resolvedNodes);
             }
             catch (TrieException e)
             {
@@ -973,7 +981,11 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        private void DoWarmUpPath(
+            Span<byte> remainingKey,
+            ref TreePath path,
+            TrieNode? node,
+            List<WarmedTrieNode>? resolvedNodes)
         {
             int originalPathLength = path.Length;
 
@@ -990,6 +1002,10 @@ namespace Nethermind.Trie
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     node.ResolveNode(TrieStore, path);
+                    if (resolvedNodes is not null)
+                    {
+                        resolvedNodes.Add(new WarmedTrieNode(path, node.FullRlp.ToArray()!));
+                    }
 
                     if (node.IsLeaf || node.IsExtension)
                     {

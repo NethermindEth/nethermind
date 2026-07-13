@@ -21,6 +21,92 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SparseTrieTaskTests
 {
+    [Test]
+    public async Task WarmedAccountProof_AvoidsReaderFallback()
+    {
+        TestState state = BuildState(accountCount: 8);
+        Address address = state.Addresses[3];
+        ValueHash256 accountPath = address.ToAccountPath;
+        List<WarmedTrieNode> proof = [];
+        state.StateTree.WarmUpPath(accountPath.BytesAsSpan, proof);
+        Account finalAccount = new(7, (UInt256)70_000);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, address, finalAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, proof), Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, finalAccount)],
+            []));
+
+        SparseTrieBlockResult result = await block.FinishAsync(
+            new SparseTrieFinalState([], [new SparseTrieFinalAccount(address, finalAccount)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task WarmedStorageProof_AvoidsReaderFallback()
+    {
+        StorageTestState state = BuildStorageState();
+        ValueHash256 accountPath = state.Address.ToAccountPath;
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
+        List<WarmedTrieNode> accountProof = [];
+        List<WarmedTrieNode> storageProof = [];
+        state.State.StateTree.WarmUpPath(accountPath.BytesAsSpan, accountProof);
+        state.StorageTree.WarmUpPath(slotPath.BytesAsSpan, storageProof);
+
+        byte[] finalValue = [0x55];
+        state.StorageTree.Set(state.ChangedSlot, finalValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedAccount = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, state.Address, expectedAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, accountProof), Is.True);
+        Assert.That(
+            block.TryEnqueueStorageTouch(
+                accountPath.ToCommitment(),
+                state.ParentStorageRoot,
+                slotPath,
+                storageProof),
+            Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                finalValue)]));
+
+        SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task FinalAccountState_MatchesPatricia(bool preReveal)
@@ -1142,5 +1228,33 @@ public class SparseTrieTaskTests
         }
 
         public override void Dispose() => _storageRead.Dispose();
+    }
+
+    private sealed class ThrowingTrieNodeReader : ITrieNodeReader
+    {
+        private int _stateLoads;
+        private int _storageLoads;
+
+        public int StateLoads => Volatile.Read(ref _stateLoads);
+        public int StorageLoads => Volatile.Read(ref _storageLoads);
+
+        public byte[] LoadStateRlp(
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            Interlocked.Increment(ref _stateLoads);
+            throw new InvalidOperationException("Unexpected state proof fallback.");
+        }
+
+        public byte[] LoadStorageRlp(
+            Hash256 accountPathHash,
+            in TreePath path,
+            Hash256 hash,
+            ReadFlags flags = ReadFlags.None)
+        {
+            Interlocked.Increment(ref _storageLoads);
+            throw new InvalidOperationException("Unexpected storage proof fallback.");
+        }
     }
 }

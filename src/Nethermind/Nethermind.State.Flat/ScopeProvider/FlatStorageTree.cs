@@ -128,9 +128,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                List<WarmedTrieNode>? proof = _scope.WantsSparseStorageProofs ? new(16) : null;
+                if (proof is null)
+                    _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                else
+                    _warmupStorageTree.WarmUpPath(key.BytesAsSpan, proof);
                 if (_scope.HintSequenceId == sequenceId && !_scope._pausePrewarmer)
-                    _scope.TryEnqueueSparseStorageTouch(_addressHash, _parentRootHash, key);
+                {
+                    if (proof is null)
+                        _scope.TryEnqueueSparseStorageTouch(_addressHash, _parentRootHash, key);
+                    else
+                        _scope.TryEnqueueSparseStorageTouch(
+                            _addressHash,
+                            _parentRootHash,
+                            key,
+                            proof);
+                }
                 return true;
             }
             finally
