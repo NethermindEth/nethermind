@@ -93,6 +93,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
+        Interlocked.Increment(ref _hintSequenceId); // Queued-not-started warmer jobs self-discard at entry.
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -333,7 +334,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
-            if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return false;
+            if (!_snapshotBundle.TryLease()) return false;
 
             try
             {
@@ -345,7 +346,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             finally
             {
-                _snapshotBundle.ReleaseReadOnlyBundleLease();
+                _snapshotBundle.ReleaseLease();
             }
         }
         finally
@@ -460,7 +461,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             else
             {
                 newSnapshot?.Dispose();
-                cachedResource?.Dispose();
+                cachedResource?.ReleaseLease();
             }
         }
 

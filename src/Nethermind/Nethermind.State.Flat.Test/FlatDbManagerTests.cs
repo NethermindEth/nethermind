@@ -195,6 +195,7 @@ public class FlatDbManagerTests
         StateId snapshotTo = CreateStateId(11);
         Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
         TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.OnRented(_resourcePool, ResourcePool.Usage.MainBlockProcessing);
 
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
