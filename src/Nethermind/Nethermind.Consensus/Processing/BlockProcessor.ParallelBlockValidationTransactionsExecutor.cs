@@ -12,7 +12,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -84,13 +83,12 @@ public partial class BlockProcessor
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
                     BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, in intrinsicGas);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
                 totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -165,8 +163,6 @@ public partial class BlockProcessor
                                 Transaction tx = state.txs[txIndex];
                                 try
                                 {
-                                    IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
-
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
                                     // so the validator finds the canonical BAL slot populated when it awaits
@@ -181,8 +177,7 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.receiptsTracers[txIndex],
                                             state.processingOptions,
-                                            state.inner,
-                                            in intrinsicGas);
+                                            state.inner);
                                     }
                                     state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                                 }
@@ -375,14 +370,13 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IBlockProcessor.IBlockTransactionsExecutor inner,
-            in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+            IBlockProcessor.IBlockTransactionsExecutor inner)
         {
             long txStart = inner.StartTxTimer();
             TransactionResult result;
             try
             {
-                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
             }
             finally
             {
