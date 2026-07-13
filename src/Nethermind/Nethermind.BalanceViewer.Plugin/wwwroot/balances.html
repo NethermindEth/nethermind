@@ -672,7 +672,16 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, head: null, headChangedAt: null, stalled: false, syncing: false, lastScanned: null, scanning: false, button: null };
+            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, headChangedAt: null, stalled: false, syncing: false, lastScanned: null, scanning: false, button: null };
+        }
+
+        // ENS availability is detected per node rather than assumed per chain: many
+        // testnets do not have the registry deployed at the canonical address
+        async function detectEns(node) {
+            try {
+                const code = await rpc('eth_getCode', [ENS_REGISTRY, 'latest'], node.rpcPath);
+                node.ens = typeof code === 'string' && code.length > 2;
+            } catch { node.ens = false; }
         }
 
         // ---------- persistence (per chain) ----------
@@ -1255,7 +1264,7 @@
 
         // ---------- ENS (forward resolution, simple case) ----------
         function ensNode() {
-            return enabledNodes().find((n) => n.chainId === 1) ?? enabledNodes().find((n) => n.meta.ens) ?? null;
+            return enabledNodes().find((n) => n.chainId === 1 && n.ens) ?? enabledNodes().find((n) => n.ens) ?? null;
         }
 
         async function resolveEns(name) {
@@ -1727,6 +1736,7 @@
                     }
                     const node = makeNode('balances-rpc/' + sibling.port, id);
                     node.enabled = !storedDisabled.includes(id);
+                    await detectEns(node);
                     nodes.push(node);
                     states.set(id, store.load(node));
                     added = true;
@@ -1833,6 +1843,7 @@
                 ownNode = makeNode('/', ownId);
                 nodes = [ownNode];
                 states.set(ownId, store.load(ownNode));
+                await detectEns(ownNode);
             } catch (e) {
                 setStatus('Cannot reach JSON-RPC on this endpoint: ' + e.message, true);
                 return;
@@ -1856,8 +1867,8 @@
 
             $('netName').textContent = own().meta.name;
             $('chainId').textContent = own().chainId;
-            if (!multi() && !own().meta.ens) {
-                $('addrInput').placeholder = '0x address' + (own().chainId === 100 || own().chainId === 10200 ? ' (ENS unavailable on Gnosis)' : '');
+            if (!ensNode()) {
+                $('addrInput').placeholder = '0x address (ENS unavailable on ' + enabledNodes().map((n) => n.meta.name).join('/') + ')';
             }
             applyNodeLayout();
             renderFeed();
