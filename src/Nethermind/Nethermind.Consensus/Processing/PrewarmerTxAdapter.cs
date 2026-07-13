@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -20,13 +19,6 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
     {
         ReportProgress();
         return baseAdapter.Execute(transaction, txTracer);
-    }
-
-    public TransactionResult Execute<TGasPolicy>(Transaction transaction, ITxTracer txTracer, in IntrinsicGas<TGasPolicy> intrinsicGas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        ReportProgress();
-        return baseAdapter.Execute(transaction, txTracer, in intrinsicGas);
     }
 
     private void ReportProgress()
