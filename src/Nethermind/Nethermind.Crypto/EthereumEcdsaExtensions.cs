@@ -22,8 +22,6 @@ public static class EthereumEcdsaExtensions
     /// content or signature after the hash is set.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
-    // Block recovery inserts a new key per tx from every parallel worker; the per-set gates avoid
-    // ClockCache's single writer lock, which serialized every insert plus its in-lock eviction sweep.
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
