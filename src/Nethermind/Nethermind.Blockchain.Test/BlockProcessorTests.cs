@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -436,48 +437,57 @@ public class BlockProcessorTests
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
-    [Test]
-    public void BranchProcessor_retries_bal_failure_with_sequential_validation()
+    [TestCase(true, 2)]
+    [TestCase(false, 1)]
+    public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, int expectedAttempts)
     {
-        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        int attempts = 0;
-        processor.ProcessOne(block, Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                attempts++;
-                ProcessingOptions processingOptions = callInfo.ArgAt<ProcessingOptions>(1);
-                if (attempts == 1)
-                {
-                    stateProvider.CreateAccount(TestItem.AddressA, 1);
-                    stateProvider.Commit(HoodiSpecProvider.Instance.GetSpec(block.Header));
-                    throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL");
-                }
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
+            builder.AddDecorator<IBlockProcessor>((context, inner) =>
+                new BalFailureBlockProcessor(inner, context.Resolve<IWorldState>(), retryable)));
+        BalFailureBlockProcessor processor = (BalFailureBlockProcessor)chain.BlockProcessor;
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
 
-                Assert.That(processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
-                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False);
-                return (block, Array.Empty<TxReceipt>());
-            });
+        if (retryable)
+        {
+            Assert.DoesNotThrow(() => chain.BranchProcessor.Process(
+                parent.Header,
+                [block],
+                ProcessingOptions.NoValidation,
+                NullBlockTracer.Instance));
+        }
+        else
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() =>
+                chain.BranchProcessor.Process(
+                    parent.Header,
+                    [block],
+                    ProcessingOptions.NoValidation,
+                    NullBlockTracer.Instance));
+        }
 
-        BranchProcessor branchProcessor = new(
-            processor,
-            HoodiSpecProvider.Instance,
-            stateProvider,
-            Substitute.For<IBeaconBlockRootHandler>(),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance);
+        Assert.That(processor.Attempts, Is.EqualTo(expectedAttempts));
+    }
 
-        Block[] processedBlocks = branchProcessor.Process(
-            null,
+    [Test]
+    public async Task BranchProcessor_forces_sequential_bal_processing_for_external_tracer()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
+            builder.AddDecorator<IBlockProcessor>((_, inner) => new ProcessingOptionsRecordingBlockProcessor(inner)));
+        ProcessingOptionsRecordingBlockProcessor processor = (ProcessingOptionsRecordingBlockProcessor)chain.BlockProcessor;
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
+
+        chain.BranchProcessor.Process(
+            parent.Header,
             [block],
-            ProcessingOptions.None,
-            NullBlockTracer.Instance);
+            ProcessingOptions.NoValidation,
+            new RecordingParallelSafeBlockTracer());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(attempts, Is.EqualTo(2));
-            Assert.That(processedBlocks, Is.EqualTo(new[] { block }));
+            Assert.That(processor.Attempts, Is.EqualTo(1));
+            Assert.That(processor.ObservedOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
         }
     }
 
@@ -1394,6 +1404,88 @@ public class BlockProcessorTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
+        }
+    }
+
+    private sealed class BalFailureBlockProcessor(
+        IBlockProcessor inner,
+        IWorldState worldState,
+        bool retryable)
+        : IBlockProcessor
+    {
+        private static readonly Address TransientAddress = TestItem.AddressF;
+
+        public int Attempts { get; private set; }
+
+        public event Action? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            if (suggestedBlock.IsGenesis)
+            {
+                return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            }
+
+            Attempts++;
+            if (Attempts == 1)
+            {
+                Assert.That(worldState.AccountExists(TransientAddress), Is.False);
+                worldState.CreateAccount(TransientAddress, 1);
+                worldState.Commit(spec);
+
+                BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure =
+                    new(suggestedBlock.Header, "invalid BAL");
+                if (retryable)
+                {
+                    throw new BlockProcessor.RetryableBlockAccessListException(failure, failure);
+                }
+
+                throw failure;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.True);
+                Assert.That(worldState.AccountExists(TransientAddress), Is.False);
+            }
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+        }
+    }
+
+    private sealed class ProcessingOptionsRecordingBlockProcessor(IBlockProcessor inner) : IBlockProcessor
+    {
+        public int Attempts { get; private set; }
+        public ProcessingOptions ObservedOptions { get; private set; }
+
+        public event Action? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
+            Block suggestedBlock,
+            ProcessingOptions options,
+            IBlockTracer blockTracer,
+            IReleaseSpec spec,
+            CancellationToken token = default)
+        {
+            if (!suggestedBlock.IsGenesis)
+            {
+                Attempts++;
+                ObservedOptions = options;
+            }
+
+            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
     }
 

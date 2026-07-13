@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -69,6 +70,11 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
+    internal sealed class RetryableBlockAccessListException(
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException,
+        Exception executionException)
+        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, executionException);
+
     public event Action? TransactionsExecuted;
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
@@ -81,7 +87,23 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = ProcessBlock(block, blockTracer, options, spec, token);
+        }
+        catch (Exception ex)
+        {
+            block.DisposeAccountChanges();
+            if (_balManager.ParallelExecutionEnabled && TryGetBlockAccessListFailure(
+                ex,
+                out BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException? blockAccessListException))
+            {
+                throw new RetryableBlockAccessListException(blockAccessListException!, ex);
+            }
+
+            throw;
+        }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -169,39 +191,75 @@ public partial class BlockProcessor(
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
-        ApplyMinerRewards(block, blockTracer, spec);
-        _systemContractHandler.ProcessWithdrawals(block, spec);
-
-        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        CommitState(spec);
-
-        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
-
-        CommitStateAndStorageRoots(spec);
-
-        if (BlockchainProcessor.IsMainProcessingThread)
+        try
         {
-            SetAccountChanges(block);
+            ApplyMinerRewards(block, blockTracer, spec);
+            _systemContractHandler.ProcessWithdrawals(block, spec);
+
+            // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+            // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+            CommitState(spec);
+
+            _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
+
+            CommitStateAndStorageRoots(spec);
+
+            if (BlockchainProcessor.IsMainProcessingThread)
+            {
+                SetAccountChanges(block);
+            }
+
+            if (ShouldComputeStateRoot(header))
+            {
+                ComputeStateRoot(header);
+            }
+
+            if (bloomsAndReceiptsRootTask is not null)
+            {
+                (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+            }
+
+            _balManager.SetBlockAccessList(block);
         }
-
-        if (ShouldComputeStateRoot(header))
+        catch
         {
-            ComputeStateRoot(header);
-        }
+            if (bloomsAndReceiptsRootTask is not null)
+            {
+                try
+                {
+                    bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    // Preserve the processing failure while ensuring the background task is observed.
+                }
+            }
 
-        _balManager.SetBlockAccessList(block);
-
-        if (bloomsAndReceiptsRootTask is not null)
-        {
-            (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
+            throw;
         }
 
         header.Hash = header.CalculateHash();
 
         return receipts;
+    }
+
+    private static bool TryGetBlockAccessListFailure(
+        Exception exception,
+        out BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException? blockAccessListException)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure)
+            {
+                blockAccessListException = failure;
+                return true;
+            }
+        }
+
+        blockAccessListException = null;
+        return false;
     }
 
     private void CommitState(IReleaseSpec spec)

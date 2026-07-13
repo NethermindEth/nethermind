@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -13,7 +14,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -137,16 +137,19 @@ public class BranchProcessor(
                     }
                 }
 
+                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
+                    ? options
+                    : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
                 TxReceipt[] receipts;
                 try
                 {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                 }
                 catch (Exception ex) when (
                     worldStateCloser is not null &&
-                    !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList) &&
-                    IsBlockAccessListFailure(ex))
+                    !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList) &&
+                    IsRetryableBlockAccessListFailure(ex))
                 {
                     CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
                     QueueClearCaches(preWarmTask);
@@ -155,7 +158,7 @@ public class BranchProcessor(
 
                     worldStateCloser.Dispose();
                     worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
-                    ProcessingOptions retryOptions = options | ProcessingOptions.ForceSequentialBlockAccessList;
+                    ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
 
@@ -241,11 +244,11 @@ public class BranchProcessor(
             task = null;
         }
 
-        static bool IsBlockAccessListFailure(Exception exception)
+        static bool IsRetryableBlockAccessListFailure(Exception exception)
         {
             for (Exception? current = exception; current is not null; current = current.InnerException)
             {
-                if (current is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException)
+                if (current is BlockProcessor.RetryableBlockAccessListException)
                 {
                     return true;
                 }
