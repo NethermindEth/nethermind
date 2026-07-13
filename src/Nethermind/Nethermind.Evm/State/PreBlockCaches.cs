@@ -89,7 +89,7 @@ public sealed record PreBlockCachesConfig
     // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
     public int StorageCacheSetsBits { get; init; } = 17;
 
-    public int SurvivingPrecompileCacheMaxEntries { get; init; } = 4096;
+    public int SurvivingPrecompileCacheMaxEntries { get; init; } = 16384;
 }
 
 [Flags]
