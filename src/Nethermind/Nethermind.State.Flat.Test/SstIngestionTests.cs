@@ -176,6 +176,41 @@ public class SstIngestionTests
     }
 
     [Test]
+    public void Failed_ingest_leaves_pointer_and_staging_dir_untouched()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        SlotValue v1 = Slot(0x11), v2 = Slot(0x22);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+            batch.SetStorage(Addr, Slot1, v1);
+        }
+
+        ColumnDb accountColumn = (ColumnDb)_db.GetColumnDb(FlatDbColumns.Account);
+        accountColumn._testIngestFailureHook = () => throw new IOException("injected SST ingest failure");
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+            batch.SetStorage(Addr, Slot2, v2);
+        }, Throws.InstanceOf<IOException>());
+
+        accountColumn._testIngestFailureHook = null;
+
+        using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(s1));
+        }
+
+        string stagingDir = Path.Combine(_dbPath, "sst_ingest");
+        string[] leftover = Directory.Exists(stagingDir) ? Directory.GetFiles(stagingDir, "*.sst") : [];
+        Assert.That(leftover, Is.Empty);
+    }
+
+    [Test]
     public void PersistViaSstIngestion_on_MemDb_falls_back_and_round_trips()
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> memDb = new();

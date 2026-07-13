@@ -26,6 +26,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
+    internal Action? _testIngestFailureHook;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
     private readonly RocksDbReader _reader;
@@ -311,6 +312,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                     Native.Instance.rocksdb_sstfilewriter_destroy(writer);
                 }
 
+                _columnDb._testIngestFailureHook?.Invoke();
                 _columnDb._rocksDb.IngestExternalFiles([file], _options, _columnDb._columnFamily);
             }
             catch
