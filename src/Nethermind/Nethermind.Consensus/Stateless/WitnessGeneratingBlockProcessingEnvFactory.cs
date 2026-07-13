@@ -91,7 +91,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<IHeaderFinder>(capturingHeaderFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            .AddScoped<ICodeCache>(NoopCodeCache.Instance)
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
                 ctx.Resolve<ISpecProvider>(),
@@ -99,7 +99,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+                codeInfoRepositoryFactory: ctx.Resolve<CodeInfoRepositoryFactory>(),
                 transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());

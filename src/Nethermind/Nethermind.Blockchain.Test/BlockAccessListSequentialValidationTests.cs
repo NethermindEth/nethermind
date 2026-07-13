@@ -131,7 +131,7 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
         return (stateProvider, balManager);
     }
 
