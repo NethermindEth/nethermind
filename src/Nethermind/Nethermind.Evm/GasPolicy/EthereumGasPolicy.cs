@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -507,6 +508,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         CalculateIntrinsicGas(tx, spec, blockGasLimit: 0);
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
+    {
+        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec))
+        {
+            return memo.Gas;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> gas = Calculate(tx, spec, blockGasLimit);
+        Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, gas));
+        return gas;
+    }
+
+    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
+
+    private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
         ulong tokensInCallData = IntrinsicGasCalculator.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IntrinsicGasCalculator.CalculateFloorTokensInAccessList(tx, spec);
