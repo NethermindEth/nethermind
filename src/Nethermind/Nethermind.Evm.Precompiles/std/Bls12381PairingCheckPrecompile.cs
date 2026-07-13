@@ -77,8 +77,15 @@ public partial class Bls12381PairingCheckPrecompile
         if (!result)
             return result.Error!;
 
-        // acc = e(x_0, y_0) * e(x_1, y_1) * ... computed in one batched Miller loop;
-        // npairs == 0 gives the empty product, one
+        // every pair contained an infinity point, so the product is the empty product, one
+        if (npairs == 0)
+        {
+            byte[] one = new byte[32];
+            one[31] = 1;
+            return one;
+        }
+
+        // acc = e(x_0, y_0) * e(x_1, y_1) * ... computed in one batched Miller loop
         GT acc = new(stackalloc long[GT.Sz]);
         acc.MillerLoopN(g2Points, g1Points, npairs);
 
