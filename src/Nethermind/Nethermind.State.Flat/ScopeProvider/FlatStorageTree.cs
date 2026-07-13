@@ -112,7 +112,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 return false;
             }
 
-            if (!_bundle.TryLeaseReadOnlyBundle())
+            if (!_bundle.TryLease())
             {
                 return false;
             }
@@ -129,7 +129,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             }
             finally
             {
-                _bundle.ReleaseReadOnlyBundleLease();
+                _bundle.ReleaseLease();
             }
         }
         finally
