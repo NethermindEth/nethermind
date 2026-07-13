@@ -470,8 +470,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        // Heaviest groups first: they take the longest to warm and gain the most from lead time.
-        result.AsSpan().Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
+        // Hoist heavy groups to the front (heaviest first): they take the longest to warm and gain
+        // the most from lead time. The rest keep block order, which streams just ahead of the main
+        // thread on transaction-dense blocks.
+        result.AsSpan().Sort(static (a, b) =>
+        {
+            ulong aGas = TotalGasLimit(a);
+            ulong bGas = TotalGasLimit(b);
+            bool aHeavy = aGas > SplitSenderGroupGasThreshold;
+            bool bHeavy = bGas > SplitSenderGroupGasThreshold;
+            if (aHeavy != bHeavy) return aHeavy ? -1 : 1;
+            return aHeavy ? bGas.CompareTo(aGas) : a[0].Index.CompareTo(b[0].Index);
+        });
 
         return result;
     }

@@ -603,7 +603,7 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void GroupTransactionsBySender_OrdersGroupsHeaviestFirst()
+    public void GroupTransactionsBySender_HoistsHeavyGroupsAndKeepsRestInBlockOrder()
     {
         Block block = Build.A.Block.WithTransactions(
             GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
@@ -615,9 +615,9 @@ public class BlockCachePreWarmerTests
         try
         {
             Assert.That(groups.Count, Is.EqualTo(3));
-            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA));
-            Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
-            Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
+            Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
         }
         finally
         {
