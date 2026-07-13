@@ -128,6 +128,15 @@ public static unsafe partial class EvmInstructions
         {
             lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash<TGasPolicy, TTracingInst>;
         }
+        if (spec.IsEip8141Enabled)
+        {
+            lookup[(int)Instruction.APPROVE] = &InstructionApprove;
+            lookup[(int)Instruction.TXPARAM] = &InstructionTxParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.FRAMEDATALOAD] = &InstructionFrameDataLoad<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.FRAMEDATACOPY] = &InstructionFrameDataCopy<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.FRAMEPARAM] = &InstructionFrameParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SIGPARAM] = &InstructionSigParam<TGasPolicy, TTracingInst>;
+        }
         if (spec.BlobBaseFeeEnabled)
         {
             lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee<TGasPolicy, TTracingInst>;
