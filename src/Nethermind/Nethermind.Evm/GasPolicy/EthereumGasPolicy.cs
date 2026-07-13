@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -506,17 +507,19 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // The computation scans the whole calldata and is repeated for the same transaction by
         // the prewarmer, the parallel executors and the serial validation loop within one block.
-        if (tx.IntrinsicGasMemo is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec) && memo.BlockGasLimit == blockGasLimit)
+        // Volatile pairs publish the box's fields with the reference; the spec key is a per-fork
+        // singleton, so a reference match proves the memo belongs to this fork.
+        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec))
         {
             return memo.Gas;
         }
 
         IntrinsicGas<EthereumGasPolicy> gas = Calculate(tx, spec, blockGasLimit);
-        tx.IntrinsicGasMemo = new IntrinsicGasMemo(spec, blockGasLimit, gas);
+        Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, gas));
         return gas;
     }
 
-    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, ulong BlockGasLimit, IntrinsicGas<EthereumGasPolicy> Gas);
+    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, IntrinsicGas<EthereumGasPolicy> Gas);
 
     private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {

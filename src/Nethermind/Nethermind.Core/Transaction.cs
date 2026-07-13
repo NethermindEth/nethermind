@@ -129,6 +129,7 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+                    IntrinsicGasMemo = null;
                     _hash = value;
                 }
             }
@@ -293,6 +294,7 @@ namespace Nethermind.Core
                     return false;
 
                 obj.ClearPreHash();
+                obj.IntrinsicGasMemo = null;
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
