@@ -90,7 +90,7 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, CodeInfoRepositoryFactories.Caching);
+        BlockAccessListManager balManager = ManualBlockAccessListManagerFactory.Create(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, static worldState => new EthereumCodeInfoRepository(worldState));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
@@ -110,7 +110,6 @@ public class ReorgTests
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
             LimboLogs.Instance);
 

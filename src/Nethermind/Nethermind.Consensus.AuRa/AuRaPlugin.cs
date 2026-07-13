@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -52,7 +51,6 @@ namespace Nethermind.Consensus.AuRa
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public IModule Module => new AuRaModule(chainSpec);
 

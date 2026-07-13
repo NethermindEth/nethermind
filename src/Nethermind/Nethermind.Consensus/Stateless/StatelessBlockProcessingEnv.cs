@@ -58,7 +58,7 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            codeInfoRepositoryFactory: CodeInfoRepositoryFactories.Witness,
+            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
             executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
@@ -103,7 +103,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider()),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
             logManager
         );
 }

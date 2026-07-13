@@ -59,11 +59,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual long GetStateGasUsed(in TSelf gas) => 0;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual long GetStateGasSpill(in TSelf gas) => 0;
-    // Tx-wide cumulative spill paid via gas_left in reverted child frames; never undone.
-    // Used by top-level halt to reattribute burned spill from state to regular dimension.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long GetStateGasSpillBurned(in TSelf gas) => 0;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong CalculateStateGasSpill(in TSelf gas, long stateGasCost)
     {
@@ -226,12 +221,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     // Drop state-gas from block-state accounting without refunding to the gas budget;
     // reverted state charges stay paid by the tx but don't contribute to committed state gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) => amount;
+    static virtual long DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) => amount;
 
+    /// <summary>Credits a speculative state-gas refund to the frame, continuing the source-based
+    /// LIFO refill: gas_left up to the frame's unrefunded spill, the remainder to the reservoir.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund) =>
-        TSelf.UpdateGasUp(ref gas, (ulong)amount);
+    static virtual void AddStateGasRefundToReservoir(ref TSelf gas, long amount, bool trackSpillRefund)
+        => TSelf.UpdateGasUp(ref gas, (ulong)amount);
 
+    /// <summary>Revokes a speculative refund credited by <see cref="AddStateGasRefundToReservoir"/>.</summary>
+    /// <remarks>Claws the full amount from the reservoir (negative if needed); the gas_left-refilled
+    /// portion stays there, its permanent spill-refund mark keeping the net spill consistent.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 

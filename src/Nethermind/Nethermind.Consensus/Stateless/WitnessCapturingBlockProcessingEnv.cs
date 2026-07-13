@@ -82,10 +82,9 @@ public sealed class WitnessCapturingBlockProcessingEnv(
             .AddScoped<IWorldState>(recorder)
             .AddScoped<IHeaderFinder>(recordingFinder)
             .AddScoped<IBlockhashCache, BlockhashCache>()
-            // Override the default caching ICodeInfoRepository: caching prevents intercepting code
-            // reads, which witness capture needs. This means the witness path does not work on chains
-            // that swap the code-info repository.
-            .AddScoped<ICodeInfoRepository, CodeInfoRepository>()
+            // Override the default code cache with a no-op so every code lookup goes through the
+            // recording world state and is captured in the witness rather than served from the cache.
+            .AddScoped<ICodeCache>(NoopCodeCache.Instance)
             // Force sequential BAL execution: the parallel path reads from a parent-state snapshot
             // that bypasses the recording world state, so its reads never reach the witness.
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(

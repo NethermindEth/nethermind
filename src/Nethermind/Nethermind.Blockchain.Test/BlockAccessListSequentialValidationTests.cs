@@ -129,7 +129,7 @@ public class BlockAccessListSequentialValidationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            CodeInfoRepositoryFactories.Caching);
+            static worldState => new EthereumCodeInfoRepository(worldState));
         return (stateProvider, balManager);
     }
 

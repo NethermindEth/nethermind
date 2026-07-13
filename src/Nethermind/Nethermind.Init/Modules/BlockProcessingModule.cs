@@ -57,6 +57,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
+                .AddSingleton<ICodeCache>(StaticCodeCache.Instance)
             .AddScoped<IWorldState, WorldState>()
             .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
@@ -69,7 +70,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
 
-            .AddSingleton<CodeInfoRepositoryFactory>(CodeInfoRepositoryFactories.Caching)
+            .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
+                worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
             .AddScoped<IBalProcessingEnvFactory, AutofacBalProcessingEnvFactory>()
             .AddScoped<IParallelBalEnvManager, ParallelBalEnvManager>()
             .AddScoped<ISequentialBalEnvManager, SequentialBalEnvManager>()
