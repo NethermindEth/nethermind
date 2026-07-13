@@ -3,10 +3,5 @@
 
 namespace Nethermind.Core;
 
-/// <summary>
-/// Opaque per-transaction memo slot for a cached intrinsic-gas result. The concrete type is owned
-/// by the gas policy in the EVM layer, which Core cannot reference; this marker types the
-/// <see cref="Transaction.IntrinsicGasMemo"/> field so the slot is constrained and named rather
-/// than a bare <see cref="object"/>.
-/// </summary>
+/// <summary>Marker for the EVM-owned intrinsic-gas memo so the transaction slot is typed, not a bare object.</summary>
 public interface IIntrinsicGasMemo;
