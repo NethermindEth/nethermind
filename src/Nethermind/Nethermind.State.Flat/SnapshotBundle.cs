@@ -318,8 +318,13 @@ public sealed class SnapshotBundle : IDisposable
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
-    public void SetAccount(Address address, Account? account) =>
+    public void SetAccount(Address address, Account? account)
+    {
+        // Read backfills (HintGet) repeat far more often than genuine changes; skip the locked
+        // indexer write when the entry already holds this exact account.
+        if (_changedAccounts.TryGetValue(address, out Account? existing) && ReferenceEquals(existing, account)) return;
         _changedAccounts[address] = account;
+    }
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {

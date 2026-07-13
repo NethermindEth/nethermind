@@ -70,6 +70,19 @@ public static class DictionaryExtensions
             dictionary.Clear();
             return true;
         }
+
+        /// <summary>
+        /// Clears the dictionary and shrinks its backing storage when a past burst inflated capacity
+        /// far beyond current needs, so subsequent clears stop paying O(inflated capacity).
+        /// </summary>
+        public void ClearAndTrim(int trimAboveCapacity = 8192, int trimToCapacity = 1024)
+        {
+            dictionary.Clear();
+            if (dictionary.Capacity > trimAboveCapacity)
+            {
+                dictionary.TrimExcess(trimToCapacity);
+            }
+        }
     }
 
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>

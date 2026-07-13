@@ -76,6 +76,19 @@ namespace Nethermind.Core.Collections
             }
         }
 
+        /// <summary>
+        /// Clears the set and shrinks its backing storage when a past burst inflated capacity
+        /// far beyond current needs, so subsequent clears stop paying O(inflated capacity).
+        /// </summary>
+        public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = 8192, int trimToCapacity = 1024)
+        {
+            set.Clear();
+            if (set.Capacity > trimAboveCapacity)
+            {
+                set.TrimExcess(trimToCapacity);
+            }
+        }
+
         public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
                 where TKey : notnull
         {

@@ -76,6 +76,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
     {
+        // Lock-free pre-check: repeat reads of already-cached entries are the common case and
+        // need no work; the cache is best-effort so a racing removal only loses a hint.
+        if (_accounts.ContainsKey(address)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
@@ -90,6 +93,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void TryCacheSlot(in (Address, UInt256) key, in CachedSlot slot, long readerGeneration)
     {
+        if (_slots.ContainsKey(key)) return;
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
