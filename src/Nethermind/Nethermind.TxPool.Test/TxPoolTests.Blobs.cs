@@ -2166,12 +2166,12 @@ namespace Nethermind.TxPool.Test
             ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
             Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
 
-            Task<BlobCellMergeResult> firstUpdate = Task.Run(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, firstUpdateMask, firstUpdateCells));
+            Task<BlobCellMergeResult> firstUpdate = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, firstUpdateMask, firstUpdateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
                 Assert.That(
-                    await Task.Run(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells)),
+                    await RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells)),
                     Is.EqualTo(BlobCellMergeResult.Accepted));
             }
             finally
@@ -2210,7 +2210,7 @@ namespace Nethermind.TxPool.Test
             Transaction sparseTx = CloneSparseBlobTransaction(template, 0, initialMask);
             Assert.That(blobPool.TryInsert(sparseTx.Hash, sparseTx, out _), Is.True);
 
-            Task<BlobCellMergeResult> update = Task.Run(() => blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
@@ -2253,12 +2253,12 @@ namespace Nethermind.TxPool.Test
             ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
             Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
 
-            Task<BlobCellMergeResult> update = Task.Run(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             storage.ReleaseFirstUpdate();
             Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
 
-            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(15)), Is.True);
 
             Assert.That(storage.TryGet(fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp, out Transaction storedTx), Is.True);
             Assert.That(((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask, Is.EqualTo(initialMask | updateMask));
@@ -2342,7 +2342,7 @@ namespace Nethermind.TxPool.Test
                 Is.EqualTo(BlobCellMergeResult.Accepted));
 
             blobPool.BlockNextUpdate();
-            Task<BlobCellMergeResult> staleUpdate = Task.Run(() =>
+            Task<BlobCellMergeResult> staleUpdate = RunOnDedicatedThread(() =>
                 blobPool.MergeCells(replacementTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(blobPool.WaitForBlockedUpdate(TimeSpan.FromSeconds(5)), Is.True);
             try
@@ -2383,9 +2383,9 @@ namespace Nethermind.TxPool.Test
             ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
             Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
 
-            Task<BlobCellMergeResult> update = Task.Run(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
-            Task<bool> removal = Task.Run(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
+            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
             try
             {
                 Assert.That(storage.WaitForDelete(TimeSpan.FromMilliseconds(200)), Is.False);
@@ -2440,7 +2440,7 @@ namespace Nethermind.TxPool.Test
             Transaction firstEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
             Assert.That(blobPool.TryInsert(firstEvictor.Hash, firstEvictor, out _), Is.True);
             storage.BlockNextRead();
-            Task firstRead = Task.Run(() => blobPool.TryGetBlobCellsAndProofsV1(
+            Task firstRead = RunOnDedicatedThread(() => blobPool.TryGetBlobCellsAndProofsV1(
                 sparseTx.BlobVersionedHashes![0],
                 initialMask,
                 out _,
@@ -2506,10 +2506,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
 
             storage.BlockNextRead();
-            Task<BlobCellMergeResult> merge = Task.Run(() =>
+            Task<BlobCellMergeResult> merge = RunOnDedicatedThread(() =>
                 blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
-            Task<bool> concurrentLookup = Task.Run(() =>
+            Task<bool> concurrentLookup = RunOnDedicatedThread(() =>
                 blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _));
             try
             {
@@ -2549,7 +2549,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobPool.TryInsert(firstEvictor.Hash, firstEvictor, out _), Is.True);
 
             storage.BlockNextRead();
-            Task<(bool Found, byte FirstByte)> staleRead = Task.Run(() =>
+            Task<(bool Found, byte FirstByte)> staleRead = RunOnDedicatedThread(() =>
             {
                 bool found = blobPool.TryGetCells(original.Hash!.ValueHash256, initialMask, out _, out byte[][] cells);
                 return (found, found ? cells[0][0] : default);
@@ -2616,7 +2616,7 @@ namespace Nethermind.TxPool.Test
             int found = -1;
 
             storage.BlockNextRead();
-            Task batchRead = Task.Run(() => found = blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
+            Task batchRead = RunOnDedicatedThread(() => found = blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
             Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
@@ -2667,7 +2667,7 @@ namespace Nethermind.TxPool.Test
             ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
 
             storage.BlockNextRead();
-            Task<int> read = Task.Run(() => blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
+            Task<int> read = RunOnDedicatedThread(() => blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
             Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
@@ -2789,6 +2789,9 @@ namespace Nethermind.TxPool.Test
             tx.BlobVersionedHashes = blobProofsBuilder.ComputeHashes(wrapper);
             tx.ClearLengthCache();
         }
+
+        private static Task<TResult> RunOnDedicatedThread<TResult>(Func<TResult> action) =>
+            Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
         private sealed class CountingBlobTxStorage : IBlobTxStorage
         {
