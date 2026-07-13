@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Processing.CensorshipDetector;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -9,8 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -19,7 +18,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    ICensorshipDetector? censorshipDetector = null)
+    IEnumerable<IBuilderOverridePolicy>? builderOverridePolicies = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
@@ -57,7 +56,17 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     }
 
     protected bool ShouldOverrideBuilder(Block block)
-         => censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(block)) ?? false;
+    {
+        if (builderOverridePolicies is not null)
+        {
+            foreach (IBuilderOverridePolicy policy in builderOverridePolicies)
+            {
+                if (policy.ShouldOverrideBuilder(block)) return true;
+            }
+        }
+
+        return false;
+    }
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);
 }

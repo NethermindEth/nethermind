@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,7 +21,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Consensus.Test;
+namespace Nethermind.CensorshipDetector.Plugin.Test;
 
 [TestFixture]
 public class CensorshipDetectorTests
@@ -34,6 +33,8 @@ public class CensorshipDetectorTests
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private IComparer<Transaction> _comparer;
+    private ITransactionComparerProvider _transactionComparerProvider;
+    private IMainProcessingContext _mainProcessingContext;
     private TxPool.TxPool _txPool;
     private CensorshipDetector _censorshipDetector;
 
@@ -43,6 +44,8 @@ public class CensorshipDetectorTests
         _logManager = LimboLogs.Instance;
         _stateProvider = new TestReadOnlyStateProvider();
         _branchProcessor = Substitute.For<IBranchProcessor>();
+        _mainProcessingContext = Substitute.For<IMainProcessingContext>();
+        _mainProcessingContext.BranchProcessor.Returns(_branchProcessor);
     }
 
     [TearDown]
@@ -57,7 +60,7 @@ public class CensorshipDetectorTests
     public async Task Censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_true_for_all_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _transactionComparerProvider, _mainProcessingContext, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -88,7 +91,7 @@ public class CensorshipDetectorTests
     public async Task No_censorship_when_address_censorship_is_false_and_high_paying_tx_censorship_is_false_for_some_blocks_in_main_cache()
     {
         _txPool = CreatePool();
-        _censorshipDetector = new(_blockTree, _txPool, _comparer, _branchProcessor, _logManager, new CensorshipDetectorConfig() { });
+        _censorshipDetector = new(_blockTree, _txPool, _transactionComparerProvider, _mainProcessingContext, _logManager, new CensorshipDetectorConfig() { });
 
         Transaction tx1 = SubmitTxToPool(1, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx2 = SubmitTxToPool(2, TestItem.PrivateKeyB, TestItem.AddressA);
@@ -126,8 +129,8 @@ public class CensorshipDetectorTests
         _censorshipDetector = new(
             _blockTree,
             _txPool,
-            _comparer,
-            _branchProcessor,
+            _transactionComparerProvider,
+            _mainProcessingContext,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -182,8 +185,8 @@ public class CensorshipDetectorTests
         _censorshipDetector = new(
             _blockTree,
             _txPool,
-            _comparer,
-            _branchProcessor,
+            _transactionComparerProvider,
+            _mainProcessingContext,
             _logManager,
             new CensorshipDetectorConfig()
             {
@@ -246,7 +249,8 @@ public class CensorshipDetectorTests
         _blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1_000_000).TestObject);
         _blockTree.Head.Returns(Build.A.Block.WithNumber(1_000_000).TestObject);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-        _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+        _transactionComparerProvider = new TransactionComparerProvider(_specProvider, _blockTree);
+        _comparer = _transactionComparerProvider.GetDefaultComparer();
 
         return new(
             _ethereumEcdsa,
