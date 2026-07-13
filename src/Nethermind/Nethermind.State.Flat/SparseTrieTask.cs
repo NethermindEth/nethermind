@@ -694,24 +694,60 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private static void ApplyResidualStorageUpdates(WorkerSession session)
     {
+        int pendingCount = session.PendingStorageAccounts.Count;
+        if (pendingCount == 0)
+            return;
+
         SparseRootComputer computer = session.GetComputer();
-        Hash256[] pendingAccounts = [.. session.PendingStorageAccounts];
-        foreach (Hash256 accountHash in pendingAccounts)
+        ResidualStorageJob[] jobs = new ResidualStorageJob[pendingCount];
+        int jobCount = 0;
+        long residualFallbacks = 0;
+        foreach (Hash256 accountHash in session.PendingStorageAccounts)
         {
             PendingStorageUpdates storage = session.StorageUpdates[accountHash];
             if (storage.Updates.Count == 0)
                 continue;
 
-            Metrics.SparseResidualProofFallbacks += storage.Updates.Count;
-            computer.ApplyStorageChanges(accountHash, storage.ParentStorageRoot, storage.Updates);
+            jobs[jobCount++] = new ResidualStorageJob(accountHash, storage);
+            residualFallbacks += storage.Updates.Count;
+        }
+
+        if (jobCount < 3 || session.Bundle is null)
+        {
+            for (int i = 0; i < jobCount; i++)
+                ApplyResidualStorageUpdate(computer, jobs[i]);
+        }
+        else
+        {
+            Parallel.For(
+                0,
+                jobCount,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                i => ApplyResidualStorageUpdate(computer, jobs[i]));
+        }
+
+        for (int i = 0; i < jobCount; i++)
+        {
+            ResidualStorageJob job = jobs[i];
+            PendingStorageUpdates storage = job.Storage;
             foreach (KeyValuePair<ValueHash256, byte[]> value in storage.Values)
                 storage.AppliedValues[value.Key] = value.Value;
             storage.Updates.Clear();
             storage.Values.Clear();
-            session.PendingStorageRootComputations.Add(accountHash);
+            session.PendingStorageRootComputations.Add(job.AccountHash);
         }
+
+        Metrics.SparseResidualProofFallbacks += residualFallbacks;
         session.PendingStorageAccounts.Clear();
     }
+
+    private static void ApplyResidualStorageUpdate(
+        SparseRootComputer computer,
+        ResidualStorageJob job) =>
+        computer.ApplyStorageChanges(
+            job.AccountHash,
+            job.Storage.ParentStorageRoot,
+            job.Storage.Updates);
 
     private bool TryProcessSpeculativeTouches()
     {
@@ -1286,10 +1322,17 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         }
 
         Hash256[] storageRoots = new Hash256[storageCount];
+        long residualFallbackCount = 0;
         if (storageCount < 3 || session.Bundle is null)
         {
             for (int i = 0; i < storageCount; i++)
-                storageRoots[i] = ApplyAndComputeStorageRoot(computer, storageJobs[i]);
+            {
+                storageRoots[i] = ApplyAndComputeStorageRoot(
+                    computer,
+                    storageJobs[i],
+                    out int residualFallbacks);
+                residualFallbackCount += residualFallbacks;
+            }
         }
         else
         {
@@ -1297,8 +1340,18 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 0,
                 storageCount,
                 RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                i => storageRoots[i] = ApplyAndComputeStorageRoot(computer, storageJobs[i]));
+                i =>
+                {
+                    storageRoots[i] = ApplyAndComputeStorageRoot(
+                        computer,
+                        storageJobs[i],
+                        out int residualFallbacks);
+                    if (residualFallbacks != 0)
+                        Interlocked.Add(ref residualFallbackCount, residualFallbacks);
+                });
         }
+
+        Metrics.SparseResidualProofFallbacks += residualFallbackCount;
 
         Dictionary<AddressAsKey, Hash256> mutableStorageRoots = new(
             storageCount,
@@ -1373,8 +1426,12 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             new ReadOnlyDictionary<AddressAsKey, Hash256>(mutableStorageRoots));
     }
 
-    private static Hash256 ApplyAndComputeStorageRoot(SparseRootComputer computer, StorageRootJob job)
+    private static Hash256 ApplyAndComputeStorageRoot(
+        SparseRootComputer computer,
+        StorageRootJob job,
+        out int residualFallbacks)
     {
+        residualFallbacks = 0;
         if (job.Wipe)
             computer.WipeStorage(job.AccountHash);
 
@@ -1388,7 +1445,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                     job.Updates);
                 if (job.Updates.Count != 0)
                 {
-                    Metrics.SparseResidualProofFallbacks += job.Updates.Count;
+                    residualFallbacks = job.Updates.Count;
                     computer.ApplyStorageChanges(job.AccountHash, job.ParentRoot, job.Updates);
                 }
             }
@@ -1785,6 +1842,10 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         Hash256 ParentRoot,
         Dictionary<ValueHash256, LeafUpdate>? Updates,
         bool Wipe);
+
+    private readonly record struct ResidualStorageJob(
+        Hash256 AccountHash,
+        PendingStorageUpdates Storage);
 
     private abstract record Command(WorkerSession? Session);
     private sealed record BeginCommand(WorkerSession BlockSession) : Command(BlockSession);

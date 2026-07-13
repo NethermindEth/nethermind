@@ -12,8 +12,11 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -895,6 +898,77 @@ public class SparseTrieTaskTests
             Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
             Assert.That(reader.StateLoads, Is.Zero);
             Assert.That(reader.StorageLoads, Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public async Task ResidualStorageFallback_ForThreeSnapshotBackedAccounts_MatchesPatricia()
+    {
+        const int contractCount = 3;
+        MultiContractTestState state = BuildMultiContractState(contractCount, slotsPerContract: 4);
+        ProofPersistenceReader persistenceReader = new(state);
+        ReadOnlySnapshotBundle readOnlyBundle = new(
+            new SnapshotPooledList(0),
+            persistenceReader,
+            recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
+        ResourcePool resourcePool = new(new FlatDbConfig { CompactSize = 8 });
+        using SnapshotBundle bundle = new(
+            readOnlyBundle,
+            Substitute.For<ITrieNodeCache>(),
+            resourcePool,
+            ResourcePool.Usage.MainBlockProcessing);
+
+        List<SparseTrieFinalStorageBatch> finalStorage = new(contractCount);
+        List<SparseTrieFinalAccount> finalAccounts = new(contractCount);
+        Dictionary<AddressAsKey, Hash256> expectedStorageRoots = new(
+            contractCount,
+            AddressAsKey.EqualityComparer);
+        for (int i = 0; i < contractCount; i++)
+        {
+            MultiContractState contract = state.Contracts[i];
+            UInt256 slot = (UInt256)(i + 1);
+            byte[] finalValue = i == 0 ? [0] : [(byte)(0x70 + i)];
+            contract.StorageTree.Set(slot, finalValue);
+            contract.StorageTree.UpdateRootHash();
+            contract.StorageTree.Commit();
+            Hash256 expectedStorageRoot = contract.StorageTree.RootHash;
+            expectedStorageRoots.Add(contract.Address, expectedStorageRoot);
+
+            Account expectedAccount = contract.Account.WithChangedStorageRoot(expectedStorageRoot);
+            state.StateTree.Set(
+                contract.Address.ToAccountPath.Bytes,
+                AccountDecoder.Instance.Encode(expectedAccount).Bytes);
+            finalStorage.Add(new SparseTrieFinalStorageBatch(
+                contract.Address,
+                contract.StorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(slot, finalValue)]));
+            finalAccounts.Add(new SparseTrieFinalAccount(contract.Address, contract.Account));
+        }
+
+        state.StateTree.UpdateRootHash();
+        state.StateTree.Commit();
+        Hash256 expectedStateRoot = state.StateTree.RootHash;
+        SparseTrieFinalState finalState = new(finalStorage, finalAccounts);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            for (int i = 0; i < contractCount; i++)
+            {
+                MultiContractState contract = state.Contracts[i];
+                Assert.That(
+                    result.StorageRoots[contract.Address],
+                    Is.EqualTo(expectedStorageRoots[contract.Address]));
+            }
+            Assert.That(persistenceReader.StateLoads, Is.GreaterThan(0));
+            Assert.That(persistenceReader.StorageLoads, Is.GreaterThanOrEqualTo(contractCount));
         }
     }
 
@@ -2107,6 +2181,95 @@ public class SparseTrieTaskTests
         public StorageTree StorageTree { get; } = storageTree;
         public Hash256 StorageRoot { get; set; } = storageRoot;
         public Dictionary<int, byte[]> Slots { get; } = slots;
+    }
+
+    private sealed class ProofPersistenceReader : IPersistence.IPersistenceReader
+    {
+        private readonly Dictionary<TreePath, byte[]> _stateNodes = [];
+        private readonly Dictionary<(Hash256 AccountHash, TreePath Path), byte[]> _storageNodes = [];
+        private int _stateLoads;
+        private int _storageLoads;
+
+        public ProofPersistenceReader(MultiContractTestState state)
+        {
+            for (int i = 0; i < state.Contracts.Length; i++)
+            {
+                MultiContractState contract = state.Contracts[i];
+                List<WarmedTrieNode> accountProof = [];
+                state.StateTree.WarmUpPath(contract.Address.ToAccountPath.BytesAsSpan, accountProof);
+                AddProof(_stateNodes, accountProof);
+
+                Hash256 accountHash = contract.Address.ToAccountPath.ToCommitment();
+                foreach (int slot in contract.Slots.Keys)
+                {
+                    ValueHash256 slotPath = default;
+                    UInt256 storageSlot = (UInt256)slot;
+                    StorageTree.ComputeKeyWithLookup(storageSlot, ref slotPath);
+                    List<WarmedTrieNode> storageProof = [];
+                    contract.StorageTree.WarmUpPath(slotPath.BytesAsSpan, storageProof);
+                    for (int nodeIndex = 0; nodeIndex < storageProof.Count; nodeIndex++)
+                    {
+                        WarmedTrieNode node = storageProof[nodeIndex];
+                        _storageNodes[(accountHash, node.Path)] = node.Rlp;
+                    }
+                }
+            }
+        }
+
+        public int StateLoads => Volatile.Read(ref _stateLoads);
+        public int StorageLoads => Volatile.Read(ref _storageLoads);
+        public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
+        public bool IsPreimageMode => false;
+
+        public Account? GetAccount(Address address) => null;
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _stateLoads);
+            return _stateNodes.GetValueOrDefault(path);
+        }
+
+        public byte[]? TryLoadStorageRlp(
+            Hash256 address,
+            in TreePath path,
+            ReadFlags flags)
+        {
+            Interlocked.Increment(ref _storageLoads);
+            return _storageNodes.GetValueOrDefault((address, path));
+        }
+
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+
+        public bool TryGetStorageRaw(
+            in ValueHash256 addrHash,
+            in ValueHash256 slotHash,
+            ref SlotValue value) => false;
+
+        public IPersistence.IFlatIterator CreateAccountIterator(
+            in ValueHash256 startKey,
+            in ValueHash256 endKey) => throw new NotSupportedException();
+
+        public IPersistence.IFlatIterator CreateStorageIterator(
+            in ValueHash256 accountKey,
+            in ValueHash256 startSlotKey,
+            in ValueHash256 endSlotKey) => throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+
+        private static void AddProof(
+            Dictionary<TreePath, byte[]> nodes,
+            IReadOnlyList<WarmedTrieNode> proof)
+        {
+            for (int i = 0; i < proof.Count; i++)
+            {
+                WarmedTrieNode node = proof[i];
+                nodes[node.Path] = node.Rlp;
+            }
+        }
     }
 
     private class CountingTrieNodeReader(ITrieNodeReader inner) : ITrieNodeReader, IDisposable

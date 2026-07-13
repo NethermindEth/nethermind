@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Sparse;
@@ -34,6 +35,12 @@ public sealed class SparseRootComputer : IDisposable
     private readonly Dictionary<
         (Hash256 AccountPathHash, Hash256 PreviousStorageRoot), Dictionary<TreePath, byte[]>>
         _revealedStorageProofNodes = [];
+    private int _lastProofNodeCount;
+    private int _lastRetryCount;
+    private long _lastProofReadMs;
+    private long _lastRevealMs;
+    private long _lastUpdateLeavesMs;
+    private long _lastComputeRootMs;
     private Dictionary<ValueHash256, LeafUpdate>? _accountChanges;
 
     public SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot)
@@ -100,8 +107,8 @@ public sealed class SparseRootComputer : IDisposable
                 TreePath.Empty,
                 previousStorageRoot);
             storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
-            LastProofReadMs += ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt);
-            LastProofNodeCount++;
+            Interlocked.Add(ref _lastProofReadMs, ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt));
+            Interlocked.Increment(ref _lastProofNodeCount);
         }
 
         ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
@@ -126,7 +133,7 @@ public sealed class SparseRootComputer : IDisposable
         int previousCount = updates.Count;
         long startedAt = Stopwatch.GetTimestamp();
         _trie.DrainApplicableStorageLeaves(accountPathHash, updates, proofRequired: null);
-        LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        Interlocked.Add(ref _lastUpdateLeavesMs, ToMilliseconds(Stopwatch.GetTimestamp() - startedAt));
         return previousCount - updates.Count;
     }
 
@@ -209,8 +216,8 @@ public sealed class SparseRootComputer : IDisposable
             WarmedTrieNode node = nodes[i];
             revealedNodes.TryAdd(node.Path, node.Rlp);
         }
-        LastRevealMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
-        LastProofNodeCount += decoded.Count;
+        Interlocked.Add(ref _lastRevealMs, ToMilliseconds(Stopwatch.GetTimestamp() - startedAt));
+        Interlocked.Add(ref _lastProofNodeCount, decoded.Count);
     }
 
     /// <summary>
@@ -242,7 +249,7 @@ public sealed class SparseRootComputer : IDisposable
             for (int retry = 0; retry < MaxTriePathRetries; retry++)
             {
                 if (retry != 0)
-                    LastRetryCount++;
+                    Interlocked.Increment(ref _lastRetryCount);
                 List<(ValueHash256 Key, byte MinLength)> targets = new(
                     missCount < 0 ? updates.Count : missCount);
                 if (missCount < 0)
@@ -291,11 +298,11 @@ public sealed class SparseRootComputer : IDisposable
                         _reader,
                         accountPathHash,
                         blinded);
-                    LastProofReadMs += ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt);
+                    Interlocked.Add(ref _lastProofReadMs, ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt));
                     if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
                     {
                         storageTrie.RevealNodes(nodes);
-                        LastProofNodeCount += nodes.Count;
+                        Interlocked.Add(ref _lastProofNodeCount, nodes.Count);
                     }
                 }
 
@@ -312,12 +319,12 @@ public sealed class SparseRootComputer : IDisposable
 
     public Hash256 PreviousRoot => _previousStateRoot;
     public int AccountChangeCount => _accountChanges?.Count ?? 0;
-    public int LastProofNodeCount { get; private set; }
-    public long LastProofReadMs { get; private set; }
-    public long LastRevealMs { get; private set; }
-    public long LastUpdateLeavesMs { get; private set; }
-    public long LastComputeRootMs { get; private set; }
-    public int LastRetryCount { get; private set; }
+    public int LastProofNodeCount => Volatile.Read(ref _lastProofNodeCount);
+    public long LastProofReadMs => Interlocked.Read(ref _lastProofReadMs);
+    public long LastRevealMs => Interlocked.Read(ref _lastRevealMs);
+    public long LastUpdateLeavesMs => Interlocked.Read(ref _lastUpdateLeavesMs);
+    public long LastComputeRootMs => Interlocked.Read(ref _lastComputeRootMs);
+    public int LastRetryCount => Volatile.Read(ref _lastRetryCount);
     internal Dictionary<ValueHash256, LeafUpdate>? LastAccountChanges => _accountChanges;
 
     internal SparseStateTrie Trie => _trie;
@@ -351,7 +358,7 @@ public sealed class SparseRootComputer : IDisposable
         long startedAt = Stopwatch.GetTimestamp();
         EnsureAccountRootRevealed();
         long revealedAt = Stopwatch.GetTimestamp();
-        LastProofReadMs += ToMilliseconds(revealedAt - startedAt);
+        Interlocked.Add(ref _lastProofReadMs, ToMilliseconds(revealedAt - startedAt));
 
         ValueHash256? lastTarget = null;
         int sameTargetCount = 0;
@@ -379,9 +386,11 @@ public sealed class SparseRootComputer : IDisposable
                         (key, minLength) => targets.Add((key, minLength)));
                 }
 
-                LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - updateStartedAt);
+                Interlocked.Add(
+                    ref _lastUpdateLeavesMs,
+                    ToMilliseconds(Stopwatch.GetTimestamp() - updateStartedAt));
                 if (retry != 0)
-                    LastRetryCount++;
+                    Interlocked.Increment(ref _lastRetryCount);
                 if (targets.Count == 0)
                     return;
 
@@ -414,9 +423,9 @@ public sealed class SparseRootComputer : IDisposable
                         blinded);
                     long proofReadAt = Stopwatch.GetTimestamp();
                     _trie.AccountTrie.RevealNodes(proof.AccountNodes);
-                    LastProofReadMs += ToMilliseconds(proofReadAt - proofStartedAt);
-                    LastRevealMs += ToMilliseconds(Stopwatch.GetTimestamp() - proofReadAt);
-                    LastProofNodeCount += proof.AccountNodes.Count;
+                    Interlocked.Add(ref _lastProofReadMs, ToMilliseconds(proofReadAt - proofStartedAt));
+                    Interlocked.Add(ref _lastRevealMs, ToMilliseconds(Stopwatch.GetTimestamp() - proofReadAt));
+                    Interlocked.Add(ref _lastProofNodeCount, proof.AccountNodes.Count);
                 }
 
                 missBuffer = CopyMisses(targets, missBuffer);
@@ -446,7 +455,7 @@ public sealed class SparseRootComputer : IDisposable
         int previousCount = updates.Count;
         long startedAt = Stopwatch.GetTimestamp();
         _trie.DrainApplicableAccountLeaves(updates, proofRequired: null);
-        LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        Interlocked.Add(ref _lastUpdateLeavesMs, ToMilliseconds(Stopwatch.GetTimestamp() - startedAt));
         return previousCount - updates.Count;
     }
 
@@ -454,7 +463,7 @@ public sealed class SparseRootComputer : IDisposable
     {
         long startedAt = Stopwatch.GetTimestamp();
         Hash256 root = _trie.ComputeRoot();
-        LastComputeRootMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        Interlocked.Add(ref _lastComputeRootMs, ToMilliseconds(Stopwatch.GetTimestamp() - startedAt));
         return root;
     }
 
@@ -466,7 +475,7 @@ public sealed class SparseRootComputer : IDisposable
 
         byte[] rootRlp = _reader.LoadStateRlp(TreePath.Empty, _previousStateRoot);
         accountTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
-        LastProofNodeCount++;
+        Interlocked.Increment(ref _lastProofNodeCount);
     }
 
     private static List<MultiProofReader.BlindedProofTarget> BuildBlindedTargets(
