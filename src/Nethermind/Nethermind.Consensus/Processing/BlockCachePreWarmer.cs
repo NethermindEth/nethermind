@@ -478,25 +478,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
+        if (GroupOrderMode == "heavy")
+        {
+            result.AsSpan().Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
+        }
+        else if (GroupOrderMode == "tail")
+        {
+            result.AsSpan().Sort(static (a, b) => b[0].Index.CompareTo(a[0].Index));
+        }
+
         return result;
     }
 
     /// <summary>Total gas limit above which a multi-tx sender group warms per-tx in parallel
-    /// instead of sequentially; sized so only heavy chains lose sequential state fidelity.</summary>
-    private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+    /// instead of sequentially; sized so only heavy chains lose sequential state fidelity.
+    /// Diag knobs: NETHERMIND_PW_SPLIT_GAS overrides the threshold; NETHERMIND_PW_ORDER picks the
+    /// group warm order (blockorder default, "heavy" = largest gas first, "tail" = last txs first).</summary>
+    private static readonly ulong SplitSenderGroupGasThreshold =
+        ulong.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_PW_SPLIT_GAS"), out ulong v) ? v : 4_000_000;
 
-    private static bool ShouldSplitGroup(ArrayPoolList<(int Index, Transaction Tx)> group)
+    private static readonly string? GroupOrderMode = Environment.GetEnvironmentVariable("NETHERMIND_PW_ORDER");
+
+    private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
-        if (group.Count < 2) return false;
-
         ulong totalGasLimit = 0;
         foreach ((int _, Transaction tx) in group.AsSpan())
         {
             totalGasLimit += tx.GasLimit;
         }
 
-        return totalGasLimit > SplitSenderGroupGasThreshold;
+        return totalGasLimit;
     }
+
+    private static bool ShouldSplitGroup(ArrayPoolList<(int Index, Transaction Tx)> group) =>
+        group.Count >= 2 && TotalGasLimit(group) > SplitSenderGroupGasThreshold;
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
     {
