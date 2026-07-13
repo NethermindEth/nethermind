@@ -386,6 +386,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
+                        // Indices are ascending, so if the main thread has started the job's last tx
+                        // it has started them all; the per-tx guard would discard each one, so skip
+                        // before renting an env and building a scope.
+                        if (blockState.PreWarmer.MainThreadTxIndex >= txList[^1].Index) return tupleState;
+
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                         try
                         {

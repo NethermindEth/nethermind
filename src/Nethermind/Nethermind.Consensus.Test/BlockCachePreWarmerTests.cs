@@ -763,6 +763,79 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// Verifies that a job whose whole transaction range has been overtaken by the main thread
+    /// is skipped before a transaction-processing scope is built. Two workers are parked inside
+    /// their first job's scope setup, the main thread's progress is published past the entire
+    /// block, and the remaining jobs must then produce no scope and no warm execution.
+    /// </summary>
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_SkipsWhollyOvertakenJobsBeforeScopeConstruction(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        int txScopes = 0;
+        int warmedTxs = 0;
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: () => Interlocked.Increment(ref txScopes),
+            onWarmup: () => Interlocked.Increment(ref warmedTxs));
+
+        BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: two workers must be parked inside their first job's scope setup");
+
+                // Publish main-thread progress past the whole block while the workers are parked.
+                for (int i = 0; i < txs.Length; i++)
+                {
+                    preWarmer.OnBeforeTxExecution();
+                }
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txScopes, Is.EqualTo(2), "jobs claimed after the overtake must not build a scope");
+            Assert.That(warmedTxs, Is.EqualTo(0), "the per-tx guard must discard every overtaken transaction");
+        }
+
+        preWarmer.Dispose();
+    }
+
     private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
         Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
 
@@ -1084,6 +1157,65 @@ public class BlockCachePreWarmerTests
 
             public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
             public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+    }
+
+    /// <summary>
+    /// Gates transaction-warm scopes at <c>SetBlockExecutionContext</c> — which the address
+    /// warmer never calls, so its scope builds on the shared env pool pass through ungated —
+    /// signalling arrival and counting warm executions for deterministic overtake tests.
+    /// </summary>
+    private sealed class TxWarmGatePolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim gate,
+        CountdownEvent txScopesInFlight,
+        Action onTxScope,
+        Action onWarmup)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly ManualResetEventSlim _gate = gate;
+        private readonly CountdownEvent _txScopesInFlight = txScopesInFlight;
+        private readonly Action _onTxScope = onTxScope;
+        private readonly Action _onWarmup = onWarmup;
+
+        public IReadOnlyTxProcessorSource Create() => new GateEnv(factory.Create(caches), this);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class GateEnv(IReadOnlyTxProcessorSource inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new GateScope(inner.Build(baseBlock), owner);
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class GateScope(IReadOnlyTxProcessingScope inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessingScope
+        {
+            private readonly GateTxProcessor _processor = new(inner.TransactionProcessor, owner);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class GateTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, TxWarmGatePolicy owner)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) owner._onWarmup();
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext)
+            {
+                owner._onTxScope();
+                // Once the gate is open, later scopes pass straight through without signalling.
+                if (!owner._gate.IsSet) owner._txScopesInFlight.Signal();
+                owner._gate.Wait();
+                inner.SetBlockExecutionContext(in blockExecutionContext);
+            }
         }
     }
 }
