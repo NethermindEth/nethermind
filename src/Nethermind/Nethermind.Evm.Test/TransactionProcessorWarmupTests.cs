@@ -112,4 +112,47 @@ public class TransactionProcessorWarmupTests
             "an underfunded warm sender must still warm its execution path");
         Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
     }
+
+    // The motivating bug: with no-op nonce handling, every deploy in a same-sender warm chain
+    // computed the same CREATE address and warmed the wrong storage. With real semantics each
+    // deploy must land where the real execution will put it.
+    [Test]
+    public void Warmup_ForASameSenderDeployChain_DeploysAtConsecutiveCreateAddresses()
+    {
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        Transaction firstDeploy = Build.A.Transaction
+            .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
+            .WithTo(null)
+            .WithNonce(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction secondDeploy = Build.A.Transaction
+            .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
+            .WithTo(null)
+            .WithNonce(1)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(firstDeploy, secondDeploy)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        _transactionProcessor.Warmup(firstDeploy, NullTxTracer.Instance);
+        _transactionProcessor.Warmup(secondDeploy, NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 0)), Is.True,
+            "the first deploy must land at the nonce-0 CREATE address");
+        Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 1)), Is.True,
+            "the successor must observe the bumped nonce and deploy at the nonce-1 CREATE address");
+    }
 }
