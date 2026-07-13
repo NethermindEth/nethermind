@@ -140,6 +140,7 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     private void CommitIngest(ISstIngestWriteBatch[] batches, in StateId to)
     {
+        int columnsIngested = 0;
         try
         {
             List<string> stagedFiles = [];
@@ -161,7 +162,10 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             try
             {
                 foreach (ISstIngestWriteBatch batch in batches)
+                {
                     batch.IngestStagedFiles();
+                    columnsIngested++;
+                }
 
                 using (IColumnsWriteBatch<FlatDbColumns> pointerBatch = db.StartWriteBatch())
                 {
@@ -176,9 +180,19 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
                 _ingestGate.ExitWriteLock();
             }
         }
-        catch
+        catch (Exception e)
         {
-            RollbackFailedIngest(batches);
+            // Rollback is only safe while no column has been ingested; after that the already-live columns
+            // cannot be un-ingested, so the marker and remaining staged files must survive for a retried
+            // persist or startup recovery to roll the commit forward.
+            if (columnsIngested == 0)
+            {
+                RollbackFailedIngest(batches);
+            }
+            else if (_logger.IsError)
+            {
+                _logger.Error($"Persist to {to} failed after {columnsIngested} of {batches.Length} column ingests; keeping the redo marker and staged files for roll-forward", e);
+            }
             throw;
         }
 
