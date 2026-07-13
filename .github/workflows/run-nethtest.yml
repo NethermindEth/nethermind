@@ -30,7 +30,7 @@ on:
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.6.0
+        default: tests-zkevm@v0.6.2
         type: string
       filter:
         description: Regex filter for test names
