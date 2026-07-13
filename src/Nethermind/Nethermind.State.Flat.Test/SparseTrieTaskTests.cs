@@ -52,6 +52,45 @@ public class SparseTrieTaskTests
     }
 
     [Test]
+    public async Task ReadOnlyProofBacklog_DoesNotDelayChangedProof()
+    {
+        TestState state = BuildState(accountCount: 80);
+        Address changedAddress = state.Addresses[70];
+        ValueHash256 changedPath = changedAddress.ToAccountPath;
+        List<WarmedTrieNode> changedProof = [];
+        state.StateTree.WarmUpPath(changedPath.BytesAsSpan, changedProof);
+        Account finalAccount = new(71, (UInt256)710_000);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, changedAddress, finalAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        for (int i = 0; i < 64; i++)
+        {
+            Assert.That(
+                block.TryEnqueueAccountTouch(
+                    state.Addresses[i].ToAccountPath,
+                    [new WarmedTrieNode(TreePath.Empty, [0xff])]),
+                Is.True);
+        }
+
+        Assert.That(block.TryEnqueueAccountTouch(changedPath, changedProof), Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(changedAddress, finalAccount)],
+            []));
+
+        SparseTrieBlockResult result = await block.FinishAsync(
+            new SparseTrieFinalState([], [new SparseTrieFinalAccount(changedAddress, finalAccount)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task WarmedStorageProof_AvoidsReaderFallback()
     {
         StorageTestState state = BuildStorageState();
@@ -255,20 +294,6 @@ public class SparseTrieTaskTests
                     state.ChangedSlot,
                     [0x66]),
             ]));
-        block.EnqueueDelta(new SparseTriePhaseDelta(
-            [],
-            [
-                new SparseTrieStorageDelta(
-                    state.Address,
-                    state.ParentStorageRoot,
-                    state.UnchangedSlot,
-                    finalUnchangedValue),
-                new SparseTrieStorageDelta(
-                    state.Address,
-                    state.ParentStorageRoot,
-                    state.ChangedSlot,
-                    finalDeletedValue),
-            ]));
 
         SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
             [new SparseTrieFinalStorageBatch(
@@ -415,7 +440,7 @@ public class SparseTrieTaskTests
     [TestCase(PendingFinalStorageChange.Unchanged)]
     [TestCase(PendingFinalStorageChange.Delete)]
     [TestCase(PendingFinalStorageChange.Clear)]
-    public async Task FinishWithPendingDistinctPhaseTouches_MatchesPatricia(
+    public async Task FinishWithPendingDistinctPhaseDeltas_MatchesPatricia(
         PendingFinalStorageChange change)
     {
         StorageTestState state = BuildStorageState();
@@ -429,7 +454,10 @@ public class SparseTrieTaskTests
         };
 
         if (change is PendingFinalStorageChange.Clear)
+        {
             state.StorageTree.Clear();
+            state.StorageTree.Set(state.ChangedSlot, changedValue);
+        }
         else if (change is not PendingFinalStorageChange.Unchanged)
             state.StorageTree.Set(state.ChangedSlot, changedValue);
         state.StorageTree.UpdateRootHash();
@@ -460,7 +488,7 @@ public class SparseTrieTaskTests
         }
 
         IReadOnlyList<SparseTrieFinalSlot> finalSlots = change is PendingFinalStorageChange.Clear
-            ? []
+            ? [new SparseTrieFinalSlot(state.ChangedSlot, changedValue)]
             :
             [
                 new SparseTrieFinalSlot(
@@ -488,7 +516,7 @@ public class SparseTrieTaskTests
                     state.Address,
                     state.ParentStorageRoot,
                     state.ChangedSlot,
-                    [0xa2])]));
+                    change is PendingFinalStorageChange.Clear ? changedValue : [0xa2])]));
             finishTask = block.FinishAsync(new SparseTrieFinalState(
                 [new SparseTrieFinalStorageBatch(
                     state.Address,
@@ -513,13 +541,6 @@ public class SparseTrieTaskTests
         {
             Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
             Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
-            if (change is PendingFinalStorageChange.Unchanged or PendingFinalStorageChange.Clear)
-            {
-                Assert.That(
-                    reader.StorageLoads,
-                    Is.Zero,
-                    "A touch marker queued behind Finish must not reveal storage afterward.");
-            }
         }
     }
 

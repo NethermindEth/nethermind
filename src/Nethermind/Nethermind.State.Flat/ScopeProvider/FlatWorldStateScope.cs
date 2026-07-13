@@ -212,7 +212,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (block is null || !_acceptSparseDeltas)
             return;
 
-        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0)
+        if (_pendingSparseAccounts.Count != 0 || _pendingSparseStorage.Count != 0 || isFinal)
         {
             List<SparseTrieAccountDelta> accounts = new(_pendingSparseAccounts.Count);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in _pendingSparseAccounts)
@@ -224,7 +224,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage));
+                block.EnqueueDelta(new SparseTriePhaseDelta(accounts, storage, isFinal));
             }
             catch (Exception exception)
             {
