@@ -23,12 +23,8 @@ namespace Nethermind.State;
 /// <c>_generatingBlockAccessList</c> without a null-check, so a missed setup fails fast with
 /// <see cref="NullReferenceException"/> at the first write rather than silently corrupting BAL output.
 /// </remarks>
-public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IPreBlockCaches, IBlockAccessListSource
+public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    public PreBlockCaches Caches => (ScopeProvider as IPreBlockCaches)?.Caches
-        ?? throw new InvalidOperationException($"{nameof(IPreBlockCaches)} is unavailable from the wrapped world state's scope provider.");
-    public bool IsWarmWorldState => (ScopeProvider as IPreBlockCaches)?.IsWarmWorldState ?? false;
-
     // Set by SetGeneratingBlockAccessList; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;

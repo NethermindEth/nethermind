@@ -21,7 +21,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -80,22 +83,34 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Verifies that envs evicted from the pool during real block processing are disposed
-    /// immediately. With pool capacity 1 and two parallel sender groups, the second worker
-    /// to return its env triggers eviction — that env must be disposed on the spot.
+    /// Verifies that an env returned to a full pool is disposed immediately.
     /// </summary>
     [Test]
-    public async Task PreWarmCaches_WhenPoolEvicts_EvictedEnvsAreDisposed()
+    public void EnvPool_ReturnedBeyondCapacity_IsDisposedImmediately()
     {
-        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
 
-        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
 
-        // With pool capacity 1 and two parallel workers, at least one eviction must occur.
-        Assert.That(created.Count, Is.GreaterThanOrEqualTo(2), "two distinct senders must have exercised two concurrent workers");
-        int evictedCount = created.Count - 1; // at most 1 retained in pool
-        Assert.That(disposed.Count, Is.GreaterThanOrEqualTo(evictedCount), "all envs evicted from the pool must have Dispose() called immediately");
+        ObjectPool<IReadOnlyTxProcessorSource> envPool = new DefaultObjectPoolProvider { MaximumRetained = 1 }.Create(trackingPolicy);
+
+        IReadOnlyTxProcessorSource first = envPool.Get();
+        IReadOnlyTxProcessorSource second = envPool.Get();
+        Assert.That(created.Count, Is.EqualTo(2), "precondition: an empty pool must create one env per overlapping rental");
+
+        envPool.Return(first);
+        envPool.Return(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposed.Count, Is.EqualTo(1), "the env returned beyond pool capacity must be disposed on the spot");
+            Assert.That(disposed, Does.Contain(second), "the first return fills the capacity-1 pool, so the second is the evicted one");
+        }
+
+        (envPool as IDisposable)?.Dispose();
     }
 
     /// <summary>
@@ -445,17 +460,14 @@ public class BlockCachePreWarmerTests
         using IReadOnlyTxProcessorSource source = validationPolicy.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
-        IPreBlockCaches scopedCaches = (IPreBlockCaches)scope.WorldState.ScopeProvider;
-        Assert.That(scopedCaches.Caches, Is.SameAs(preBlockCaches));
-        Assert.That(scopedCaches.IsWarmWorldState, Is.False, "parallel validation parent readers must populate cache misses");
-
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
         Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
         Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
 
-        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True);
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
+            "parallel validation parent readers must populate cache misses");
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
@@ -767,6 +779,36 @@ public class BlockCachePreWarmerTests
         }
         Assert.That(warmedWhenAllStarted, Is.EqualTo(0),
             "transactions the main thread has already started must not be speculatively warmed");
+    }
+
+    /// <summary>
+    /// Only the main execution reports per-tx progress to the prewarmer; the prewarmer's own speculative envs
+    /// must stay silent, otherwise they would advance its view of main-thread progress and suppress warming.
+    /// The two are told apart by the injected <see cref="IPrewarmerState"/>.
+    /// </summary>
+    [TestCase(false, 0, TestName = "PrewarmerTxAdapter_MainExecution_ReportsTxProgress")]
+    [TestCase(true, -1, TestName = "PrewarmerTxAdapter_PrewarmerEnv_DoesNotReportTxProgress")]
+    public void PrewarmerTxAdapter_ReportsTxProgress_OnlyWhenNotPrewarmer(bool isPrewarmer, int expectedTxIndex)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
+        using (preWarmer)
+        {
+            PrewarmerTxAdapter adapter = new(
+                new NoopTxProcessorAdapter(),
+                preWarmer,
+                new PrewarmerState(preBlockCaches, isPrewarmer));
+
+            adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
+
+            Assert.That(preWarmer.MainThreadTxIndex, Is.EqualTo(expectedTxIndex));
+        }
+    }
+
+    private sealed class NoopTxProcessorAdapter : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) => TransactionResult.Ok;
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 
     /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>

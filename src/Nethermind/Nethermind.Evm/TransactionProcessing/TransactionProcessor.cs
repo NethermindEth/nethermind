@@ -37,8 +37,6 @@ namespace Nethermind.Evm.TransactionProcessing
         : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options, in IntrinsicGas<TGasPolicy> intrinsicGas)
-            => ExecuteCore(transaction, txTracer, options, in intrinsicGas);
     }
 
     /// <summary>
@@ -179,31 +177,11 @@ namespace Nethermind.Evm.TransactionProcessing
             return result;
         }
 
-        protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
-            {
-                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
-            }
-
-            TransactionResult result = Execute(tx, tracer, opts, in intrinsicGas);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
-            return result;
-        }
-
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
-            return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
-        }
-
-        protected TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
-        {
-            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = GetSpec(header);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
