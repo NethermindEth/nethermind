@@ -80,4 +80,36 @@ public class TransactionProcessorWarmupTests
         Assert.That(tx.BlockGasUsed, Is.EqualTo(100_000UL),
             "warmup must never mutate the shared transaction object: the getter must still fall back to the gas limit");
     }
+
+    // A sender funded earlier in the block by another sender's transaction has no balance in
+    // the parent state; per-sender warm groups cannot see that funding, so the warm pass must
+    // execute best-effort instead of losing the sender's warming to the balance check.
+    [Test]
+    public void Warmup_ForASenderWithoutParentStateBalance_StillExecutes()
+    {
+        _stateProvider.CreateAccount(TestItem.AddressA, UInt256.Zero);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True,
+            "an underfunded warm sender must still warm its execution path");
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+    }
 }
