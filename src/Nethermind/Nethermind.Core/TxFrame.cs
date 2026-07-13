@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Int256;
 
-namespace Nethermind.Core.Eip8141;
+namespace Nethermind.Core;
 
 /// <summary>
 /// A single frame of an EIP-8141 frame transaction: <c>[mode, flags, target, gas_limit, value, data]</c>.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </summary>
-public class Frame(byte mode, byte flags, Address? target, ulong gasLimit, UInt256 value, byte[] data)
+public class TxFrame(byte mode, byte flags, Address? target, ulong gasLimit, UInt256 value, ReadOnlyMemory<byte> data)
 {
     public const byte ModeDefault = 0;
     public const byte ModeVerify = 1;
@@ -30,7 +31,7 @@ public class Frame(byte mode, byte flags, Address? target, ulong gasLimit, UInt2
 
     public ulong GasLimit { get; } = gasLimit;
     public UInt256 Value { get; } = value;
-    public byte[] Data { get; } = data;
+    public ReadOnlyMemory<byte> Data { get; } = data;
 
     public byte AllowedApproveScope => (byte)(Flags & ApproveScopeMask);
     public bool IsAtomicBatch => (Flags & AtomicBatchFlag) != 0;

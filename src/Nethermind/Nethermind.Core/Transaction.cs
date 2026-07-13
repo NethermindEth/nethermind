@@ -11,7 +11,6 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
-using Nethermind.Core.Eip8141;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -207,13 +206,13 @@ namespace Nethermind.Core
         /// List of frames of a frame transaction.
         /// https://eips.ethereum.org/EIPS/eip-8141
         /// </summary>
-        public Frame[]? Frames { get; set; }
+        public TxFrame[]? Frames { get; set; }
 
         /// <summary>
         /// List of protocol-validated signatures available to a frame transaction.
         /// https://eips.ethereum.org/EIPS/eip-8141
         /// </summary>
-        public FrameSignature[]? FrameSignatures { get; set; }
+        public TxFrameSignature[]? FrameSignatures { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559

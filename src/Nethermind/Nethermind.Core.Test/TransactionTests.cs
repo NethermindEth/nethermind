@@ -91,8 +91,8 @@ public class TransactionTests
         Transaction source = new()
         {
             Type = TxType.FrameTx,
-            Frames = [new Eip8141.Frame(Eip8141.Frame.ModeVerify, Eip8141.Frame.ApproveExecutionAndPayment, null, 50_000, 0, [])],
-            FrameSignatures = [new Eip8141.FrameSignature(Eip8141.FrameSignature.SchemeSecp256k1, null, [], new byte[65])],
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 50_000, 0, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[65])],
         };
         Transaction destination = new();
 
