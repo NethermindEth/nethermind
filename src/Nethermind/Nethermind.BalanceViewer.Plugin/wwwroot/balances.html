@@ -662,6 +662,7 @@
         const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
         const SEL_RESOLVER = '0x0178b8bf';         // resolver(bytes32)
         const SEL_ADDR = '0x3b3b57de';             // addr(bytes32)
+        const SEL_ENS_NAME = '0x691f3431';         // name(bytes32) — ENS reverse resolver
         const SEL_BALANCE_OF = '0x70a08231';       // balanceOf(address)
         const SEL_SYMBOL = '0x95d89b41';           // symbol()
         const SEL_NAME = '0x06fdde03';             // name()
@@ -672,8 +673,16 @@
         const SEL_SUPPORTS_INTERFACE = '0x01ffc9a7'; // supportsInterface(bytes4)
         const SEL_TOKEN_OF_OWNER = '0x2f745c59';   // tokenOfOwnerByIndex(address,uint256)
         const SEL_TOKEN_URI = '0xc87b56dd';        // tokenURI(uint256)
+        const SEL_OWNER_OF = '0x6352211e';         // ownerOf(uint256)
+        const SEL_ERC1155_BALANCE = '0x00fdd58e';  // balanceOf(address,uint256)
+        const SEL_ERC1155_URI = '0x0e89341c';      // uri(uint256)
+        const IFACE_ERC721 = '80ac58cd';
         const IFACE_ERC721_ENUMERABLE = '780e9d63';
+        const IFACE_ERC1155 = 'd9b67a26';
+        const TRANSFER_SINGLE_TOPIC = '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62';
+        const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;
+        const NFT_ID_CAP = 60;                     // most owned ids we try to discover per collection
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -703,7 +712,7 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, headChangedAt: null, stalled: false, syncing: false, lastScanned: null, scanning: false, button: null };
+            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, button: null };
         }
 
         // ENS availability is detected per node rather than assumed per chain: many
@@ -843,14 +852,27 @@
             return out;
         }
 
+        const hexToUtf8 = (h) => new TextDecoder().decode(new Uint8Array(h.match(/../g).map((b) => parseInt(b, 16)))).replace(/\0+$/, '');
+
+        // decodes both the dynamic-string ABI encoding and the legacy bytes32 form some
+        // early tokens (e.g. MKR) return from symbol()/name()
         function decodeAbiString(hexValue) {
-            if (!hexValue || hexValue === '0x' || hexValue.length < 130) return null;
+            if (!hexValue || hexValue === '0x') return null;
+            const data = hexValue.slice(2);
             try {
-                const data = hexValue.slice(2);
-                const len = Number(BigInt('0x' + data.slice(64, 128)));
-                const bytes = data.slice(128, 128 + len * 2);
-                return new TextDecoder().decode(new Uint8Array(bytes.match(/../g).map((h) => parseInt(h, 16)))) || null;
-            } catch { return null; }
+                if (data.length >= 128) {
+                    const len = Number(BigInt('0x' + data.slice(64, 128)));
+                    if (len > 0 && data.length >= 128 + len * 2) {
+                        const s = hexToUtf8(data.slice(128, 128 + len * 2));
+                        if (s) return s;
+                    }
+                }
+                if (data.length === 64) {
+                    const s = hexToUtf8(data).replace(/[^\x20-\x7e].*$/, '').trim();
+                    if (s) return s;
+                }
+            } catch { }
+            return null;
         }
 
         const pad32 = (addr) => addr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -946,14 +968,15 @@
             setTotal(any ? formatFiat(grand) : (mergedAddresses().length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
         }
 
-        // ---------- NFTs (ERC-721, node-data only) ----------
-        // Counts come from balanceOf. When a collection is ERC721Enumerable, the first
-        // few token ids are enumerated and their tokenURI decoded; only fully on-chain
-        // metadata (data: URIs, e.g. Nouns or Loot) is rendered — external URIs are
-        // never fetched, so no request leaves the node.
-        const nftCache = new Map();       // `${address}|${chainId}|${collection}` -> { count, thumbs: [{src, title}] }
-        const enumerableCache = new Map(); // `${chainId}|${collection}` -> bool
-        const NFT_PAGE = 24;
+        // ---------- NFTs (ERC-721 / ERC-1155, node-data only) ----------
+        // Owned token ids come from tokenOfOwnerByIndex for ERC721Enumerable, or from
+        // owner-filtered Transfer logs for plain ERC-721 and ERC-1155 (then confirmed via
+        // ownerOf / balanceOf). Only fully on-chain metadata (data: URIs, e.g. Nouns) is
+        // rendered — external URIs are never fetched, so no request leaves the node.
+        // Note: log discovery needs the node to retain historical logs; a node pruned of
+        // old receipts will surface only recently-acquired ids.
+        const nftCache = new Map();        // `${address}|${chainId}|${collection}` -> { count, ids, thumbs }
+        const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
         let nftRefreshing = false;
 
         function parseOnChainMetadata(uri) {
@@ -964,21 +987,71 @@
             } catch { return null; }
         }
 
-        // enumerates owned token ids [start, end) and decodes their on-chain metadata
-        async function fetchThumbRange(node, collection, owner, start, end) {
-            const idCalls = [];
-            for (let index = start; index < end; index++) {
-                idCalls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_OF_OWNER + pad32(owner) + pad32(index.toString(16)) }, 'latest']]);
+        const iface1 = (x) => { try { return BigInt(x) === 1n; } catch { return false; } };
+
+        async function detectKind(node, collection) {
+            const key = node.chainId + '|' + collection.address.toLowerCase();
+            if (collectionKind.has(key)) return collectionKind.get(key);
+            const q = (id) => ['eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + id.padEnd(64, '0') }, 'latest']];
+            const [enumerable, is721, is1155] = await rpcBatch([q(IFACE_ERC721_ENUMERABLE), q(IFACE_ERC721), q(IFACE_ERC1155)], node.rpcPath);
+            const kind = iface1(enumerable) ? 'enum721' : iface1(is1155) ? 'erc1155' : iface1(is721) ? 'plain721' : 'none';
+            collectionKind.set(key, kind);
+            return kind;
+        }
+
+        // TransferBatch data is (uint256[] ids, uint256[] values); pull the ids array
+        function parseBatchIds(data) {
+            try {
+                const d = data.slice(2);
+                const off = Number(BigInt('0x' + d.slice(0, 64))) * 2;
+                const len = Number(BigInt('0x' + d.slice(off, off + 64)));
+                const ids = [];
+                for (let i = 0; i < len; i++) ids.push(BigInt('0x' + d.slice(off + 64 + i * 64, off + 128 + i * 64)));
+                return ids;
+            } catch { return []; }
+        }
+
+        // the token ids an owner currently holds in a collection (capped), by kind
+        async function heldTokenIds(node, collection, owner, kind, count) {
+            if (kind === 'enum721') {
+                const n = Math.min(count, NFT_ID_CAP);
+                const calls = [];
+                for (let i = 0; i < n; i++) calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_OF_OWNER + pad32(owner) + pad32(i.toString(16)) }, 'latest']]);
+                return (await rpcBatch(calls, node.rpcPath)).filter(Boolean).map((x) => BigInt(x));
             }
-            const ids = (await rpcBatch(idCalls, node.rpcPath)).filter((id) => id !== null).map((id) => BigInt(id));
-            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_TOKEN_URI + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
+            const ownerTopic = '0x' + pad32(owner);
+            const range = { fromBlock: '0x0', toBlock: 'latest', address: collection.address };
+            const candidates = new Set();
+            if (kind === 'plain721') {
+                const logs = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, ownerTopic] }], node.rpcPath).catch(() => []);
+                for (const log of logs || []) if (log.topics?.length === 4) { try { candidates.add(BigInt(log.topics[3])); } catch { } }
+                const ids = [...candidates].slice(0, NFT_ID_CAP);
+                const owners = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_OWNER_OF + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
+                return ids.filter((id, i) => { try { return owners[i] && ('0x' + owners[i].slice(-40)).toLowerCase() === owner.toLowerCase(); } catch { return false; } });
+            }
+            // erc1155: ids live in log data, not topics
+            const single = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_SINGLE_TOPIC, null, null, ownerTopic] }], node.rpcPath).catch(() => []);
+            for (const log of single || []) { try { candidates.add(BigInt('0x' + log.data.slice(2, 66))); } catch { } }
+            const batch = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_BATCH_TOPIC, null, null, ownerTopic] }], node.rpcPath).catch(() => []);
+            for (const log of batch || []) for (const id of parseBatchIds(log.data)) candidates.add(id);
+            const ids = [...candidates].slice(0, NFT_ID_CAP);
+            const bals = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_ERC1155_BALANCE + pad32(owner) + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
+            return ids.filter((id, i) => { try { return BigInt(bals[i]) > 0n; } catch { return false; } });
+        }
+
+        // decodes on-chain metadata for a slice of ids into thumbnails
+        async function fetchThumbsForIds(node, collection, ids, kind) {
+            const sel = kind === 'erc1155' ? SEL_ERC1155_URI : SEL_TOKEN_URI;
+            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: sel + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
             const thumbs = [];
-            for (let index = 0; index < ids.length; index++) {
-                const metadata = parseOnChainMetadata(decodeAbiString(uris[index]));
-                const title = metadata?.name || collection.ticker + ' #' + ids[index];
-                // render only fully on-chain images; anything else stays a text label
+            for (let i = 0; i < ids.length; i++) {
+                let uri = decodeAbiString(uris[i]);
+                // ERC-1155 uri() may template the id as a 64-hex lowercase string
+                if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', ids[i].toString(16).padStart(64, '0'));
+                const metadata = parseOnChainMetadata(uri);
+                const title = metadata?.name || collection.ticker + ' #' + ids[i];
                 const src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
-                thumbs.push({ src, title: src ? title : '#' + ids[index] });
+                thumbs.push({ src, title: src ? title : '#' + ids[i] });
             }
             return thumbs;
         }
@@ -1013,7 +1086,7 @@
                     box.append(el('span', 'more number', thumb.title));
                 }
             }
-            const remaining = cached.count - cached.thumbs.length;
+            const remaining = (cached.ids?.length ?? cached.count) - cached.thumbs.length;
             if (remaining > 0 && cached.thumbs.length > 0) {
                 const more = el('span', 'more expand', '+' + remaining + ' more');
                 more.title = 'Show more';
@@ -1022,7 +1095,8 @@
                     more.onclick = null;
                     try {
                         const start = cached.thumbs.length;
-                        cached.thumbs.push(...await fetchThumbRange(node, collection, owner, start, Math.min(cached.count, start + NFT_PAGE)));
+                        const next = cached.ids.slice(start, start + MAX_NFT_THUMBS * 3);
+                        cached.thumbs.push(...await fetchThumbsForIds(node, collection, next, cached.kind));
                     } catch { /* keep what we have */ }
                     fillThumbs(box, cached, node, owner, collection);
                 };
@@ -1047,23 +1121,31 @@
                         for (const collection of stateOf(node.chainId).nfts) {
                             const colKey = collection.address.toLowerCase();
                             const key = entry.address + '|' + node.chainId + '|' + colKey;
-                            const countCached = cache.get(entry.address + '|' + node.chainId + ':nft:' + colKey);
-                            const count = countCached?.bal === null || countCached === undefined ? 0 : Number(countCached.bal.replace(/,/g, ''));
                             const box = document.querySelector(`[data-thumbs="${key}"]`);
-                            if (nftCache.get(key)?.count === count) continue;
+                            // balanceOf(address) gives the count for ERC-721; ERC-1155 reverts
+                            // it (needs an id), so its count is the number of held ids found
+                            const balCached = cache.get(entry.address + '|' + node.chainId + ':nft:' + colKey);
+                            const erc721Count = balCached?.bal && balCached.bal !== null ? Number(balCached.bal.replace(/,/g, '')) : null;
 
-                            let thumbs = [];
-                            if (count > 0) {
-                                const enumKey = node.chainId + '|' + colKey;
-                                if (!enumerableCache.has(enumKey)) {
-                                    const supports = await rpc('eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + IFACE_ERC721_ENUMERABLE.padEnd(64, '0') }, 'latest'], node.rpcPath).catch(() => null);
-                                    enumerableCache.set(enumKey, supports !== null && BigInt(supports) === 1n);
-                                }
-                                if (enumerableCache.get(node.chainId + '|' + colKey)) {
-                                    thumbs = await fetchThumbRange(node, collection, entry.address, 0, Math.min(count, MAX_NFT_THUMBS));
-                                }
+                            const kind = await detectKind(node, collection);
+                            // re-discover only when the ERC-721 count changes; ERC-1155 has no
+                            // cheap count signal, so discover once and keep
+                            const sig = kind === 'erc1155' ? 'x' : erc721Count;
+                            if (nftCache.get(key)?.sig === sig) continue;
+
+                            let ids = [];
+                            if (kind !== 'none' && (kind === 'erc1155' || erc721Count > 0)) {
+                                ids = await heldTokenIds(node, collection, entry.address, kind, erc721Count || 0);
                             }
-                            nftCache.set(key, { count, thumbs });
+                            const count = kind === 'erc1155' ? ids.length : (erc721Count ?? 0);
+                            const thumbs = ids.length ? await fetchThumbsForIds(node, collection, ids.slice(0, MAX_NFT_THUMBS), kind) : [];
+                            nftCache.set(key, { count, ids, thumbs, kind, sig });
+
+                            // fill in the count cell for ERC-1155 (refreshNode left it blank)
+                            if (kind === 'erc1155') {
+                                const cell = document.querySelector(`.card[data-address="${entry.address}"] td[data-key="${node.chainId}:nft:${colKey}"]`);
+                                if (cell) { cell.textContent = String(count); cell.classList.remove('spin'); }
+                            }
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
                         }
                     }
@@ -1199,7 +1281,7 @@
 
         function displayName(address) {
             const entry = mergedAddresses().find((a) => a.address.toLowerCase() === address);
-            return entry?.label || shortAddr(entry?.address || address);
+            return (entry && labelFor(entry)) || shortAddr(entry?.address || address);
         }
 
         // describes a Transfer log: ERC-20 amounts with symbol/decimals (tracked tokens
@@ -1296,22 +1378,68 @@
             finally { node.scanning = false; }
         }
 
-        // ---------- ENS (forward resolution, simple case) ----------
+        // ---------- ENS (simple forward + reverse resolution) ----------
         function ensNode() {
             return enabledNodes().find((n) => n.chainId === 1 && n.ens) ?? enabledNodes().find((n) => n.ens) ?? null;
+        }
+
+        async function resolverFor(namehashHex, via) {
+            const raw = await rpc('eth_call', [{ to: ENS_REGISTRY, data: SEL_RESOLVER + namehashHex.slice(2) }, 'latest'], via.rpcPath);
+            const resolver = raw && raw.length >= 66 ? '0x' + raw.slice(-40) : null;
+            return resolver && !/^0x0{40}$/.test(resolver) ? resolver : null;
+        }
+
+        // forward resolve name -> checksummed address, or null if not resolvable
+        async function resolveEnsAddress(name, via) {
+            const node = namehash(name);
+            const resolver = await resolverFor(node, via);
+            if (!resolver) return null;
+            const raw = await rpc('eth_call', [{ to: resolver, data: SEL_ADDR + node.slice(2) }, 'latest'], via.rpcPath);
+            const addr = raw && raw.length >= 66 ? '0x' + raw.slice(-40) : null;
+            return addr && !/^0x0{40}$/.test(addr) ? checksum(addr) : null;
         }
 
         async function resolveEns(name) {
             const via = ensNode();
             if (!via) throw new Error('ENS is not available on ' + enabledNodes().map((n) => n.meta.name).join('/'));
-            const node = namehash(name);
-            const resolverRaw = await rpc('eth_call', [{ to: ENS_REGISTRY, data: SEL_RESOLVER + node.slice(2) }, 'latest'], via.rpcPath);
-            const resolver = resolverRaw && resolverRaw.length >= 66 ? '0x' + resolverRaw.slice(-40) : null;
-            if (!resolver || /^0x0{40}$/.test(resolver)) throw new Error(`ENS name '${name}' is not registered`);
-            const addrRaw = await rpc('eth_call', [{ to: resolver, data: SEL_ADDR + node.slice(2) }, 'latest'], via.rpcPath);
-            const addr = addrRaw && addrRaw.length >= 66 ? '0x' + addrRaw.slice(-40) : null;
-            if (!addr || /^0x0{40}$/.test(addr)) throw new Error(`ENS name '${name}' has no address record`);
-            return checksum(addr);
+            const addr = await resolveEnsAddress(name, via);
+            if (!addr) throw new Error(`ENS name '${name}' is not registered or has no address`);
+            return addr;
+        }
+
+        // reverse resolve address -> primary ENS name, forward-verified (a reverse record
+        // can claim any name, so it is only trusted if the name resolves back to the address)
+        const reverseCache = new Map(); // address(lower) -> name | null
+        async function reverseName(address) {
+            const via = ensNode();
+            if (!via) return null;
+            const node = namehash(address.slice(2).toLowerCase() + '.addr.reverse');
+            const resolver = await resolverFor(node, via);
+            if (!resolver) return null;
+            const raw = await rpc('eth_call', [{ to: resolver, data: SEL_ENS_NAME + node.slice(2) }, 'latest'], via.rpcPath);
+            const name = decodeAbiString(raw);
+            if (!name) return null;
+            const forward = await resolveEnsAddress(name, via);
+            return forward && forward.toLowerCase() === address.toLowerCase() ? name : null;
+        }
+
+        // fill in ENS names for pinned raw addresses (no user label), once each
+        async function resolveReverseNames() {
+            if (!ensNode()) return;
+            for (const entry of mergedAddresses()) {
+                const key = entry.address.toLowerCase();
+                if (entry.label || reverseCache.has(key)) continue;
+                reverseCache.set(key, null); // reserve to avoid duplicate in-flight lookups
+                try {
+                    const name = await reverseName(entry.address);
+                    if (name) { reverseCache.set(key, name); renderCards(); }
+                } catch { }
+            }
+        }
+
+        // display label for an address: user-given name, else forward-verified ENS name
+        function labelFor(entry) {
+            return entry.label || reverseCache.get(entry.address.toLowerCase()) || null;
         }
 
         // ---------- rendering ----------
@@ -1363,8 +1491,9 @@
 
                 const head = el('div', 'head');
                 const color = accountColor(entry.address);
-                if (entry.label) {
-                    const name = el('span', 'name', entry.label);
+                const shownName = labelFor(entry);
+                if (shownName) {
+                    const name = el('span', 'name', shownName);
                     name.style.color = color;
                     head.append(name);
                 }
@@ -1503,10 +1632,9 @@
 
         function updateChainButton(node) {
             if (!node.button) return;
-            node.button.classList.toggle('syncing', Boolean(node.syncing || node.stalled));
+            node.button.classList.toggle('syncing', Boolean(node.syncing));
             const head = node.head ? BigInt(node.head).toLocaleString('en-US') : '?';
             node.button.title = `${node.meta.name} · head ${head}${node.syncing ? ' · syncing' : ''}`
-                + (node.stalled ? ' · stalled (head not advancing)' : '')
                 + (node.unreachable ? ' · unreachable' : '')
                 + (node.enabled ? '' : ' · hidden (click to show)');
         }
@@ -1664,6 +1792,7 @@
                     refreshNode(node, addresses, fxRate).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
                 recomputeTotals();
                 refreshNftThumbs();
+                resolveReverseNames();
             } finally {
                 refreshing = false;
             }
@@ -1796,11 +1925,6 @@
 
         let pollTick = 0;
 
-        // a head frozen this long (several slots on the slowest chain) means the node
-        // stopped following the chain — e.g. its consensus client died — even though
-        // eth_syncing may still report false
-        const STALL_AFTER_MS = 90 * 1000;
-
         // A node is "behind" whenever its latest block is more than this old: a synced
         // node's head is always seconds fresh. This is the robust signal — eth_syncing
         // reports false both when at head AND during full-sync catch-up of a backlog,
@@ -1831,15 +1955,13 @@
                     node.syncing = !node.unreachable && isNodeSyncing(syncing, headBlock);
                     if (head !== null && head !== node.head) {
                         node.head = head;
-                        node.headChangedAt = Date.now();
                         if (node.enabled) {
                             changed = true;
                             scanForActivity(node, head);
                         }
                     }
-                    node.stalled = !node.unreachable && node.headChangedAt !== null && Date.now() - node.headChangedAt > STALL_AFTER_MS;
                     if (node === own() && !multi() && head !== null) {
-                        $('headBlock').textContent = BigInt(head).toLocaleString('en-US') + (node.stalled ? ' · stalled' : '');
+                        $('headBlock').textContent = BigInt(head).toLocaleString('en-US') + (node.syncing ? ' · syncing' : '');
                     }
                     updateChainButton(node);
                 } catch (e) {
@@ -1910,7 +2032,8 @@
             setInterval(pollHead, 12000);
         }
 
-        init();
+        // guard lets tests load the pure functions without a DOM (see BalanceViewerScriptTests)
+        if (typeof globalThis.BALANCES_NO_AUTOINIT === 'undefined') init();
     </script>
 </body>
 </html>
