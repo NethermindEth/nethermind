@@ -22,7 +22,6 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
