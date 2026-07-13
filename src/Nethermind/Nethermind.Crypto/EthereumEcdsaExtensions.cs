@@ -22,11 +22,8 @@ public static class EthereumEcdsaExtensions
     /// content or signature after the hash is set.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
-    // AssociativeCache over ClockCache: block recovery inserts a NEW key per transaction from every
-    // parallel worker, and ClockCache serializes every insert (plus its clock-sweep eviction) on one
-    // writer lock. The 8-way set-associative cache takes a per-set gate (4096 sets at this capacity),
-    // so uniformly-hashed tx keys make insert collisions negligible, and set-local 3-random eviction
-    // is equivalent to global sampling for uniform keys.
+    // Block recovery inserts a new key per tx from every parallel worker; the per-set gates avoid
+    // ClockCache's single writer lock, which serialized every insert plus its in-lock eviction sweep.
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
