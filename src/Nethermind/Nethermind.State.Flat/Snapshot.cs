@@ -87,7 +87,7 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.EnumerateStorageNodes();
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
@@ -112,7 +112,16 @@ public class Snapshot : RefCountingDisposable
         => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.TryGetStorageNode(key, out node);
+
+    /// <summary>True when the mutable content stores storage-trie nodes as slab handles rather than
+    /// TrieNode objects. Always false for compacted (sorted) snapshots.</summary>
+    public bool StorageNodesAreFlat => !_isSorted && _mutable!.StorageNodesAreFlat;
+
+    /// <summary>Raw-span visit of flat storage-node records; caller must hold a lease for the full
+    /// enumeration. Only valid when <see cref="StorageNodesAreFlat"/> is true.</summary>
+    public void ForEachStorageNodeRlp(RlpVisitor<HashedKey<(Hash256, TreePath)>> visitor) =>
+        _mutable!.ForEachStorageNodeRlp(visitor);
 
     protected override void CleanUp()
     {
@@ -131,11 +140,44 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
     public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
+
+    // Object-backed storage-node tier (master default). When FlatDb.FlatNodeStorage is on, the
+    // slab-backed FlatStorageNodes tier is also constructed and used instead — StorageNodes then stays
+    // empty and every switch below routes through FlatStorageNodes. State nodes are always object-backed.
     public readonly AddressStorageNodeDictionary StorageNodes = new();
+    public readonly FlatAddressStorageNodeDictionary? FlatStorageNodes;
+
+    public SnapshotContent(bool flatNodeStorage)
+    {
+        if (flatNodeStorage) FlatStorageNodes = new FlatAddressStorageNodeDictionary();
+    }
+
+    public SnapshotContent() : this(false)
+    {
+    }
+
+    public bool StorageNodesAreFlat => FlatStorageNodes is not null;
+
+    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
+        => FlatStorageNodes is null ? StorageNodes.TryGetValue(key, out node!) : FlatStorageNodes.TryGetValue(key, out node);
+
+    public int StorageNodesCount => FlatStorageNodes?.Count ?? StorageNodes.Count;
+
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> EnumerateStorageNodes()
+        => FlatStorageNodes is null ? StorageNodes : FlatStorageNodes;
+
+    /// <summary>The storage-node tier as a read-only collection for compaction's merge; both tiers
+    /// yield decoded <see cref="TrieNode"/>s so the compacted tier is object-backed either way.</summary>
+    public IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodesForMerge
+        => FlatStorageNodes is null ? StorageNodes : FlatStorageNodes;
+
+    /// <summary>Raw-span visit of flat storage-node records; lease-covered consumers only.</summary>
+    public void ForEachStorageNodeRlp(RlpVisitor<HashedKey<(Hash256, TreePath)>> visitor) => FlatStorageNodes!.ForEachRlp(visitor);
 
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
+        // StorageNodes is empty when flat storage is on (nodes live in the arena, nothing to prune).
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
 
         // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
@@ -146,10 +188,11 @@ public sealed class SnapshotContent : IDisposable, IResettable
         SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
         StorageNodes.NoLockClear();
+        FlatStorageNodes?.NoLockClear();
     }
 
     /// <summary>
-    /// Captures the five map counts in one pass. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
+    /// Captures the map counts in one pass. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
     /// acquires every stripe lock, so callers should capture once at a writer-quiescent boundary and
     /// reuse the result instead of re-reading live counts.
     /// </summary>
@@ -158,16 +201,15 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Storages.Count,
         SelfDestructedStorageAddresses.Count,
         StateNodes.Count,
-        StorageNodes.Count);
+        StorageNodesCount,
+        FlatStorageNodes?.ArenaBytesReserved ?? -1);
 
     public long EstimateMemory() => CaptureCounts().EstimateMemory();
 
     /// <inheritdoc cref="SnapshotContentCounts.EstimateCompactedMemory"/>
     public long EstimateCompactedMemory() => CaptureCounts().EstimateCompactedMemory();
 
-    public void Dispose()
-    {
-    }
+    public void Dispose() => FlatStorageNodes?.ReleaseArena();
 }
 
 /// <summary>
@@ -179,9 +221,22 @@ internal readonly record struct SnapshotContentCounts(
     int Storages,
     int SelfDestructedStorageAddresses,
     int StateNodes,
-    int StorageNodes)
+    int StorageNodes,
+    long StorageNodeArenaBytes)
 {
     private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
+
+    // Flat storage nodes own their RLP bytes in the arena (exact) plus a blittable handle entry per node;
+    // object-backed nodes (StorageNodeArenaBytes < 0) fall back to the per-node estimate.
+    private long StorageNodeMemory =>
+        StorageNodeArenaBytes < 0
+            ? (long)StorageNodes * (NodeSizeEstimate + 84)  // Key (48B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            : (long)StorageNodes * 64 + StorageNodeArenaBytes;
+
+    private long StorageNodeCompactedMemory =>
+        StorageNodeArenaBytes < 0
+            ? (long)StorageNodes * 84
+            : (long)StorageNodes * 64 + StorageNodeArenaBytes;
 
     public long EstimateMemory() =>
         // Cast Count to long before multiplying to avoid int overflow for large snapshots
@@ -189,7 +244,7 @@ internal readonly record struct SnapshotContentCounts(
             (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-            (long)StorageNodes * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            StorageNodeMemory;
 
     /// <summary>
     /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.
@@ -203,5 +258,5 @@ internal readonly record struct SnapshotContentCounts(
             (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
-            (long)StorageNodes * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
+            StorageNodeCompactedMemory;
 }
