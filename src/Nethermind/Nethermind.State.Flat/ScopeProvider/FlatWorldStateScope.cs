@@ -908,6 +908,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             foreach (KeyValuePair<AddressAsKey, Account?> entry in _dirtyAccounts)
                 finalAccounts.Add(new SparseTrieFinalAccount(entry.Key.Value, entry.Value));
 
+            SparseTrieFinalState finalState = new(finalStorage, finalAccounts);
+
             try
             {
                 if (_sparsePublishException is not null)
@@ -917,8 +919,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 SparseTrieBlockResult result;
                 try
                 {
+                    block.CloseSpeculativeIntake();
                     result = block
-                        .FinishAsync(new SparseTrieFinalState(finalStorage, finalAccounts))
+                        .FinishAsync(finalState)
                         .GetAwaiter()
                         .GetResult();
                 }

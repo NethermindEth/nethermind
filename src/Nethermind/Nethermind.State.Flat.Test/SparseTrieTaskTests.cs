@@ -21,8 +21,9 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SparseTrieTaskTests
 {
-    [Test]
-    public async Task WarmedAccountProof_AvoidsReaderFallback()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task WarmedAccountProof_AvoidsReaderFallback(bool proofBeforeDelta)
     {
         TestState state = BuildState(accountCount: 8);
         Address address = state.Addresses[3];
@@ -35,13 +36,19 @@ public class SparseTrieTaskTests
 
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
-        Assert.That(block.TryEnqueueAccountTouch(accountPath, proof), Is.True);
+        if (proofBeforeDelta)
+            Assert.That(block.TryEnqueueAccountTouch(accountPath, proof), Is.True);
         block.EnqueueDelta(new SparseTriePhaseDelta(
             [new SparseTrieAccountDelta(address, finalAccount)],
             []));
+        if (!proofBeforeDelta)
+            Assert.That(block.TryEnqueueAccountTouch(accountPath, proof), Is.True);
 
-        SparseTrieBlockResult result = await block.FinishAsync(
-            new SparseTrieFinalState([], [new SparseTrieFinalAccount(address, finalAccount)]));
+        SparseTrieFinalState finalState = new(
+            [],
+            [new SparseTrieFinalAccount(address, finalAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
 
         using (Assert.EnterMultipleScope())
         {
@@ -90,8 +97,9 @@ public class SparseTrieTaskTests
         }
     }
 
-    [Test]
-    public async Task WarmedStorageProof_AvoidsReaderFallback()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task WarmedStorageProof_AvoidsReaderFallback(bool proofBeforeDelta)
     {
         StorageTestState state = BuildStorageState();
         ValueHash256 accountPath = state.Address.ToAccountPath;
@@ -113,14 +121,180 @@ public class SparseTrieTaskTests
 
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
-        Assert.That(block.TryEnqueueAccountTouch(accountPath, accountProof), Is.True);
+        if (proofBeforeDelta)
+            EnqueueStorageProofs(block, accountPath, state.ParentStorageRoot, slotPath, accountProof, storageProof);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                finalValue)]));
+        if (!proofBeforeDelta)
+            EnqueueStorageProofs(block, accountPath, state.ParentStorageRoot, slotPath, accountProof, storageProof);
+
+        SparseTrieFinalState finalState = new(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task OverlappingAccountAndStorageProofs_RevealWithoutReaderFallback()
+    {
+        StorageTestState state = BuildStorageState();
+        Address changedAccountAddress = state.State.Addresses[3];
+        ValueHash256 contractPath = state.Address.ToAccountPath;
+        ValueHash256 changedAccountPath = changedAccountAddress.ToAccountPath;
+        ValueHash256 firstSlotPath = default;
+        ValueHash256 secondSlotPath = default;
+        StorageTree.ComputeKeyWithLookup(state.UnchangedSlot, ref firstSlotPath);
+        StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref secondSlotPath);
+
+        List<WarmedTrieNode> contractProof = [];
+        List<WarmedTrieNode> changedAccountProof = [];
+        List<WarmedTrieNode> firstSlotProof = [];
+        List<WarmedTrieNode> secondSlotProof = [];
+        state.State.StateTree.WarmUpPath(contractPath.BytesAsSpan, contractProof);
+        state.State.StateTree.WarmUpPath(changedAccountPath.BytesAsSpan, changedAccountProof);
+        state.StorageTree.WarmUpPath(firstSlotPath.BytesAsSpan, firstSlotProof);
+        state.StorageTree.WarmUpPath(secondSlotPath.BytesAsSpan, secondSlotProof);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProofsOverlap(contractProof, changedAccountProof), Is.True);
+            Assert.That(ProofsOverlap(firstSlotProof, secondSlotProof), Is.True);
+        }
+
+        byte[] firstValue = [0x55];
+        byte[] secondValue = [0x66];
+        Account changedAccount = new(37, (UInt256)370_000);
+        state.StorageTree.Set(state.UnchangedSlot, firstValue);
+        state.StorageTree.Set(state.ChangedSlot, secondValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedContract = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        state.State.StateTree.Set(
+            contractPath.Bytes,
+            AccountDecoder.Instance.Encode(expectedContract).Bytes);
+        state.State.StateTree.Set(
+            changedAccountPath.Bytes,
+            AccountDecoder.Instance.Encode(changedAccount).Bytes);
+        state.State.StateTree.UpdateRootHash();
+        state.State.StateTree.Commit();
+        Hash256 expectedStateRoot = state.State.StateTree.RootHash;
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        Assert.That(block.TryEnqueueAccountTouch(contractPath, contractProof), Is.True);
+        Assert.That(block.TryEnqueueAccountTouch(changedAccountPath, changedAccountProof), Is.True);
         Assert.That(
             block.TryEnqueueStorageTouch(
-                accountPath.ToCommitment(),
+                contractPath.ToCommitment(),
                 state.ParentStorageRoot,
-                slotPath,
-                storageProof),
+                firstSlotPath,
+                firstSlotProof),
             Is.True);
+        Assert.That(
+            block.TryEnqueueStorageTouch(
+                contractPath.ToCommitment(),
+                state.ParentStorageRoot,
+                secondSlotPath,
+                secondSlotProof),
+            Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(changedAccountAddress, changedAccount)],
+            [
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.UnchangedSlot,
+                    firstValue),
+                new SparseTrieStorageDelta(
+                    state.Address,
+                    state.ParentStorageRoot,
+                    state.ChangedSlot,
+                    secondValue),
+            ]));
+
+        SparseTrieFinalState finalState = new(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: false,
+                [
+                    new SparseTrieFinalSlot(state.UnchangedSlot, firstValue),
+                    new SparseTrieFinalSlot(state.ChangedSlot, secondValue),
+                ])],
+            [
+                new SparseTrieFinalAccount(state.Address, state.ParentAccount),
+                new SparseTrieFinalAccount(changedAccountAddress, changedAccount),
+            ]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task StorageLatestWriteWins_AfterEarlierValueWasApplied()
+    {
+        StorageTestState state = BuildStorageState();
+        ValueHash256 accountPath = state.Address.ToAccountPath;
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
+        List<WarmedTrieNode> accountProof = [];
+        List<WarmedTrieNode> storageProof = [];
+        state.State.StateTree.WarmUpPath(accountPath.BytesAsSpan, accountProof);
+        state.StorageTree.WarmUpPath(slotPath.BytesAsSpan, storageProof);
+        byte[] firstValue = [0x44];
+        byte[] finalValue = [0x55];
+
+        state.StorageTree.Set(state.ChangedSlot, finalValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedAccount = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, state.Address, expectedAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                firstValue)]));
+        EnqueueStorageProofs(
+            block,
+            accountPath,
+            state.ParentStorageRoot,
+            slotPath,
+            accountProof,
+            storageProof);
         block.EnqueueDelta(new SparseTriePhaseDelta(
             [],
             [new SparseTrieStorageDelta(
@@ -129,13 +303,15 @@ public class SparseTrieTaskTests
                 state.ChangedSlot,
                 finalValue)]));
 
-        SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
+        SparseTrieFinalState finalState = new(
             [new SparseTrieFinalStorageBatch(
                 state.Address,
                 state.ParentStorageRoot,
                 Clear: false,
                 [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
-            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
 
         using (Assert.EnterMultipleScope())
         {
@@ -143,6 +319,410 @@ public class SparseTrieTaskTests
             Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
             Assert.That(reader.StateLoads, Is.Zero);
             Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task AccountLatestWriteWins_WhileWaitingForProof()
+    {
+        TestState state = BuildState(accountCount: 8);
+        Address address = state.Addresses[3];
+        ValueHash256 accountPath = address.ToAccountPath;
+        List<WarmedTrieNode> proof = [];
+        state.StateTree.WarmUpPath(accountPath.BytesAsSpan, proof);
+        Account firstAccount = new(17, (UInt256)170_000);
+        Account finalAccount = new(18, (UInt256)180_000);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, address, finalAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, firstAccount)],
+            []));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, finalAccount)],
+            []));
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, proof), Is.True);
+
+        SparseTrieFinalState finalState = new(
+            [],
+            [new SparseTrieFinalAccount(address, finalAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ResidualFallback_ResolvesDeletionCollapseSibling()
+    {
+        TestState state = BuildState(accountCount: 2);
+        Address address = state.Addresses[0];
+        ValueHash256 accountPath = address.ToAccountPath;
+        List<WarmedTrieNode> pathProof = [];
+        state.StateTree.WarmUpPath(accountPath.BytesAsSpan, pathProof);
+        SparseTrieFinalState finalState = new(
+            [],
+            [new SparseTrieFinalAccount(address, null)]);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, address, null);
+        using CountingTrieNodeReader reader = new(state.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, pathProof), Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, null)],
+            []));
+
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ResidualFallback_CoversDeleteBeforeInsertCollapseSibling()
+    {
+        Dictionary<byte, Address> addressByFirstNibble = [];
+        for (int i = 1; addressByFirstNibble.Count < 3; i++)
+        {
+            UInt256 number = (UInt256)i;
+            Address candidate = Address.FromNumber(in number);
+            addressByFirstNibble.TryAdd((byte)(candidate.ToAccountPath.Bytes[0] >> 4), candidate);
+        }
+        List<byte> nibbles = [.. addressByFirstNibble.Keys];
+        nibbles.Sort();
+        Address deletedAddress = addressByFirstNibble[nibbles[0]];
+        Address siblingAddress = addressByFirstNibble[nibbles[1]];
+        Address insertedAddress = addressByFirstNibble[nibbles[2]];
+        Account deletedAccount = new(1, (UInt256)1_001);
+        Account siblingAccount = new(2, (UInt256)1_002);
+        Account insertedAccount = new(3, (UInt256)1_003);
+        TestState state = BuildState(
+            [(deletedAddress, deletedAccount), (siblingAddress, siblingAccount)]);
+        SparseTrieFinalState finalState = new(
+            [],
+            [
+                new SparseTrieFinalAccount(deletedAddress, null),
+                new SparseTrieFinalAccount(insertedAddress, insertedAccount),
+            ]);
+        ApplyAccount(state.StateTree, deletedAddress, null);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, insertedAddress, insertedAccount);
+        using CountingTrieNodeReader reader = new(state.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [
+                new SparseTrieAccountDelta(deletedAddress, null),
+                new SparseTrieAccountDelta(insertedAddress, insertedAccount),
+            ],
+            []));
+
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ResidualFallback_UpdatesBelowSurvivingCollapsedBranch()
+    {
+        Dictionary<byte, List<Address>> addressesByFirstNibble = [];
+        Address deletedAddress = Address.Zero;
+        Address revealedSurvivor = Address.Zero;
+        Address residualSurvivor = Address.Zero;
+        for (int i = 1; residualSurvivor == Address.Zero; i++)
+        {
+            UInt256 number = (UInt256)i;
+            Address candidate = Address.FromNumber(in number);
+            byte nibble = (byte)(candidate.ToAccountPath.Bytes[0] >> 4);
+            if (!addressesByFirstNibble.TryGetValue(nibble, out List<Address>? group))
+            {
+                group = [];
+                addressesByFirstNibble.Add(nibble, group);
+            }
+            group.Add(candidate);
+
+            if (group.Count < 2)
+                continue;
+            foreach (KeyValuePair<byte, List<Address>> entry in addressesByFirstNibble)
+            {
+                if (entry.Key >= nibble)
+                    continue;
+                deletedAddress = entry.Value[0];
+                revealedSurvivor = group[0];
+                residualSurvivor = group[1];
+                break;
+            }
+        }
+
+        Account deletedAccount = new(1, (UInt256)1_001);
+        Account revealedAccount = new(2, (UInt256)1_002);
+        Account originalResidualAccount = new(3, (UInt256)1_003);
+        Account finalResidualAccount = new(4, (UInt256)4_004);
+        TestState state = BuildState(
+            [
+                (deletedAddress, deletedAccount),
+                (revealedSurvivor, revealedAccount),
+                (residualSurvivor, originalResidualAccount),
+            ]);
+        ApplyAccount(state.StateTree, deletedAddress, null);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, residualSurvivor, finalResidualAccount);
+
+        List<WarmedTrieNode> deletedProof = [];
+        List<WarmedTrieNode> survivorProof = [];
+        PatriciaTree parentTree = new(state.Store.GetTrieStore(null), LimboLogs.Instance)
+        {
+            RootHash = state.ParentRoot,
+        };
+        parentTree.WarmUpPath(deletedAddress.ToAccountPath.BytesAsSpan, deletedProof);
+        parentTree.WarmUpPath(revealedSurvivor.ToAccountPath.BytesAsSpan, survivorProof);
+
+        using CountingTrieNodeReader reader = new(state.Reader);
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        Assert.That(block.TryEnqueueAccountTouch(deletedAddress.ToAccountPath, deletedProof), Is.True);
+        Assert.That(block.TryEnqueueAccountTouch(revealedSurvivor.ToAccountPath, survivorProof), Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [
+                new SparseTrieAccountDelta(deletedAddress, null),
+                new SparseTrieAccountDelta(residualSurvivor, finalResidualAccount),
+            ],
+            []));
+        SparseTrieFinalState finalState = new(
+            [],
+            [
+                new SparseTrieFinalAccount(deletedAddress, null),
+                new SparseTrieFinalAccount(residualSurvivor, finalResidualAccount),
+            ]);
+
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ClearStorage_DropsUnrevealedParentDeltaAndAppliesFinalSlotsFromEmpty()
+    {
+        StorageTestState state = BuildStorageState();
+        ValueHash256 accountPath = state.Address.ToAccountPath;
+        List<WarmedTrieNode> accountProof = [];
+        state.State.StateTree.WarmUpPath(accountPath.BytesAsSpan, accountProof);
+        byte[] provisionalValue = [0x44];
+        byte[] finalValue = [0x55];
+
+        state.StorageTree.Clear();
+        state.StorageTree.Set(state.ChangedSlot, finalValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedAccount = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, state.Address, expectedAccount);
+        ThrowingTrieNodeReader reader = new();
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                provisionalValue)]));
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, accountProof), Is.True);
+
+        SparseTrieFinalState finalState = new(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: true,
+                [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task DeletedAccountWithoutStorageBatch_DropsUnrevealedProvisionalStorage()
+    {
+        StorageTestState state = BuildStorageState();
+        Address address = state.Address;
+        ValueHash256 accountPath = address.ToAccountPath;
+        List<WarmedTrieNode> accountPathProof = [];
+        state.State.StateTree.WarmUpPath(accountPath.BytesAsSpan, accountPathProof);
+        SparseTrieFinalState finalState = new(
+            [],
+            [new SparseTrieFinalAccount(address, null)]);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, address, null);
+        using CountingTrieNodeReader reader = new(state.State.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                [0x44])]));
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, accountPathProof), Is.True);
+
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(result.StorageRoots, Is.Empty);
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ResidualAccountFallback_MatchesPatricia(bool delete)
+    {
+        TestState state = BuildState(accountCount: 8);
+        Address address = state.Addresses[3];
+        Account? finalAccount = delete ? null : new Account(7, (UInt256)70_000);
+        SparseTrieFinalState finalState = new(
+            [],
+            [new SparseTrieFinalAccount(address, finalAccount)]);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, address, finalAccount);
+        using CountingTrieNodeReader reader = new(state.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [new SparseTrieAccountDelta(address, finalAccount)],
+            []));
+
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task ResidualAccountFallback_MergesWithPreviouslyRevealedPath()
+    {
+        TestState state = BuildState(accountCount: 8);
+        Address firstAddress = state.Addresses[2];
+        Address secondAddress = state.Addresses[5];
+        Account firstAccount = new(13, (UInt256)130_000);
+        Account secondAccount = new(16, (UInt256)160_000);
+        SparseTrieFinalState finalState = new(
+            [],
+            [
+                new SparseTrieFinalAccount(firstAddress, firstAccount),
+                new SparseTrieFinalAccount(secondAddress, secondAccount),
+            ]);
+        List<WarmedTrieNode> firstProof = [];
+        state.StateTree.WarmUpPath(firstAddress.ToAccountPath.BytesAsSpan, firstProof);
+        ApplyAccount(state.StateTree, firstAddress, firstAccount);
+        Hash256 expectedRoot = ApplyAccount(state.StateTree, secondAddress, secondAccount);
+        using CountingTrieNodeReader reader = new(state.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.ParentRoot, reader);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [
+                new SparseTrieAccountDelta(firstAddress, firstAccount),
+                new SparseTrieAccountDelta(secondAddress, secondAccount),
+            ],
+            []));
+        Assert.That(
+            block.TryEnqueueAccountTouch(firstAddress.ToAccountPath, firstProof),
+            Is.True);
+
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(expectedRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.Zero);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ResidualStorageFallback_MatchesPatricia(bool delete)
+    {
+        StorageTestState state = BuildStorageState();
+        byte[] finalValue = delete ? [0] : [0x55];
+        SparseTrieFinalState finalState = new(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: false,
+                [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]);
+        state.StorageTree.Set(state.ChangedSlot, finalValue);
+        state.StorageTree.UpdateRootHash();
+        state.StorageTree.Commit();
+        Hash256 expectedStorageRoot = state.StorageTree.RootHash;
+        Account expectedAccount = state.ParentAccount.WithChangedStorageRoot(expectedStorageRoot);
+        Hash256 expectedStateRoot = ApplyAccount(state.State.StateTree, state.Address, expectedAccount);
+        using CountingTrieNodeReader reader = new(state.State.Reader);
+
+        await using SparseTrieWorker worker = CreateWorker();
+        await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
+        List<WarmedTrieNode> accountProof = [];
+        state.State.StateTree.WarmUpPath(state.Address.ToAccountPath.BytesAsSpan, accountProof);
+        Assert.That(block.TryEnqueueAccountTouch(state.Address.ToAccountPath, accountProof), Is.True);
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                finalValue)]));
+
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
+            Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.GreaterThan(0));
         }
     }
 
@@ -478,18 +1058,15 @@ public class SparseTrieTaskTests
                 Is.True);
 
         block.EnqueueDelta(new SparseTriePhaseDelta([], [], IsFinal: true));
-        Assert.That(
-            SpinWait.SpinUntil(() => reader.StorageLoads > 0, TimeSpan.FromSeconds(5)),
-            Is.True,
-            "The worker did not process the storage proof before finalization.");
-
-        SparseTrieBlockResult result = await block.FinishAsync(new SparseTrieFinalState(
+        SparseTrieFinalState finalState = new(
             [new SparseTrieFinalStorageBatch(
                 state.Address,
                 state.ParentStorageRoot,
                 Clear: false,
                 [new SparseTrieFinalSlot(state.ChangedSlot, finalValue)])],
-            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]));
+            [new SparseTrieFinalAccount(state.Address, state.ParentAccount)]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
         await block.PrepareCommitAsync();
         await block.AcceptAsync();
 
@@ -497,27 +1074,20 @@ public class SparseTrieTaskTests
         {
             Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
             Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(reader.StorageLoads, Is.GreaterThan(0));
         }
     }
 
     [Test]
-    public async Task SpeculativeTouches_AreProcessedBeforeLongCommandBacklog()
+    public async Task NoProofTouches_AreDiscardedBeforeLongCommandBacklog()
     {
         StorageTestState state = BuildStorageState();
-        using BlockingCountingTrieNodeReader reader = new(state.State.Reader);
-        reader.BlockNextStateRead();
-        reader.BlockNextStorageRead();
+        ThrowingTrieNodeReader reader = new();
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
 
         Assert.That(block.TryEnqueueAccountTouch(state.Address.ToAccountPath), Is.True);
-        if (!reader.WaitForBlockedStateRead(TimeSpan.FromSeconds(5)))
-        {
-            reader.ReleaseStateRead();
-            reader.ReleaseStorageRead();
-            Assert.Fail("The worker did not reach the blocking account proof.");
-        }
-
         ValueHash256 slotPath = default;
         StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
         Assert.That(
@@ -530,23 +1100,15 @@ public class SparseTrieTaskTests
         for (int i = 0; i < 16; i++)
             block.EnqueueDelta(new SparseTriePhaseDelta([], []));
 
-        Task<SparseTrieBlockResult> finishTask = block.FinishAsync(new SparseTrieFinalState([], []));
-        reader.ReleaseStateRead();
-
-        try
+        SparseTrieFinalState finalState = new([], []);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.False);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(
-                reader.WaitForBlockedStorageRead(TimeSpan.FromSeconds(5)),
-                Is.True,
-                "The queued commands starved speculative storage proof work until finalization.");
+            Assert.That(result.StateRoot, Is.EqualTo(state.State.ParentRoot));
+            Assert.That(reader.StateLoads, Is.Zero);
+            Assert.That(reader.StorageLoads, Is.Zero);
         }
-        finally
-        {
-            reader.ReleaseStorageRead();
-        }
-
-        SparseTrieBlockResult result = await finishTask;
-        Assert.That(result.StateRoot, Is.EqualTo(state.State.ParentRoot));
     }
 
     [TestCase(PendingFinalStorageChange.Changed)]
@@ -587,8 +1149,7 @@ public class SparseTrieTaskTests
         state.State.StateTree.Commit();
         Hash256 expectedStateRoot = state.State.StateTree.RootHash;
 
-        using BlockingCountingTrieNodeReader reader = new(state.State.Reader);
-        reader.BlockNextStateRead();
+        using CountingTrieNodeReader reader = new(state.State.Reader);
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.State.ParentRoot, reader);
         for (int phase = 0; phase < 100; phase++)
@@ -596,11 +1157,6 @@ public class SparseTrieTaskTests
             block.EnqueueDelta(new SparseTriePhaseDelta(
                 [new SparseTrieAccountDelta(blockerAddress, blockerAccount)],
                 []));
-        }
-        if (!reader.WaitForBlockedStateRead(TimeSpan.FromSeconds(5)))
-        {
-            reader.ReleaseStateRead();
-            Assert.Fail("The worker did not reach the blocking account proof.");
         }
 
         IReadOnlyList<SparseTrieFinalSlot> finalSlots = change is PendingFinalStorageChange.Clear
@@ -616,40 +1172,32 @@ public class SparseTrieTaskTests
                     changedValue,
                     Changed: change is not PendingFinalStorageChange.Unchanged),
             ];
-        Task<SparseTrieBlockResult> finishTask;
-        try
-        {
-            block.EnqueueDelta(new SparseTriePhaseDelta(
-                [],
-                [new SparseTrieStorageDelta(
-                    state.Address,
-                    state.ParentStorageRoot,
-                    state.UnchangedSlot,
-                    [0xa1])]));
-            block.EnqueueDelta(new SparseTriePhaseDelta(
-                [],
-                [new SparseTrieStorageDelta(
-                    state.Address,
-                    state.ParentStorageRoot,
-                    state.ChangedSlot,
-                    change is PendingFinalStorageChange.Clear ? changedValue : [0xa2])]));
-            finishTask = block.FinishAsync(new SparseTrieFinalState(
-                [new SparseTrieFinalStorageBatch(
-                    state.Address,
-                    state.ParentStorageRoot,
-                    Clear: change is PendingFinalStorageChange.Clear,
-                    finalSlots)],
-                [
-                    new SparseTrieFinalAccount(blockerAddress, blockerAccount),
-                    new SparseTrieFinalAccount(state.Address, state.ParentAccount),
-                ]));
-        }
-        finally
-        {
-            reader.ReleaseStateRead();
-        }
-
-        SparseTrieBlockResult result = await finishTask;
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.UnchangedSlot,
+                [0xa1])]));
+        block.EnqueueDelta(new SparseTriePhaseDelta(
+            [],
+            [new SparseTrieStorageDelta(
+                state.Address,
+                state.ParentStorageRoot,
+                state.ChangedSlot,
+                change is PendingFinalStorageChange.Clear ? changedValue : [0xa2])]));
+        SparseTrieFinalState finalState = new(
+            [new SparseTrieFinalStorageBatch(
+                state.Address,
+                state.ParentStorageRoot,
+                Clear: change is PendingFinalStorageChange.Clear,
+                finalSlots)],
+            [
+                new SparseTrieFinalAccount(blockerAddress, blockerAccount),
+                new SparseTrieFinalAccount(state.Address, state.ParentAccount),
+            ]);
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        SparseTrieBlockResult result = await block.FinishAsync(finalState);
         await block.PrepareCommitAsync();
         await block.AcceptAsync();
 
@@ -657,6 +1205,10 @@ public class SparseTrieTaskTests
         {
             Assert.That(result.StorageRoots[state.Address], Is.EqualTo(expectedStorageRoot));
             Assert.That(result.StateRoot, Is.EqualTo(expectedStateRoot));
+            Assert.That(reader.StateLoads, Is.GreaterThan(0));
+            Assert.That(
+                reader.StorageLoads,
+                change is PendingFinalStorageChange.Clear ? Is.Zero : Is.GreaterThan(0));
         }
     }
 
@@ -1010,30 +1562,31 @@ public class SparseTrieTaskTests
     }
 
     [Test]
-    public async Task IdleStorageProofFailure_PoisonsOnlySessionAndWorkerCanRecover()
+    public async Task NoProofStorageTouch_DoesNotReadOrPoisonSession()
     {
         StorageTestState state = BuildStorageState();
         using ThrowingStorageTrieNodeReader reader = new(state.State.Reader);
         await using SparseTrieWorker worker = CreateWorker();
 
-        await using (SparseTrieBlockHandle poisoned = worker.BeginBlock(
+        await using (SparseTrieBlockHandle first = worker.BeginBlock(
             state.State.ParentRoot,
             reader))
         {
             ValueHash256 slotPath = default;
             StorageTree.ComputeKeyWithLookup(state.ChangedSlot, ref slotPath);
             Assert.That(
-                poisoned.TryEnqueueStorageTouch(
+                first.TryEnqueueStorageTouch(
                     state.Address.ToAccountPath.ToCommitment(),
                     state.ParentStorageRoot,
                     slotPath),
                 Is.True);
-            Assert.That(reader.WaitForStorageRead(TimeSpan.FromSeconds(5)), Is.True);
-
-            Func<Task> finish = async () => await poisoned.FinishAsync(
-                new SparseTrieFinalState([], []));
-            Assert.ThrowsAsync<InvalidOperationException>(finish);
-            await poisoned.AbortAsync();
+            SparseTrieFinalState finalState = new([], []);
+            Assert.That(await first.PrepareFinalAsync(finalState), Is.False);
+            SparseTrieBlockResult firstResult = await first.FinishAsync(finalState);
+            await first.PrepareCommitAsync();
+            await first.AcceptAsync();
+            Assert.That(firstResult.StateRoot, Is.EqualTo(state.State.ParentRoot));
+            Assert.That(reader.WaitForStorageRead(TimeSpan.Zero), Is.False);
         }
 
         await using SparseTrieBlockHandle recovered = worker.BeginBlock(
@@ -1049,6 +1602,40 @@ public class SparseTrieTaskTests
 
     private static SparseTrieWorker CreateWorker() =>
         new(LimboLogs.Instance.GetClassLogger<SparseTrieTaskTests>(), CancellationToken.None);
+
+    private static bool ProofsOverlap(
+        IReadOnlyList<WarmedTrieNode> first,
+        IReadOnlyList<WarmedTrieNode> second)
+    {
+        for (int i = 0; i < first.Count; i++)
+        {
+            for (int j = 0; j < second.Count; j++)
+            {
+                if (first[i].Path == second[j].Path)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void EnqueueStorageProofs(
+        SparseTrieBlockHandle block,
+        ValueHash256 accountPath,
+        Hash256 parentStorageRoot,
+        ValueHash256 slotPath,
+        IReadOnlyList<WarmedTrieNode> accountProof,
+        IReadOnlyList<WarmedTrieNode> storageProof)
+    {
+        Assert.That(block.TryEnqueueAccountTouch(accountPath, accountProof), Is.True);
+        Assert.That(
+            block.TryEnqueueStorageTouch(
+                accountPath.ToCommitment(),
+                parentStorageRoot,
+                slotPath,
+                storageProof),
+            Is.True);
+    }
 
     public enum PendingFinalStorageChange
     {
@@ -1102,6 +1689,29 @@ public class SparseTrieTaskTests
             Address address = Address.FromNumber(in addressNumber);
             addresses[i] = address;
             Account account = new((ulong)i, (UInt256)(1_000 + i));
+            stateTree.Set(address.ToAccountPath.Bytes, AccountDecoder.Instance.Encode(account).Bytes);
+        }
+
+        stateTree.UpdateRootHash();
+        stateTree.Commit();
+        return new TestState(
+            store,
+            stateTree,
+            addresses,
+            stateTree.RootHash,
+            new HalfPathTrieNodeReader(new NodeStorage(db)));
+    }
+
+    private static TestState BuildState(IReadOnlyList<(Address Address, Account Account)> accounts)
+    {
+        MemDb db = new();
+        RawTrieStore store = new(db);
+        PatriciaTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
+        Address[] addresses = new Address[accounts.Count];
+        for (int i = 0; i < accounts.Count; i++)
+        {
+            (Address address, Account account) = accounts[i];
+            addresses[i] = address;
             stateTree.Set(address.ToAccountPath.Bytes, AccountDecoder.Instance.Encode(account).Bytes);
         }
 
@@ -1199,9 +1809,11 @@ public class SparseTrieTaskTests
             new HalfPathTrieNodeReader(new NodeStorage(db)));
     }
 
-    private static Hash256 ApplyAccount(PatriciaTree tree, Address address, Account account)
+    private static Hash256 ApplyAccount(PatriciaTree tree, Address address, Account? account)
     {
-        tree.Set(address.ToAccountPath.Bytes, AccountDecoder.Instance.Encode(account).Bytes);
+        tree.Set(
+            address.ToAccountPath.Bytes,
+            account is null ? [] : AccountDecoder.Instance.Encode(account).Bytes);
         tree.UpdateRootHash();
         tree.Commit();
         return tree.RootHash;
@@ -1252,15 +1864,20 @@ public class SparseTrieTaskTests
 
     private class CountingTrieNodeReader(ITrieNodeReader inner) : ITrieNodeReader, IDisposable
     {
+        private int _stateLoads;
         private int _storageLoads;
 
+        public int StateLoads => Volatile.Read(ref _stateLoads);
         public int StorageLoads => Volatile.Read(ref _storageLoads);
 
         public virtual byte[] LoadStateRlp(
             in TreePath path,
             Hash256 hash,
-            ReadFlags flags = ReadFlags.None) =>
-            inner.LoadStateRlp(path, hash, flags);
+            ReadFlags flags = ReadFlags.None)
+        {
+            Interlocked.Increment(ref _stateLoads);
+            return inner.LoadStateRlp(path, hash, flags);
+        }
 
         public virtual byte[] LoadStorageRlp(
             Hash256 accountPathHash,

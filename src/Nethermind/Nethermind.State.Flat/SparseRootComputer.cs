@@ -90,14 +90,40 @@ public sealed class SparseRootComputer : IDisposable
         SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
         if (storageTrie.Subtrie.IsEmpty && previousStorageRoot != Keccak.EmptyTreeHash)
         {
+            long proofStartedAt = Stopwatch.GetTimestamp();
             byte[] rootRlp = _reader.LoadStorageRlp(
                 accountPathHash,
                 TreePath.Empty,
                 previousStorageRoot);
             storageTrie.RevealNodes([MultiProofReader.DecodeProofNode(rootRlp, TreePath.Empty)]);
+            LastProofReadMs += ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt);
+            LastProofNodeCount++;
         }
 
         ApplyStorageLeaves(storageTrie, accountPathHash, previousStorageRoot, updates);
+    }
+
+    /// <summary>
+    /// Applies only storage updates whose paths are already revealed. Proof-dependent updates
+    /// remain in <paramref name="updates"/> and no trie-node reader calls are made.
+    /// </summary>
+    internal int DrainApplicableStorageChanges(
+        Hash256 accountPathHash,
+        Hash256 previousStorageRoot,
+        Dictionary<ValueHash256, LeafUpdate> updates)
+    {
+        if (updates.Count == 0)
+            return 0;
+
+        SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
+        if (storageTrie.Subtrie.IsEmpty && previousStorageRoot != Keccak.EmptyTreeHash)
+            return 0;
+
+        int previousCount = updates.Count;
+        long startedAt = Stopwatch.GetTimestamp();
+        _trie.DrainApplicableStorageLeaves(accountPathHash, updates, proofRequired: null);
+        LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        return previousCount - updates.Count;
     }
 
     private SparsePatriciaTree GetStorageTrie(Hash256 accountPathHash, Hash256 previousStorageRoot)
@@ -121,50 +147,28 @@ public sealed class SparseRootComputer : IDisposable
         return storageTrie;
     }
 
-    internal void RevealAccountProof(ValueHash256 accountPath, IReadOnlyList<WarmedTrieNode> nodes) =>
-        RevealWarmedPath(_trie.AccountTrie, accountPath, nodes);
+    internal void RevealAccountProofBatch(IReadOnlyList<WarmedTrieNode> nodes) =>
+        RevealWitness(_trie.AccountTrie, nodes);
 
-    internal void RevealStorageProof(
+    internal void RevealStorageProofBatch(
         Hash256 accountPathHash,
         Hash256 previousStorageRoot,
-        ValueHash256 slotPath,
         IReadOnlyList<WarmedTrieNode> nodes)
     {
         SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
-        RevealWarmedPath(storageTrie, slotPath, nodes);
+        RevealWitness(storageTrie, nodes);
     }
 
-    private void RevealWarmedPath(
+    private void RevealWitness(
         SparsePatriciaTree trie,
-        ValueHash256 target,
         IReadOnlyList<WarmedTrieNode> nodes)
     {
         if (nodes.Count == 0)
             return;
 
-        int start = 0;
-        if (!trie.Subtrie.IsEmpty)
-        {
-            Span<byte> nibbles = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(target.Bytes, nibbles);
-            if (!trie.Subtrie.TryFindBlindedEntryOnPath(
-                    nibbles,
-                    out TreePath blindedPath,
-                    out RlpNode _,
-                    out int _))
-            {
-                return;
-            }
-
-            while (start < nodes.Count && nodes[start].Path != blindedPath)
-                start++;
-            if (start == nodes.Count)
-                return;
-        }
-
         long startedAt = Stopwatch.GetTimestamp();
-        List<ProofNode> decoded = new(nodes.Count - start);
-        for (int i = start; i < nodes.Count; i++)
+        List<ProofNode> decoded = new(nodes.Count);
+        for (int i = 0; i < nodes.Count; i++)
         {
             WarmedTrieNode node = nodes[i];
             decoded.Add(MultiProofReader.DecodeProofNode(node.Rlp, node.Path));
@@ -203,6 +207,8 @@ public sealed class SparseRootComputer : IDisposable
         {
             for (int retry = 0; retry < MaxTriePathRetries; retry++)
             {
+                if (retry != 0)
+                    LastRetryCount++;
                 List<(ValueHash256 Key, byte MinLength)> targets = new(
                     missCount < 0 ? updates.Count : missCount);
                 if (missCount < 0)
@@ -246,12 +252,17 @@ public sealed class SparseRootComputer : IDisposable
                     targets);
                 if (blinded.Count > 0)
                 {
+                    long proofStartedAt = Stopwatch.GetTimestamp();
                     DecodedMultiProof proof = MultiProofReader.ReadProofsFromBlinded(
                         _reader,
                         accountPathHash,
                         blinded);
+                    LastProofReadMs += ToMilliseconds(Stopwatch.GetTimestamp() - proofStartedAt);
                     if (proof.StorageNodes.TryGetValue(accountPathHash, out List<ProofNode>? nodes))
+                    {
                         storageTrie.RevealNodes(nodes);
+                        LastProofNodeCount += nodes.Count;
+                    }
                 }
 
                 missBuffer = CopyMisses(targets, missBuffer);
@@ -335,7 +346,8 @@ public sealed class SparseRootComputer : IDisposable
                 }
 
                 LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - updateStartedAt);
-                LastRetryCount = retry;
+                if (retry != 0)
+                    LastRetryCount++;
                 if (targets.Count == 0)
                     return;
 
@@ -382,6 +394,26 @@ public sealed class SparseRootComputer : IDisposable
             if (missBuffer is not null)
                 ArrayPool<ValueHash256>.Shared.Return(missBuffer);
         }
+    }
+
+    /// <summary>
+    /// Applies only account updates whose paths are already revealed. Proof-dependent updates
+    /// remain in <paramref name="updates"/> and no trie-node reader calls are made.
+    /// </summary>
+    internal int DrainApplicableAccountChanges(Dictionary<ValueHash256, LeafUpdate> updates)
+    {
+        if (updates.Count == 0)
+            return 0;
+
+        SparsePatriciaTree accountTrie = _trie.AccountTrie;
+        if (accountTrie.Subtrie.IsEmpty && _previousStateRoot != Keccak.EmptyTreeHash)
+            return 0;
+
+        int previousCount = updates.Count;
+        long startedAt = Stopwatch.GetTimestamp();
+        _trie.DrainApplicableAccountLeaves(updates, proofRequired: null);
+        LastUpdateLeavesMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
+        return previousCount - updates.Count;
     }
 
     internal Hash256 ComputeAppliedStateRoot()

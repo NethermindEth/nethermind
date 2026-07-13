@@ -328,12 +328,41 @@ public static class Metrics
     public static long SparseFailures { get; set; }
 
     [CounterMetric]
-    [Description("Sparse: proof nodes read from the backend during root computation")]
+    [Description("Sparse: proof nodes decoded from TrieWarmer and residual backend proofs")]
     public static long SparseProofNodesRead { get; set; }
 
     [CounterMetric]
     [Description("Sparse: reveal-update-retry iterations beyond the first (blinded-node misses)")]
     public static long SparseProofRetries { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: final leaves processed by synchronous residual proof fallback")]
+    public static long SparseResidualProofFallbacks { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: blocks with leaves still proof-dependent after final TrieWarmer proof drain")]
+    public static long SparseResidualProofBlocks { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: account leaves resolved by the final synchronous proof fallback")]
+    public static long SparseResidualAccountLeaves { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: storage leaves resolved by the final synchronous proof fallback")]
+    public static long SparseResidualStorageLeaves { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: parent-state backend node loads used by residual proof fallback")]
+    public static long SparseBackendProofReads { get; set; }
+
+    [CounterMetric]
+    [Description("Sparse: storage roots computed by the background worker before finalization")]
+    public static long SparsePrecomputedStorageRoots { get; set; }
+
+    [DetailedMetric]
+    [Description("Sparse: foreground time resolving residual proofs from the parent state")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver SparseResidualProofTime { get; set; } = new NoopMetricObserver();
 
     [DetailedMetric]
     [Description("Sparse: foreground time waiting for final worker reconciliation")]

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -15,6 +16,10 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class ParentStateTrieNodeReader(SnapshotBundle snapshotBundle) : ITrieNodeReader
 {
+    private long _backendLoads;
+
+    internal long BackendLoads => Interlocked.Read(ref _backendLoads);
+
     public byte[] LoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (snapshotBundle.TryFindCommittedStateNode(path, hash, out TrieNode? found))
@@ -47,6 +52,7 @@ public sealed class ParentStateTrieNodeReader(SnapshotBundle snapshotBundle) : I
 
     private byte[] LoadFromPersistence(in TreePath path, Hash256 hash, ReadFlags flags, Hash256? address)
     {
+        Interlocked.Increment(ref _backendLoads);
         byte[] rlp = (address is null
             ? snapshotBundle.TryLoadCommittedStateRlp(path, hash, flags)
             : snapshotBundle.TryLoadCommittedStorageRlp(address, path, hash, flags))
