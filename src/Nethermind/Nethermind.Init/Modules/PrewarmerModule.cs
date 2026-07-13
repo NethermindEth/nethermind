@@ -47,10 +47,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
 
-                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
-                // These are the actual decorated component that provide cached result
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state

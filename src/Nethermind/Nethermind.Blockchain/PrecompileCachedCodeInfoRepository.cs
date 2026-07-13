@@ -68,7 +68,6 @@ public class PrecompileCachedCodeInfoRepository(
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> blockCache,
         ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> survivingCache) : IPrecompile
     {
-        // Gas admits ~100KB hash inputs, so the surviving tier is bounded in bytes as well as entries.
         private const int MaxSurvivingEntryBytes = 2048;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
