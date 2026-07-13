@@ -95,6 +95,40 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             [],
             ExpectedSuccess: true, ExpectedSpentGas: 22_490, ExpectedBlockRegularGas: 28_112, ExpectedBlockStateGas: 0);
 
+        // Tx gas above the EIP-7825 cap seeds the reservoir (R0 > 0): the SSTORE state charge
+        // is reservoir-funded, no spill.
+        yield return new Scenario(
+            "reservoir_funded_sstore",
+            20_000_000,
+            Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            [],
+            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockRegularGas: 28_006, ExpectedBlockStateGas: 97_920);
+
+        // R0 sized below one STORAGE_SET: the charge drains the reservoir and spills the rest.
+        yield return new Scenario(
+            "reservoir_boundary_partial_spill",
+            16_842_216,
+            Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            [],
+            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockRegularGas: 28_006, ExpectedBlockStateGas: 97_920);
+
+        // Child halt then top-level halt with R0 > 0: the initial reservoir survives both
+        // halts and is refunded (spent = gasLimit - R0).
+        {
+            byte[] pCode = Prepare.EvmCode
+                .PushData(1).PushData(0).Op(Instruction.SSTORE)
+                .Op(Instruction.INVALID).Done;
+            byte[] aCode = Prepare.EvmCode
+                .Call(P, 400_000).Op(Instruction.POP)
+                .Op(Instruction.INVALID).Done;
+            yield return new Scenario(
+                "reservoir_restored_on_top_halt",
+                20_000_000,
+                aCode,
+                [new ContractDef(P, 0, pCode)],
+                ExpectedSuccess: false, ExpectedSpentGas: 16_777_216, ExpectedBlockRegularGas: 16_777_216, ExpectedBlockStateGas: 0);
+        }
+
         // Cross-frame refund advance fully discharged against the setter's usage: A sets a
         // slot, M re-enters A to clear it, all frames succeed.
         {
