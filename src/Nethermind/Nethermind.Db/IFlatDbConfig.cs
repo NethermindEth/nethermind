@@ -22,6 +22,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
     bool EnablePreimageRecording { get; set; }
 
+    [ConfigItem(Description = "Store snapshot storage-trie-node RLP in pooled pinned byte slabs referenced by blittable handles instead of TrieNode objects; reads decode transient nodes. Removes the storage-node object graphs from the in-memory write buffer, replacing them with packed bytes and exact byte accounting. State-trie nodes are unaffected. Experimental.", DefaultValue = "false")]
+    bool FlatNodeStorage { get; set; }
+
+    [ConfigItem(Description = "Slab-storage debug checks: poison-on-release and keccak-verify-on-decode. Test/soak only.", DefaultValue = "false")]
+    bool FlatNodeStorageDebugChecks { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

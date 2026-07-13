@@ -84,13 +84,13 @@ internal sealed class StorageTrieStoreAdapter(
         Hash256AsKey addressHash,
         ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
     {
-        private readonly AddressStorageNodeDictionary.AddressNodes _nodes = bundle.GetStorageNodeDestination(addressHash);
+        private readonly SnapshotBundle.StorageNodeDestination _nodes = bundle.GetStorageNodeDestination(addressHash);
 
         protected override void WriteNode(in TreePath path, TrieNode node) =>
-            bundle.SetStorageNode(_nodes, addressHash, path, node);
+            bundle.SetStorageNode(in _nodes, addressHash, path, node);
 
         protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
-            bundle.PublishStorageNodes(_nodes, addressHash, buffers);
+            bundle.PublishStorageNodes(in _nodes, addressHash, buffers);
     }
 }
 

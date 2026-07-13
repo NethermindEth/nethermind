@@ -160,7 +160,7 @@ public class SnapshotCompactor(
             compactTask.Add(Task.Run(() => MergeInto(
                 content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes, null)));
             compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
+                content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodesForMerge, nodeKeep)));
 
             content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
 

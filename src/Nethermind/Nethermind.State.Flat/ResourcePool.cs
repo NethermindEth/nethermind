@@ -22,30 +22,33 @@ public class ResourcePool : IResourcePool
     {
         flatConfig.ValidateCompactSize();
 
+        bool flat = flatConfig.FlatNodeStorage;
+        SlabArena.DebugChecks = flatConfig.FlatNodeStorageDebugChecks;
+
         _categories = new()
         {
             // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2) },
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2, flat) },
 
             // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
-            { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
+            { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1, flat) },
 
             // Note: prewarmer use readonly processing env
             // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
-            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
+            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4, flat) },
 
             // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
-            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
-            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
-            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
-            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
-            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
-            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
-            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
-            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
-            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
-            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
-            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
+            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1, flat) },
+            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1, flat) },
+            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1, flat) },
+            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1, flat) },
+            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1, flat) },
+            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1, flat) },
+            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1, flat) },
+            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1, flat) },
+            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1, flat) },
+            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1, flat) },
+            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1, flat) },
         };
     }
 
@@ -125,7 +128,7 @@ public class ResourcePool : IResourcePool
 
     }
 
-    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize, bool flatNodeStorage = false)
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
@@ -145,7 +148,7 @@ public class ResourcePool : IResourcePool
             }
 
             Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
-            return new SnapshotContent();
+            return new SnapshotContent(flatNodeStorage);
         }
 
         public void ReturnSnapshotContent(SnapshotContent snapshotContent)

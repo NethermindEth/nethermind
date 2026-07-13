@@ -524,25 +524,33 @@ public class PersistenceManager(
             }
 
             long storageNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+            if (snapshot.StorageNodesAreFlat)
             {
-                (Hash256 address, TreePath path) = kvp.Key.Key;
-                TrieNode node = kvp.Value;
-
-                if (node.FullRlp.Length == 0)
+                // Flat storage nodes hold packed RLP; write the raw spans without decoding TrieNodes.
+                storageNodesSize = PersistFlatStorageNodes(snapshot, batch);
+            }
+            else
+            {
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
                 {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
+                    (Hash256 address, TreePath path) = kvp.Key.Key;
+                    TrieNode node = kvp.Value;
 
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
+                    if (node.FullRlp.Length == 0)
+                    {
+                        // TODO: Need to double check this case. Does it need a rewrite or not?
+                        if (node.NodeType == NodeType.Unknown)
+                        {
+                            continue;
+                        }
+                    }
+
+                    storageNodesSize += node.FullRlp.Length;
+                    // Note: Even if the node already marked as persisted, we still re-persist it
+                    batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
+                    node.IsPersisted = true;
+                    node.PrunePersistedRecursively(1);
+                }
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
@@ -550,6 +558,20 @@ public class PersistenceManager(
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
+    }
+
+    private static long PersistFlatStorageNodes(Snapshot snapshot, IPersistence.IWriteBatch batch)
+    {
+        long storageNodesSize = 0;
+        snapshot.ForEachStorageNodeRlp((in HashedKey<(Hash256, TreePath)> key, bool emptyUnknown, ReadOnlySpan<byte> rlp) =>
+        {
+            // Mirror the object path: an empty-RLP Unknown node is not written.
+            if (rlp.Length == 0 && emptyUnknown) return;
+            (Hash256 address, TreePath path) = key.Key;
+            storageNodesSize += rlp.Length;
+            batch.SetStorageTrieNode(address, path, rlp);
+        });
+        return storageNodesSize;
     }
 
     internal void PersistPersistedSnapshot(PersistedSnapshot snapshot)

@@ -33,7 +33,11 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    // The object-backed tier is always present; when _flatNodeStorage is set the slab-backed tier is
+    // used instead and _changedStorageNodes stays an empty, unused reference.
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
+    private FlatAddressStorageNodeDictionary? _changedFlatStorageNodes;
+    private bool _flatNodeStorage;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
@@ -85,6 +89,8 @@ public sealed class SnapshotBundle : IDisposable
         _changedAccounts = _currentPooledContent.Accounts;
         _changedSlots = _currentPooledContent.Storages;
         _changedStorageNodes = _currentPooledContent.StorageNodes;
+        _changedFlatStorageNodes = _currentPooledContent.FlatStorageNodes;
+        _flatNodeStorage = _currentPooledContent.StorageNodesAreFlat;
         _changedStateNodes = _currentPooledContent.StateNodes;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
     }
@@ -310,7 +316,7 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
-        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
+        if (_trieChanged && TryGetChangedStorageNode(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -328,6 +334,11 @@ public sealed class SnapshotBundle : IDisposable
 
         return node;
     }
+
+    private bool TryGetChangedStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node) =>
+        _flatNodeStorage
+            ? _changedFlatStorageNodes!.TryGetValue(key, out node)
+            : _changedStorageNodes.TryGetValue(key, out node);
 
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
@@ -430,8 +441,45 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
-        _changedStorageNodes.GetOrAddAddress(address);
+    /// <summary>
+    /// A per-address storage-node write target captured once per storage-trie commit. Holds the
+    /// object-backed or slab-backed inner store, whichever is live, so the per-node write path stays a
+    /// direct concrete call rather than an interface dispatch on the default (object-backed) path.
+    /// </summary>
+    internal readonly struct StorageNodeDestination
+    {
+        private readonly AddressStorageNodeDictionary.AddressNodes? _nodes;
+        private readonly FlatAddressStorageNodeDictionary.FlatAddressNodes? _flat;
+
+        internal StorageNodeDestination(AddressStorageNodeDictionary.AddressNodes nodes)
+        {
+            _nodes = nodes;
+            _flat = null;
+        }
+
+        internal StorageNodeDestination(FlatAddressStorageNodeDictionary.FlatAddressNodes flat)
+        {
+            _flat = flat;
+            _nodes = null;
+        }
+
+        internal void Set(in TreePath path, TrieNode node)
+        {
+            if (_flat is not null) _flat.Set(path, node);
+            else _nodes!.Set(path, node);
+        }
+
+        internal void EnsureAdditionalCapacity(int additionalCapacity)
+        {
+            if (_flat is not null) _flat.EnsureAdditionalCapacity(additionalCapacity);
+            else _nodes!.EnsureAdditionalCapacity(additionalCapacity);
+        }
+    }
+
+    internal StorageNodeDestination GetStorageNodeDestination(Hash256 address) =>
+        _flatNodeStorage
+            ? new StorageNodeDestination(_changedFlatStorageNodes!.GetOrAddAddress(address))
+            : new StorageNodeDestination(_changedStorageNodes.GetOrAddAddress(address));
 
     // This is called only during trie commit
     public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
@@ -441,7 +489,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     internal void SetStorageNode(
-        AddressStorageNodeDictionary.AddressNodes nodes,
+        in StorageNodeDestination nodes,
         Hash256 addr,
         in TreePath path,
         TrieNode newNode)
@@ -456,7 +504,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     internal void PublishStorageNodes(
-        AddressStorageNodeDictionary.AddressNodes nodes,
+        in StorageNodeDestination nodes,
         Hash256 address,
         IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
     {
@@ -511,7 +559,8 @@ public sealed class SnapshotBundle : IDisposable
 
         if (!isNewAccount)
         {
-            _changedStorageNodes.RemoveAddress(addressHash);
+            if (_flatNodeStorage) _changedFlatStorageNodes!.RemoveAddress(addressHash);
+            else _changedStorageNodes.RemoveAddress(addressHash);
 
             using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
@@ -655,6 +704,7 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _changedStorageNodes = null!;
+        _changedFlatStorageNodes = null;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);

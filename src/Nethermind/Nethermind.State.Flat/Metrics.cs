@@ -16,6 +16,14 @@ public static class Metrics
     public static long SnapshotBundleSize { get; set; }
 
     [GaugeMetric]
+    [Description("Pinned 1MiB storage-node-RLP slabs currently cached in the shared slab pool")]
+    public static long SlabPoolCachedSlabs { get; set; }
+
+    [CounterMetric]
+    [Description("Flat storage-node reads that turned into tier misses because the arena was released concurrently")]
+    public static long SlabReadGenerationMisses { get; set; }
+
+    [GaugeMetric]
     [Description("Number of persisted snapshots in the most recently assembled snapshot bundle")]
     public static long SnapshotBundlePersistedSnapshotSize { get; set; }
 
