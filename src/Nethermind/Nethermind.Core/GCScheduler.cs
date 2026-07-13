@@ -208,6 +208,9 @@ public sealed class GCScheduler
             return false;
         }
 
+        // [GCDIAG] one line per forced collection so run logs show cadence + gate decisions.
+        Console.WriteLine($"[GCDIAG] forced GC: gen={generation} mode={mode} blocking={blocking} compacting={compacting} downgraded={requestedBlocking && !blocking}");
+
         // Reset the block counter after GC
         _countToGC = MaxBlocksWithoutGC;
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
