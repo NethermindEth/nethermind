@@ -604,6 +604,41 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }
     }
 
+    [Test]
+    public void CachedPrecompile_OversizedEntry_IsNotCached()
+    {
+        int runCount = 0;
+        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
+        Address precompileAddress = Address.FromNumber(100);
+
+        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [precompileAddress] = new(cachingPrecompile)
+        }.ToFrozenDictionary();
+
+        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
+        precompileProvider.GetPrecompiles().Returns(precompiles);
+
+        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = CreateCache();
+
+        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
+        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
+
+        byte[] oversizedInput = new byte[4096];
+
+        codeInfo.Precompile!.Run(oversizedInput, Prague.Instance);
+        codeInfo.Precompile!.Run(oversizedInput, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2), "oversized entries must re-run instead of being retained");
+            Assert.That(cache.Count, Is.EqualTo(0), "entries above the byte cap must not be cached");
+        }
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;

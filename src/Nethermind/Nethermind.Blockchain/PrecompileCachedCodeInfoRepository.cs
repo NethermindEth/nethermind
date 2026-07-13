@@ -66,6 +66,10 @@ public class PrecompileCachedCodeInfoRepository(
         IPrecompile precompile,
         ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
     {
+        // Bounds retained bytes, not just entries: gas admits ~100KB hash inputs, which at full
+        // capacity would otherwise let the now-persistent cache grow to GB-class.
+        private const int MaxCachedEntryBytes = 2048;
+
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
@@ -81,6 +85,9 @@ public class PrecompileCachedCodeInfoRepository(
                 // no need to spend memory on caching invalid-length inputs
                 // it's fast to check and is the first verification done by a precompile
                 if (result is { IsError: true, Error: Errors.InvalidInputLength })
+                    return result;
+
+                if (effectiveInput.Length + (result.Data?.Length ?? 0) > MaxCachedEntryBytes)
                     return result;
 
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
