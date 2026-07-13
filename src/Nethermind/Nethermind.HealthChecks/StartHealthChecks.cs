@@ -19,8 +19,7 @@ namespace Nethermind.HealthChecks;
 /// <remarks>
 /// Depends on <see cref="EnsureDiskSpace"/> because the periodic <see cref="FreeDiskSpaceChecker"/> timer
 /// must not start — and potentially exit the process — until the blocking startup disk guard has finished.
-/// Also depends on <see cref="RegisterRpcModules"/> so it runs after <c>InitializePlugins</c> has completed
-/// (transitively).
+/// Also depends on <see cref="RegisterRpcModules"/> so it runs after plugin RPC modules have been registered.
 /// </remarks>
 [RunnerStepDependencies(typeof(RegisterRpcModules), typeof(EnsureDiskSpace))]
 public class StartHealthChecks(

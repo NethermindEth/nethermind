@@ -149,7 +149,7 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (snapshots[i].TryGetStateNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
                 return true;
             }
@@ -173,7 +173,7 @@ public sealed class ReadOnlySnapshotBundle(
         {
             if (snapshots[i].TryGetStorageNode(key, out node))
             {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
             }
@@ -190,7 +190,7 @@ public sealed class ReadOnlySnapshotBundle(
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
             return persistedRlp;
 
-        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
@@ -205,7 +205,7 @@ public sealed class ReadOnlySnapshotBundle(
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
             return persistedRlp;
 
-        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);

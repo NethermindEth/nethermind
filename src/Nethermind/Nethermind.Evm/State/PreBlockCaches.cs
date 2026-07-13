@@ -33,7 +33,7 @@ public class PreBlockCaches
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
+            () => { _precompileCache.NoLockClear(); return CacheType.None; }
         ];
     }
 
