@@ -365,13 +365,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> senderGroups = GroupTransactionsBySender(block);
+            // Group transactions by sender: an unsplit group warms sequentially so state changes
+            // (balance, storage) from tx[N] are visible to tx[N+1]; exceptionally heavy chains are
+            // split into independent parent-state jobs. Warming is speculative — canonical
+            // execution never consumes its writes — so the split only trades warm relevance for
+            // parallelism, never correctness.
+            using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> senderGroups =
+                GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
 
             try
             {
-                // Parallel across different senders, sequential within the same sender
+                // Parallel across jobs; sequential within an unsplit sender group
                 ParallelUnbalancedWork.For(
                     0,
                     senderGroups.Count,
@@ -382,17 +386,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
                         ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
 
-                        // Whole group already warmed speculatively — skip; leave the rest to the reactive pass.
-                        if (blockState.SpeculativelyWarmed is { } warmed)
-                        {
-                            if (AllSpeculativelyWarmed(txList, warmed))
-                            {
-                                Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersSkipped);
-                                return tupleState;
-                            }
-                            Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersWarmed);
-                        }
-
                         IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
                         try
                         {
@@ -400,7 +393,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                            // Sequential within the same sender-state changes propagate correctly
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
@@ -431,7 +423,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    internal static ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    internal static ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
@@ -455,11 +447,32 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> result = new(groups.Count);
         foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.Values)
         {
-            if (ShouldSplitGroup(group))
+            // The sender counters stay per original sender group; splitting below must not inflate them.
+            if (speculativelyWarmed is not null)
+            {
+                // Whole group already warmed speculatively — emit no jobs; leave the rest to the reactive pass.
+                if (AllSpeculativelyWarmed(group, speculativelyWarmed))
+                {
+                    Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersSkipped);
+                    group.Dispose();
+                    continue;
+                }
+                Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersWarmed);
+            }
+
+            // Splitting pays only when idle workers exist to absorb the singleton jobs; with one
+            // worker it just discards same-sender state propagation for nothing. Negative follows
+            // ParallelOptions.MaxDegreeOfParallelism semantics: unlimited.
+            if (maxWorkers is < 0 or >= 2 && ShouldSplitGroup(group))
             {
                 // A heavy chain warms slower than the main loop executes it; warm each tx in parallel from parent state instead.
                 foreach ((int Index, Transaction Tx) item in group.AsSpan())
                 {
+                    if (item.Tx.Hash is Hash256 hash && speculativelyWarmed?.Contains(hash) == true)
+                    {
+                        // Already warmed speculatively — a singleton job for it would do no work.
+                        continue;
+                    }
                     result.Add(new ArrayPoolList<(int, Transaction)>(1) { item });
                 }
                 group.Dispose();
@@ -494,7 +507,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         ulong totalGasLimit = 0;
         foreach ((int _, Transaction tx) in group.AsSpan())
         {
-            totalGasLimit += tx.GasLimit;
+            // Declared gas limits are unvalidated at prewarm time; saturate so an extreme
+            // payload cannot wrap the estimate and invert the split/hoist decision.
+            ulong sum = totalGasLimit + tx.GasLimit;
+            totalGasLimit = sum < totalGasLimit ? ulong.MaxValue : sum;
         }
 
         return totalGasLimit;

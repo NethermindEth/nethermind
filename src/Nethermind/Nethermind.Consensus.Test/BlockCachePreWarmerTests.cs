@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -33,6 +34,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
+using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
 namespace Nethermind.Consensus.Test;
 
@@ -565,7 +567,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(2));
@@ -580,21 +582,87 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    // The split threshold is strictly greater-than 4,000,000 aggregate declared gas.
+    [TestCase(1_900_000u, 1)]
+    [TestCase(2_000_000u, 1)]
+    [TestCase(2_000_001u, 2)]
+    [TestCase(3_000_000u, 2)]
+    public void GroupTransactionsBySender_SplitsOnlyAboveAggregateThreshold(uint gasPerTx, int expectedJobs)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: gasPerTx),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: gasPerTx)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(expectedJobs));
+            if (expectedJobs > 1)
+            {
+                foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+                {
+                    Assert.That(group.Count, Is.EqualTo(1), "a split group must warm per-tx");
+                }
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
     [Test]
-    public void GroupTransactionsBySender_SplitsHeavySameSenderGroup()
+    public void GroupTransactionsBySender_DoesNotSplitSingleHeavyTransaction()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(1), "there is nothing to parallelize within a single transaction");
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // Below two workers a split cannot add parallelism; it only discards same-sender state
+    // propagation. Negative means unlimited, matching ParallelOptions.MaxDegreeOfParallelism.
+    [TestCase(1, 1)]
+    [TestCase(2, 2)]
+    [TestCase(-1, 2)]
+    public void GroupTransactionsBySender_SplitsOnlyWithParallelWorkers(int maxWorkers, int expectedJobs)
     {
         Block block = Build.A.Block.WithTransactions(
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers);
         try
         {
-            Assert.That(groups.Count, Is.EqualTo(2), "a same-sender group above the split threshold must warm per-tx");
-            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
-            {
-                Assert.That(group.Count, Is.EqualTo(1));
-            }
+            Assert.That(groups.Count, Is.EqualTo(expectedJobs));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SaturatesAggregateGasInsteadOfWrapping()
+    {
+        // Without saturation these two declared limits sum to exactly 4,000,000 (mod 2^64),
+        // which is not above the threshold, and the wrap would suppress the split.
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: ulong.MaxValue),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 4_000_001)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2), "an extreme declared gas limit must saturate, not wrap, the aggregate");
         }
         finally
         {
@@ -611,13 +679,83 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(3));
             Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
             Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
             Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // Pins the current policy: split children below the individual hoist threshold are ordinary
+    // jobs and stay in block order rather than inheriting the parent group's weight.
+    [Test]
+    public void GroupTransactionsBySender_SplitChildrenBelowHoistThresholdKeepBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "the light sender at block index 0 warms first");
+            Assert.That(groups[1][0].Index, Is.EqualTo(1));
+            Assert.That(groups[2][0].Index, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // Asserts deltas on process-wide static counters; keep serialized in case assembly-level
+    // parallelism is ever enabled.
+    [Test]
+    [NonParallelizable]
+    public void GroupTransactionsBySender_CountsSendersOncePerOriginalGroupAndPrunesWarmedJobs()
+    {
+        Transaction[] heavyChain =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 2, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 3, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 4, gasLimit: 1_000_000),
+        ];
+        Transaction warmedLight = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions([.. heavyChain, warmedLight]).TestObject;
+
+        HashSet<Nethermind.Core.Crypto.Hash256> warmed =
+            [heavyChain[0].Hash!, heavyChain[1].Hash!, heavyChain[2].Hash!, warmedLight.Hash!];
+
+        long skippedBefore = PrewarmMetrics.MempoolPrewarmSendersSkipped;
+        long warmedBefore = PrewarmMetrics.MempoolPrewarmSendersWarmed;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups =
+            BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, warmed);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PrewarmMetrics.MempoolPrewarmSendersSkipped - skippedBefore, Is.EqualTo(1),
+                    "the fully warmed sender counts once");
+                Assert.That(PrewarmMetrics.MempoolPrewarmSendersWarmed - warmedBefore, Is.EqualTo(1),
+                    "the partially warmed sender counts once despite splitting into several jobs");
+                Assert.That(groups.Count, Is.EqualTo(2), "already-warmed split children are pruned");
+            }
+            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+            {
+                Assert.That(group[0].Index, Is.InRange(3, 4), "only the unwarmed tail of the chain remains");
+            }
         }
         finally
         {
