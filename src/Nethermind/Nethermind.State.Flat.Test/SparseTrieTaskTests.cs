@@ -901,8 +901,10 @@ public class SparseTrieTaskTests
         }
     }
 
-    [Test]
-    public async Task ResidualStorageFallback_ForThreeSnapshotBackedAccounts_MatchesPatricia()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SnapshotBackedStorageUpdates_ForThreeAccounts_MatchPatricia(
+        bool publishBeforeFinal)
     {
         const int contractCount = 3;
         MultiContractTestState state = BuildMultiContractState(contractCount, slotsPerContract: 4);
@@ -921,6 +923,8 @@ public class SparseTrieTaskTests
 
         List<SparseTrieFinalStorageBatch> finalStorage = new(contractCount);
         List<SparseTrieFinalAccount> finalAccounts = new(contractCount);
+        List<SparseTrieStorageDelta> storageDeltas = new(contractCount);
+        List<SparseTrieAccountDelta> accountDeltas = new(contractCount);
         Dictionary<AddressAsKey, Hash256> expectedStorageRoots = new(
             contractCount,
             AddressAsKey.EqualityComparer);
@@ -945,6 +949,12 @@ public class SparseTrieTaskTests
                 Clear: false,
                 [new SparseTrieFinalSlot(slot, finalValue)]));
             finalAccounts.Add(new SparseTrieFinalAccount(contract.Address, contract.Account));
+            storageDeltas.Add(new SparseTrieStorageDelta(
+                contract.Address,
+                contract.StorageRoot,
+                slot,
+                finalValue));
+            accountDeltas.Add(new SparseTrieAccountDelta(contract.Address, contract.Account));
         }
 
         state.StateTree.UpdateRootHash();
@@ -954,7 +964,19 @@ public class SparseTrieTaskTests
 
         await using SparseTrieWorker worker = CreateWorker();
         await using SparseTrieBlockHandle block = worker.BeginBlock(state.StateRoot, bundle);
-        Assert.That(await block.PrepareFinalAsync(finalState), Is.True);
+        if (publishBeforeFinal)
+        {
+            block.EnqueueDelta(new SparseTriePhaseDelta(accountDeltas, storageDeltas));
+            Assert.That(
+                SpinWait.SpinUntil(
+                    () => persistenceReader.StateLoads > 0 &&
+                        persistenceReader.StorageLoads >= contractCount,
+                    TimeSpan.FromSeconds(5)),
+                Is.True,
+                "worker-idle exact proofs did not complete");
+        }
+
+        Assert.That(await block.PrepareFinalAsync(finalState), Is.EqualTo(!publishBeforeFinal));
         SparseTrieBlockResult result = await block.FinishAsync(finalState);
 
         using (Assert.EnterMultipleScope())

@@ -326,7 +326,11 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
                     continueProcessing = TryProcessSpeculativeTouches();
                     if (!continueProcessing && !_commands.Reader.TryPeek(out _))
+                        continueProcessing = TryApplyPendingStorageUpdate();
+                    if (!continueProcessing && !_commands.Reader.TryPeek(out _))
                         continueProcessing = TryPrecomputeStorageRoot();
+                    if (!continueProcessing && !_commands.Reader.TryPeek(out _))
+                        continueProcessing = TryApplyPendingAccountUpdates();
                 } while (continueProcessing || _commands.Reader.TryPeek(out _));
             }
         }
@@ -920,6 +924,96 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         {
             remaining--;
         }
+    }
+
+    private bool TryApplyPendingStorageUpdate()
+    {
+        WorkerSession? session = _activeSession;
+        if (session is null ||
+            session.Bundle is null ||
+            session.FinishRequested ||
+            session.Error is not null ||
+            session.FinalPreparationRequested ||
+            session.PendingStorageAccounts.Count == 0)
+        {
+            return false;
+        }
+
+        Hash256? accountHash = null;
+        foreach (Hash256 candidate in session.PendingStorageAccounts)
+        {
+            accountHash = candidate;
+            break;
+        }
+        if (accountHash is null)
+            return false;
+
+        PendingStorageUpdates storage = session.StorageUpdates[accountHash];
+        try
+        {
+            if (storage.Updates.Count != 0)
+            {
+                session.GetComputer().ApplyStorageChanges(
+                    accountHash,
+                    storage.ParentStorageRoot,
+                    storage.Updates);
+                foreach (KeyValuePair<ValueHash256, byte[]> value in storage.Values)
+                {
+                    storage.AppliedValues[value.Key] = value.Value;
+                    session.RequiredStorageProofs.Remove(
+                        (accountHash, storage.ParentStorageRoot, value.Key));
+                }
+                storage.Updates.Clear();
+                storage.Values.Clear();
+                session.PendingStorageRootComputations.Add(accountHash);
+            }
+            session.PendingStorageAccounts.Remove(accountHash);
+        }
+        catch (Exception exception)
+        {
+            session.Poison(exception);
+            if (_logger.IsWarn)
+                _logger.Warn($"Sparse trie worker session faulted: {exception.Message}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool TryApplyPendingAccountUpdates()
+    {
+        WorkerSession? session = _activeSession;
+        if (session is null ||
+            session.Bundle is null ||
+            session.FinishRequested ||
+            session.Error is not null ||
+            session.FinalPreparationRequested ||
+            session.PendingAccountUpdates.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            session.GetComputer().ApplyAccountChanges(session.PendingAccountUpdates);
+            foreach (KeyValuePair<ValueHash256, Account?> entry in session.PendingAccountValues)
+            {
+                session.AppliedAccountValues[entry.Key] = entry.Value;
+                session.RequiredAccountProofs.Remove(entry.Key);
+            }
+            session.PendingAccountUpdates.Clear();
+            session.PendingAccountValues.Clear();
+            session.AccountTrieUpdated = true;
+        }
+        catch (Exception exception)
+        {
+            session.Poison(exception);
+            if (_logger.IsWarn)
+                _logger.Warn($"Sparse trie worker session faulted: {exception.Message}");
+            return false;
+        }
+
+        return true;
     }
 
     private bool TryPrecomputeStorageRoot()
