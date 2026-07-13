@@ -1064,8 +1064,6 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_cap_cells_response_when_request_exceeds_response_hash_limit()
     {
-        // geth batches up to 128 hashes per GetCells; the excess must be left unanswered,
-        // not treated as a protocol violation.
         BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
         Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsResponseHashes * 2];
         for (int i = 0; i < hashes.Length; i++)
@@ -1089,6 +1087,33 @@ public class Eth72ProtocolHandlerTests
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
             m.RequestId == 1234 &&
             m.Hashes.Length == Eth72ProtocolHandler.MaxCellsResponseHashes));
+    }
+
+    [Test]
+    public void should_cap_cells_response_at_soft_byte_limit()
+    {
+        BlobCellMask requestedMask = BlobCellMask.Full;
+        Hash256 firstHash = HashFromInt(1);
+        Hash256 secondHash = HashFromInt(2);
+        byte[][] blobHashes = new byte[Eip7594Constants.MaxBlobsPerTx][];
+        Array.Fill(blobHashes, new byte[Hash256.Size]);
+        byte[][] cells = Enumerable.Range(0, BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx)
+            .Select(static _ => new byte[CkzgLib.Ckzg.BytesPerCell])
+            .ToArray();
+        Transaction firstTx = new() { Type = TxType.Blob, Hash = firstHash, BlobVersionedHashes = blobHashes };
+        Transaction secondTx = new() { Type = TxType.Blob, Hash = secondHash, BlobVersionedHashes = blobHashes };
+        SetupGetCellsResponse(firstTx, requestedMask, requestedMask, cells);
+        SetupGetCellsResponse(secondTx, requestedMask, requestedMask, cells);
+        using GetCellsMessage72 request = new(1234, [firstHash, secondHash], requestedMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth72MessageCode.GetCells);
+
+        _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
+            m.RequestId == request.RequestId &&
+            m.Hashes.SequenceEqual(new[] { firstHash }) &&
+            m.Cells.Length == 1));
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     [Test]

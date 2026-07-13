@@ -59,7 +59,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
-        if (cellsSequenceLength > Eth72ProtocolHandler.MinCellsResponseBytes)
+        if (cellsSequenceLength > Eth72ProtocolHandler.MaxCellsMessageBytes)
         {
             throw new RlpLimitException($"Too much cell data in {nameof(CellsMessage72)}: {cellsSequenceLength}.");
         }

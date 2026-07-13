@@ -63,9 +63,10 @@ public class Eth72ProtocolHandler(
     private const int MaxSentCellRequestWork = 2048;
     private const int CellServeBurstMultiplier = 8;
     private const int CellServeRefillDivisor = 4;
-    internal const int MaxCellsRequestHashes = 256;
-    internal const int MaxCellsResponseHashes = 64;
-    internal const int MinCellsResponseBytes = 10 * 1024 * 1024;
+    internal const int MaxCellsRequestHashes = 64;
+    internal const int MaxCellsResponseHashes = MaxCellsRequestHashes;
+    internal const int SoftCellsResponseBytes = 2 * 1024 * 1024;
+    internal const int MaxCellsMessageBytes = 10 * 1024 * 1024;
     private static readonly TimeSpan CellRequestTtl = Timeouts.Eth;
     private static readonly TimeSpan CellResponseCorrelationTtl = Timeouts.Cleanup;
     private static readonly TimeSpan PartialCellResponseBackoff = TimeSpan.FromSeconds(5);
@@ -83,7 +84,6 @@ public class Eth72ProtocolHandler(
     private readonly ConcurrentQueue<CellStateKey> _sentCellRequestOrder = new();
     private readonly Lock _cellStateLock = new();
     private readonly int _maxCellsPerTransaction = GetMaxCellsPerTransaction(specProvider);
-    private readonly int _maxCellsResponseBytes = GetMaxCellsResponseBytes(GetMaxCellsPerTransaction(specProvider));
     private readonly int _cellServeTokenCapacity = GetMaxCellsPerTransaction(specProvider) * CellServeBurstMultiplier;
     private static readonly byte[] EmptyCellMaskBytes = BlobCellMask.Empty.ToBytes();
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
@@ -534,7 +534,7 @@ public class Eth72ProtocolHandler(
 
             int nextHashesContentLength = hashesContentLength + Rlp.LengthOf(hash);
             int nextCellsContentLength = cellsContentLength + Rlp.LengthOf(cells);
-            if (EstimateCellsResponseLength(message.RequestId, nextHashesContentLength, nextCellsContentLength) > _maxCellsResponseBytes)
+            if (EstimateCellsResponseLength(message.RequestId, nextHashesContentLength, nextCellsContentLength) > SoftCellsResponseBytes)
             {
                 break;
             }
@@ -1360,13 +1360,6 @@ public class Eth72ProtocolHandler(
         }
 
         return (int)Math.Min((ulong)int.MaxValue, maxBlobsPerTx * (ulong)BlobCellMask.CellCount);
-    }
-
-    private static int GetMaxCellsResponseBytes(int maxCellsPerTransaction)
-    {
-        long fullTransactionCellsBytes = (long)maxCellsPerTransaction * CkzgLib.Ckzg.BytesPerCell;
-        long maxResponseBytes = Math.Max(MinCellsResponseBytes, fullTransactionCellsBytes);
-        return (int)Math.Min(int.MaxValue, maxResponseBytes);
     }
 
     private int GetExpectedCellsResponseBound(long requestId, BlobCellMask requestMask)

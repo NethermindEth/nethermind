@@ -234,12 +234,30 @@ public class Eth72MessageSerializerTests
     }
 
     [Test]
-    public void GetCellsMessageSerializer_should_accept_geth_sized_request_batches()
+    public void CellsMessageSerializer_should_accept_message_above_soft_response_limit()
     {
-        // geth batches up to 128 hashes per GetCells request; decoding must not treat
-        // requests above our own response cap as a protocol violation.
+        CellsMessageSerializer72 serializer = new();
+        byte[][] cells = new byte[BlobCellMask.CellCount * Eip7594Constants.MaxBlobsPerTx][];
+        Array.Fill(cells, CreateCell(1));
+        using CellsMessage72 message = new(
+            1,
+            [Hash256.Zero, Hash256.Zero],
+            [cells, cells],
+            BlobCellMask.Full.ToBytes());
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(buffer.ReadableBytes, Is.GreaterThan(Eth72ProtocolHandler.SoftCellsResponseBytes));
+        using CellsMessage72 deserialized = serializer.Deserialize(buffer);
+        Assert.That(deserialized.Hashes, Has.Length.EqualTo(2));
+    }
+
+    [Test]
+    public void GetCellsMessageSerializer_should_accept_soft_limit_request_batch()
+    {
         GetCellsMessageSerializer72 serializer = new();
-        Hash256[] hashes = new Hash256[2 * Eth72ProtocolHandler.MaxCellsResponseHashes];
+        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsRequestHashes];
         Array.Fill(hashes, Hash256.Zero);
         using GetCellsMessage72 message = new(hashes, BlobCellMask.FromIndices([1]).ToBytes());
 
