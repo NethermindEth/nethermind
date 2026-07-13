@@ -116,6 +116,12 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
         remove => _inner.BlockProcessing -= value;
     }
 
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted
+    {
+        add => _inner.BranchProcessingCompleted += value;
+        remove => _inner.BranchProcessingCompleted -= value;
+    }
+
     public void Dispose()
     {
         _inner.BlockProcessing -= OnBlockProcessing;
