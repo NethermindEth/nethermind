@@ -169,8 +169,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
         bool proofAdded = session.HintedAccountProofs.TryAdd(accountPath, 0);
         if (proofAdded)
             session.PendingAccountProofs.Enqueue(new AccountProof(accountPath, proof));
-        bool touchAdded = TryAddPendingAccountTouch(session, accountPath);
-        if (!proofAdded && !touchAdded)
+        session.HintedAccounts.TryAdd(accountPath, 0);
+        if (!proofAdded)
             return true;
 
         return TryQueueAccountTouches(session);
@@ -227,14 +227,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 new StorageProof(accountHash, parentStorageRoot, slotPath, proof));
         }
 
-        bool touchAdded = session.HintedStorage.TryAdd(key, 0);
-        if (touchAdded)
-        {
-            session.PendingStorageTouches.Enqueue(
-                new StorageTouch(accountHash, parentStorageRoot, slotPath));
-        }
-
-        if (!proofAdded && !touchAdded)
+        session.HintedStorage.TryAdd(key, 0);
+        if (!proofAdded)
             return true;
 
         return TryQueueStorageTouches(session);
