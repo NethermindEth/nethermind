@@ -466,6 +466,96 @@ public class SparsePatriciaTreeTests
     }
 
     [Test]
+    public void DrainApplicableLeaves_MixedHitAndMiss_DrainsOnlyHit()
+    {
+        MemDb db = new();
+        PatriciaTree tree = new(new RawTrieStore(db).GetTrieStore(null), LimboLogs.Instance);
+        for (int i = 0; i < 10; i++)
+            tree.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+        tree.Commit();
+
+        byte[] changedValue = MakeValue(99);
+        Hash256 expectedRoot = PatriciaRootAfterOps(t =>
+        {
+            for (int i = 0; i < 10; i++)
+                t.Set(TestItem.Keccaks[i].Bytes, TestItem.GenerateIndexedAccountRlp(i));
+            t.Set(TestItem.Keccaks[0].Bytes, changedValue);
+        });
+
+        HalfPathTrieNodeReader reader = new(new NodeStorage(db));
+        DecodedMultiProof proof = MultiProofReader.ReadAccountProofs(reader, tree.RootHash, [TestItem.Keccaks[0]]);
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes(proof.AccountNodes);
+
+        Dictionary<ValueHash256, LeafUpdate> updates = new()
+        {
+            [TestItem.Keccaks[0]] = LeafUpdate.Changed(changedValue),
+            [TestItem.Keccaks[5]] = LeafUpdate.Changed(MakeValue(100)),
+        };
+        List<(ValueHash256 Key, byte MinLength)> proofRequests = [];
+
+        sparse.DrainApplicableLeaves(updates, (key, minLength) => proofRequests.Add((key, minLength)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updates, Has.Count.EqualTo(1));
+            Assert.That(updates.ContainsKey(TestItem.Keccaks[0]), Is.False);
+            Assert.That(updates.ContainsKey(TestItem.Keccaks[5]), Is.True);
+            Assert.That(proofRequests, Has.Count.EqualTo(1));
+            Assert.That(proofRequests[0].Key, Is.EqualTo(TestItem.Keccaks[5].ValueHash256));
+            Assert.That(proofRequests[0].MinLength, Is.LessThanOrEqualTo(64));
+            Assert.That(sparse.ComputeRoot(), Is.EqualTo(expectedRoot));
+        }
+    }
+
+    [Test]
+    public void DrainApplicableLeaves_NoChange_RemovesPendingUpdate()
+    {
+        ValueHash256 key = TestItem.KeccakA;
+        byte[] value = MakeValue(1);
+        using SparsePatriciaTree sparse = new();
+        sparse.UpdateLeaves(new() { [key] = LeafUpdate.Changed(value) }, null);
+        Hash256 root = sparse.ComputeRoot();
+
+        Dictionary<ValueHash256, LeafUpdate> updates = new() { [key] = LeafUpdate.Changed(value) };
+        List<ValueHash256> proofRequests = [];
+
+        sparse.DrainApplicableLeaves(updates, (proofKey, _) => proofRequests.Add(proofKey));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updates, Is.Empty);
+            Assert.That(proofRequests, Is.Empty);
+            Assert.That(sparse.ComputeRoot(), Is.EqualTo(root));
+        }
+    }
+
+    [Test]
+    public void DrainApplicableLeaves_EmptyTrie_DrainsApplicableUpdates()
+    {
+        ValueHash256 changedKey = TestItem.KeccakA;
+        byte[] value = MakeValue(1);
+        Hash256 expectedRoot = PatriciaRootAfterOps(t => t.Set(changedKey.Bytes, value));
+        Dictionary<ValueHash256, LeafUpdate> updates = new()
+        {
+            [changedKey] = LeafUpdate.Changed(value),
+            [TestItem.KeccakB] = LeafUpdate.Deleted(),
+            [TestItem.KeccakC] = LeafUpdate.Touched(),
+        };
+        List<ValueHash256> proofRequests = [];
+        using SparsePatriciaTree sparse = new();
+
+        sparse.DrainApplicableLeaves(updates, (key, _) => proofRequests.Add(key));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updates, Is.Empty);
+            Assert.That(proofRequests, Is.Empty);
+            Assert.That(sparse.ComputeRoot(), Is.EqualTo(expectedRoot));
+        }
+    }
+
+    [Test]
     public void RevealAndRetry_ProofThenUpdate()
     {
         // Build a trie, reveal subset, hit blinded, reveal more, retry succeeds
@@ -541,6 +631,62 @@ public class SparsePatriciaTreeTests
 
         sparse.UpdateLeaves(new() { [keyB] = LeafUpdate.Changed(valB2) }, null);
         Assert.That(sparse.ComputeRoot(), Is.EqualTo(patriciaRoot));
+    }
+
+    [TestCase(SparsePatriciaTree.ParallelHashDirtyLeafThreshold - 1, true)]
+    [TestCase(SparsePatriciaTree.ParallelHashDirtyLeafThreshold, true)]
+    [TestCase(SparsePatriciaTree.ParallelHashDirtyLeafThreshold, false)]
+    public void ComputeRoot_AroundParallelThreshold_MatchesPatricia(int leafCount, bool allowParallel)
+    {
+        (PatriciaTree patricia, _) = CreatePatriciaTree();
+        Dictionary<ValueHash256, LeafUpdate> updates = [];
+        for (int i = 0; i < leafCount; i++)
+        {
+            Hash256 key = MakeHash(i);
+            byte[] value = MakeValue(i);
+            patricia.Set(key.Bytes, value);
+            updates[key] = LeafUpdate.Changed(value);
+        }
+        patricia.UpdateRootHash();
+        patricia.Commit();
+
+        using SparsePatriciaTree sparse = new();
+        sparse.UpdateLeaves(updates, null);
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.EqualTo(leafCount));
+
+        Hash256 root = sparse.ComputeRoot(allowParallel);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(patricia.RootHash));
+            Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void DirtyLeafCount_TracksSplitAndCollapse()
+    {
+        Hash256 keyA = MakeHash(1);
+        Hash256 keyB = MakeHash(2);
+        byte[] valueA = MakeValue(1);
+        byte[] valueB = MakeValue(2);
+        Hash256 expectedRoot = PatriciaRootAfterOps(t => t.Set(keyA.Bytes, valueA));
+        using SparsePatriciaTree sparse = new();
+
+        sparse.UpdateLeaves(new() { [keyA] = LeafUpdate.Changed(valueA) }, null);
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.EqualTo(1));
+        sparse.ComputeRoot();
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.Zero);
+
+        sparse.UpdateLeaves(new() { [keyB] = LeafUpdate.Changed(valueB) }, null);
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.EqualTo(2));
+        sparse.ComputeRoot();
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.Zero);
+
+        sparse.UpdateLeaves(new() { [keyB] = LeafUpdate.Deleted() }, null);
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.EqualTo(1));
+        Assert.That(sparse.ComputeRoot(), Is.EqualTo(expectedRoot));
+        Assert.That(sparse.Subtrie.NumDirtyLeaves, Is.Zero);
     }
 
     #endregion

@@ -300,6 +300,7 @@ public sealed class SparseSubtrie : IDisposable
         byte[] truncatedKey = existingKey[(commonPrefixLength + 1)..];
         if (existing.IsLeaf())
         {
+            if (!existing.IsDirty()) NumDirtyLeaves++;
             existing.ShortKey = truncatedKey;
             existing.MarkDirty();
         }
@@ -369,6 +370,7 @@ public sealed class SparseSubtrie : IDisposable
             }
             newKey[pos++] = (byte)remainingNibble;
             childKey.CopyTo(newKey.AsSpan(pos));
+            if (_arena[childIdx].IsLeaf() && !_arena[childIdx].IsDirty()) NumDirtyLeaves++;
             _arena[childIdx].ShortKey = newKey;
             _arena[childIdx].MarkDirty();
             FreeNode(branchIdx);
@@ -676,13 +678,22 @@ public sealed class SparseSubtrie : IDisposable
     /// </param>
     public RlpNode UpdateCachedRlp(bool allowParallel = true)
     {
-        if (Root == -1) return RlpNode.FromRlp([0x80]);
-        if (_arena[Root].IsEmpty()) return RlpNode.FromRlp([0x80]);
-        if (allowParallel)
-            HashNodeRootParallel(Root);
+        RlpNode rootRlp;
+        if (Root == -1 || _arena[Root].IsEmpty())
+        {
+            rootRlp = RlpNode.FromRlp([0x80]);
+        }
         else
-            HashNode(Root);
-        return _arena[Root].CachedRlp;
+        {
+            if (allowParallel)
+                HashNodeRootParallel(Root);
+            else
+                HashNode(Root);
+            rootRlp = _arena[Root].CachedRlp;
+        }
+
+        NumDirtyLeaves = 0;
+        return rootRlp;
     }
 
     /// <summary>

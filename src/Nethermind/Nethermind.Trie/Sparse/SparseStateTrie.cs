@@ -82,6 +82,28 @@ public sealed class SparseStateTrie : IDisposable
         Action<ValueHash256, byte>? proofRequired) =>
         AccountTrie.UpdateLeaves(updates, proofRequired);
 
+    /// <summary>
+    /// Attempts each pending account update once and retains only updates blocked by blinded nodes.
+    /// </summary>
+    /// <param name="updates">Pending account updates.</param>
+    /// <param name="proofRequired">Optional callback for updates that need more proof nodes.</param>
+    internal void DrainApplicableAccountLeaves(
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired) =>
+        AccountTrie.DrainApplicableLeaves(updates, proofRequired);
+
+    /// <summary>
+    /// Attempts each pending storage update once and retains only updates blocked by blinded nodes.
+    /// </summary>
+    /// <param name="accountPathHash">Hashed account path identifying the storage trie.</param>
+    /// <param name="updates">Pending storage updates.</param>
+    /// <param name="proofRequired">Optional callback for updates that need more proof nodes.</param>
+    internal void DrainApplicableStorageLeaves(
+        Hash256 accountPathHash,
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired) =>
+        GetOrCreateStorageTrie(accountPathHash).DrainApplicableLeaves(updates, proofRequired);
+
     /// <summary>Applies only <paramref name="keysToApply"/> from <paramref name="updates"/> —
     /// used by the retry loop to re-process only the prior pass's blinded misses.</summary>
     public void UpdateAccountLeavesSubset(

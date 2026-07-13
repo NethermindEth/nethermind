@@ -16,6 +16,8 @@ namespace Nethermind.Trie.Sparse;
 /// </summary>
 public sealed class SparsePatriciaTree : IDisposable
 {
+    internal const int ParallelHashDirtyLeafThreshold = 64;
+
     private readonly SparseSubtrie _subtrie = new();
 
     public bool IsRevealed { get; private set; }
@@ -389,6 +391,58 @@ public sealed class SparsePatriciaTree : IDisposable
     }
 
     /// <summary>
+    /// Attempts each pending leaf update once, removing applied and no-op updates while retaining
+    /// updates that require additional proof nodes.
+    /// </summary>
+    /// <remarks>
+    /// The method operates only on the sparse trie's already revealed nodes and performs no I/O.
+    /// Pending keys are snapshotted and sorted before updates are removed from the dictionary.
+    /// </remarks>
+    /// <param name="updates">Pending updates. Only proof-dependent updates remain on return.</param>
+    /// <param name="proofRequired">
+    /// Optional callback receiving the key and minimum already-revealed path length for each
+    /// retained update.
+    /// </param>
+    internal void DrainApplicableLeaves(
+        Dictionary<ValueHash256, LeafUpdate> updates,
+        Action<ValueHash256, byte>? proofRequired)
+    {
+        int count = updates.Count;
+        if (count == 0) return;
+
+        ValueHash256[] keys = ArrayPool<ValueHash256>.Shared.Rent(count);
+        try
+        {
+            int i = 0;
+            foreach (ValueHash256 key in updates.Keys) keys[i++] = key;
+
+            Span<ValueHash256> sortedKeys = keys.AsSpan(0, count);
+            sortedKeys.Sort();
+
+            Span<byte> nibblePath = stackalloc byte[64];
+            for (int k = 0; k < sortedKeys.Length; k++)
+            {
+                ValueHash256 key = sortedKeys[k];
+                LeafUpdate update = updates[key];
+                SparseSubtrie.UpdateResult result = UpdateLeaf(key, update, nibblePath, out byte minLen);
+
+                if (result == SparseSubtrie.UpdateResult.NeedsProof)
+                {
+                    proofRequired?.Invoke(key, minLen);
+                }
+                else
+                {
+                    updates.Remove(key);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<ValueHash256>.Shared.Return(keys);
+        }
+    }
+
+    /// <summary>
     /// Applies only the given subset of keys from <paramref name="updates"/>. Used by the
     /// reveal-update-retry loop so each retry re-processes ONLY the keys that hit a blinded node
     /// last time (the misses), instead of re-sorting and re-walking the entire change set every
@@ -427,18 +481,29 @@ public sealed class SparsePatriciaTree : IDisposable
         {
             ValueHash256 key = keys[k];
             LeafUpdate update = updates[key];
-            Nibbles.BytesToNibbleBytes(key.Bytes, nibblePath);
-            SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
-                nibblePath, update, out TreePath proofTarget);
+            SparseSubtrie.UpdateResult result = UpdateLeaf(key, update, nibblePath, out byte minLen);
 
             if (result == SparseSubtrie.UpdateResult.NeedsProof)
             {
-                // depth walked through sparse trie before hitting blinded = totalNibbles - remainingPath.
-                // proofTarget is the REMAINING path (including the blinded nibble), so minLen = nibbles consumed.
-                int minLen = nibblePath.Length - proofTarget.Length;
-                proofRequired?.Invoke(key, (byte)Math.Min(minLen, byte.MaxValue));
+                proofRequired?.Invoke(key, minLen);
             }
         }
+    }
+
+    private SparseSubtrie.UpdateResult UpdateLeaf(
+        in ValueHash256 key,
+        LeafUpdate update,
+        Span<byte> nibblePath,
+        out byte minLen)
+    {
+        Nibbles.BytesToNibbleBytes(key.Bytes, nibblePath);
+        SparseSubtrie.UpdateResult result = _subtrie.UpdateSingleLeaf(
+            nibblePath, update, out TreePath proofTarget);
+
+        // The proof target is the remaining path, including the blinded nibble.
+        int revealedLength = nibblePath.Length - proofTarget.Length;
+        minLen = (byte)Math.Min(revealedLength, byte.MaxValue);
+        return result;
     }
 
     /// <summary>
@@ -446,8 +511,9 @@ public sealed class SparsePatriciaTree : IDisposable
     /// The root is always keccak-hashed regardless of RLP size.
     /// </summary>
     /// <param name="allowParallel">
-    /// When false, hashing is fully sequential. Pass false for per-contract storage tries that
-    /// are themselves being computed in parallel by
+    /// When true, account roots with at least <see cref="ParallelHashDirtyLeafThreshold"/> dirty
+    /// leaves may hash subtries concurrently. When false, hashing is fully sequential. Pass false
+    /// for per-contract storage tries that are themselves being computed in parallel by
     /// <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>, otherwise the inner
     /// <c>Parallel.For</c> nests inside the outer parallel context and oversubscribes the pool.
     /// </param>
@@ -456,7 +522,9 @@ public sealed class SparsePatriciaTree : IDisposable
         // UpdateCachedRlp returns CachedRlp (child-ref form) which for the root is either
         // a 32-byte hash (already keccaked) or inline RLP < 32 bytes.
         // For inline root, we keccak the inline bytes. For hash root, return the hash directly.
-        RlpNode rootRlp = _subtrie.UpdateCachedRlp(allowParallel);
+        bool hashInParallel = allowParallel &&
+            _subtrie.NumDirtyLeaves >= ParallelHashDirtyLeafThreshold;
+        RlpNode rootRlp = _subtrie.UpdateCachedRlp(hashInParallel);
 
         if (rootRlp.IsNull || rootRlp.Length == 0 ||
             (rootRlp.Length == 1 && rootRlp.AsSpan()[0] == 0x80))
