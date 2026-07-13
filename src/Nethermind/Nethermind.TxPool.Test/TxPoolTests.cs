@@ -1817,6 +1817,9 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
+            // Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+            if (txType == TxType.FrameTx) return;
+
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
@@ -1857,6 +1860,29 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(expectedResult ? 1 : 0));
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
                 Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(testTx));
+            }
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_RejectedAtIngressAsNotSupported()
+        {
+            _txPool = CreatePool();
+            Transaction frameTx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithNonce(0)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
             }
         }
 
@@ -2281,6 +2307,9 @@ namespace Nethermind.TxPool.Test
                     case TxType.SetCode:
                         builder.WithAuthorizationCodeIfAuthorizationListTx();
                         break;
+                    case TxType.FrameTx:
+                        //Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+                        continue;
                     case TxType.DepositTx:
                         continue;
                 }
