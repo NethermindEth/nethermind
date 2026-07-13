@@ -180,9 +180,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            // Warmup must take the real execution path: the system processor's no-op fee/nonce
-            // handling made same-sender warm sequences run with undebited balances and unbumped
-            // nonces, so deploy chains computed wrong CREATE addresses and warmed the wrong state.
+            // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
             if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
