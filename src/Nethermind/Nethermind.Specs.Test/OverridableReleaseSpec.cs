@@ -14,7 +14,7 @@ namespace Nethermind.Specs.Test
     /// </summary>
     public class OverridableReleaseSpec(IReleaseSpec spec) : IReleaseSpec
     {
-        public string Name => "OverridableReleaseSpec";
+        public string Name => spec.Name;
         public long MaximumExtraDataSize { get; set; } = spec.MaximumExtraDataSize;
         public long MaxCodeSize { get; set; } = spec.MaxCodeSize;
         public ulong MinGasLimit { get; set; } = spec.MinGasLimit;
@@ -93,6 +93,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip5656Enabled { get; set; } = spec.IsEip5656Enabled;
         public ulong Eip2935RingBufferSize { get; set; } = spec.Eip2935RingBufferSize;
         public bool IsEip6780Enabled { get; set; } = spec.IsEip6780Enabled;
+        public bool IsEip8038Enabled { get; set; } = spec.IsEip8038Enabled;
+        public bool IsEip8282Enabled { get; set; } = spec.IsEip8282Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
@@ -121,6 +123,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
+        public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
+        public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;

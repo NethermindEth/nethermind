@@ -4,6 +4,7 @@
 using System;
 using System.IO.Abstractions;
 using System.Security;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -19,7 +20,7 @@ namespace Nethermind.Wallet
         IKeyStore keyStore,
         IKeyStoreConfig config,
         ILogManager logManager,
-        IPasswordProvider passwordProvider,
+        [KeyFilter(IPasswordProvider.ConsoleFallback)] IPasswordProvider passwordProvider,
         IFileSystem fileSystem) : INodeKeyManager
     {
         public const string UnsecuredNodeKeyFilePath = "node.key.plain";

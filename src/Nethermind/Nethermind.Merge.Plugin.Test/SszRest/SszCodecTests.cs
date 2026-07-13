@@ -595,6 +595,7 @@ public class SszCodecTests
     public void DecodeFcuV4Request_spec_layout_roundtrips_parent_beacon_block_root_and_slot_number()
     {
         ulong expectedSlot = 0xAABBCCDD_11223344UL;
+        ulong expectedTargetGasLimit = 0x0123456789ABCDEFUL;
 
         ForkchoiceUpdatedRequestWire wire = new()
         {
@@ -614,6 +615,7 @@ public class SszCodecTests
                     Withdrawals = [],
                     ParentBeaconBlockRoot = TestItem.KeccakE,
                     SlotNumber = expectedSlot,
+                    TargetGasLimit = expectedTargetGasLimit,
                 }
             ]
         };
@@ -629,7 +631,34 @@ public class SszCodecTests
         Assert.That(attrs, Is.Not.Null);
         Assert.That(attrs!.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakE), "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
         Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot), "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
+        Assert.That(attrs.TargetGasLimit, Is.EqualTo((long)expectedTargetGasLimit), "target_gas_limit must be decoded from the fixed uint64 that follows slot_number");
         Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
+    public void PayloadAttributesV4_slot_number_and_target_gas_limit_sit_at_the_spec_byte_offsets()
+    {
+        PayloadAttributesWire attrsWire = new()
+        {
+            Timestamp = 0x0102030405060708UL,
+            PrevRandao = TestItem.KeccakD,
+            SuggestedFeeRecipient = TestItem.AddressB,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = 0xAABBCCDD11223344UL,
+            TargetGasLimit = 0x0123456789ABCDEFUL,
+        };
+
+        byte[] attrsEncoded = PayloadAttributesWire.Encode(attrsWire);
+
+        Assert.That(attrsEncoded, Has.Length.EqualTo(112),
+            "fixed section: timestamp(8) + prev_randao(32) + fee_recipient(20) + withdrawals offset(4) + parent_beacon_block_root(32) + slot_number(8) + target_gas_limit(8)");
+        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(96, 8)), Is.EqualTo(attrsWire.SlotNumber),
+            "slot_number must occupy bytes 96..104, directly after parent_beacon_block_root");
+        Assert.That(BinaryPrimitives.ReadUInt64LittleEndian(attrsEncoded.AsSpan(104, 8)), Is.EqualTo(attrsWire.TargetGasLimit),
+            "target_gas_limit must occupy bytes 104..112, directly after slot_number");
+        Assert.That(BitConverter.ToUInt32(attrsEncoded, 60), Is.EqualTo(112),
+            "the empty withdrawals list offset must point past the whole fixed section");
     }
 
     [Test]

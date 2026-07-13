@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -53,68 +52,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Name => Taiko;
     public string Description => "Taiko support for Nethermind";
 
-    private TaikoNethermindApi? _api;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-
-    public Task Init(INethermindApi api)
-    {
-        _api = (TaikoNethermindApi)api;
-
-        _api.GossipPolicy = ShouldNotGossip.Instance;
-
-        InitializeL1Precompiles();
-
-        return Task.CompletedTask;
-    }
-
-    private void InitializeL1Precompiles()
-    {
-        ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
-
-        if (_api.SpecProvider.GetFinalSpec() is not TaikoReleaseSpec taikoSpec)
-            throw new InvalidOperationException("TaikoPlugin requires TaikoChainSpecBasedSpecProvider");
-
-        ILogManager logManager = _api.Context.Resolve<ILogManager>();
-        ILogger logger = logManager.GetClassLogger<TaikoPlugin>();
-
-        bool sloadEnabled = taikoSpec.IsRip7728Enabled;
-        bool staticCallEnabled = taikoSpec.IsL1StaticCallEnabled;
-
-        if (logger.IsInfo) logger.Info($"L1SLOAD (RIP-7728): {(sloadEnabled ? "enabled" : "disabled")}");
-        if (logger.IsInfo) logger.Info($"L1STATICCALL: {(staticCallEnabled ? "enabled" : "disabled")}");
-
-        if (!sloadEnabled && !staticCallEnabled)
-            return;
-
-        ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
-
-        if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
-            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1 precompiles");
-
-        if (logger.IsInfo) logger.Info($"L1 precompiles: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
-
-        // Single RPC client shared by both L1 precompile providers. Process-lifetime scope.
-        IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
-            new Uri(surgeConfig.L1EthApiEndpoint),
-            _api.Context.Resolve<IJsonSerializer>(),
-            logManager,
-            L1PrecompileConstants.L1RpcTimeout);
-        _api.DisposeStack.Push((IDisposable)l1RpcClient);
-
-        if (sloadEnabled)
-        {
-            L1SloadPrecompile.L1StorageProvider = new JsonRpcL1StorageProvider(l1RpcClient, logManager);
-            L1SloadPrecompile.Logger = logManager.GetClassLogger<L1SloadPrecompile>();
-            if (logger.IsInfo) logger.Info("L1SLOAD: precompile initialized");
-        }
-
-        if (staticCallEnabled)
-        {
-            L1StaticCallPrecompile.L1CallProvider = new JsonRpcL1CallProvider(l1RpcClient, logManager);
-            L1StaticCallPrecompile.Logger = logManager.GetClassLogger<L1StaticCallPrecompile>();
-            if (logger.IsInfo) logger.Info("L1STATICCALL: precompile initialized");
-        }
-    }
 
     public bool MustInitialize => true;
 
@@ -145,6 +83,7 @@ public class TaikoModule : Module
 
             // Steps override
             .AddStep(typeof(InitializeBlockchainTaiko))
+            .AddStep(typeof(InitializeTaikoPlugin))
 
             // L1 origin store
             .AddSingleton<L1OriginDecoder>()
@@ -154,6 +93,7 @@ public class TaikoModule : Module
 
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
+            .AddSingleton<IGossipPolicy>(ShouldNotGossip.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
 
             // Validators

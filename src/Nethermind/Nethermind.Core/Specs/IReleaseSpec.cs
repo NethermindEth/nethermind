@@ -316,6 +316,16 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// EIP-8282: builder execution requests (builder deposit + builder exit predeploys).
+        /// </summary>
+        bool IsEip8282Enabled { get; }
+
+        /// <summary>
+        /// EIP-8038: State-access gas cost update
+        /// </summary>
+        bool IsEip8038Enabled { get; }
+
+        /// <summary>
         /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }
@@ -435,6 +445,18 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
+
+        /// <summary>
+        /// EIP-8246: SELFDESTRUCT no longer burns ETH
+        /// </summary>
+        public bool IsEip8246Enabled { get; }
+
+        /// <summary>
+        /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
+        /// and cold-account costs against actual state work.
+        /// </summary>
+        /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
+        public bool IsEip2780Enabled { get; }
 
         /// <summary>
         /// EIP-7805: Inclusion lists

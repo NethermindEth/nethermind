@@ -33,13 +33,13 @@ public sealed unsafe class BloomFilter : IDisposable
 
     public long Capacity { get; }
     public double BitsPerKey { get; }
-    public int K { get; }
+    private int K { get; }
 
     public long Count => Volatile.Read(ref _count);
 
     // Total bloom data bytes (no header), always multiple of 64 bytes
     public long DataBytes { get; }
-    public long NumBlocks { get; } // number of 64B cache lines
+    private long NumBlocks { get; } // number of 64B cache lines
 
     private long _count;
 
@@ -122,6 +122,24 @@ public sealed unsafe class BloomFilter : IDisposable
     }
 
     /// <summary>
+    /// Construct a sentinel bloom whose <see cref="MightContain"/> always returns <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// Used by the bloom-disabled config path (<c>PersistedSnapshotBloomBitsPerKey == 0</c> or
+    /// degenerate capacity-zero builds) to keep downstream APIs non-nullable: every snapshot
+    /// has a real <see cref="BloomFilter"/>, and the disabled mode just behaves as
+    /// "the bloom never filters anything out". One small native allocation (a single 64-byte
+    /// cache line — the minimum the constructor produces) per call; callers own disposal
+    /// the same as any other <see cref="BloomFilter"/>.
+    /// </remarks>
+    public static BloomFilter AlwaysTrue()
+    {
+        BloomFilter b = new(capacity: 1, bitsPerKey: 1.0);
+        new Span<byte>(b._data, checked((int)b._dataSize)).Fill(0xFF);
+        return b;
+    }
+
+    /// <summary>
     /// Returns the 64B cacheline byte offset within the bloom data that was touched.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -198,8 +216,6 @@ public sealed unsafe class BloomFilter : IDisposable
         }
         Volatile.Write(ref _count, 0);
     }
-
-    internal byte* DangerousGetDataPointer() => _data;
 
     public void Dispose()
     {

@@ -231,7 +231,7 @@ public abstract partial class BaseEngineModuleTests
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
-                .AddModule(new TestMergeModule(configProvider, MergeModule))
+                .AddModule(new TestMergeModule(MergeModule))
                 .AddDecorator<IBranchProcessor>((_, branchProcessor) => new TestBranchProcessorInterceptor(branchProcessor, _blockProcessingThrottle))
                 .AddDecorator<IBlockImprovementContextFactory>((_, factory) =>
                 {

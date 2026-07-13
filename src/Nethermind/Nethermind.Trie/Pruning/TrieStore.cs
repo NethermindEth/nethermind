@@ -500,7 +500,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (rlp is not null)
         {
-            Metrics.LoadedFromDbNodesCount++;
+            Metrics.IncrementLoadedFromDbNodesCount();
         }
 
         return rlp;

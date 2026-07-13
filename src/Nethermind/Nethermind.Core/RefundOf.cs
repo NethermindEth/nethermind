@@ -13,6 +13,7 @@ namespace Nethermind.Core
         public const ulong SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
         public const ulong SSetReversedEip8037 = GasCostOf.SSetState + GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
         public const ulong SClearAfterEip3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
+        public const ulong SClearEip8038 = (Eip8038Constants.StorageWrite + Eip8038Constants.ColdStorageAccess) * 4800 / 5000;
         public const ulong SClearBeforeEip3529 = 15000;
         public const ulong DestroyBeforeEip3529 = 24000;
         public const ulong DestroyAfterEip3529 = GasCostOf.Free;

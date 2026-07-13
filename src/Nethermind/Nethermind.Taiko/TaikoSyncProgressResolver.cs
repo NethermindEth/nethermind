@@ -16,9 +16,10 @@ namespace Nethermind.Taiko;
 /// drives the executor, advancing <c>Head</c> (and the state pointer) past
 /// <c>BestSuggestedHeader</c>.
 ///
-/// The default <see cref="SyncProgressResolver"/> reports <c>FindBestHeader</c> from
-/// <c>BestSuggestedHeader</c> only, so <see cref="MultiSyncModeSelector.IsSnapshotInvalid"/>
-/// fires <c>state &gt; header</c> and <c>processed &gt; block</c>, throws
+/// The default <see cref="SyncProgressResolver"/> uses <c>BestSuggestedHeader</c> whenever
+/// it is present and falls back to <c>Head</c> only when it is absent. On Taiko the stale
+/// non-null pointer makes <see cref="MultiSyncModeSelector.IsSnapshotInvalid"/> fire
+/// <c>state &gt; header</c> and <c>processed &gt; block</c>, which throws
 /// <see cref="System.ComponentModel.InvalidAsynchronousStateException"/>, and the recovery
 /// path (<c>BlockTree.LoadBestKnown</c>) cannot find non-beacon headers — so the sync
 /// loop wedges and the node stalls behind live tip.
