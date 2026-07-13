@@ -519,7 +519,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return gas;
     }
 
-    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, IntrinsicGas<EthereumGasPolicy> Gas);
+    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
 
     private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {

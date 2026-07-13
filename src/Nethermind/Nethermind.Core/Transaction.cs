@@ -84,7 +84,7 @@ namespace Nethermind.Core
             AuthorizationList.Length > 0;
 
         [JsonIgnore]
-        public object? IntrinsicGasMemo;
+        public IIntrinsicGasMemo? IntrinsicGasMemo;
 
         private Hash256? _hash;
 
