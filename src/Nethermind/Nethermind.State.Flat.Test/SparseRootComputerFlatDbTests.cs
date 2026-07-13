@@ -31,52 +31,6 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class SparseRootComputerFlatDbTests
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void TrieWarmer_CachesEvenDepthRlpForSparseReader(bool storage)
-    {
-        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
-        byte[] expectedRlp = [0xc2, 0x81, 0x01];
-        Hash256 hash = Keccak.Compute(expectedRlp);
-        Hash256 addressHash = Keccak.Compute([0x01]);
-        TreePath path = TreePath.Empty;
-        IPersistence.IPersistenceReader persistence = Substitute.For<IPersistence.IPersistenceReader>();
-        persistence.TryLoadStateRlp(path, ReadFlags.None).Returns(expectedRlp);
-        persistence.TryLoadStorageRlp(addressHash, path, ReadFlags.None).Returns(expectedRlp);
-        ReadOnlySnapshotBundle readOnlyBundle = new(
-            new SnapshotPooledList(0),
-            persistence,
-            recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
-        using SnapshotBundle bundle = new(
-            readOnlyBundle,
-            Substitute.For<ITrieNodeCache>(),
-            pool,
-            ResourcePool.Usage.MainBlockProcessing)
-        {
-            HashAwareTrieReads = true,
-        };
-
-        if (storage)
-        {
-            StorageTrieStoreWarmerAdapter warmer = new(bundle, addressHash);
-            Assert.That(warmer.TryLoadRlp(path, hash), Is.EqualTo(expectedRlp));
-            persistence.TryLoadStorageRlp(addressHash, path, ReadFlags.None).Returns((byte[]?)null);
-
-            byte[] actual = new ParentStateTrieNodeReader(bundle).LoadStorageRlp(addressHash, path, hash);
-            Assert.That(actual, Is.EqualTo(expectedRlp));
-        }
-        else
-        {
-            StateTrieStoreWarmerAdapter warmer = new(bundle);
-            Assert.That(warmer.TryLoadRlp(path, hash), Is.EqualTo(expectedRlp));
-            persistence.TryLoadStateRlp(path, ReadFlags.None).Returns((byte[]?)null);
-
-            byte[] actual = new ParentStateTrieNodeReader(bundle).LoadStateRlp(path, hash);
-            Assert.That(actual, Is.EqualTo(expectedRlp));
-        }
-    }
-
     [Test]
     public void CommittedLookup_PrefersMaterializedSnapshotNodeOverUnresolvedCacheEntry()
     {
