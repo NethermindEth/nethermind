@@ -321,7 +321,18 @@ namespace Nethermind.Core
             }
         }
 
-        public void CopyTo(Transaction tx, bool copyHash = true)
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/>, including its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: true);
+
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> and optionally copies its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
+        public void CopyTo(Transaction tx, bool copyHash)
         {
             tx.Hash = copyHash ? Hash : null;
             tx.ChainId = ChainId;
@@ -387,6 +398,12 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
+    /// <param name="Blobs">Complete blob payloads, or empty entries when only cells are available.</param>
+    /// <param name="Commitments">One KZG commitment per blob.</param>
+    /// <param name="Proofs">Blob proofs for V0 or all cell proofs in blob-major order for V1.</param>
+    /// <param name="Version">The proof representation used by this wrapper.</param>
+    /// <param name="CellMask">The cell indices available for every blob when full blobs are absent.</param>
+    /// <param name="Cells">Sparse cells in blob-major order and ascending cell-index order.</param>
     public record ShardBlobNetworkWrapper(
         byte[][] Blobs,
         byte[][] Commitments,
@@ -395,6 +412,36 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        /// <summary>
+        /// Creates a blob network wrapper without sparse-cell data.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">One KZG commitment per blob.</param>
+        /// <param name="proofs">Proofs corresponding to <paramref name="version"/>.</param>
+        /// <param name="version">The proof representation used by this wrapper.</param>
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+            : this(blobs, commitments, proofs, version, default, null)
+        {
+        }
+
+        /// <summary>
+        /// Deconstructs the wrapper into the fields exposed before sparse-cell support.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">KZG commitments.</param>
+        /// <param name="proofs">Blob or cell proofs.</param>
+        /// <param name="version">The proof representation.</param>
+        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[][] proofs, out ProofVersion version)
+        {
+            blobs = Blobs;
+            commitments = Commitments;
+            proofs = Proofs;
+            version = Version;
+        }
+
+        /// <summary>
+        /// Returns whether every blob payload is available locally.
+        /// </summary>
         public bool HasFullBlobs()
         {
             for (int i = 0; i < Blobs.Length; i++)
@@ -408,6 +455,9 @@ namespace Nethermind.Core
             return Blobs.Length != 0;
         }
 
+        /// <summary>
+        /// Returns the complete mask for full blobs, or the stored sparse-cell mask otherwise.
+        /// </summary>
         public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
     }
 

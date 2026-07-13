@@ -15,6 +15,12 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public void GetPayloadV5Result_preserves_v4_result_hierarchy() =>
+        Assert.That(
+            typeof(GetPayloadV4Result<ExecutionPayloadV3>).IsAssignableFrom(typeof(GetPayloadV5Result<ExecutionPayloadV3>)),
+            Is.True);
+
+    [Test]
     public void GetPayloadV5Result_serializes_v2_blob_bundle()
     {
         byte[] commitment = new byte[48];

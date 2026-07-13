@@ -86,7 +86,14 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                 writer.Encode((byte)networkWrapper.Version);
             }
 
-            writer.Encode(networkWrapper.Blobs);
+            if (networkWrapper.Blobs.Length == 0 && !rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            {
+                writer.EncodeEmptyByteArray();
+            }
+            else
+            {
+                writer.Encode(networkWrapper.Blobs);
+            }
             writer.Encode(networkWrapper.Commitments);
             writer.Encode(networkWrapper.Proofs);
 
@@ -118,7 +125,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
         ProofVersion version = ProofVersion.V0;
-        if (!decoderContext.IsSequenceNext())
+        if (!decoderContext.IsSequenceNext() && !decoderContext.IsNextItemEmptyByteArray())
         {
             version = (ProofVersion)decoderContext.ReadByte();
             if (version > ProofVersion.V1)
@@ -127,7 +134,16 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
             }
         }
 
-        byte[][] blobs = decoderContext.DecodeByteArrays(NetworkWrapperBlobsCountLimit);
+        byte[][] blobs;
+        if (decoderContext.IsNextItemEmptyByteArray())
+        {
+            decoderContext.DecodeByteArraySpan();
+            blobs = [];
+        }
+        else
+        {
+            blobs = decoderContext.DecodeByteArrays(NetworkWrapperBlobsCountLimit);
+        }
         byte[][] commitments = decoderContext.DecodeByteArrays(NetworkWrapperCommitmentsCountLimit);
         RlpLimit proofsCountLimit = version is ProofVersion.V1 ? NetworkWrapperCellProofsCountLimit : NetworkWrapperProofsCountLimit;
         byte[][] proofs = decoderContext.DecodeByteArrays(proofsCountLimit);

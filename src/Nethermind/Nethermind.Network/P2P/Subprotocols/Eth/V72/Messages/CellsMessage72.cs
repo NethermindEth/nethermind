@@ -21,6 +21,11 @@ public class CellsMessage72(
     public override string Protocol => "eth";
 
     public Hash256[] Hashes { get; } = hashes;
+
+    /// <summary>
+    /// Gets cell groups by transaction, flattened in blob-major order for internal consumers.
+    /// </summary>
+    /// <remarks>The serializer transposes each group to the cell-index-major eth/72 wire order.</remarks>
     public byte[][][] Cells { get; } = cells;
     public byte[] CellMask { get; } = cellMask;
 

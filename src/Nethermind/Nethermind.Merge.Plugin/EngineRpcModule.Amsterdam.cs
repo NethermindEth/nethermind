@@ -38,6 +38,13 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null)
     {
+        if (custodyColumns is { Length: not BlobCellMask.CellCount })
+        {
+            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                $"Custody columns must be exactly {BlobCellMask.FixedByteLength} bytes.",
+                ErrorCodes.InvalidParams));
+        }
+
         if (custodyColumns is not null)
         {
             TryUpdateCustodyColumns(custodyColumns);
@@ -60,12 +67,6 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         try
         {
-            if (custodyColumns.Length != BlobCellMask.CellCount)
-            {
-                if (_logger.IsTrace) _logger.Trace($"engine_forkchoiceUpdatedV4 ignored custody columns with {custodyColumns.Length} bits.");
-                return;
-            }
-
             Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
             for (int i = 0; i < BlobCellMask.CellCount; i++)
             {

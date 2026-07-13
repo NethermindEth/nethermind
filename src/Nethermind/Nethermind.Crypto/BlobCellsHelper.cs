@@ -8,8 +8,20 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
+/// <summary>
+/// Validates, selects, merges, and recovers EIP-7594 blob cells.
+/// </summary>
 public static class BlobCellsHelper
 {
+    /// <summary>
+    /// Number of verified cells required to recover a complete blob.
+    /// </summary>
+    public const int RequiredCellsForRecovery = Ckzg.CellsPerExtBlob / 2;
+
+    /// <summary>
+    /// Validates sparse-cell shape and KZG proofs against the wrapper commitments.
+    /// </summary>
+    /// <returns><c>true</c> when the sparse cells are well formed and cryptographically valid.</returns>
     public static bool ValidateCells(ShardBlobNetworkWrapper wrapper)
     {
         if (wrapper.Version is not ProofVersion.V1)
@@ -38,7 +50,7 @@ public static class BlobCellsHelper
 
         for (int i = 0; i < blobCount; i++)
         {
-            if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
+            if (wrapper.Commitments[i] is not { Length: Ckzg.BytesPerCommitment })
             {
                 return false;
             }
@@ -46,7 +58,7 @@ public static class BlobCellsHelper
 
         for (int i = 0; i < wrapper.Proofs.Length; i++)
         {
-            if (wrapper.Proofs[i].Length != Ckzg.BytesPerProof)
+            if (wrapper.Proofs[i] is not { Length: Ckzg.BytesPerProof })
             {
                 return false;
             }
@@ -54,7 +66,7 @@ public static class BlobCellsHelper
 
         for (int i = 0; i < wrapper.Cells.Length; i++)
         {
-            if (wrapper.Cells[i].Length != Ckzg.BytesPerCell)
+            if (wrapper.Cells[i] is not { Length: Ckzg.BytesPerCell })
             {
                 return false;
             }
@@ -90,6 +102,111 @@ public static class BlobCellsHelper
         }
     }
 
+    /// <summary>
+    /// Recovers complete blobs and canonical cell proofs from previously verified sparse cells.
+    /// </summary>
+    /// <remarks>
+    /// This method validates array shape but deliberately does not repeat KZG verification. Callers must only pass
+    /// cells that were verified against <see cref="ShardBlobNetworkWrapper.Commitments"/> before being retained.
+    /// </remarks>
+    /// <param name="wrapper">A V1 wrapper containing at least 64 verified cells for every blob.</param>
+    /// <param name="recoveredWrapper">The wrapper containing complete blobs and recovered proofs on success.</param>
+    /// <returns><c>true</c> when all blobs were recovered.</returns>
+    public static bool TryRecoverBlobsFromVerifiedCells(
+        ShardBlobNetworkWrapper wrapper,
+        out ShardBlobNetworkWrapper recoveredWrapper)
+    {
+        recoveredWrapper = wrapper;
+        int blobCount = wrapper.Commitments.Length;
+        int cellsPerBlob = wrapper.CellMask.Count;
+        if (wrapper.Version is not ProofVersion.V1
+            || blobCount == 0
+            || cellsPerBlob < RequiredCellsForRecovery
+            || wrapper.Cells is not { } cells
+            || cells.Length != blobCount * cellsPerBlob
+            || (wrapper.Blobs.Length != 0 && wrapper.Blobs.Length != blobCount)
+            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < blobCount; i++)
+        {
+            if (wrapper.Commitments[i] is not { Length: Ckzg.BytesPerCommitment })
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < cells.Length; i++)
+        {
+            if (cells[i] is not { Length: Ckzg.BytesPerCell })
+            {
+                return false;
+            }
+        }
+
+        byte[][] blobs = new byte[blobCount][];
+        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        using ArrayPoolSpan<ulong> indices = new(cellsPerBlob);
+        using ArrayPoolSpan<byte> inputCells = new(cellsPerBlob * Ckzg.BytesPerCell);
+        using ArrayPoolSpan<byte> recoveredCells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
+        using ArrayPoolSpan<byte> recoveredProofs = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
+
+        int indexPosition = 0;
+        foreach (int cellIndex in wrapper.CellMask.EnumerateSetBits())
+        {
+            indices[indexPosition++] = (ulong)cellIndex;
+        }
+
+        try
+        {
+            for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
+            {
+                int sourceOffset = blobIndex * cellsPerBlob;
+                for (int cellPosition = 0; cellPosition < cellsPerBlob; cellPosition++)
+                {
+                    cells[sourceOffset + cellPosition].CopyTo(
+                        inputCells.Slice(cellPosition * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
+                }
+
+                Ckzg.RecoverCellsAndKzgProofs(
+                    recoveredCells,
+                    recoveredProofs,
+                    indices,
+                    inputCells,
+                    cellsPerBlob,
+                    KzgPolynomialCommitments.CkzgSetup);
+
+                blobs[blobIndex] = recoveredCells.Slice(0, Ckzg.BytesPerBlob).ToArray();
+                int proofOffset = blobIndex * Ckzg.CellsPerExtBlob;
+                for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
+                {
+                    proofs[proofOffset + cellIndex] = recoveredProofs
+                        .Slice(cellIndex * Ckzg.BytesPerProof, Ckzg.BytesPerProof)
+                        .ToArray();
+                }
+            }
+        }
+        catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+        {
+            return false;
+        }
+
+        recoveredWrapper = wrapper with
+        {
+            Blobs = blobs,
+            Proofs = proofs,
+            CellMask = BlobCellMask.Empty,
+            Cells = null,
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// Gets the requested locally available cells in blob-major order.
+    /// </summary>
+    /// <returns><c>true</c> when at least one requested cell is available for every blob.</returns>
     public static bool TryGetFlattenedCells(ShardBlobNetworkWrapper wrapper, BlobCellMask requestedMask, out byte[][] cells)
     {
         int blobCount = wrapper.Commitments.Length;
@@ -150,7 +267,13 @@ public static class BlobCellsHelper
             bool presentForAllBlobs = true;
             for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
             {
-                int length = flattenedCells[blobIndex * cellsPerBlob + position].Length;
+                if (flattenedCells[blobIndex * cellsPerBlob + position] is not { } cell)
+                {
+                    presentMask = BlobCellMask.Empty;
+                    return false;
+                }
+
+                int length = cell.Length;
                 if (length is not 0 and not Ckzg.BytesPerCell)
                 {
                     presentMask = BlobCellMask.Empty;
@@ -199,6 +322,9 @@ public static class BlobCellsHelper
         return cells;
     }
 
+    /// <summary>
+    /// Selects proofs for locally available requested cells of one blob.
+    /// </summary>
     public static byte[][] SelectProofs(ShardBlobNetworkWrapper wrapper, int blobIndex, BlobCellMask requestedMask)
     {
         BlobCellMask availableMask = wrapper.GetAvailableCellMask() & requestedMask;
@@ -212,6 +338,9 @@ public static class BlobCellsHelper
         return proofs;
     }
 
+    /// <summary>
+    /// Merges disjoint verified cells into a blob-major flattened cell array.
+    /// </summary>
     public static byte[][] MergeFlattenedCells(
         byte[][]? currentCells,
         BlobCellMask currentMask,

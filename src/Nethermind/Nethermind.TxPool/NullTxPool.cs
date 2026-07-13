@@ -37,6 +37,9 @@ namespace Nethermind.TxPool
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default)
+            => new Dictionary<AddressAsKey, Transaction[]>();
+
         public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
 
         public void AddPeer(ITxPoolPeer peer) { }
@@ -46,6 +49,8 @@ namespace Nethermind.TxPool
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
+
+        public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
         public bool RemoveTransaction(Hash256? hash) => false;
 

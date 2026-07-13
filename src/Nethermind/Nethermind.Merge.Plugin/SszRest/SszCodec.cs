@@ -207,7 +207,6 @@ public static class SszCodec
 
     public static int EncodeGetBlobsV4Response(IReadOnlyList<BlobCellsAndProofs?> blobs, IBufferWriter<byte> writer)
     {
-        const int CellsPerExtBlob = 128;
         int count = blobs.Count;
         BlobV4EntryWire[] arr = new BlobV4EntryWire[count];
         for (int i = 0; i < count; i++)
@@ -219,20 +218,43 @@ public static class SszCodec
                 continue;
             }
 
-            NullableBlobCellWire[] cells = new NullableBlobCellWire[CellsPerExtBlob];
-            NullableKzgProofWire[] proofs = new NullableKzgProofWire[CellsPerExtBlob];
             byte[]?[]? srcCells = b.BlobCells;
             byte[]?[]? srcProofs = b.Proofs;
-            for (int j = 0; j < CellsPerExtBlob; j++)
+            NullableBlobCellWire[] cells = new NullableBlobCellWire[BlobCellMask.CellCount];
+            NullableKzgProofWire[] proofs = new NullableKzgProofWire[BlobCellMask.CellCount];
+            for (int j = 0; j < BlobCellMask.CellCount; j++)
             {
-                byte[]? cell = j < (srcCells?.Length ?? 0) ? srcCells![j] : null;
-                byte[]? proof = j < (srcProofs?.Length ?? 0) ? srcProofs![j] : null;
-                cells[j] = cell is null
+                cells[j] = new() { Cell = [] };
+                proofs[j] = new() { Proof = [] };
+            }
+
+            int sourceIndex = 0;
+            int sourceCount = Math.Min(
+                BlobCellMask.CellCount,
+                Math.Max(srcCells?.Length ?? 0, srcProofs?.Length ?? 0));
+            for (int cellIndex = 0; cellIndex < BlobCellMask.CellCount; cellIndex++)
+            {
+                if (b.RequestedMask.IsEmpty)
+                {
+                    if (sourceIndex >= sourceCount)
+                    {
+                        break;
+                    }
+                }
+                else if (!b.RequestedMask.Contains(cellIndex))
+                {
+                    continue;
+                }
+
+                byte[]? cell = sourceIndex < (srcCells?.Length ?? 0) ? srcCells![sourceIndex] : null;
+                byte[]? proof = sourceIndex < (srcProofs?.Length ?? 0) ? srcProofs![sourceIndex] : null;
+                cells[cellIndex] = cell is null
                     ? new() { Cell = [] }
                     : new() { Cell = [SszBlobCell.FromSpan(cell.AsSpan(0, SszBlobCell.BlobCellLength))] };
-                proofs[j] = proof is null
+                proofs[cellIndex] = proof is null
                     ? new() { Proof = [] }
                     : new() { Proof = [SszKzgCommitment.FromSpan(proof.AsSpan(0, SszKzgCommitment.KzgCommitmentLength))] };
+                sourceIndex++;
             }
 
             arr[i] = new BlobV4EntryWire
@@ -379,12 +401,16 @@ public static class SszCodec
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot);
 
-    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
-        BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
-            withdrawals: pa.Withdrawals.ToDomain(),
-            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
-            slotNumber: pa.SlotNumber,
-            targetGasLimit: pa.TargetGasLimit);
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) => new()
+    {
+        Timestamp = pa.Timestamp,
+        PrevRandao = pa.PrevRandao,
+        SuggestedFeeRecipient = pa.SuggestedFeeRecipient,
+        Withdrawals = pa.Withdrawals.ToDomain(),
+        ParentBeaconBlockRoot = pa.ParentBeaconBlockRoot,
+        SlotNumber = pa.SlotNumber,
+        TargetGasLimit = pa.TargetGasLimit
+    };
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,
@@ -395,7 +421,7 @@ public static class SszCodec
         ulong? slotNumber = null,
         ulong? targetGasLimit = null)
     {
-        PayloadAttributes payloadAttributes = targetGasLimit is null ? new PayloadAttributes() : new PayloadAttributesV4 { TargetGasLimit = targetGasLimit };
+        PayloadAttributes payloadAttributes = new() { TargetGasLimit = targetGasLimit };
         payloadAttributes.Timestamp = timestamp;
         payloadAttributes.PrevRandao = prevRandao;
         payloadAttributes.SuggestedFeeRecipient = suggestedFeeRecipient;

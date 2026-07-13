@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -11,6 +12,8 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
+    private const byte ConsensusEncodingSizeFormatVersion = 1;
+
     private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
@@ -25,7 +28,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
-               + Rlp.LengthOf(GetSparseBlobNetworkSize(tx));
+               + Rlp.LengthOf(GetConsensusEncodingSize(tx))
+               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -46,7 +50,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.GetLength());
         writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
         EncodeAvailableCellMask(tx, ref writer);
-        writer.Encode(GetSparseBlobNetworkSize(tx));
+        writer.Encode(GetConsensusEncodingSize(tx));
+        writer.Encode(ConsensusEncodingSizeFormatVersion);
 
         return bytes;
     }
@@ -54,27 +59,53 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
+        UInt256 timestamp = ctx.DecodeUInt256();
+        Address sender = ctx.DecodeAddress()!;
+        ulong nonce = ctx.DecodeULong();
+        Hash256 hash = ctx.DecodeKeccak()!;
+        UInt256 value = ctx.DecodeUInt256();
+        ulong gasLimit = ctx.DecodeULong();
+        UInt256 gasPrice = ctx.DecodeUInt256();
+        UInt256 maxFeePerGas = ctx.DecodeUInt256();
+        UInt256 maxFeePerBlobGas = ctx.DecodeUInt256();
+        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        ulong poolIndex = ctx.DecodeULong();
+        int size = ctx.DecodePositiveInt();
+
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 5);
+        if (optionalFieldCount > 4)
+        {
+            throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
+        }
+
+        ProofVersion proofVersion = optionalFieldCount >= 1 ? (ProofVersion)ctx.DecodeByte() : default;
+        // Entries persisted before the mask field was added always hold full blobs.
+        BlobCellMask blobCellMask = optionalFieldCount >= 2
+            ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
+            : BlobCellMask.Full;
+        int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
+        byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
+        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
+            ? persistedEncodingSize
+            : 0;
+        ctx.Check(data.Length);
+
         return new LightTransaction(
-            timestamp: ctx.DecodeUInt256(),
-            sender: ctx.DecodeAddress()!,
-            nonce: ctx.DecodeULong(),
-            hash: ctx.DecodeKeccak()!,
-            value: ctx.DecodeUInt256(),
-            gasLimit: ctx.DecodeULong(),
-            gasPrice: ctx.DecodeUInt256(),
-            maxFeePerGas: ctx.DecodeUInt256(),
-            maxFeePerBlobGas: ctx.DecodeUInt256(),
-            blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
-            poolIndex: ctx.DecodeULong(),
-            size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 2) >= 1 ? (ProofVersion)ctx.ReadByte() : default,
-            // Entries persisted before the mask field was added always hold full blobs.
-            blobCellMask: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
-                ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan())
-                : BlobCellMask.Full,
-            sparseBlobNetworkSize: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
-                ? ctx.DecodePositiveInt()
-                : 0);
+            timestamp,
+            sender,
+            nonce,
+            hash,
+            value,
+            gasLimit,
+            gasPrice,
+            maxFeePerGas,
+            maxFeePerBlobGas,
+            blobVersionHashes,
+            poolIndex,
+            size,
+            proofVersion,
+            blobCellMask,
+            consensusEncodingSize);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
@@ -89,8 +120,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             ? wrapper.GetAvailableCellMask()
             : BlobCellMask.Empty;
 
-    private static int GetSparseBlobNetworkSize(Transaction tx) =>
-        tx is LightTransaction lightTx && lightTx.GetSparseBlobNetworkSize() > 0
-            ? lightTx.GetSparseBlobNetworkSize()
-            : tx.TryCalculateSparseBlobNetworkSize() ?? tx.GetLength();
+    private static int GetConsensusEncodingSize(Transaction tx) =>
+        tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0
+            ? lightTx.GetConsensusEncodingSize()
+            : tx.GetLength(shouldCountBlobs: false);
 }

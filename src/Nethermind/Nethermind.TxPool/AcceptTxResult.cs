@@ -108,6 +108,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult DelegatorHasPendingTx = new(18, TxPoolErrorMessages.DelegationAuthorityHasPendingTx);
 
         /// <summary>
+        /// Blob or cell proofs failed cryptographic validation after cheaper admission checks passed.
+        /// </summary>
+        public static readonly AcceptTxResult InvalidBlobProofs = new(20, TxErrorMessages.InvalidBlobProofs);
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, TxPoolErrorMessages.NodeIsSyncing);

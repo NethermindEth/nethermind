@@ -64,10 +64,10 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
-            GasLimitCapTxValidator.Instance
+            GasLimitCapTxValidator.Instance,
+            MempoolBlobTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
@@ -99,8 +99,15 @@ public sealed class TxValidator : ITxValidator
         IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
@@ -110,10 +117,17 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -294,22 +308,35 @@ public sealed class MempoolBlobTxValidator : ITxValidator
     private MempoolBlobTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0, TxValidationOptions.None);
+
+    public ValidationResult IsWellFormed(
+        Transaction transaction,
+        IReleaseSpec releaseSpec,
+        ulong blockGasLimit,
+        TxValidationOptions options)
     {
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, options),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, TxValidationOptions options)
         {
+            if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
+            {
+                return TxErrorMessages.InvalidProofVersion;
+            }
+
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
             bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
             int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
 
             return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
+                (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
                 !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;

@@ -18,23 +18,10 @@ namespace Nethermind.TxPool
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
-        public static int? TryCalculateSparseBlobNetworkSize(this Transaction tx)
-        {
-            if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
-            {
-                return null;
-            }
-
-            int typedTransactionPayloadLength = tx.GetLength(shouldCountBlobs: false) - 1;
-            int networkWrapperContentLength =
-                typedTransactionPayloadLength
-                + 1
-                + Rlp.OfEmptyList.Length
-                + Rlp.LengthOf(wrapper.Commitments)
-                + Rlp.LengthOf(wrapper.Proofs);
-
-            return 1 + Rlp.LengthOfSequence(networkWrapperContentLength);
-        }
+        public static int? TryCalculateSparseBlobNetworkSize(this Transaction tx) =>
+            tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 }
+                ? tx.GetLength(shouldCountBlobs: false)
+                : null;
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 

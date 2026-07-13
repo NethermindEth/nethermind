@@ -14,12 +14,14 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
-        public ulong GetGasLimit(BlockHeader parentHeader)
+        public ulong GetGasLimit(BlockHeader parentHeader) => GetGasLimit(parentHeader, null);
+
+        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit)
         {
             ulong parentGasLimit = parentHeader.GasLimit;
             ulong gasLimit = parentGasLimit;
 
-            ulong? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
+            targetGasLimit ??= _blocksConfig.TargetBlockGasLimit;
             ulong newBlockNumber = parentHeader.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp); // taking the parent timestamp is a temporary solution
             if (targetGasLimit is not null)

@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -18,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -49,43 +48,59 @@ public class Eth72ProtocolHandler(
     ITxPoolConfig txPoolConfig,
     ISpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
-    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
-    private const int MaxProviderProbabilityPercent = 100;
     private const int MinSamplerFullProviderAnnouncements = 2;
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
-    private const int MaxPendingCellRequests = 4096;
-    private const int MaxSentCellRequests = 4096;
-    private const int MaxPendingCells = 64;
+    private const int MaxCountedBlobAnnouncements = 4096;
+    private const int MaxPendingCellRequests = 1024;
+    internal const int MaxSentCellRequests = 2048;
+    private const int MaxPendingCellRequestWork = 4096;
+    private const int MaxSentCellRequestWork = 2048;
+    private const int CellServeBurstMultiplier = 8;
+    private const int CellServeRefillDivisor = 4;
+    internal const int MaxCellsRequestHashes = 256;
     internal const int MaxCellsResponseHashes = 64;
     internal const int MinCellsResponseBytes = 10 * 1024 * 1024;
+    private static readonly TimeSpan CellRequestTtl = Timeouts.Eth;
+    private static readonly TimeSpan CellResponseCorrelationTtl = Timeouts.Cleanup;
+    private static readonly TimeSpan PartialCellResponseBackoff = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PendingCellStateTtl = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
-    private readonly int _providerThresholdPercent = Math.Clamp(txPoolConfig.SparseBlobProviderProbabilityPercent, 0, MaxProviderProbabilityPercent);
+    private readonly int _providerProbabilityPercent = txPoolConfig.SparseBlobProviderProbabilityPercent;
     private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _pendingCellRequests = new();
     private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _sentCellRequests = new();
     private readonly ConcurrentDictionary<long, SentCellRequest> _sentCellRequestIds = new();
-    private readonly ConcurrentDictionary<ValueHash256, PendingCellsState> _pendingCells = new();
+    private readonly ClockCache<long, HashSet<ValueHash256>> _sentPooledTransactionRequests = new(MaxSentCellRequests, lockPartition: 1);
+    private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
+    private readonly ClockCache<ValueHash256, DateTimeOffset> _partialCellResponseBackoff = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
     private readonly ConcurrentQueue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly ConcurrentQueue<CellStateKey> _sentCellRequestOrder = new();
-    private readonly ConcurrentQueue<CellStateKey> _pendingCellsOrder = new();
     private readonly Lock _cellStateLock = new();
     private readonly int _maxCellsPerTransaction = GetMaxCellsPerTransaction(specProvider);
     private readonly int _maxCellsResponseBytes = GetMaxCellsResponseBytes(GetMaxCellsPerTransaction(specProvider));
+    private readonly int _cellServeTokenCapacity = GetMaxCellsPerTransaction(specProvider) * CellServeBurstMultiplier;
     private static readonly byte[] EmptyCellMaskBytes = BlobCellMask.Empty.ToBytes();
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
-    private readonly PublicKey _localNodeId = nodeKey.PublicKey;
     private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = sparseBlobPoolPeerRegistry ?? throw new ArgumentNullException(nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
-    private Func<CellsMessage72, CancellationToken, ValueTask>? _handleCells;
+    private Func<ClaimedCellsResponse, CancellationToken, ValueTask>? _handleCells;
     private long _cellStateRevision;
     private long _blobAnnouncementsReceived;
     private long _cellRequestsReceived;
+    private int _pendingCellRequestWork;
+    private int _sentCellRequestWork;
+    private int _pendingCellRequestCount;
+    private int _sentCellRequestCount;
+    private int _pendingCellRequestQueueCount;
+    private int _sentCellRequestQueueCount;
+    private double _cellServeTokens;
+    private DateTimeOffset _cellServeTokensUpdatedAt;
 
     public override string Name => "eth72";
 
@@ -96,6 +111,8 @@ public class Eth72ProtocolHandler(
     public override void Init()
     {
         _requestRatioWarmupEndsAt = _timestamper.UtcNowOffset + RequestToAnnouncementWarmup;
+        _cellServeTokens = _cellServeTokenCapacity;
+        _cellServeTokensUpdatedAt = _timestamper.UtcNowOffset;
         _handleCells = HandleCells;
         _sparseBlobPoolPeerRegistry.AddPeer(this);
         _txPool.NewPending += OnNewPending;
@@ -124,39 +141,87 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.GetPooledTransactions:
                 HandleInBackground<GetPooledTransactionsMessage66, PooledTransactionsMessage66>(message, Handle);
                 return true;
+            case Eth66MessageCode.PooledTransactions:
+                if (CanReceiveTransactions)
+                {
+                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
+                    ReportIn(pooledTransactions, size);
+                    if (!TryClaimPooledTransactionRequest(pooledTransactions))
+                    {
+                        pooledTransactions.Dispose();
+                        throw new SubprotocolException($"Unrequested, duplicate, or mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
+                    }
+
+                    Handle(pooledTransactions.EthMessage);
+                }
+                else
+                {
+                    const string ignored = $"{nameof(PooledTransactionsMessage66)} ignored, syncing";
+                    ReportIn(ignored, size);
+                }
+
+                return true;
             case Eth72MessageCode.GetCells:
                 HandleInBackground<GetCellsMessage72, CellsMessage72>(message, Handle);
                 return true;
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
-                    bool requestIdAvailable = TryPeekRequestId(message.Content, out long requestId);
+                    if (!TryPeekRequestId(message.Content, out long requestId))
+                    {
+                        throw new SubprotocolException($"Could not read request ID from {nameof(CellsMessage72)}.");
+                    }
+
+                    CellRequestClaimResult claimResult = TryClaimSentCellRequest(requestId, out SentCellRequest sentRequest);
+                    if (claimResult == CellRequestClaimResult.Unrequested)
+                    {
+                        throw new SubprotocolException($"Unrequested or duplicate {nameof(CellsMessage72)} response ID {requestId}.");
+                    }
+
+                    if (claimResult != CellRequestClaimResult.Claimed)
+                    {
+                        if (claimResult == CellRequestClaimResult.Expired)
+                        {
+                            RequeueClaimedCellRequest(sentRequest, removePeer: false);
+                        }
+
+                        ReportIn($"Stale {nameof(CellsMessage72)} response ID {requestId} ignored", size);
+                        return true;
+                    }
+
+                    if (size > sentRequest.MaxResponseBytes)
+                    {
+                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
+                        throw new SubprotocolException(
+                            $"{nameof(CellsMessage72)} response ID {requestId} exceeds its {sentRequest.MaxResponseBytes}-byte request bound: {size} bytes.");
+                    }
+
                     CellsMessage72 cellsMessage;
                     try
                     {
                         cellsMessage = Deserialize<CellsMessage72>(message.Content);
                     }
-                    catch (RlpException) when (requestIdAvailable)
+                    catch (RlpException)
                     {
-                        RequeueSentCellRequestFromMalformedResponse(requestId);
+                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
                         throw;
                     }
-                    catch (IncompleteDeserializationException) when (requestIdAvailable)
+                    catch (IncompleteDeserializationException)
                     {
-                        RequeueSentCellRequestFromMalformedResponse(requestId);
+                        RequeueClaimedCellRequest(sentRequest, removePeer: true);
                         throw;
                     }
 
                     ReportIn(cellsMessage, size);
+                    ClaimedCellsResponse response = new(cellsMessage, sentRequest);
                     // Cell proof verification is too expensive for the network thread;
                     // failures disconnect the peer via the background task wrapper.
-                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(cellsMessage, _handleCells!, nameof(CellsMessage72))
-                        && TryRemoveSentCellRequest(requestId, out ValueHash256 droppedHash, out BlobCellMask droppedMask))
+                    if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(response, _handleCells!, nameof(CellsMessage72)))
                     {
                         // Scheduler saturated or shutting down: release the in-flight reservation and
                         // park the request so a later announcement can retry it.
-                        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(droppedHash.ToHash256(), droppedMask);
-                        AddPendingCellRequest(droppedHash, droppedMask);
+                        response.Dispose();
+                        RequeueClaimedCellRequest(sentRequest, removePeer: false);
                     }
                 }
                 else
@@ -175,7 +240,15 @@ public class Eth72ProtocolHandler(
     {
         if (!tx.SupportsBlobs)
         {
-            base.SendNewTransactionCore(tx);
+            if (tx.CanBeBroadcast())
+            {
+                base.SendNewTransactionCore(tx);
+            }
+            else if (tx.Hash is not null)
+            {
+                SendAnnouncement([tx], EmptyCellMaskBytes);
+            }
+
             return;
         }
 
@@ -192,10 +265,10 @@ public class Eth72ProtocolHandler(
             return base.ShouldNotifyTransactionCore(tx);
         }
 
-        // Light entries persisted before the elided-size field was added would announce their
-        // full-blob length while the fetch serves the elided form, making peers disconnect us.
+        // Light entries persisted before the consensus-size field was added cannot produce a
+        // spec-compliant eth/72 size announcement.
         // Such transactions keep propagating via eth/68-71 sessions until they churn out.
-        if (tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && lightTx.GetSparseBlobNetworkSize() == 0)
+        if (tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() == 0)
         {
             return false;
         }
@@ -203,7 +276,7 @@ public class Eth72ProtocolHandler(
         BlobCellMask mask = GetAnnouncementMask(tx);
         if (mask.IsEmpty)
         {
-            return base.ShouldNotifyTransactionCore(tx);
+            return false;
         }
 
         ValueHash256 hash = tx.Hash.ValueHash256;
@@ -226,45 +299,67 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        using ArrayPoolList<Transaction> nonBlobTransactions = new(NewPooledTransactionHashesMessage72.MaxCount);
+        using ArrayPoolList<Transaction> pendingTransactions = new(NewPooledTransactionHashesMessage72.MaxCount);
+        BlobCellMask? pendingMask = null;
         foreach (Transaction tx in txs)
         {
-            if (!tx.SupportsBlobs)
+            BlobCellMask mask = tx.SupportsBlobs ? GetAnnouncementMask(tx) : BlobCellMask.Empty;
+            if (tx.SupportsBlobs && mask.IsEmpty)
             {
-                nonBlobTransactions.Add(tx);
-                if (nonBlobTransactions.Count == NewPooledTransactionHashesMessage72.MaxCount)
-                {
-                    SendAnnouncement(nonBlobTransactions, EmptyCellMaskBytes);
-                    nonBlobTransactions.Clear();
-                }
-
                 continue;
             }
 
-            if (nonBlobTransactions.Count > 0)
+            if (pendingTransactions.Count == NewPooledTransactionHashesMessage72.MaxCount
+                || pendingMask is { } currentMask && currentMask != mask)
             {
-                SendAnnouncement(nonBlobTransactions, EmptyCellMaskBytes);
-                nonBlobTransactions.Clear();
+                FlushAnnouncement(pendingTransactions, pendingMask!.Value);
             }
 
-            SendAnnouncement([tx], GetAnnouncementMask(tx).ToBytes());
+            pendingMask = mask;
+            pendingTransactions.Add(tx);
         }
 
-        if (nonBlobTransactions.Count > 0)
+        if (pendingMask is { } remainingMask)
         {
-            SendAnnouncement(nonBlobTransactions, EmptyCellMaskBytes);
+            FlushAnnouncement(pendingTransactions, remainingMask);
         }
+    }
+
+    private void FlushAnnouncement(ArrayPoolList<Transaction> transactions, BlobCellMask mask)
+    {
+        SendAnnouncement(transactions, mask.IsEmpty ? EmptyCellMaskBytes : mask.ToBytes());
+        transactions.Clear();
     }
 
     protected override void OnDisposed()
     {
         _txPool.NewPending -= OnNewPending;
-        _sparseBlobPoolPeerRegistry.RemovePeer(Id);
+        _sparseBlobPoolPeerRegistry.RemovePeer(this);
+        lock (_cellStateLock)
+        {
+            _pendingCellRequests.Clear();
+            _sentCellRequests.Clear();
+            _sentCellRequestIds.Clear();
+            _pendingCellRequestOrder.Clear();
+            _sentCellRequestOrder.Clear();
+            _pendingCellRequestWork = 0;
+            _sentCellRequestWork = 0;
+            _pendingCellRequestCount = 0;
+            _sentCellRequestCount = 0;
+            _pendingCellRequestQueueCount = 0;
+            _sentCellRequestQueueCount = 0;
+        }
         base.OnDisposed();
     }
 
     private void Handle(NewPooledTransactionHashesMessage72 msg)
     {
+        if (msg.Hashes.Length > NewPooledTransactionHashesMessage72.MaxCount)
+        {
+            throw new SubprotocolException(
+                $"Too many hashes in {nameof(NewPooledTransactionHashesMessage72)}: {msg.Hashes.Length}, maximum {NewPooledTransactionHashesMessage72.MaxCount}.");
+        }
+
         if (msg.Hashes.Length != msg.Types.Length || msg.Hashes.Length != msg.Sizes.Length)
         {
             throw new SubprotocolException(
@@ -290,18 +385,33 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
+            bool supportsBlobs = txType.SupportsBlobs();
+            bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash.ValueHash256);
+            if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
+            {
+                if (!_sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask))
+                {
+                    continue;
+                }
+
+                if (_countedBlobAnnouncements.Set(hash.ValueHash256, 1))
+                {
+                    Interlocked.Increment(ref _blobAnnouncementsReceived);
+                }
+            }
+
             bool shouldRequestTx = !_txPool.IsKnown(hash)
                 && _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired;
 
             if (shouldRequestTx
-                && (_blobSupportEnabled || !txType.SupportsBlobs()))
+                && (_blobSupportEnabled || !supportsBlobs))
             {
                 TxShapeAnnouncements.Set(hash, (txSize, txType));
                 hashesToRequest ??= new(Math.Min(msg.Hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
-                    Send(GetPooledTransactionsMessage66.New(hashesToRequest));
+                    SendPooledTransactionsRequest(hashesToRequest);
                     hashesToRequest = new ArrayPoolList<Hash256>(Math.Min(msg.Hashes.Length - i, 256));
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     toRequestCount = 0;
@@ -312,11 +422,9 @@ public class Eth72ProtocolHandler(
                 toRequestCount++;
             }
 
-            if (_blobSupportEnabled && txType.SupportsBlobs())
+            if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
-                Interlocked.Increment(ref _blobAnnouncementsReceived);
-                _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask);
-                BlobCellMask requestMask = GetRequestMask(hash, announcementMask);
+                BlobCellMask requestMask = _sparseBlobPoolPeerRegistry.GetRequestMask(hash, announcementMask, _providerProbabilityPercent);
                 if (!requestMask.IsEmpty)
                 {
                     RequestCellsWhenReady(hash, requestMask);
@@ -326,7 +434,7 @@ public class Eth72ProtocolHandler(
 
         if (hashesToRequest is not null)
         {
-            Send(GetPooledTransactionsMessage66.New(hashesToRequest));
+            SendPooledTransactionsRequest(hashesToRequest);
         }
     }
 
@@ -343,7 +451,46 @@ public class Eth72ProtocolHandler(
         return new PooledTransactionsMessage66(message.RequestId, new PooledTransactionsMessage65(txs));
     }
 
+    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<Hash256> hashes)
+    {
+        GetPooledTransactionsMessage66 message = GetPooledTransactionsMessage66.New(hashes);
+        HashSet<ValueHash256> requestedHashes = new(hashes.Count);
+        foreach (Hash256 hash in hashes.AsSpan())
+        {
+            requestedHashes.Add(hash.ValueHash256);
+        }
+
+        _sentPooledTransactionRequests.Set(message.RequestId, requestedHashes);
+        Send(message);
+    }
+
+    private bool TryClaimPooledTransactionRequest(PooledTransactionsMessage66 response)
+    {
+        if (!_sentPooledTransactionRequests.Delete(response.RequestId, out HashSet<ValueHash256>? requestedHashes))
+        {
+            return false;
+        }
+
+        ReadOnlySpan<Transaction> transactions = response.EthMessage.Transactions.AsSpan();
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Hash256? hash = transactions[i].Hash;
+            if (hash is null || !requestedHashes.Remove(hash.ValueHash256))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     protected override bool CanServePooledTransaction(Transaction tx) => true;
+
+    public override void HandleMessage(PooledTransactionRequestMessage message)
+    {
+        ArrayPoolList<Hash256> hashes = new(1) { new Hash256(message.TxHash) };
+        SendPooledTransactionsRequest(hashes);
+    }
 
     private Task<CellsMessage72> Handle(GetCellsMessage72 getCellsMessage, CancellationToken cancellationToken)
     {
@@ -359,13 +506,15 @@ public class Eth72ProtocolHandler(
             Logger.Debug($"{Node:c} requested blob cells for {message.Hashes.Length} txs with mask {requestedMask}.");
         }
 
-        int responseCapacity = Math.Min(message.Hashes.Length, MaxCellsResponseHashes);
+        int requestHashCount = Math.Min(message.Hashes.Length, MaxCellsRequestHashes);
+        int responseCapacity = Math.Min(requestHashCount, MaxCellsResponseHashes);
         List<Hash256> responseHashes = new(responseCapacity);
         List<byte[][]> cellsByTx = new(responseCapacity);
+        HashSet<ValueHash256> seenHashes = new(requestHashCount);
         int hashesContentLength = 0;
         int cellsContentLength = 0;
 
-        for (int i = 0; i < message.Hashes.Length; i++)
+        for (int i = 0; i < requestHashCount; i++)
         {
             if (cancellationToken.IsCancellationRequested || responseHashes.Count >= MaxCellsResponseHashes)
             {
@@ -373,6 +522,11 @@ public class Eth72ProtocolHandler(
             }
 
             Hash256 hash = message.Hashes[i];
+            if (!seenHashes.Add(hash.ValueHash256))
+            {
+                continue;
+            }
+
             if (!TryBuildCellsResponse(hash, requestedMask, out byte[][] cells))
             {
                 continue;
@@ -399,22 +553,57 @@ public class Eth72ProtocolHandler(
         return Task.FromResult(new CellsMessage72(message.RequestId, responseHashes.ToArray(), cellsByTx.ToArray(), requestedMask.ToBytes()));
     }
 
-    private ValueTask HandleCells(CellsMessage72 message, CancellationToken cancellationToken)
+    private bool ShouldDisconnectForCellRequestAbuse(int requestCount)
     {
-        using CellsMessage72 cellsMessage = message;
+        if (requestCount <= 0)
+        {
+            return false;
+        }
+
+        long totalRequests = Interlocked.Add(ref _cellRequestsReceived, requestCount);
+        if (_timestamper.UtcNowOffset < _requestRatioWarmupEndsAt)
+        {
+            return false;
+        }
+
+        long announcements = Math.Max(1, Volatile.Read(ref _blobAnnouncementsReceived));
+        if (totalRequests < MinCellRequestsBeforeRatioDisconnect
+            || totalRequests < announcements * RequestToAnnouncementRatioThreshold)
+        {
+            return false;
+        }
+
+        Disconnect(
+            DisconnectReason.UselessPeer,
+            $"Sparse blob cell request-to-announce ratio exceeded: requests {totalRequests}, announcements {announcements}.");
+        return true;
+    }
+
+    private ValueTask HandleCells(ClaimedCellsResponse response, CancellationToken cancellationToken)
+    {
+        using ClaimedCellsResponse claimedResponse = response;
         if (!cancellationToken.IsCancellationRequested)
         {
-            Handle(cellsMessage);
+            Handle(claimedResponse.Message, claimedResponse.Request);
+        }
+        else
+        {
+            RequeueClaimedCellRequest(claimedResponse.Request, removePeer: false);
         }
 
         return ValueTask.CompletedTask;
     }
 
-    private void Handle(CellsMessage72 message)
+    private void Handle(CellsMessage72 message, SentCellRequest sentRequest)
     {
+        if (message.RequestId != sentRequest.RequestId)
+        {
+            ThrowMalformedCellsResponse(sentRequest, $"Wrong request ID in {nameof(CellsMessage72)} response.");
+        }
+
         if (message.Hashes.Length != message.Cells.Length)
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"Wrong format of {nameof(CellsMessage72)} message. Hashes count: {message.Hashes.Length} Cells count: {message.Cells.Length}");
+            ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} message. Hashes count: {message.Hashes.Length} Cells count: {message.Cells.Length}");
         }
 
         BlobCellMask responseMask = BlobCellMask.FromBytes(message.CellMask);
@@ -427,41 +616,30 @@ public class Eth72ProtocolHandler(
         {
             if (message.Hashes.Length != 0 || message.Cells.Length != 0)
             {
-                ThrowMalformedCellsResponse(message.RequestId, $"Wrong format of {nameof(CellsMessage72)} message. Empty cell mask with non-empty response.");
+                ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} message. Empty cell mask with non-empty response.");
             }
 
-            RetryUnansweredCellRequest(message.RequestId, responseMask);
+            RetryUnansweredCellRequest(sentRequest, responseMask);
             return;
         }
 
         if (message.Hashes.Length == 0)
         {
-            RetryUnansweredCellRequest(message.RequestId, responseMask);
-            return;
-        }
-
-        if (!TryGetSentCellRequest(message.RequestId, out SentCellRequest sentRequest))
-        {
+            RetryUnansweredCellRequest(sentRequest, responseMask);
             return;
         }
 
         if (message.Hashes.Length != 1 || message.Hashes[0].ValueHash256 != sentRequest.Hash)
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"Wrong format of {nameof(CellsMessage72)} message. Response does not match requested blob cells.");
+            ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} message. Response does not match requested blob cells.");
         }
 
         Hash256 hash = message.Hashes[0];
         ValueHash256 key = hash.ValueHash256;
-        if (!_sentCellRequests.TryGetValue(key, out CellRequestState sentRequestState)
-            || sentRequestState.RequestId != message.RequestId)
-        {
-            return;
-        }
-
-        BlobCellMask requestedMask = sentRequestState.Mask;
+        BlobCellMask requestedMask = sentRequest.Mask;
         if ((responseMask & requestedMask) != responseMask)
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"Unexpected cell mask in {nameof(CellsMessage72)} for {hash}.");
+            ThrowMalformedCellsResponse(sentRequest, $"Unexpected cell mask in {nameof(CellsMessage72)} for {hash}.");
         }
 
         byte[][] responseCells = message.Cells[0];
@@ -470,39 +648,51 @@ public class Eth72ProtocolHandler(
             || responseCells.Length % cellsPerBlob != 0
             || responseCells.Length > _maxCellsPerTransaction)
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"Wrong format of {nameof(CellsMessage72)} for {hash}. Cells count: {responseCells.Length}.");
+            ThrowMalformedCellsResponse(sentRequest, $"Wrong format of {nameof(CellsMessage72)} for {hash}. Cells count: {responseCells.Length}.");
         }
 
         if (!BlobCellsHelper.TryGetPresentCellMask(responseCells, responseMask, responseCells.Length / cellsPerBlob, out BlobCellMask availableMask))
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"Invalid cell size in {nameof(CellsMessage72)} for {hash}.");
+            ThrowMalformedCellsResponse(sentRequest, $"Invalid cell size in {nameof(CellsMessage72)} for {hash}.");
         }
 
         if (availableMask.IsEmpty)
         {
-            ThrowMalformedCellsResponse(message.RequestId, $"No requested sparse blob cells available for {hash}.");
+            ThrowMalformedCellsResponse(sentRequest, $"No requested sparse blob cells available for {hash}.");
         }
 
         PendingCellsBuffer pending = availableMask == responseMask
             ? new PendingCellsBuffer(responseMask, responseCells, Id)
             : new PendingCellsBuffer(availableMask, BlobCellsHelper.SelectFlattenedCells(responseCells, responseMask, availableMask, responseCells.Length / cellsPerBlob), Id);
-        BlobCellMask missingMask = GetMissingSentCellMask(key, availableMask, message.RequestId, out BlobCellMask completedMask);
-        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, completedMask);
-        if (_txPool.TryGetPendingBlobTransaction(hash, out Transaction? blobTx))
+        BlobCellMask missingMask = requestedMask.Except(availableMask);
+        if (!missingMask.IsEmpty)
         {
-            if (TryApplyPendingCellsOrRequeue(hash, blobTx, pending, requestedMask))
-            {
-                OnPendingCellsApplied(hash, key, availableMask, missingMask);
-            }
+            DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
+            _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
+            _partialCellResponseBackoff.Set(key, retryAt);
+            AddPendingCellRequest(key, missingMask, retryAt, restoreAnnouncement: true);
+        }
 
+        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, requestedMask, this);
+        AddPendingCellRequest(key, missingMask);
+        if (!_sparseBlobPoolPeerRegistry.RecordCells(this, hash, availableMask, pending.Cells))
+        {
+            DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
+            _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
+            _partialCellResponseBackoff.Set(key, retryAt);
+            AddPendingCellRequest(key, availableMask, retryAt, restoreAnnouncement: true);
             return;
         }
 
-        AddPendingCells(key, pending);
-        AddPendingCellRequest(key, missingMask);
-        _sparseBlobPoolPeerRegistry.RecordCells(this, hash, availableMask, pending.Cells);
-        if (_txPool.TryGetPendingBlobTransaction(hash, out blobTx)
-            && TryApplyPendingCellsOrRequeue(hash, blobTx, pending, requestedMask))
+        bool applied = _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(hash);
+        if (!applied
+            && _txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask)
+            && (localMask & availableMask) == availableMask)
+        {
+            applied = true;
+        }
+
+        if (applied)
         {
             OnPendingCellsApplied(hash, key, availableMask, missingMask);
         }
@@ -512,36 +702,41 @@ public class Eth72ProtocolHandler(
     /// Handles a response that carries none of the requested cells: the peer's announcement is
     /// dropped so retries converge on other providers instead of looping on the same peer.
     /// </summary>
-    private void RetryUnansweredCellRequest(long requestId, BlobCellMask responseMask)
+    private void RetryUnansweredCellRequest(SentCellRequest sentRequest, BlobCellMask responseMask)
     {
-        if (!TryGetSentCellRequest(requestId, out SentCellRequest sentRequest))
-        {
-            return;
-        }
-
         if (!responseMask.IsEmpty && (responseMask & sentRequest.Mask) != responseMask)
         {
-            // Validated before removing the sent request so the malformed-response requeue still applies.
-            ThrowMalformedCellsResponse(requestId, $"Unexpected cell mask in empty {nameof(CellsMessage72)} response.");
+            ThrowMalformedCellsResponse(sentRequest, $"Unexpected cell mask in empty {nameof(CellsMessage72)} response.");
         }
 
-        if (!TryRemoveSentCellRequest(requestId, out ValueHash256 requestedHash, out BlobCellMask requestMask))
-        {
-            return;
-        }
-
-        Hash256 hash = requestedHash.ToHash256();
-        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, requestMask);
-        _sparseBlobPoolPeerRegistry.RemoveAnnouncement(Id, hash);
-        RequestCellsWhenReady(hash, requestMask);
+        Hash256 hash = sentRequest.Hash.ToHash256();
+        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, sentRequest.Mask, this);
+        _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
+        RequestCellsWhenReady(hash, sentRequest.Mask);
     }
 
     private void OnPendingCellsApplied(Hash256 hash, ValueHash256 key, BlobCellMask availableMask, BlobCellMask missingMask)
     {
-        RemovePendingCells(key);
-        RemovePendingCellRequest(key);
-        ClearSparseRegistryIfFull(hash, availableMask);
+        RemovePendingCellRequestMask(key, availableMask);
+        ClearSparseRegistryIfFull(hash);
         RequestCellsWhenReady(hash, missingMask);
+        TryRequestPendingCells(hash);
+    }
+
+    private bool IsCellAnnouncementBackedOff(ValueHash256 hash)
+    {
+        if (!_partialCellResponseBackoff.TryGet(hash, out DateTimeOffset retryAt))
+        {
+            return false;
+        }
+
+        if (_timestamper.UtcNowOffset < retryAt)
+        {
+            return true;
+        }
+
+        _partialCellResponseBackoff.Delete(hash);
+        return false;
     }
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
@@ -585,10 +780,15 @@ public class Eth72ProtocolHandler(
 
                 if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 })
                 {
-                    PrepareAndSubmitTransaction(tx, isTrace);
+                    if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
+                    {
+                        PrepareAndSubmitTransaction(tx, isTrace);
+                    }
+
                     if (tx.Hash is not null)
                     {
                         RemoveCellState(tx.Hash.ValueHash256);
+                        _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
                     }
 
                     continue;
@@ -616,30 +816,9 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        ValueHash256 key = tx.Hash.ValueHash256;
-        bool appliedPendingCells = false;
-        if (_pendingCells.TryGetValue(key, out PendingCellsState pendingState))
-        {
-            PendingCellsBuffer pending = pendingState.Buffer;
-            if (TryApplyPendingCells(tx.Hash, tx, pending, out PendingCellsValidationFailure failure))
-            {
-                RemovePendingCells(key);
-                RemoveCellRequestState(key);
-                ClearSparseRegistryIfFull(tx.Hash, pending.CellMask);
-                appliedPendingCells = true;
-            }
-            else
-            {
-                HandleInvalidBufferedCells(tx.Hash, key, pending, failure);
-            }
-        }
+        _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(tx.Hash);
 
-        if (!appliedPendingCells
-            && _pendingCellRequests.TryGetValue(key, out CellRequestState pendingRequestState)
-            && !pendingRequestState.Mask.IsEmpty)
-        {
-            TryRequestPendingCells(tx.Hash);
-        }
+        TryRequestPendingCells(tx.Hash);
     }
 
     private void RequestCellsWhenReady(Hash256 hash, BlobCellMask requestMask)
@@ -660,104 +839,111 @@ public class Eth72ProtocolHandler(
 
     private bool TryBuildCellsResponse(Hash256 hash, BlobCellMask requestedMask, out byte[][] cells)
     {
-        if (!_txPool.TryGetPendingBlobTransaction(hash, out Transaction? blobTx)
-            || blobTx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
-            || requestedMask.IsEmpty)
+        cells = [];
+        if (requestedMask.IsEmpty)
         {
-            cells = [];
             return false;
         }
 
-        if (!_txPool.TryGetBlobCells(hash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells)
-            || (availableMask & requestedMask) != requestedMask)
+        bool hasMetadata = _txPool.TryGetPendingBlobCellMetadata(
+            hash,
+            out BlobCellMask locallyAvailableMask,
+            out int blobCount,
+            out int materializationWork);
+        if (!hasMetadata)
         {
-            cells = [];
+            if (!_txPool.TryGetPendingBlobCellMask(hash, out locallyAvailableMask))
+            {
+                return false;
+            }
+
+            blobCount = _maxCellsPerTransaction / BlobCellMask.CellCount;
+            materializationWork = _maxCellsPerTransaction;
+        }
+
+        if (blobCount <= 0
+            || (locallyAvailableMask & requestedMask) != requestedMask)
+        {
             return false;
         }
 
-        int expectedCells = blobVersionedHashes.Length * requestedMask.Count;
-        if (availableCells.Length != expectedCells)
+        int work = checked(blobCount * requestedMask.Count + materializationWork);
+
+        if (!TryConsumeCellServeTokens(work))
         {
-            throw new SubprotocolException(
-                $"Wrong format of local blob cells for {hash}. Expected {expectedCells} flattened cells, got {availableCells.Length}.");
+            return false;
         }
 
-        cells = availableCells;
-        return true;
+        if (!_sparseBlobPoolPeerRegistry.TryAcquireCellServeWork(work))
+        {
+            RefundCellServeTokens(work);
+            return false;
+        }
+
+        bool responseBuilt = false;
+        try
+        {
+            if (!_txPool.TryGetBlobCells(hash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells)
+                || (availableMask & requestedMask) != requestedMask)
+            {
+                return false;
+            }
+
+            int cellsPerBlob = requestedMask.Count;
+            if (availableCells.Length % cellsPerBlob != 0
+                || hasMetadata && availableCells.Length != blobCount * cellsPerBlob)
+            {
+                throw new SubprotocolException(
+                    $"Wrong format of local blob cells for {hash}. Expected {blobCount * cellsPerBlob} flattened cells, got {availableCells.Length}.");
+            }
+
+            cells = availableCells;
+            responseBuilt = true;
+            return true;
+        }
+        finally
+        {
+            if (!responseBuilt)
+            {
+                RefundCellServeTokens(work);
+                _sparseBlobPoolPeerRegistry.RefundCellServeWork(work);
+            }
+
+            _sparseBlobPoolPeerRegistry.ReleaseCellServeWork();
+        }
     }
 
-    private bool TryApplyPendingCells(Hash256 hash, Transaction tx, PendingCellsBuffer pending, out PendingCellsValidationFailure failure)
+    private bool TryConsumeCellServeTokens(int work)
     {
-        failure = default;
-        if (tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes || pending.CellMask.IsEmpty)
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.StoredTransaction, $"Wrong sparse blob transaction form for {hash}.", out failure);
-        }
-
-        int blobCount = blobVersionedHashes.Length;
-        if (!BlobCellsHelper.TryGetPresentCellMask(pending.Cells, pending.CellMask, blobCount, out BlobCellMask availableMask))
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.Cells, $"Wrong format of {nameof(CellsMessage72)} for {hash}. Cells count: {pending.Cells.Length}.", out failure);
-        }
-
-        if (availableMask.IsEmpty)
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.Cells, $"No requested sparse blob cells available for {hash}.", out failure);
-        }
-
-        byte[][] flattenedCells = BlobCellsHelper.SelectFlattenedCells(pending.Cells, pending.CellMask, availableMask, blobCount);
-        if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.StoredTransaction, $"Wrong sparse blob transaction form for {hash}.", out failure);
-        }
-
-        ShardBlobNetworkWrapper sparseWrapper = wrapper with { CellMask = availableMask, Cells = flattenedCells };
-        if (!BlobCellsHelper.ValidateCells(sparseWrapper))
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.Ambiguous, $"Invalid sparse blob cell proofs for {hash}.", out failure);
-        }
-
-        if (!_txPool.TryMergeBlobCells(hash, availableMask, flattenedCells))
-        {
-            return InvalidPendingCells(PendingCellsFailureSource.Ambiguous, $"Could not merge sparse blob cells for {hash}.", out failure);
-        }
-
-        return true;
-    }
-
-    private bool TryApplyPendingCellsOrRequeue(Hash256 hash, Transaction blobTx, PendingCellsBuffer pending, BlobCellMask requestMask)
-    {
-        if (TryApplyPendingCells(hash, blobTx, pending, out PendingCellsValidationFailure failure))
+        if (work <= 0)
         {
             return true;
         }
 
-        HandleInvalidPendingCells(hash, hash.ValueHash256, pending, requestMask, failure);
-        if (failure.Source == PendingCellsFailureSource.Cells)
+        lock (_cellStateLock)
         {
-            throw new SubprotocolException(failure.Message);
-        }
+            DateTimeOffset now = _timestamper.UtcNowOffset;
+            double elapsedSeconds = Math.Max(0, (now - _cellServeTokensUpdatedAt).TotalSeconds);
+            _cellServeTokens = Math.Min(
+                _cellServeTokenCapacity,
+                _cellServeTokens + elapsedSeconds * Math.Max(1, _maxCellsPerTransaction / CellServeRefillDivisor));
+            _cellServeTokensUpdatedAt = now;
+            if (_cellServeTokens < work)
+            {
+                return false;
+            }
 
-        return false;
+            _cellServeTokens -= work;
+            return true;
+        }
     }
 
-    private void HandleInvalidBufferedCells(Hash256 hash, ValueHash256 key, PendingCellsBuffer pending, PendingCellsValidationFailure failure)
-        => HandleInvalidPendingCells(hash, key, pending, pending.CellMask, failure);
-
-    private void HandleInvalidPendingCells(Hash256 hash, ValueHash256 key, PendingCellsBuffer pending, BlobCellMask requestMask, PendingCellsValidationFailure failure)
+    private void RefundCellServeTokens(int work)
     {
-        RemovePendingCells(key);
-        if (failure.Source == PendingCellsFailureSource.StoredTransaction)
+        lock (_cellStateLock)
         {
-            _txPool.RemoveTransaction(hash);
+            _cellServeTokens = Math.Min(_cellServeTokenCapacity, _cellServeTokens + work);
         }
-        else if (failure.Source == PendingCellsFailureSource.Cells)
-        {
-            _sparseBlobPoolPeerRegistry.RemovePeer(pending.SourcePeerId);
-            Disconnect(DisconnectReason.BreachOfProtocol, $"Invalid buffered sparse blob cells for {hash}.");
-        }
-
-        RequestCellsWhenReady(hash, requestMask);
     }
 
     private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
@@ -787,9 +973,27 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
+    bool ISparseBlobPoolPeer.TrySendPooledTransactionRequest(Hash256 hash)
+    {
+        if (Session.IsClosing)
+        {
+            return false;
+        }
+
+        ArrayPoolList<Hash256> hashes = new(1) { hash };
+        SendPooledTransactionsRequest(hashes);
+        return true;
+    }
+
+    void ISparseBlobPoolPeer.MaintainSparseBlobState(DateTimeOffset now) => MaintainSparseBlobState(now);
+
     void ISparseBlobPoolPeer.DisconnectSparseBlobPeer(DisconnectReason reason, string details) => Disconnect(reason, details);
 
-    private void AddPendingCellRequest(ValueHash256 hash, BlobCellMask requestMask)
+    private void AddPendingCellRequest(
+        ValueHash256 hash,
+        BlobCellMask requestMask,
+        DateTimeOffset? retryAt = null,
+        bool restoreAnnouncement = false)
     {
         if (requestMask.IsEmpty)
         {
@@ -800,13 +1004,38 @@ public class Eth72ProtocolHandler(
         {
             if (_pendingCellRequests.TryGetValue(hash, out CellRequestState existing))
             {
-                _pendingCellRequests[hash] = existing with { Mask = existing.Mask | requestMask };
+                BlobCellMask combinedMask = existing.Mask | requestMask;
+                _pendingCellRequestWork += combinedMask.Count - existing.Mask.Count;
+                DateTimeOffset? combinedRetryAt = existing.RetryAt;
+                if (restoreAnnouncement
+                    && (combinedRetryAt is null || retryAt > combinedRetryAt))
+                {
+                    combinedRetryAt = retryAt;
+                }
+
+                _pendingCellRequests[hash] = existing with
+                {
+                    Mask = combinedMask,
+                    ExpiresAt = _timestamper.UtcNowOffset + PendingCellStateTtl,
+                    RetryAt = combinedRetryAt,
+                    RestoreAnnouncement = existing.RestoreAnnouncement || restoreAnnouncement
+                };
+                TrimPendingCellRequests();
                 return;
             }
 
             long revision = NextCellStateRevision();
-            _pendingCellRequests[hash] = new CellRequestState(requestMask, revision, RequestId: 0);
+            _pendingCellRequests[hash] = new CellRequestState(
+                requestMask,
+                revision,
+                RequestId: 0,
+                ExpiresAt: _timestamper.UtcNowOffset + PendingCellStateTtl,
+                RetryAt: retryAt,
+                RestoreAnnouncement: restoreAnnouncement);
+            _pendingCellRequestCount++;
+            _pendingCellRequestWork += requestMask.Count;
             _pendingCellRequestOrder.Enqueue(new CellStateKey(hash, revision));
+            _pendingCellRequestQueueCount++;
             TrimPendingCellRequests();
         }
     }
@@ -815,34 +1044,40 @@ public class Eth72ProtocolHandler(
     {
         lock (_cellStateLock)
         {
-            return _sentCellRequests.TryGetValue(hash, out CellRequestState existing)
-                ? existing.Mask | requestMask
-                : requestMask;
-        }
-    }
-
-    private BlobCellMask GetMissingSentCellMask(ValueHash256 hash, BlobCellMask responseMask, long requestId, out BlobCellMask completedMask)
-    {
-        lock (_cellStateLock)
-        {
-            if (!_sentCellRequests.TryGetValue(hash, out CellRequestState existing)
-                || existing.RequestId != requestId)
+            if (_sentCellRequests.TryGetValue(hash, out CellRequestState existing))
             {
-                completedMask = BlobCellMask.Empty;
-                return BlobCellMask.Empty;
+                if (existing.ExpiresAt > _timestamper.UtcNowOffset)
+                {
+                    return existing.Mask | requestMask;
+                }
+
+                RemoveActiveSentCellRequest(hash);
             }
 
-            RemoveSentCellRequest(hash, existing.RequestId);
-            completedMask = existing.Mask;
-            return existing.Mask.Except(responseMask);
+            return requestMask;
         }
     }
 
-    private bool TryGetSentCellRequest(long requestId, out SentCellRequest sentRequest)
+    private CellRequestClaimResult TryClaimSentCellRequest(long requestId, out SentCellRequest sentRequest)
     {
         lock (_cellStateLock)
         {
-            return _sentCellRequestIds.TryGetValue(requestId, out sentRequest);
+            if (!_sentCellRequestIds.TryRemove(requestId, out sentRequest))
+            {
+                return CellRequestClaimResult.Unrequested;
+            }
+
+            if (!_sentCellRequests.TryGetValue(sentRequest.Hash, out CellRequestState existing)
+                || existing.RequestId != requestId)
+            {
+                return CellRequestClaimResult.Stale;
+            }
+
+            RemoveActiveSentCellRequest(sentRequest.Hash);
+            DateTimeOffset now = _timestamper.UtcNowOffset;
+            return existing.ExpiresAt <= now || sentRequest.CorrelationExpiresAt <= now
+                ? CellRequestClaimResult.Expired
+                : CellRequestClaimResult.Claimed;
         }
     }
 
@@ -862,184 +1097,138 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private void ThrowMalformedCellsResponse(long requestId, string message)
+    private void ThrowMalformedCellsResponse(SentCellRequest sentRequest, string message)
     {
-        RequeueSentCellRequestFromMalformedResponse(requestId);
+        RequeueClaimedCellRequest(sentRequest, removePeer: true);
         throw new SubprotocolException(message);
     }
 
-    private void RequeueSentCellRequestFromMalformedResponse(long requestId)
+    private void RequeueClaimedCellRequest(SentCellRequest sentRequest, bool removePeer)
     {
-        if (TryRemoveSentCellRequest(requestId, out ValueHash256 hash, out BlobCellMask requestMask))
+        Hash256 requestedHash = sentRequest.Hash.ToHash256();
+        _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(requestedHash, sentRequest.Mask, this);
+        if (removePeer)
         {
-            Hash256 requestedHash = hash.ToHash256();
-            _sparseBlobPoolPeerRegistry.RemovePeer(Id);
-            _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(requestedHash, requestMask);
-            RequestCellsWhenReady(requestedHash, requestMask);
+            _sparseBlobPoolPeerRegistry.RemovePeer(this);
         }
-    }
 
-    private bool TryRemoveSentCellRequest(long requestId, out ValueHash256 hash, out BlobCellMask requestMask)
-    {
-        lock (_cellStateLock)
-        {
-            if (!_sentCellRequestIds.TryRemove(requestId, out SentCellRequest sentRequest))
-            {
-                hash = default;
-                requestMask = BlobCellMask.Empty;
-                return false;
-            }
-
-            if (_sentCellRequests.TryGetValue(sentRequest.Hash, out CellRequestState existing)
-                && existing.RequestId == requestId)
-            {
-                _sentCellRequests.TryRemove(sentRequest.Hash, out _);
-            }
-
-            hash = sentRequest.Hash;
-            requestMask = sentRequest.Mask;
-            return true;
-        }
+        RequestCellsWhenReady(requestedHash, sentRequest.Mask);
     }
 
     private void AddSentCellRequest(ValueHash256 hash, BlobCellMask requestMask, long requestId)
     {
         lock (_cellStateLock)
         {
+            DateTimeOffset now = _timestamper.UtcNowOffset;
             if (_sentCellRequests.TryGetValue(hash, out CellRequestState existing))
             {
                 BlobCellMask combinedMask = existing.Mask | requestMask;
-                _sentCellRequestIds.TryRemove(existing.RequestId, out _);
-                _sentCellRequests[hash] = existing with { Mask = combinedMask, RequestId = requestId };
-                _sentCellRequestIds[requestId] = new SentCellRequest(hash, combinedMask);
+                _sentCellRequestWork += combinedMask.Count - existing.Mask.Count;
+                DateTimeOffset updatedExpiresAt = now + CellRequestTtl;
+                int updatedMaxResponseBytes = GetExpectedCellsResponseBound(requestId, combinedMask);
+                _sentCellRequests[hash] = existing with { Mask = combinedMask, RequestId = requestId, ExpiresAt = updatedExpiresAt };
+                _sentCellRequestIds[requestId] = new SentCellRequest(
+                    hash,
+                    combinedMask,
+                    requestId,
+                    now + CellResponseCorrelationTtl,
+                    updatedMaxResponseBytes);
+                TrimSentCellRequests();
                 return;
             }
 
             long revision = NextCellStateRevision();
-            _sentCellRequests[hash] = new CellRequestState(requestMask, revision, requestId);
-            _sentCellRequestIds[requestId] = new SentCellRequest(hash, requestMask);
+            DateTimeOffset expiresAt = now + CellRequestTtl;
+            int maxResponseBytes = GetExpectedCellsResponseBound(requestId, requestMask);
+            _sentCellRequests[hash] = new CellRequestState(requestMask, revision, requestId, expiresAt, RetryAt: null, RestoreAnnouncement: false);
+            _sentCellRequestIds[requestId] = new SentCellRequest(
+                hash,
+                requestMask,
+                requestId,
+                now + CellResponseCorrelationTtl,
+                maxResponseBytes);
+            _sentCellRequestCount++;
+            _sentCellRequestWork += requestMask.Count;
             _sentCellRequestOrder.Enqueue(new CellStateKey(hash, revision));
+            _sentCellRequestQueueCount++;
             TrimSentCellRequests();
         }
     }
 
-    private void AddPendingCells(ValueHash256 hash, PendingCellsBuffer pending)
-    {
-        lock (_cellStateLock)
-        {
-            if (_pendingCells.TryGetValue(hash, out PendingCellsState existing))
-            {
-                _pendingCells[hash] = existing with
-                {
-                    Buffer = TryMergePendingCells(existing.Buffer, pending, out PendingCellsBuffer merged)
-                        ? merged
-                        : pending
-                };
-                return;
-            }
-
-            long revision = NextCellStateRevision();
-            _pendingCells[hash] = new PendingCellsState(pending, revision);
-            _pendingCellsOrder.Enqueue(new CellStateKey(hash, revision));
-            TrimPendingCells();
-        }
-    }
-
-    private static bool TryMergePendingCells(PendingCellsBuffer existing, PendingCellsBuffer pending, out PendingCellsBuffer merged)
-    {
-        merged = pending;
-        int existingCellsPerBlob = existing.CellMask.Count;
-        int pendingCellsPerBlob = pending.CellMask.Count;
-        if (existingCellsPerBlob == 0
-            || pendingCellsPerBlob == 0
-            || existing.Cells.Length % existingCellsPerBlob != 0
-            || pending.Cells.Length % pendingCellsPerBlob != 0)
-        {
-            return false;
-        }
-
-        int blobCount = existing.Cells.Length / existingCellsPerBlob;
-        if (pending.Cells.Length / pendingCellsPerBlob != blobCount)
-        {
-            return false;
-        }
-
-        BlobCellMask mergedMask = existing.CellMask | pending.CellMask;
-        if (mergedMask == existing.CellMask)
-        {
-            merged = existing;
-            return true;
-        }
-
-        byte[][] mergedCells = BlobCellsHelper.MergeFlattenedCells(existing.Cells, existing.CellMask, pending.Cells, pending.CellMask, blobCount);
-        merged = new PendingCellsBuffer(mergedMask, mergedCells, pending.SourcePeerId);
-        return true;
-    }
-
     private void TrimPendingCellRequests()
     {
-        while (_pendingCellRequests.Count > MaxPendingCellRequests
+        while ((_pendingCellRequestCount > MaxPendingCellRequests || _pendingCellRequestWork > MaxPendingCellRequestWork)
             && _pendingCellRequestOrder.TryDequeue(out CellStateKey key))
         {
+            _pendingCellRequestQueueCount--;
             if (_pendingCellRequests.TryGetValue(key.Hash, out CellRequestState state)
                 && state.Revision == key.Revision)
             {
-                _pendingCellRequests.TryRemove(key.Hash, out _);
+                RemovePendingCellRequestLocked(key.Hash);
+            }
+        }
+
+        if (_pendingCellRequestQueueCount > MaxPendingCellRequests * 2)
+        {
+            _pendingCellRequestOrder.Clear();
+            _pendingCellRequestQueueCount = 0;
+            foreach (KeyValuePair<ValueHash256, CellRequestState> entry in _pendingCellRequests)
+            {
+                _pendingCellRequestOrder.Enqueue(new CellStateKey(entry.Key, entry.Value.Revision));
+                _pendingCellRequestQueueCount++;
             }
         }
     }
 
     private void TrimSentCellRequests()
     {
-        while (_sentCellRequests.Count > MaxSentCellRequests
+        while ((_sentCellRequestCount > MaxSentCellRequests || _sentCellRequestWork > MaxSentCellRequestWork)
             && _sentCellRequestOrder.TryDequeue(out CellStateKey key))
         {
+            _sentCellRequestQueueCount--;
             if (_sentCellRequests.TryGetValue(key.Hash, out CellRequestState state)
                 && state.Revision == key.Revision)
             {
-                RemoveSentCellRequest(key.Hash, state.RequestId);
+                RemoveActiveSentCellRequest(key.Hash);
             }
         }
-    }
 
-    private void TrimPendingCells()
-    {
-        while (_pendingCells.Count > MaxPendingCells
-            && _pendingCellsOrder.TryDequeue(out CellStateKey key))
+        if (_sentCellRequestQueueCount > MaxSentCellRequests * 2)
         {
-            if (_pendingCells.TryGetValue(key.Hash, out PendingCellsState state)
-                && state.Revision == key.Revision)
+            _sentCellRequestOrder.Clear();
+            _sentCellRequestQueueCount = 0;
+            foreach (KeyValuePair<ValueHash256, CellRequestState> entry in _sentCellRequests)
             {
-                _pendingCells.TryRemove(key.Hash, out _);
+                _sentCellRequestOrder.Enqueue(new CellStateKey(entry.Key, entry.Value.Revision));
+                _sentCellRequestQueueCount++;
             }
         }
     }
 
-    private void RemoveCellRequestState(ValueHash256 hash)
+    private void RemovePendingCellRequestMask(ValueHash256 hash, BlobCellMask completedMask, long expectedRevision = 0)
     {
         lock (_cellStateLock)
         {
-            _pendingCellRequests.TryRemove(hash, out _);
-            if (_sentCellRequests.TryGetValue(hash, out CellRequestState sentState))
+            if (!_pendingCellRequests.TryGetValue(hash, out CellRequestState state)
+                || (expectedRevision != 0 && state.Revision != expectedRevision))
             {
-                RemoveSentCellRequest(hash, sentState.RequestId);
+                return;
             }
-        }
-    }
 
-    private void RemovePendingCellRequest(ValueHash256 hash)
-    {
-        lock (_cellStateLock)
-        {
-            _pendingCellRequests.TryRemove(hash, out _);
-        }
-    }
+            BlobCellMask remainingMask = state.Mask.Except(completedMask);
+            if (remainingMask == state.Mask)
+            {
+                return;
+            }
 
-    private void RemovePendingCells(ValueHash256 hash)
-    {
-        lock (_cellStateLock)
-        {
-            _pendingCells.TryRemove(hash, out _);
+            if (remainingMask.IsEmpty)
+            {
+                RemovePendingCellRequestLocked(hash);
+                return;
+            }
+
+            _pendingCellRequestWork -= state.Mask.Count - remainingMask.Count;
+            _pendingCellRequests[hash] = state with { Mask = remainingMask };
         }
     }
 
@@ -1047,36 +1236,120 @@ public class Eth72ProtocolHandler(
     {
         lock (_cellStateLock)
         {
-            _pendingCellRequests.TryRemove(hash, out _);
+            RemovePendingCellRequestLocked(hash);
             if (_sentCellRequests.TryGetValue(hash, out CellRequestState sentState))
             {
                 RemoveSentCellRequest(hash, sentState.RequestId);
             }
-            _pendingCells.TryRemove(hash, out _);
         }
     }
 
     private void RemoveSentCellRequest(ValueHash256 hash, long requestId)
     {
-        _sentCellRequests.TryRemove(hash, out _);
+        RemoveActiveSentCellRequest(hash);
         _sentCellRequestIds.TryRemove(requestId, out _);
     }
 
-    private void ClearSparseRegistryIfFull(Hash256 hash, BlobCellMask cellMask)
+    private bool RemoveActiveSentCellRequest(ValueHash256 hash)
     {
-        if (cellMask.IsFull)
+        if (!_sentCellRequests.TryRemove(hash, out CellRequestState state))
+        {
+            return false;
+        }
+
+        _sentCellRequestCount--;
+        _sentCellRequestWork -= state.Mask.Count;
+        return true;
+    }
+
+    private void RemovePendingCellRequestLocked(ValueHash256 hash)
+    {
+        if (_pendingCellRequests.TryRemove(hash, out CellRequestState state))
+        {
+            _pendingCellRequestCount--;
+            _pendingCellRequestWork -= state.Mask.Count;
+        }
+    }
+
+    private void MaintainSparseBlobState(DateTimeOffset now)
+    {
+        List<SentCellRequest>? expiredSentRequests = null;
+        List<(ValueHash256 Hash, BlobCellMask Mask)>? dueAnnouncementRestores = null;
+        lock (_cellStateLock)
+        {
+            foreach (KeyValuePair<ValueHash256, CellRequestState> entry in _pendingCellRequests)
+            {
+                if (entry.Value.ExpiresAt <= now)
+                {
+                    RemovePendingCellRequestLocked(entry.Key);
+                }
+                else if (entry.Value.RestoreAnnouncement
+                    && entry.Value.RetryAt is { } retryAt
+                    && retryAt <= now)
+                {
+                    (dueAnnouncementRestores ??= []).Add((entry.Key, entry.Value.Mask));
+                }
+            }
+
+            foreach (KeyValuePair<ValueHash256, CellRequestState> entry in _sentCellRequests)
+            {
+                CellRequestState state = entry.Value;
+                if (state.ExpiresAt <= now)
+                {
+                    if (_sentCellRequestIds.TryGetValue(state.RequestId, out SentCellRequest request))
+                    {
+                        (expiredSentRequests ??= []).Add(request);
+                    }
+
+                    RemoveActiveSentCellRequest(entry.Key);
+                }
+            }
+
+            foreach (KeyValuePair<long, SentCellRequest> entry in _sentCellRequestIds)
+            {
+                if (entry.Value.CorrelationExpiresAt <= now)
+                {
+                    _sentCellRequestIds.TryRemove(entry.Key, out _);
+                }
+            }
+
+            TrimPendingCellRequests();
+            TrimSentCellRequests();
+        }
+
+        if (dueAnnouncementRestores is not null)
+        {
+            for (int i = 0; i < dueAnnouncementRestores.Count; i++)
+            {
+                (ValueHash256 key, BlobCellMask mask) = dueAnnouncementRestores[i];
+                Hash256 hash = key.ToHash256();
+                _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, mask);
+                TryRequestPendingCells(hash);
+            }
+        }
+
+        if (expiredSentRequests is not null)
+        {
+            for (int i = 0; i < expiredSentRequests.Count; i++)
+            {
+                SentCellRequest request = expiredSentRequests[i];
+                Hash256 hash = request.Hash.ToHash256();
+                _sparseBlobPoolPeerRegistry.RemoveAnnouncement(this, hash);
+                _sparseBlobPoolPeerRegistry.OnCellsRequestCompleted(hash, request.Mask, this);
+                RequestCellsWhenReady(hash, request.Mask);
+            }
+        }
+    }
+
+    private void ClearSparseRegistryIfFull(Hash256 hash)
+    {
+        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) && localMask.IsFull)
         {
             _sparseBlobPoolPeerRegistry.Clear(hash);
         }
     }
 
     private long NextCellStateRevision() => ++_cellStateRevision;
-
-    private static bool InvalidPendingCells(PendingCellsFailureSource source, string message, out PendingCellsValidationFailure failure)
-    {
-        failure = new PendingCellsValidationFailure(source, message);
-        return false;
-    }
 
     private static int GetMaxCellsPerTransaction(ISpecProvider specProvider)
     {
@@ -1096,12 +1369,21 @@ public class Eth72ProtocolHandler(
         return (int)Math.Min(int.MaxValue, maxResponseBytes);
     }
 
+    private int GetExpectedCellsResponseBound(long requestId, BlobCellMask requestMask)
+    {
+        int maxBlobCount = _maxCellsPerTransaction / BlobCellMask.CellCount;
+        int maxCellCount = checked(maxBlobCount * requestMask.Count);
+        int encodedCellLength = Rlp.LengthOfByteString(CkzgLib.Ckzg.BytesPerCell, 0);
+        int cellGroupLength = Rlp.LengthOfSequence(checked(maxCellCount * encodedCellLength));
+        return EstimateCellsResponseLength(requestId, Rlp.LengthOf(Hash256.Zero), cellGroupLength);
+    }
+
     private static int EstimateCellsResponseLength(long requestId, int hashesContentLength, int cellsContentLength)
     {
-        int payloadContentLength = Rlp.LengthOfSequence(hashesContentLength)
+        int contentLength = Rlp.LengthOf(requestId)
+            + Rlp.LengthOfSequence(hashesContentLength)
             + Rlp.LengthOfSequence(cellsContentLength)
             + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, 0);
-        int contentLength = Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(payloadContentLength);
         return Rlp.LengthOfSequence(contentLength);
     }
 
@@ -1119,13 +1401,6 @@ public class Eth72ProtocolHandler(
 
         if (!containsBlobTransaction)
         {
-            BlobCellMask nonBlobMask = BlobCellMask.FromBytes(message.CellMask);
-            if (!nonBlobMask.IsEmpty)
-            {
-                throw new SubprotocolException(
-                    $"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Non-blob announcements must not include a non-empty cell mask.");
-            }
-
             return BlobCellMask.Empty;
         }
 
@@ -1143,30 +1418,6 @@ public class Eth72ProtocolHandler(
         }
 
         return cellMask;
-    }
-
-    private bool ShouldDisconnectForCellRequestAbuse(int requestCount)
-    {
-        if (requestCount <= 0)
-        {
-            return false;
-        }
-
-        long totalRequests = Interlocked.Add(ref _cellRequestsReceived, requestCount);
-        if (_timestamper.UtcNowOffset < _requestRatioWarmupEndsAt)
-        {
-            return false;
-        }
-
-        long announcements = Math.Max(1, Volatile.Read(ref _blobAnnouncementsReceived));
-        if (totalRequests < MinCellRequestsBeforeRatioDisconnect
-            || totalRequests < announcements * RequestToAnnouncementRatioThreshold)
-        {
-            return false;
-        }
-
-        Disconnect(DisconnectReason.UselessPeer, $"Sparse blob cell request-to-announce ratio exceeded: requests {totalRequests}, announcements {announcements}.");
-        return true;
     }
 
     private void PrepareAndMaybeSubmitSparseBlobTransaction(Transaction tx, bool isTrace)
@@ -1192,67 +1443,10 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask)
-    {
-        if (announcementMask.IsEmpty)
-        {
-            return BlobCellMask.Empty;
-        }
-
-        return IsSupernode
-            ? announcementMask
-            : GetNormalRequestMask(hash, announcementMask);
-    }
-
-    private BlobCellMask GetNormalRequestMask(Hash256 hash, BlobCellMask announcementMask)
-    {
-        if (ShouldFetchFull(hash) && announcementMask.IsFull)
-        {
-            return BlobCellMask.Full;
-        }
-
-        return GetSamplerRequestMask(hash, announcementMask);
-    }
-
-    private BlobCellMask GetSamplerRequestMask(Hash256 hash, BlobCellMask announcementMask)
-    {
-        BlobCellMask mask = _blobCustodyTracker.CurrentMask & announcementMask;
-        if (announcementMask.IsFull)
-        {
-            mask |= SelectExtraCellMask(hash, announcementMask, mask);
-        }
-
-        return mask;
-    }
-
-    private bool ShouldFetchFull(Hash256 hash)
-    {
-        if (_providerThresholdPercent <= 0)
-        {
-            return false;
-        }
-
-        if (_providerThresholdPercent >= MaxProviderProbabilityPercent)
-        {
-            return true;
-        }
-
-        Span<byte> input = stackalloc byte[PublicKey.LengthInBytes + 32];
-        _localNodeId.Bytes.CopyTo(input);
-        hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..]);
-        Hash256 sampleHash = Keccak.Compute(input);
-        ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
-        return sample % MaxProviderProbabilityPercent < _providerThresholdPercent;
-    }
-
     private bool ValidateAnnouncedPooledTransaction(Transaction tx)
     {
-        if (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape))
-        {
-            return true;
-        }
-
-        if (!MatchesAnnouncedSize(tx, txShape.Size) || tx.Type != txShape.Type)
+        if (TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape)
+            && (!MatchesAnnouncedTransactionSize(tx, txShape.Size) || tx.Type != txShape.Type))
         {
             return false;
         }
@@ -1265,24 +1459,47 @@ public class Eth72ProtocolHandler(
         return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.Version switch
             {
-                ProofVersion.V0 => ValidateFullPooledBlobTransaction(tx, wrapper),
+                ProofVersion.V0 => ValidatePooledBlobTransactionV0(tx, wrapper),
                 ProofVersion.V1 => ValidateSparsePooledBlobTransaction(tx),
                 _ => false
             };
     }
 
-    private static bool ValidateFullPooledBlobTransaction(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    private static bool ValidatePooledBlobTransactionV0(Transaction tx, ShardBlobNetworkWrapper wrapper)
     {
-        if (!wrapper.HasFullBlobs()
-            || tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
-            || wrapper.Commitments.Length != blobVersionedHashes.Length)
+        if (tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
+            || wrapper.Commitments.Length != blobVersionedHashes.Length
+            || wrapper.Proofs.Length != blobVersionedHashes.Length)
         {
             return false;
         }
 
         IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
-        return proofsVerifier.ValidateLengths(wrapper)
-            && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
+        if (!proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes))
+        {
+            return false;
+        }
+
+        if (wrapper.HasFullBlobs())
+        {
+            return proofsVerifier.ValidateLengths(wrapper);
+        }
+
+        if (wrapper.Blobs.Length != 0 || wrapper.Cells is not null || !wrapper.CellMask.IsEmpty)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < blobVersionedHashes.Length; i++)
+        {
+            if (wrapper.Commitments[i].Length != CkzgLib.Ckzg.BytesPerCommitment
+                || wrapper.Proofs[i].Length != CkzgLib.Ckzg.BytesPerProof)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool ValidateSparsePooledBlobTransaction(Transaction tx)
@@ -1306,18 +1523,26 @@ public class Eth72ProtocolHandler(
             return true;
         }
 
-        bool hasTransaction = _sparseBlobPoolPeerRegistry.HasRecordedTransaction(hash)
+        bool hasValidatedTransaction = _sparseBlobPoolPeerRegistry.HasRecordedTransaction(hash)
             || _txPool.TryGetPendingBlobCellMask(hash, out _);
-        return hasTransaction
+        return hasValidatedTransaction
             && _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) >= MinSamplerFullProviderAnnouncements;
     }
 
     private bool TryRequestPendingCells(Hash256 hash)
     {
         ValueHash256 key = hash.ValueHash256;
-        if (!_pendingCellRequests.TryGetValue(key, out CellRequestState pendingRequestState)
-            || pendingRequestState.Mask.IsEmpty
-            || !CanRequestCellsNow(hash, pendingRequestState.Mask))
+        CellRequestState pendingRequestState;
+        lock (_cellStateLock)
+        {
+            if (!_pendingCellRequests.TryGetValue(key, out pendingRequestState)
+                || pendingRequestState.Mask.IsEmpty)
+            {
+                return false;
+            }
+        }
+
+        if (!CanRequestCellsNow(hash, pendingRequestState.Mask))
         {
             return false;
         }
@@ -1327,39 +1552,11 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        RemovePendingCellRequest(key);
+        RemovePendingCellRequestMask(key, pendingRequestState.Mask, pendingRequestState.Revision);
         return true;
     }
 
     private bool IsSupernode => SparseBlobPoolPeerRegistry.HasSupernodeCustody(_blobCustodyTracker.CurrentMask);
-
-    private BlobCellMask SelectExtraCellMask(Hash256 hash, BlobCellMask announcementMask, BlobCellMask alreadyRequested)
-    {
-        UInt128 candidates = announcementMask.Value & ~alreadyRequested.Value;
-        if (candidates == UInt128.Zero)
-        {
-            return BlobCellMask.Empty;
-        }
-
-        Span<int> candidateIndices = stackalloc int[BlobCellMask.CellCount];
-        int candidateCount = 0;
-        for (int i = 0; i < BlobCellMask.CellCount; i++)
-        {
-            if ((candidates & (UInt128.One << i)) != 0)
-            {
-                candidateIndices[candidateCount++] = i;
-            }
-        }
-
-        Span<byte> input = stackalloc byte[PublicKey.LengthInBytes + 33];
-        _localNodeId.Bytes.CopyTo(input);
-        hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..^1]);
-        input[^1] = 1;
-        Hash256 sampleHash = Keccak.Compute(input);
-        // The slight modulo bias is acceptable for non-consensus extra-column sampling.
-        int selected = sampleHash.Bytes[0] % candidateCount;
-        return new BlobCellMask(UInt128.One << candidateIndices[selected]);
-    }
 
     private BlobCellMask GetAnnouncementMask(Transaction tx)
     {
@@ -1370,7 +1567,8 @@ public class Eth72ProtocolHandler(
 
         if (tx is LightTransaction lightTx)
         {
-            return lightTx.ProofVersion == ProofVersion.V1 ? (lightTx.BlobCellMask.IsEmpty ? BlobCellMask.Full : lightTx.BlobCellMask) : BlobCellMask.Full;
+            BlobCellMask availableMask = lightTx.BlobCellMask;
+            return lightTx.ProofVersion == ProofVersion.V1 ? availableMask : BlobCellMask.Full;
         }
 
         return BlobCellMask.Full;
@@ -1397,24 +1595,20 @@ public class Eth72ProtocolHandler(
 
     private static int GetAnnouncementSize(Transaction tx)
     {
-        if (tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && lightTx.GetSparseBlobNetworkSize() > 0)
+        if (tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0)
         {
-            return lightTx.GetSparseBlobNetworkSize();
+            return lightTx.GetConsensusEncodingSize();
         }
 
-        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
-        {
-            return tx.GetLength();
-        }
-
-        return wrapper.Version == ProofVersion.V1
-            ? tx.TryCalculateSparseBlobNetworkSize() ?? tx.GetLength()
-            : tx.GetLength();
+        return tx.GetLength(shouldCountBlobs: false);
     }
+
+    protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
+        => tx.GetLength(shouldCountBlobs: false) == announcedSize;
 
     private static Transaction ElideBlobPayload(Transaction tx)
     {
-        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
+        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
         {
             return tx;
         }
@@ -1426,16 +1620,38 @@ public class Eth72ProtocolHandler(
         return clone;
     }
 
-    private readonly record struct SentCellRequest(ValueHash256 Hash, BlobCellMask Mask);
-    private readonly record struct CellRequestState(BlobCellMask Mask, long Revision, long RequestId);
-    private readonly record struct PendingCellsState(PendingCellsBuffer Buffer, long Revision);
-    private readonly record struct CellStateKey(ValueHash256 Hash, long Revision);
-    private readonly record struct PendingCellsValidationFailure(PendingCellsFailureSource Source, string Message);
+    private readonly record struct SentCellRequest(
+        ValueHash256 Hash,
+        BlobCellMask Mask,
+        long RequestId,
+        DateTimeOffset CorrelationExpiresAt,
+        int MaxResponseBytes);
 
-    private enum PendingCellsFailureSource
+    private readonly record struct CellRequestState(
+        BlobCellMask Mask,
+        long Revision,
+        long RequestId,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset? RetryAt,
+        bool RestoreAnnouncement);
+
+    private readonly record struct CellStateKey(ValueHash256 Hash, long Revision);
+
+    private enum CellRequestClaimResult
     {
-        Cells,
-        StoredTransaction,
-        Ambiguous
+        Claimed,
+        Stale,
+        Expired,
+        Unrequested
+    }
+
+    private sealed class ClaimedCellsResponse(CellsMessage72 message, SentCellRequest request) : IDisposable
+    {
+        private CellsMessage72? _message = message;
+
+        public CellsMessage72 Message => _message ?? throw new ObjectDisposedException(nameof(ClaimedCellsResponse));
+        public SentCellRequest Request { get; } = request;
+
+        public void Dispose() => Interlocked.Exchange(ref _message, null)?.Dispose();
     }
 }

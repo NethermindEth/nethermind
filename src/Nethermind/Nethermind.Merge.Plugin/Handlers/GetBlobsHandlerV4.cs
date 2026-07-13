@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -16,12 +15,17 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>
+/// <summary>Handles Amsterdam blob-cell retrieval requests.</summary>
+public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>
 {
-    private const int MaxRequest = 128;
-
     private static readonly Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> NotAvailable = Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(null));
 
+    public GetBlobsHandlerV4(ITxPool txPool)
+        : this(txPool, null)
+    {
+    }
+
+    /// <inheritdoc/>
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
         if (request.BlobVersionedHashes is null)
@@ -34,14 +38,24 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
             return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Fail(error!, ErrorCodes.InvalidParams);
         }
 
-        if (request.BlobVersionedHashes.Length > MaxRequest)
+        if (request.BlobVersionedHashes.Length > GetBlobsV4Limits.MaxBlobVersionedHashes)
         {
-            string tooLarge = $"The number of requested blobs must not exceed {MaxRequest}";
+            string tooLarge = $"The number of requested blobs must not exceed {GetBlobsV4Limits.MaxBlobVersionedHashes}";
             return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Fail(tooLarge, MergeErrorCodes.TooLargeRequest);
         }
 
+        for (int i = 0; i < request.BlobVersionedHashes.Length; i++)
+        {
+            if (request.BlobVersionedHashes[i] is not { Length: Eip4844Constants.BytesPerBlobVersionedHash })
+            {
+                return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Fail(
+                    $"Blob versioned hash at index {i} must be exactly {Eip4844Constants.BytesPerBlobVersionedHash} bytes.",
+                    ErrorCodes.InvalidParams);
+            }
+        }
+
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
-        if (ethSyncingInfo.IsSyncing())
+        if (ethSyncingInfo?.IsSyncing() is true)
         {
             Metrics.GetBlobsRequestsFailureTotal++;
             return NotAvailable;
@@ -50,8 +64,6 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
         int n = request.BlobVersionedHashes.Length;
         int found = 0;
         bool allRequestedCellsAvailable = true;
-        ArrayPoolList<byte[]?> blobs = new(n, n);
-        ArrayPoolList<ReadOnlyMemory<byte[]>> proofs = new(n, n);
         BlobCellsAndProofs?[]? response = null;
         try
         {
@@ -61,8 +73,7 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
             for (int i = 0; i < n; i++)
             {
                 byte[] blobVersionedHash = request.BlobVersionedHashes[i];
-                if (blobVersionedHash is not { Length: Eip4844Constants.BytesPerBlobVersionedHash }
-                    || !txPool.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells, out byte[][]? availableProofs))
+                if (!txPool.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells, out byte[][]? availableProofs))
                 {
                     allRequestedCellsAvailable = false;
                     continue;
@@ -87,15 +98,13 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
                 Metrics.GetBlobsRequestsFailureTotal++;
             }
 
-            return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(new BlobsV4DirectResponse(blobs, proofs, response, n));
+            return ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>.Success(new BlobsV4DirectResponse(response, n));
         }
         catch
         {
-            blobs.Dispose();
-            proofs.Dispose();
             if (response is not null)
             {
-                ReturnResponse(response, n);
+                ReturnResponse(response);
             }
 
             throw;
@@ -104,44 +113,41 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
 
     private static BlobCellsAndProofs CreateResponseEntry(BlobCellMask requestedMask, BlobCellMask availableMask, byte[][] availableCells, byte[][] availableProofs)
     {
-        byte[]?[] blobCells = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
-        byte[]?[] cellProofs = ArrayPool<byte[]?>.Shared.Rent(Ckzg.CellsPerExtBlob);
-        Array.Clear(blobCells, 0, Ckzg.CellsPerExtBlob);
-        Array.Clear(cellProofs, 0, Ckzg.CellsPerExtBlob);
-
-        try
+        byte[]?[] blobCells = new byte[]?[requestedMask.Count];
+        byte[]?[] cellProofs = new byte[]?[requestedMask.Count];
+        if (availableCells.Length != availableMask.Count || availableProofs.Length != availableMask.Count)
         {
-            int availableIndex = 0;
-            foreach (int cellIndex in requestedMask.EnumerateSetBits())
+            throw new InvalidOperationException("Blob pool returned an inconsistent cell response.");
+        }
+
+        int availableIndex = 0;
+        int responseIndex = 0;
+        foreach (int cellIndex in requestedMask.EnumerateSetBits())
+        {
+            if (availableMask.Contains(cellIndex))
             {
-                if (!availableMask.Contains(cellIndex))
+                byte[] cell = availableCells[availableIndex];
+                byte[] proof = availableProofs[availableIndex];
+                if (cell.Length != Ckzg.BytesPerCell || proof.Length != Ckzg.BytesPerProof)
                 {
-                    continue;
+                    throw new InvalidOperationException("Blob pool returned a malformed cell or proof.");
                 }
 
-                byte[] cell = ArrayPool<byte>.Shared.Rent(Ckzg.BytesPerCell);
-                availableCells[availableIndex].AsSpan(0, Ckzg.BytesPerCell).CopyTo(cell);
-                blobCells[cellIndex] = cell;
-
-                byte[] proof = ArrayPool<byte>.Shared.Rent(Ckzg.BytesPerProof);
-                availableProofs[availableIndex].AsSpan(0, Ckzg.BytesPerProof).CopyTo(proof);
-                cellProofs[cellIndex] = proof;
-
+                blobCells[responseIndex] = cell;
+                cellProofs[responseIndex] = proof;
                 availableIndex++;
             }
 
-            return new BlobCellsAndProofs
-            {
-                Available = true,
-                BlobCells = blobCells,
-                Proofs = cellProofs
-            };
+            responseIndex++;
         }
-        catch
+
+        return new BlobCellsAndProofs
         {
-            ReturnCells(blobCells, cellProofs);
-            throw;
-        }
+            Available = true,
+            BlobCells = blobCells,
+            Proofs = cellProofs,
+            RequestedMask = requestedMask
+        };
     }
 
     private static bool TryGetBlobCellMask(BitArray? bitarray, out BlobCellMask cellMask, out string? error)
@@ -167,38 +173,9 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo ethSyncingInfo) :
         return true;
     }
 
-    private static void ReturnResponse(BlobCellsAndProofs?[] response, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            BlobCellsAndProofs? item = response[i];
-            if (item is not null && item.Available && item.BlobCells is not null && item.Proofs is not null)
-            {
-                ReturnCells(item.BlobCells, item.Proofs);
-            }
-        }
-
+    private static void ReturnResponse(BlobCellsAndProofs?[] response) =>
         ArrayPool<BlobCellsAndProofs?>.Shared.Return(response, clearArray: true);
-    }
-
-    private static void ReturnCells(byte[]?[] blobCells, byte[]?[] cellProofs)
-    {
-        for (int cellIdx = 0; cellIdx < Ckzg.CellsPerExtBlob; cellIdx++)
-        {
-            if (blobCells[cellIdx] is { } cell)
-            {
-                ArrayPool<byte>.Shared.Return(cell);
-            }
-
-            if (cellProofs[cellIdx] is { } proof)
-            {
-                ArrayPool<byte>.Shared.Return(proof);
-            }
-        }
-
-        ArrayPool<byte[]?>.Shared.Return(blobCells, clearArray: true);
-        ArrayPool<byte[]?>.Shared.Return(cellProofs, clearArray: true);
-    }
 }
 
+/// <summary>Blob hashes and cell indices requested through <c>engine_getBlobsV4</c>.</summary>
 public readonly record struct GetBlobsHandlerV4Request(byte[][] BlobVersionedHashes, BitArray IndicesBitarray);

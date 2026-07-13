@@ -153,6 +153,30 @@ public partial class ShardBlobTxDecoderTests
         Assert.That(wrapper.Proofs, Has.Length.EqualTo(BlobCellProofsCountLimit));
     }
 
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void Mempool_form_encodes_elided_blob_payload_as_rlp_nil(ProofVersion version)
+    {
+        Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
+        Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
+
+        RlpReader wireReader = new(encoded.Bytes);
+        wireReader.ReadPrefixAndContentLength();
+        Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)TxType.Blob));
+        wireReader.ReadSequenceLength();
+        wireReader.SkipItem();
+        if (version is ProofVersion.V1)
+        {
+            Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)ProofVersion.V1));
+        }
+
+        Assert.That(wireReader.IsNextItemEmptyByteArray(), Is.True);
+
+        RlpReader decoderContext = new(encoded.Bytes);
+        Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);
+        Assert.That(((ShardBlobNetworkWrapper)decoded!.NetworkWrapper!).Blobs, Is.Empty);
+    }
+
     // Other clients validate each blob length
     [Test]
     public void Rejects_blob_tx_with_invalid_versioned_hash_length(

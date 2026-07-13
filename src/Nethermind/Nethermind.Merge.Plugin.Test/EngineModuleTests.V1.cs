@@ -2212,13 +2212,13 @@ public partial class EngineModuleTests
     [
         SszRestPaths.PostBlobsV2,
         SszRestPaths.PostBlobsV3,
-        SszRestPaths.PostBlobsV4,
     ];
 
-    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) at existing paths;
-    // the only genuinely new path is the witness endpoint.
+    // Amsterdam adds new method versions (newPayloadV5/getPayloadV6/fcuV4/bodies V2) and
+    // introduces the blobs V4 and witness endpoints.
     private static readonly string[] SszRestPathsAmsterdam =
     [
+        SszRestPaths.PostBlobsV4,
         SszRestPaths.PostPayloadsWitness,
     ];
 

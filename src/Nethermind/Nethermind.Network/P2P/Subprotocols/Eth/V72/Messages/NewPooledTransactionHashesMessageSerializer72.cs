@@ -8,15 +8,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSerializer<NewPooledTransactionHashesMessage72>
 {
-    private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage72.Types));
-    private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage72.Sizes));
-    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage72.Hashes));
+    private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Types));
+    private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Sizes));
+    private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Hashes));
     private static readonly RlpLimit CellMaskRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(BlobCellMask.FixedByteLength, nameof(NewPooledTransactionHashesMessage72.CellMask));
 
     public NewPooledTransactionHashesMessage72 Deserialize(IByteBuffer byteBuffer) =>
@@ -34,7 +33,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         {
             types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
             sizes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionSize(ref c), limit: SizesRlpLimit);
-            hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+            hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => DecodeTransactionHash(ref c), limit: HashesRlpLimit);
             if (ctx.PeekNumberOfItemsRemaining(checkPosition, maxSearch: 2) != 1)
             {
                 throw new RlpException($"Wrong format of {nameof(NewPooledTransactionHashesMessage72)} message. Expected exactly one cell mask field.");
@@ -42,9 +41,16 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
             ReadOnlySpan<byte> cellMaskSpan = ctx.DecodeByteArraySpan(CellMaskRlpLimit);
             ctx.Check(checkPosition);
-            if (cellMaskSpan.Length != 0 && cellMaskSpan.Length != BlobCellMask.FixedByteLength)
+            if (cellMaskSpan.Length != BlobCellMask.FixedByteLength)
             {
-                throw new RlpException($"Invalid cell mask length in {nameof(NewPooledTransactionHashesMessage72)}: expected 0 or {BlobCellMask.FixedByteLength}, got {cellMaskSpan.Length}.");
+                throw new RlpException($"Invalid cell mask length in {nameof(NewPooledTransactionHashesMessage72)}: expected {BlobCellMask.FixedByteLength}, got {cellMaskSpan.Length}.");
+            }
+
+            if (types.Count != sizes.Count || types.Count != hashes.Count)
+            {
+                throw new RlpException(
+                    $"Mismatched field counts in {nameof(NewPooledTransactionHashesMessage72)}: "
+                    + $"{types.Count} types, {sizes.Count} sizes, {hashes.Count} hashes.");
             }
 
             NewPooledTransactionHashesMessage72 message = new(types, sizes, hashes, cellMaskSpan.ToArray());
@@ -71,6 +77,9 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
         return size;
     }
+
+    private static Hash256 DecodeTransactionHash(ref RlpReader ctx) =>
+        ctx.DecodeKeccak() ?? throw new RlpException($"Null transaction hash in {nameof(NewPooledTransactionHashesMessage72)}.");
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
     {

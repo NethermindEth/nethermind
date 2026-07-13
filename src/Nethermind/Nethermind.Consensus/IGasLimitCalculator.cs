@@ -8,5 +8,7 @@ namespace Nethermind.Consensus
     public interface IGasLimitCalculator
     {
         ulong GetGasLimit(BlockHeader parentHeader);
+
+        ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit) => GetGasLimit(parentHeader);
     }
 }

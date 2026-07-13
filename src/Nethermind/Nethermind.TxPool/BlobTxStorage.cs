@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,7 @@ public class BlobTxStorage : IBlobTxStorage
     private const int MaxPooledKeys = 128;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
+    private int _pooledKeyCount;
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
@@ -55,26 +57,33 @@ public class BlobTxStorage : IBlobTxStorage
         // Outer array must be exact-size for the IDb indexer (uses keys.Length).
         // Inner byte[64] keys are pooled via ConcurrentQueue to avoid per-call allocations.
         byte[][] dbKeys = new byte[count][];
-        for (int i = 0; i < dbKeys.Length; i++)
+        int rentedKeyCount = 0;
+        try
         {
-            byte[] key = RentKey();
-            GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
-            dbKeys[i] = key;
+            for (int i = 0; i < dbKeys.Length; i++)
+            {
+                byte[] key = RentKey();
+                dbKeys[i] = key;
+                rentedKeyCount++;
+                GetHashPrefixedByTimestamp(keys[i].Timestamp, keys[i].Hash, key);
+            }
+
+            KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
+
+            int found = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, out results[i]))
+                    found++;
+            }
+
+            return found;
         }
-
-        KeyValuePair<byte[], byte[]?>[] dbResults = _fullBlobTxsDb[dbKeys];
-
-        int found = 0;
-        for (int i = 0; i < count; i++)
+        finally
         {
-            if (TryDecodeFullTx(dbResults[i].Value, keys[i].Sender, out results[i]))
-                found++;
+            for (int i = 0; i < rentedKeyCount; i++)
+                ReturnKey(dbKeys[i]);
         }
-
-        for (int i = 0; i < count; i++)
-            ReturnKey(dbKeys[i]);
-
-        return found;
     }
 
     public IEnumerable<LightTransaction> GetAll()
@@ -164,12 +173,27 @@ public class BlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    private byte[] RentKey() => _keyPool.TryDequeue(out byte[]? key) ? key : new byte[64];
+    private byte[] RentKey()
+    {
+        if (_keyPool.TryDequeue(out byte[]? key))
+        {
+            Interlocked.Decrement(ref _pooledKeyCount);
+            return key;
+        }
+
+        return new byte[64];
+    }
 
     private void ReturnKey(byte[] key)
     {
-        if (_keyPool.Count < MaxPooledKeys)
+        if (Interlocked.Increment(ref _pooledKeyCount) <= MaxPooledKeys)
+        {
             _keyPool.Enqueue(key);
+        }
+        else
+        {
+            Interlocked.Decrement(ref _pooledKeyCount);
+        }
     }
 
     private static void GetHashPrefixedByTimestamp(in UInt256 timestamp, in ValueHash256 hash, scoped Span<byte> txHashPrefixed)

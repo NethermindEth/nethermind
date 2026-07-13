@@ -17,7 +17,7 @@ public class NewPooledTransactionHashesMessage72(
     IOwnedReadOnlyList<Hash256> hashes,
     byte[] cellMask) : P2PMessage
 {
-    public const int MaxCount = 2048;
+    public const int MaxCount = 4096;
 
     public override int PacketType => Eth72MessageCode.NewPooledTransactionHashes;
     public override string Protocol => "eth";

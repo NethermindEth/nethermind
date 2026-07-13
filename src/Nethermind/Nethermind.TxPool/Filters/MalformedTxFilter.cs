@@ -19,7 +19,11 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            ValidationResult result = txValidator.IsWellFormed(tx, spec);
+            ValidationResult result = txValidator.IsWellFormed(
+                tx,
+                spec,
+                blockGasLimit: 0,
+                TxValidationOptions.SkipBlobProofs);
             if (!result)
             {
                 Metrics.PendingTransactionsMalformed++;

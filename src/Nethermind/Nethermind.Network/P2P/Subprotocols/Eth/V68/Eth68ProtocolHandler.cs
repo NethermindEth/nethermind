@@ -306,16 +306,11 @@ public class Eth68ProtocolHandler(ISession session,
     private bool ValidateSizeAndType(Transaction? tx)
         => tx is not null
         && !IsSparseBlobTransaction(tx)
-        && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (MatchesAnnouncedSize(tx, txShape.Size) && tx.Type == txShape.Type));
+        && (!TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape) || (MatchesAnnouncedTransactionSize(tx, txShape.Size) && tx.Type == txShape.Type));
 
     /// <summary>
     /// Checks a fetched pooled transaction against the size its announcement declared.
     /// </summary>
-    /// <remarks>
-    /// Blob transaction sizes are approximate on the wire: geth announces a structurally
-    /// estimated size and itself tolerates a difference of up to 8 bytes, so exact equality
-    /// would disconnect interoperable peers on every blob transaction.
-    /// </remarks>
     protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
     {
         int actualSize = tx.GetLength();
@@ -323,6 +318,9 @@ public class Eth68ProtocolHandler(ISession session,
             ? Math.Abs(actualSize - announcedSize) <= 8
             : actualSize == announcedSize;
     }
+
+    protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
+        MatchesAnnouncedSize(tx, announcedSize);
 
     private static bool IsSparseBlobTransaction(Transaction tx) =>
         tx is LightTransaction { ProofVersion: ProofVersion.V1 } lightTx && !lightTx.BlobCellMask.IsFull

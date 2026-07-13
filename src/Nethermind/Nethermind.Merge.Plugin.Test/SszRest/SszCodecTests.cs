@@ -198,20 +198,25 @@ public class SszCodecTests
     }
 
     [Test]
-    public void EncodeGetBlobsV4Response_with_pool_rented_cells_and_proofs_round_trips()
+    public void EncodeGetBlobsV4Response_preserves_absolute_cell_indices()
     {
         // Reproduces what GetBlobsHandlerV4 builds: pool-rented byte[] arrays sized
         // by Ckzg.BytesPerCell (2048) and Ckzg.BytesPerProof (48). ArrayPool.Rent(48)
         // hands back a 64-byte array — the encoder must slice to spec-exact length
         // or SszKzgCommitment.FromSpan throws. Likewise for SszBlobCell.
-        const int cellsPerExtBlob = 128;
-        byte[]?[] cells = new byte[]?[cellsPerExtBlob];
-        byte[]?[] proofs = new byte[]?[cellsPerExtBlob];
+        byte[]?[] cells = new byte[]?[2];
+        byte[]?[] proofs = new byte[]?[2];
         cells[0] = ArrayPool<byte>.Shared.Rent(SszBlobCell.BlobCellLength);
         proofs[0] = ArrayPool<byte>.Shared.Rent(SszKzgCommitment.KzgCommitmentLength);
         try
         {
-            BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
+            BlobCellsAndProofs entry = new()
+            {
+                Available = true,
+                BlobCells = cells,
+                Proofs = proofs,
+                RequestedMask = BlobCellMask.FromIndices([3, 127])
+            };
             byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
             GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
 
@@ -220,9 +225,11 @@ public class SszCodecTests
                 Assert.That(encoded, Is.Not.Empty);
                 Assert.That(decoded.Entries, Has.Length.EqualTo(1));
                 Assert.That(decoded.Entries![0].Available, Is.True);
-                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
+                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(BlobCellMask.CellCount));
+                Assert.That(decoded.Entries[0].Contents.Proofs, Has.Length.EqualTo(BlobCellMask.CellCount));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Is.Empty);
+                Assert.That(decoded.Entries[0].Contents.BlobCells![3].Cell, Has.Length.EqualTo(1));
+                Assert.That(decoded.Entries[0].Contents.BlobCells![127].Cell, Is.Empty);
             }
         }
         finally

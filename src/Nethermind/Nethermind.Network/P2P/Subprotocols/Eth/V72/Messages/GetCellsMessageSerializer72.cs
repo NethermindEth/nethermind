@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -12,8 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsMessage72>
 {
-    // Decode limit is deliberately far above the response cap: geth batches up to 128 hashes
-    // per GetCells and the excess is simply left unanswered, not a protocol violation.
+    // The wire limit remains permissive, but only the locally supported prefix is materialized.
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
 
     public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
@@ -25,10 +23,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         writer.StartSequence(contentLength);
         writer.Encode(message.RequestId);
 
-        int payloadContentLength = GetPayloadContentLength(message);
-        writer.StartSequence(payloadContentLength);
-
-        int hashesLength = Rlp.LengthOf(message.Hashes);
+        int hashesLength = GetHashesContentLength(message.Hashes);
         writer.StartSequence(hashesLength);
 
         foreach (Hash256 hash in message.Hashes)
@@ -47,22 +42,45 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         int checkPosition = ctx.Position + sequenceLength;
         long requestId = ctx.DecodeLong();
 
-        int payloadSequenceLength = ctx.ReadSequenceLength();
-        int payloadCheckPosition = ctx.Position + payloadSequenceLength;
-        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+        int hashesCheckPosition = ctx.ReadSequenceLength() + ctx.Position;
+        int hashCount = ctx.PeekNumberOfItemsRemaining(hashesCheckPosition, HashesRlpLimit.Limit + 1);
+        ctx.GuardLimit(hashCount, HashesRlpLimit);
+        int retainedHashCount = System.Math.Min(hashCount, Eth72ProtocolHandler.MaxCellsRequestHashes);
+        Hash256[] hashes = new Hash256[retainedHashCount];
+        for (int i = 0; i < retainedHashCount; i++)
+        {
+            hashes[i] = ctx.DecodeKeccak()
+                ?? throw new RlpException($"Null transaction hash in {nameof(GetCellsMessage72)}.");
+        }
+
+        for (int i = retainedHashCount; i < hashCount; i++)
+        {
+            ctx.DecodeByteArraySpan(size: Hash256.Size);
+        }
+
+        ctx.Check(hashesCheckPosition);
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
-        ctx.Check(payloadCheckPosition);
         ctx.Check(checkPosition);
-        return new GetCellsMessage72(requestId, hashes.AsSpan().ToArray(), cellMask);
+        return new GetCellsMessage72(requestId, hashes, cellMask);
     }
 
     public int GetLength(GetCellsMessage72 message, out int contentLength)
     {
-        contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(GetPayloadContentLength(message));
+        contentLength = Rlp.LengthOf(message.RequestId)
+            + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
+            + Rlp.LengthOf(message.CellMask);
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static int GetPayloadContentLength(GetCellsMessage72 message) =>
-        Rlp.LengthOfSequence(Rlp.LengthOf(message.Hashes)) + Rlp.LengthOf(message.CellMask);
+    private static int GetHashesContentLength(Hash256[] hashes)
+    {
+        int contentLength = 0;
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            contentLength += Rlp.LengthOf(hashes[i]);
+        }
+
+        return contentLength;
+    }
 }

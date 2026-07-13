@@ -3,6 +3,7 @@
 
 
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -14,7 +15,7 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
-    private readonly int _sparseBlobNetworkSize;
+    private readonly int _consensusEncodingSize;
     private StrongBox<BlobCellMask>? _blobCellMask;
 
     public LightTransaction(Transaction fullTx)
@@ -34,8 +35,41 @@ public class LightTransaction : Transaction
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
-        _sparseBlobNetworkSize = fullTx.TryCalculateSparseBlobNetworkSize() ?? 0;
+        _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
         _size = fullTx.GetLength();
+    }
+
+    public LightTransaction(
+        UInt256 timestamp,
+        Address sender,
+        ulong nonce,
+        Hash256 hash,
+        UInt256 value,
+        ulong gasLimit,
+        UInt256 gasPrice,
+        UInt256 maxFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        byte[][] blobVersionHashes,
+        ulong poolIndex,
+        int size,
+        ProofVersion proofVersion)
+        : this(
+            timestamp,
+            sender,
+            nonce,
+            hash,
+            value,
+            gasLimit,
+            gasPrice,
+            maxFeePerGas,
+            maxFeePerBlobGas,
+            blobVersionHashes,
+            poolIndex,
+            size,
+            proofVersion,
+            default,
+            0)
+    {
     }
 
     public LightTransaction(
@@ -69,7 +103,7 @@ public class LightTransaction : Transaction
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
         BlobCellMask = blobCellMask;
-        _sparseBlobNetworkSize = sparseBlobNetworkSize;
+        _consensusEncodingSize = sparseBlobNetworkSize;
         _size = size;
     }
 
@@ -85,11 +119,13 @@ public class LightTransaction : Transaction
     /// </remarks>
     public BlobCellMask BlobCellMask
     {
-        get => _blobCellMask?.Value ?? default;
-        set => _blobCellMask = new StrongBox<BlobCellMask>(value);
+        get => Volatile.Read(ref _blobCellMask)?.Value ?? default;
+        set => Volatile.Write(ref _blobCellMask, new StrongBox<BlobCellMask>(value));
     }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 
-    public int GetSparseBlobNetworkSize() => _sparseBlobNetworkSize;
+    public int GetConsensusEncodingSize() => _consensusEncodingSize;
+
+    public int GetSparseBlobNetworkSize() => _consensusEncodingSize;
 }

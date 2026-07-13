@@ -165,6 +165,46 @@ public class Eth68ProtocolHandlerTests
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
+    [Test]
+    public void Should_accept_full_blob_tx_with_announced_network_size()
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [TestCase(-9, true)]
+    [TestCase(-8, false)]
+    [TestCase(8, false)]
+    [TestCase(9, true)]
+    public void Should_tolerate_geth_blob_size_estimate(int sizeDifference, bool shouldDisconnect)
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() + sizeDifference },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received(shouldDisconnect ? 1 : 0).InitiateDisconnect(
+            DisconnectReason.BackgroundTaskFailure,
+            "invalid pooled tx type or size");
+    }
+
 
     [Test]
     public void Should_disconnect_if_tx_type_is_wrong()

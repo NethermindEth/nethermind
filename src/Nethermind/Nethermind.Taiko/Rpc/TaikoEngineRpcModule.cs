@@ -87,6 +87,70 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
+    /// <summary>Initializes the module with module-local blob custody tracking.</summary>
+    /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
+    public TaikoEngineRpcModule(
+        IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
+        IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
+        IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
+        IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
+        IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
+        IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
+        IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
+        IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
+        IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
+        IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
+        IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
+        IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
+        IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandler,
+        IEngineRequestsTracker engineRequestsTracker,
+        ISpecProvider specProvider,
+        GCKeeper gcKeeper,
+        ILogManager logManager,
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        IShareableTxProcessorSource txProcessorSource,
+        IRlpDecoder<Transaction> txDecoder,
+        IL1OriginStore l1OriginStore,
+        ISurgeConfig surgeConfig)
+        : this(
+            getPayloadHandlerV1,
+            getPayloadHandlerV2,
+            getPayloadHandlerV3,
+            getPayloadHandlerV4,
+            getPayloadHandlerV5,
+            getPayloadHandlerV6,
+            newPayloadV1Handler,
+            forkchoiceUpdatedV1Handler,
+            executionGetPayloadBodiesByHashV1Handler,
+            executionGetPayloadBodiesByRangeV1Handler,
+            transitionConfigurationHandler,
+            capabilitiesHandler,
+            getBlobsHandler,
+            getBlobsHandlerV2,
+            getBlobsHandlerV4,
+            getPayloadBodiesByHashV2Handler,
+            getPayloadBodiesByRangeV2Handler,
+            newPayloadWithWitnessHandler,
+            engineRequestsTracker,
+            new BlobCustodyTracker(),
+            specProvider,
+            gcKeeper,
+            logManager,
+            txPool,
+            blockFinder,
+            txProcessorSource,
+            txDecoder,
+            l1OriginStore,
+            surgeConfig)
+    {
+    }
+
     /// <summary>
     /// Maximum number of blocks to scan backwards when the batch→block index is missing.
     /// Matches alethia-reth's <c>MAX_BACKWARD_SCAN_BLOCKS = 192 * 21_600</c>.
