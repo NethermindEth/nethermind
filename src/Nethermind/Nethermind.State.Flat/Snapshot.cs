@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -151,7 +150,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
     /// acquires every stripe lock, so callers should capture once at a writer-quiescent boundary and
     /// reuse the result instead of re-reading live counts.
     /// </summary>
-    public SnapshotContentCounts CaptureCounts() => new(
+    internal SnapshotContentCounts CaptureCounts() => new(
         Accounts.Count,
         Storages.Count,
         SelfDestructedStorageAddresses.Count,
@@ -172,7 +171,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
 /// Entry counts of a <see cref="SnapshotContent"/>, captured once so memory estimates are pure
 /// functions of a single consistent capture.
 /// </summary>
-public readonly record struct SnapshotContentCounts(
+internal readonly record struct SnapshotContentCounts(
     int Accounts,
     int Storages,
     int SelfDestructedStorageAddresses,
