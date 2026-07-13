@@ -26,6 +26,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
+    // Test-only injection point: invoked before the native ingest so tests can simulate a mid-commit failure.
     internal Action? _testIngestFailureHook;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
