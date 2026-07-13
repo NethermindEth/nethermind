@@ -60,8 +60,23 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// <summary>
     /// Captures the changeset of every block on <paramref name="persistedHead"/>'s chain that has not yet been
     /// captured, up to and including <paramref name="persistedHead"/>. Must run before the per-block snapshots are
-    /// pruned. Blocks whose per-block snapshot is no longer leasable are skipped (their state already left memory).
+    /// pruned.
     /// </summary>
+    /// <remarks>
+    /// Walks the ancestry backwards through the per-block base snapshots' <see cref="Snapshot.From"/> links: each
+    /// base snapshot is exactly one block's changeset (To = this block, From = its parent), so following From is
+    /// persistedHead's exact canonical chain — no fork disambiguation and no per-block state lookup. One lease at a
+    /// time, so the walk allocates nothing.
+    ///
+    /// Capture runs before a block's base can be converted away (<see cref="PersistenceManager"/> only converts
+    /// bases already at or below the persisted head, which this hook has already captured), so within a session the
+    /// leased bases from persistedHead down to the last-captured block are always present and the walk records the
+    /// whole range. After a restart the in-memory tier only holds bases produced since startup; the walk then stops
+    /// at that floor, above the reset <c>_lastCapturedBlock</c>. Advancing the watermark to <paramref
+    /// name="persistedHead"/> regardless is safe because it only suppresses redundant re-walks — read availability is
+    /// driven by the per-block <c>AvailableBlocks</c> markers <see cref="CaptureBlock"/> writes, never by this
+    /// watermark, so a block the walk did not record simply reports no history rather than claiming an empty one.
+    /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
         if (!_enabled) return;
@@ -69,28 +84,24 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         ulong target = persistedHead.BlockNumber;
         if (_anyCaptured && target <= _lastCapturedBlock) return;
 
-        for (ulong block = _anyCaptured ? _lastCapturedBlock + 1 : 0; block <= target; block++)
+        ulong stopAtOrBelow = _anyCaptured ? _lastCapturedBlock : 0;
+
+        StateId current = persistedHead;
+        while (current.BlockNumber > stopAtOrBelow
+               && current != StateId.PreGenesis
+               && snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
-            if (!snapshotRepository.TryFindAncestorStateAtBlock(persistedHead, block, out StateId stateAtBlock))
-            {
-                MarkCaptured(block);
-                continue;
-            }
-
-            if (!snapshotRepository.TryLeaseState(stateAtBlock, out Snapshot? snapshot))
-            {
-                // Genesis / already-pruned blocks have no per-block snapshot; nothing to record.
-                MarkCaptured(block);
-                continue;
-            }
-
+            StateId parent;
             using (snapshot)
             {
-                CaptureBlock(block, snapshot);
+                CaptureBlock(current.BlockNumber, snapshot);
+                parent = snapshot.From;
             }
 
-            MarkCaptured(block);
+            current = parent;
         }
+
+        MarkCaptured(target);
     }
 
     private void MarkCaptured(ulong block)

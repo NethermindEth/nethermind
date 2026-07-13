@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -22,10 +23,15 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
+    PersistedSnapshotStack persistedSnapshots,
     bool isHistorical = false)
     : RefCountingDisposable
 {
-    public int SnapshotCount => snapshots.Count;
+    // Cached once — the persisted-snapshot stack is immutable for the bundle's lifetime. Every read
+    // gates its persisted-tier probe on this being > 0, so a node with no persisted snapshots (e.g.
+    // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
+    private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
+    public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
     /// <summary>
     /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
@@ -61,6 +67,9 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+            return persistedAccount;
+
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
         if (account == null)
@@ -81,12 +90,10 @@ public sealed class ReadOnlySnapshotBundle(
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
             if (snapshots[i].HasSelfDestruct(key))
-            {
-                return i;
-            }
+                return _persistedSnapshotCount + i;
         }
 
-        return -1;
+        return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
     public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
@@ -96,6 +103,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        (Address address, UInt256 index) = key.Key;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
@@ -106,21 +114,24 @@ public sealed class ReadOnlySnapshotBundle(
                 return res;
             }
 
-            if (i <= selfDestructStateIdx)
+            if (_persistedSnapshotCount + i <= selfDestructStateIdx)
             {
                 return null;
             }
         }
 
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
+            return persistedSlot;
+
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        byte[]? value = outSlotValue.ToEvmBytes();
+        byte[]? slotResult = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
         {
-            if (value is null || value.IsZero())
+            if (slotResult is null || slotResult.IsZero())
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -130,7 +141,7 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        return value;
+        return slotResult;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
@@ -183,6 +194,9 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
+            return persistedRlp;
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
@@ -194,6 +208,9 @@ public sealed class ReadOnlySnapshotBundle(
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
+            return persistedRlp;
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -215,6 +232,7 @@ public sealed class ReadOnlySnapshotBundle(
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
 
         snapshots.Dispose();
+        persistedSnapshots.Dispose();
 
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();

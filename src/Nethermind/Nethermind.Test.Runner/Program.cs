@@ -142,6 +142,10 @@ internal class Program
         string input = parseResult.GetValue(Options.Input);
         if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
 
+        // Rlp's and the decoders' static initializers reach into each other via RegisterDecoders;
+        // racing the first RLP use across parse workers can deadlock class init. Warm it up here.
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Nethermind.Serialization.Rlp.Rlp).TypeHandle);
+
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
@@ -364,6 +368,23 @@ internal class Program
             }
         }
 
+        int completedTests = 0;
+        // Keeps stderr alive for CI idle watchdogs; also streams failures as they happen.
+        void ReportProgress(EthereumTestResult result)
+        {
+            int completed = Interlocked.Increment(ref completedTests);
+            if (!result.Pass)
+            {
+                Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{completed}/{testCases.Count}] {result.Name} - {result.Error}");
+                Console.Error.Flush();
+            }
+            else if (completed % ProgressReportTestInterval == 0 || completed == testCases.Count)
+            {
+                Console.Error.WriteLine($"PROGRESS [{completed}/{testCases.Count}]");
+                Console.Error.Flush();
+            }
+        }
+
         if (workers <= 1 || whenTrace != WhenTrace.Never || enableWarmup)
         {
             List<EthereumTestResult> allResults = [];
@@ -371,6 +392,7 @@ internal class Program
             {
                 StateTestsRunner runner = new(whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(test);
+                ReportProgress(result);
                 allResults.Add(result);
             }
             return allResults;
@@ -385,6 +407,7 @@ internal class Program
                 StateTestsRunner runner = new(WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(item.test);
                 results[item.index] = result;
+                ReportProgress(result);
             });
 
         return [.. results];

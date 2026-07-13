@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using NSubstitute;
@@ -136,7 +137,7 @@ public class FlatWorldStateScopeHistoricalRootTests
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle readOnlyBundle =
-            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false);
+            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 
         Assert.That(readOnlyBundle.IsHistorical, Is.False);
     }
@@ -167,6 +168,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)),
             reader,
             recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(),
             isHistorical: isHistorical);
 
         return new SnapshotBundle(

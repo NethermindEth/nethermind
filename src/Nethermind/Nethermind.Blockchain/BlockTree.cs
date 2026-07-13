@@ -446,8 +446,10 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                _blockStore.Insert(block);
-                _balStore.InsertFromBlock(block);
+                // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
+                // each store's pending overlay, and the live block's BAL is freed synchronously as before.
+                _blockStore.InsertDeferred(block);
+                _balStore.InsertFromBlockDeferred(block);
             }
 
             if (!isKnown)
@@ -1113,7 +1115,10 @@ namespace Nethermind.Blockchain
                 BlockHeader header = deferred.Header;
                 Block block = headBlock is not null && headBlock.Hash == header.Hash ? headBlock : GetBlock(cache, header);
 
-                _balStore.InsertFromBlock(block);
+                // Deferred so the authoritative generated BAL supersedes any suggested BAL entry from Suggest
+                // (the later overlay entry wins; the stale suggested write no-ops). Falls back to synchronous
+                // when deferral is off.
+                _balStore.InsertFromBlockDeferred(block);
 
                 if (ShouldCache(block.Number)) _blockStore.Cache(block);
 

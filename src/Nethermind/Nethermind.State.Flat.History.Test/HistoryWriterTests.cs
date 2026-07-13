@@ -12,6 +12,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -29,6 +31,7 @@ public class HistoryWriterTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private ResourcePool _resourcePool = null!;
+    private FlatTestContainer _tier = null!;
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
     private HistoryReader _reader = null!;
@@ -41,7 +44,8 @@ public class HistoryWriterTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
-        _repository = new SnapshotRepository(LimboLogs.Instance);
+        _tier = new FlatTestContainer(new FlatDbConfig { CompactSize = 16 });
+        _repository = _tier.Repository;
         _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
         _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
         _accountHistory = new HistoryStore(
@@ -55,6 +59,7 @@ public class HistoryWriterTests
     [TearDown]
     public void TearDown()
     {
+        _tier.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
     }
@@ -397,8 +402,9 @@ public class HistoryWriterTests
     // the read block down to the persisted floor (block 0), then read through them.
     private ReadOnlySnapshotBundle TipBundle(ulong tip, int estimatedSize)
     {
-        SnapshotPooledList snapshots = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
-        return new ReadOnlySnapshotBundle(snapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+        AssembledSnapshotResult assembled = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
+        assembled.Persisted.Dispose(); // in-memory tip bundle: no persisted tier
+        return new ReadOnlySnapshotBundle(assembled.InMemory, new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
     }
 
     private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)
@@ -447,7 +453,7 @@ public class HistoryWriterTests
             foreach ((Address address, bool isNewAccount) in selfDestructs)
                 snapshot.Content.SelfDestructedStorageAddresses[address] = isNewAccount;
 
-        Assert.That(_repository.TryAddSnapshot(snapshot), Is.True);
+        Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
         _repository.AddStateId(StateAt(toBlock));
     }
 

@@ -14,5 +14,6 @@
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat.History\Nethermind.State.Flat.History.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Flat.Test\Nethermind.State.Flat.Test.csproj" />
   </ItemGroup>
 </Project>

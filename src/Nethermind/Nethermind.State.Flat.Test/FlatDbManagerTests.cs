@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,6 +30,7 @@ public class FlatDbManagerTests
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
+    private IPersistedSnapshotLoader _persistedSnapshotLoader = null!;
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
@@ -54,6 +56,7 @@ public class FlatDbManagerTests
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
+        _persistedSnapshotLoader = Substitute.For<IPersistedSnapshotLoader>();
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
         _blocksConfig = Substitute.For<IBlocksConfig>();
         _blocksConfig.SecondsPerSlot.Returns(12UL);
@@ -72,6 +75,7 @@ public class FlatDbManagerTests
     [TearDown]
     public void TearDown()
     {
+        _persistedSnapshotLoader.Dispose();
         _cts.Cancel();
         _cts.Dispose();
         _historyDb.Dispose();
@@ -85,6 +89,7 @@ public class FlatDbManagerTests
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
+        _persistedSnapshotLoader,
         _config,
         _blocksConfig,
         LimboLogs.Instance,
@@ -151,7 +156,7 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
 
-        _snapshotRepository.DidNotReceive().TryAddSnapshot(Arg.Any<Snapshot>());
+        _snapshotRepository.DidNotReceive().TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase);
         _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 
@@ -160,7 +165,7 @@ public class FlatDbManagerTests
     {
         StateId persistedStateId = CreateStateId(5);
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
-        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
 
         ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);
@@ -171,7 +176,7 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
 
-        _snapshotRepository.Received(1).TryAddSnapshot(snapshot);
+        _snapshotRepository.Received(1).TryAdd(snapshot, SnapshotTier.InMemoryBase);
         _snapshotRepository.Received(1).SetLastCommittedStateId(snapshotTo);
     }
 
@@ -185,7 +190,7 @@ public class FlatDbManagerTests
 
         _persistenceManager.LeaseReader().Returns(mockReader);
         _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
-            .Returns(new SnapshotPooledList(0));
+            .Returns(new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
 
         await using FlatDbManager manager = CreateManager();
 
@@ -211,7 +216,7 @@ public class FlatDbManagerTests
     {
         StateId persistedStateId = CreateStateId(5);
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
-        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(false);
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(false);
 
         ResourcePool realResourcePool = new(_config);
         StateId snapshotFrom = CreateStateId(10);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History;
@@ -84,5 +85,6 @@ public sealed class HistoricalFlatDbManager(
         new(new SnapshotPooledList(0),
             new HistoryBackedPersistenceReader(historyReader, baseBlock),
             enableDetailedMetrics,
+            PersistedSnapshotStack.Empty(enableDetailedMetrics),
             isHistorical: true);
 }

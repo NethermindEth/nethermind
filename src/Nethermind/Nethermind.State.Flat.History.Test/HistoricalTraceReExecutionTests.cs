@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
@@ -176,17 +177,22 @@ public class HistoricalTraceReExecutionTests
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
+        Substitute.For<IPersistedSnapshotLoader>(),
         new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, HistoryEnabled = true },
         _blocksConfig,
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
+    // Historical re-execution (debug_traceTransaction / eth_call) runs through the read-only processing
+    // environment — the same usage FlatOverridableWorldScope drives in production. MainBlockProcessing is
+    // reserved for canonical block processing, which HistoricalFlatDbManager deliberately rejects at a
+    // trie-less historical state (a corrupt state root would cascade into invalid-block deletions).
     private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
         new MemDb(),
         manager,
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
         new NoopTrieWarmer(),
-        ResourcePool.Usage.MainBlockProcessing,
+        ResourcePool.Usage.ReadOnlyProcessingEnv,
         LimboLogs.Instance,
         isReadOnly: false);
 

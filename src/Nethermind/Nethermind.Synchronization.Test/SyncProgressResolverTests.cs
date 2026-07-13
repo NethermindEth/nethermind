@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -38,11 +39,62 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        public void Header_block_uses_head_when_no_header_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.ReturnsNull();
+
+            Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(head.Number));
+        }
+
+        [Test]
         public void Best_block_is_0_when_no_block_was_suggested()
         {
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
             _blockTree.BestSuggestedBody.ReturnsNull();
             Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Best_block_uses_head_when_no_block_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedBody.ReturnsNull();
+
+            Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(head.Number));
+        }
+
+        [Test]
+        public void Chain_difficulty_uses_head_when_no_block_was_suggested()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).WithTotalDifficulty((UInt256)10).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedBody.ReturnsNull();
+
+            Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(head.TotalDifficulty));
+        }
+
+        [Test]
+        public void Suggested_pointers_behind_head_are_not_hidden()
+        {
+            SyncProgressResolver syncProgressResolver = CreateProgressResolver(false, new SyncConfig { PivotNumber = 1 });
+            Block head = Build.A.Block.WithNumber(5).WithTotalDifficulty((UInt256)10).TestObject;
+            Block suggested = Build.A.Block.WithNumber(4).WithTotalDifficulty(UInt256.One).TestObject;
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedHeader.Returns(suggested.Header);
+            _blockTree.BestSuggestedBody.Returns(suggested);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(syncProgressResolver.FindBestHeader(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.FindBestFullBlock(), Is.EqualTo(suggested.Number));
+                Assert.That(syncProgressResolver.ChainDifficulty, Is.EqualTo(suggested.TotalDifficulty));
+            }
         }
 
         [Test]
