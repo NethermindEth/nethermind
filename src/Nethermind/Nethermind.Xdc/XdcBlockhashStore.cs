@@ -4,13 +4,14 @@
 using System;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Xdc;
 
-public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : IBlockhashStore
+public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
     private static readonly ValueHash256 CodeHash =
         ValueKeccak.Compute(Eip2935Constants.Code);
@@ -38,4 +39,8 @@ public class XdcBlockhashStore(IBlockhashStore inner, IWorldState worldState) : 
 
     public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec) =>
         inner.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
+
+    // The parent-hash write is delegated to the inner store, so its prewarm hint is exact here.
+    public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
+        (inner as IHasAccessList)?.GetAccessList(block, spec);
 }
