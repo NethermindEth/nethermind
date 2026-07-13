@@ -79,7 +79,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository baseRepo = new(tracedState);
         ICodeInfoRepository codeInfoRepo = wrapPrecompileCache
-            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCache: null)
+            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCaches: null)
             : baseRepo;
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(
@@ -2087,7 +2087,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     [Test]
     public void CacheCodeInfoRepository_reads_prior_code_change_from_bal_world_state()
     {
-        CacheCodeInfoRepository.Clear();
+        StaticCodeCache.Instance.Clear();
 
         byte[] priorCode = [(byte)Instruction.STOP];
         ReadOnlyAccountChanges priorChange = Build.An.AccountChanges
@@ -2103,7 +2103,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         balWorldState.SetParentReader(TestState);
         balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
 
-        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider(), StaticCodeCache.Instance);
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
 
         using (Assert.EnterMultipleScope())
@@ -2116,7 +2116,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     [Test]
     public void CacheCodeInfoRepository_falls_back_to_parent_code_by_address_after_bal_hash_miss()
     {
-        CacheCodeInfoRepository.Clear();
+        StaticCodeCache.Instance.Clear();
 
         byte[] parentCode = [(byte)Instruction.STOP];
         TestState.CreateAccount(TestItem.AddressA, 0);
@@ -2135,7 +2135,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         balWorldState.SetParentReader(TestState);
         balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
 
-        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider(), StaticCodeCache.Instance);
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
 
         using (Assert.EnterMultipleScope())
@@ -2148,7 +2148,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     [Test]
     public void CacheCodeInfoRepository_tracing_records_account_read_in_bal()
     {
-        CacheCodeInfoRepository.Clear();
+        StaticCodeCache.Instance.Clear();
 
         byte[] code = [(byte)Instruction.STOP];
 
@@ -2161,7 +2161,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
 
-        CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+        CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider(), StaticCodeCache.Instance);
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
 
         using (Assert.EnterMultipleScope())

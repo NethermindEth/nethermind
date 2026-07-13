@@ -35,19 +35,20 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// Decorates a scope provider with the shared <see cref="PreBlockCaches"/>. A miss always backfills;
 /// relies on the driver clearing the caches between blocks (see <c>BranchProcessor</c>).
 /// </summary>
-/// <param name="isPrewarmer">
-/// True for read-only populator envs (prewarmer, parallel-worker parent readers); false for the
-/// read-write main world state. On a cache hit a consumer seeds the scope-local cache via
-/// <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers itself as
-/// the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
+/// <param name="prewarmerState">
+/// Carries the shared caches and <see cref="IPrewarmerState.IsPrewarmer"/>. On a cache hit a consumer seeds the
+/// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers
+/// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
-    PreBlockCaches preBlockCaches,
-    ILogManager logManager,
-    bool isPrewarmer = true
-) : IWorldStateScopeProvider, IPreBlockCaches
+    IPrewarmerState prewarmerState,
+    ILogManager logManager
+) : IWorldStateScopeProvider
 {
+    private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
+    private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
@@ -56,9 +57,6 @@ public class PrewarmerScopeProvider(
         if (!isPrewarmer) preBlockCaches.MainScope = scope;
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
     }
-
-    public PreBlockCaches? Caches => preBlockCaches;
-    public bool IsWarmWorldState => !isPrewarmer;
 
     private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
