@@ -128,14 +128,42 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             underlyingWriteBatch.Merge(key, value, columnDb._columnFamily, flags);
     }
 
-    public IWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
+    public ISstIngestWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
 
-    private sealed class SstIngestWriteBatch(ColumnDb columnDb) : IWriteBatch
+    public string IngestStagingDir => Path.Combine(_mainDb.FullPath, "sst_ingest");
+
+    private const int MaxL0FilesBeforeThrottle = 20;
+    private const int L0DrainMaxPolls = 1500;
+    private const int L0DrainPollMs = 20;
+
+    private readonly IngestExternalFileOptions _ingestOptions = new IngestExternalFileOptions()
+        .SetMoveFiles(true)
+        .SetAllowGlobalSeqno(true)
+        .SetAllowBlockingFlush(true);
+
+    public void IngestStagedFiles(IReadOnlyList<string> files)
+    {
+        if (files.Count == 0) return;
+        _testIngestFailureHook?.Invoke();
+        _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
+    }
+
+    public void WaitForIngestCompactionHeadroom()
+    {
+        for (int i = 0; i < L0DrainMaxPolls; i++)
+        {
+            string? v = _rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnFamily);
+            if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
+            Thread.Sleep(L0DrainPollMs);
+        }
+
+        ILogger logger = _mainDb.Logger;
+        if (logger.IsWarn) logger.Warn($"L0 of {_mainDb.Name} column {Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
+    }
+
+    private sealed class SstIngestWriteBatch(ColumnDb columnDb) : ISstIngestWriteBatch
     {
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
-        private const int MaxL0FilesBeforeThrottle = 20;
-        private const int L0DrainMaxPolls = 1500;
-        private const int L0DrainPollMs = 20;
         private const int SlabSize = 1 << 20;
 
         // Worst-case permanent retention: slabs <= 1024 x 1 MiB = 1 GiB; entries <= 6 arrays/bucket over 2^16..2^22 x 32 B ~= 1.5 GiB.
@@ -146,15 +174,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         private readonly ColumnDb _columnDb = columnDb;
         private readonly List<byte[]> _slabs = [];
+        private readonly List<string> _stagedFiles = [];
         private Entry[] _index = s_entryPool.Rent(1 << 16);
         private int _count;
         private int _slabIndex = -1;
         private int _slabOffset;
         private long _bufferedBytes;
-        private readonly IngestExternalFileOptions _options = new IngestExternalFileOptions()
-            .SetMoveFiles(true)
-            .SetAllowGlobalSeqno(true)
-            .SetAllowBlockingFlush(true);
 
         private struct Entry
         {
@@ -281,9 +306,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
             Array.Sort(_index, 0, _count, new EntryComparer(this));
 
-            string dir = Path.Combine(_columnDb._mainDb.FullPath, "sst_ingest");
-            Directory.CreateDirectory(dir);
-            string file = Path.Combine(dir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
+            Directory.CreateDirectory(_columnDb.IngestStagingDir);
+            string file = Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
 
             try
             {
@@ -311,9 +335,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 {
                     Native.Instance.rocksdb_sstfilewriter_destroy(writer);
                 }
-
-                _columnDb._testIngestFailureHook?.Invoke();
-                _columnDb._rocksDb.IngestExternalFiles([file], _options, _columnDb._columnFamily);
             }
             catch
             {
@@ -321,26 +342,33 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 throw;
             }
 
+            _stagedFiles.Add(file);
             Clear();
-            WaitForCompactionHeadroom();
         }
 
-        private void WaitForCompactionHeadroom()
+        public IReadOnlyList<string> SealToStagedFiles()
         {
-            for (int i = 0; i < L0DrainMaxPolls; i++)
-            {
-                string? v = _columnDb._rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnDb._columnFamily);
-                if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
-                Thread.Sleep(L0DrainPollMs);
-            }
+            FlushChunk();
+            return _stagedFiles;
+        }
 
-            ILogger logger = _columnDb._mainDb.Logger;
-            if (logger.IsWarn) logger.Warn($"L0 of {_columnDb._mainDb.Name} column {_columnDb.Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
+        public void IngestStagedFiles()
+        {
+            _columnDb.IngestStagedFiles(_stagedFiles);
+            _stagedFiles.Clear();
+        }
+
+        public void DeleteStagedFiles()
+        {
+            foreach (string file in _stagedFiles)
+            {
+                try { if (File.Exists(file)) File.Delete(file); } catch { }
+            }
+            _stagedFiles.Clear();
         }
 
         public void Dispose()
         {
-            FlushChunk();
             foreach (byte[] slab in _slabs)
             {
                 if (slab.Length == SlabSize) s_slabPool.Return(slab);
