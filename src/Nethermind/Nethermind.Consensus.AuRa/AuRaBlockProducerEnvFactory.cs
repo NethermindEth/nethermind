@@ -111,37 +111,57 @@ internal sealed class AuRaBlockProducerEnvFactory(
 
     private ITxSource WrapTxSourceForProducer(IComponentContext ctx, ITxSource txPoolSource)
     {
-        IList<ITxSource> txSources = [txPoolSource];
-        bool needSigner = false;
-
-        if (parameters.PosdaoTransition != AuRaChainSpecEngineParameters.TransitionDisabled
-            && ctx.Resolve<IAuRaValidator>() is ITxSource validatorSource)
+        bool CheckAddPosdaoTransactions(IList<ITxSource> list, ulong auRaPosdaoTransition)
         {
-            txSources.Insert(0, validatorSource);
-            needSigner = true;
+            if (auRaPosdaoTransition != AuRaChainSpecEngineParameters.TransitionDisabled && ctx.Resolve<IAuRaValidator>() is ITxSource validatorSource)
+            {
+                list.Insert(0, validatorSource);
+                return true;
+            }
+
+            return false;
         }
 
-        IDictionary<ulong, Address>? randomnessContractAddress = parameters.RandomnessContractAddress;
-        if (randomnessContractAddress?.Any() == true)
+        bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<ulong, Address>? randomnessContractAddress, ISigner signer)
         {
-            RandomContractTxSource randomContractTxSource = new(
-                randomnessContractAddress
+            IList<IRandomContract> GetRandomContracts(
+                IDictionary<ulong, Address> randomnessContractAddressPerBlock,
+                IAbiEncoder abiEncoder,
+                IReadOnlyTxProcessorSource txProcessorSource,
+                ISigner signerLocal) =>
+                randomnessContractAddressPerBlock
                     .Select(kvp => new RandomContract(
                         abiEncoder,
                         kvp.Value,
-                        readOnlyTxProcessingEnvFactory.Create(),
+                        txProcessorSource,
                         kvp.Key,
-                        engineSigner))
-                    .ToArray<IRandomContract>(),
-                new EciesCipher(cryptoRandom),
-                engineSigner,
-                protectedPrivateKey,
-                cryptoRandom,
-                logManager);
+                        signerLocal))
+                    .ToArray<IRandomContract>();
 
-            txSources.Insert(0, randomContractTxSource);
-            needSigner = true;
+            if (randomnessContractAddress?.Any() == true)
+            {
+                RandomContractTxSource randomContractTxSource = new(
+                    GetRandomContracts(randomnessContractAddress, abiEncoder,
+                        readOnlyTxProcessingEnvFactory.Create(),
+                        signer),
+                    new EciesCipher(cryptoRandom),
+                    signer,
+                    protectedPrivateKey,
+                    cryptoRandom,
+                    logManager);
+
+                list.Insert(0, randomContractTxSource);
+                return true;
+            }
+
+            return false;
         }
+
+        IList<ITxSource> txSources = [txPoolSource];
+        bool needSigner = false;
+
+        needSigner |= CheckAddPosdaoTransactions(txSources, parameters.PosdaoTransition);
+        needSigner |= CheckAddRandomnessTransactions(txSources, parameters.RandomnessContractAddress, engineSigner);
 
         ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
