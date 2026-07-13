@@ -428,9 +428,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         finally
         {
             int skips = Volatile.Read(ref blockState.OvertakenSkips);
-            if (skips > 0 && _logger.IsInfo)
+            int late = Volatile.Read(ref blockState.LateWarms);
+            if ((skips > 0 || late > 0) && _logger.IsInfo)
             {
-                _logger.Info($"[PWSKIP] block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} overtakenSkips={skips} overtakenGasM={Interlocked.Read(ref blockState.OvertakenGas) / 1_000_000.0:F2}");
+                _logger.Info($"[PWSKIP] block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} overtakenSkips={skips} overtakenGasM={Interlocked.Read(ref blockState.OvertakenGas) / 1_000_000.0:F2} lateWarms={late} lateWarmGasM={Interlocked.Read(ref blockState.LateWarmGas) / 1_000_000.0:F2}");
             }
         }
     }
@@ -540,6 +541,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+
+            // The warm finished after the main thread already began this tx — it arrived too late to help.
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                Interlocked.Increment(ref blockState.LateWarms);
+                Interlocked.Add(ref blockState.LateWarmGas, (long)tx.GasLimit);
+            }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -725,9 +733,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null)
     {
-        // Diagnostic counters: txs whose warm-up was skipped because the main thread overtook the warmer.
+        // Diagnostic counters: txs whose warm-up was skipped because the main thread overtook the warmer,
+        // and txs whose warm-up completed only after the main thread had already started executing them.
         public int OvertakenSkips;
         public long OvertakenGas;
+        public int LateWarms;
+        public long LateWarmGas;
     }
 
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
