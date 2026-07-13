@@ -15,10 +15,10 @@ namespace Nethermind.Xdc.RPC;
 
 internal static class RpcHelpers
 {
-    public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot, XdcBlockHeader header) => new()
+    public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot) => new()
     {
-        Number = header.Number,
-        Hash = header.Hash,
+        Number = (ulong)snapshot.BlockNumber,
+        Hash = snapshot.HeaderHash,
         Signers = snapshot.NextEpochCandidates.ToHashSet(),
     };
 
