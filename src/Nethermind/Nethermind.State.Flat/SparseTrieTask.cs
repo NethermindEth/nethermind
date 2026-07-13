@@ -345,11 +345,29 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                         ProcessDelta(delta.Session!, delta.Delta);
                     break;
                 case AccountTouchesCommand touches:
-                    Volatile.Write(ref touches.Session!.AccountTouchCommandQueued, 0);
-                    break;
+                    {
+                        WorkerSession session = touches.Session!;
+                        Volatile.Write(ref session.AccountTouchCommandQueued, 0);
+                        if (!session.FinishRequested && session.Error is null)
+                        {
+                            int remaining = MaxSpeculativeTouchesPerPass;
+                            ProcessAccountProofs(session, ref remaining);
+                            ProcessAccountTouches(session, ref remaining);
+                        }
+                        break;
+                    }
                 case StorageTouchesCommand touches:
-                    Volatile.Write(ref touches.Session!.StorageTouchCommandQueued, 0);
-                    break;
+                    {
+                        WorkerSession session = touches.Session!;
+                        Volatile.Write(ref session.StorageTouchCommandQueued, 0);
+                        if (!session.FinishRequested && session.Error is null)
+                        {
+                            int remaining = MaxSpeculativeTouchesPerPass;
+                            ProcessStorageProofs(session, ref remaining);
+                            ProcessStorageTouches(session, ref remaining);
+                        }
+                        break;
+                    }
                 case FinishCommand finish:
                     Finish(finish);
                     break;
@@ -391,11 +409,17 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
 
     private void ProcessDelta(WorkerSession session, SparseTriePhaseDelta delta)
     {
+        SparseRootComputer computer = session.GetComputer();
+        Dictionary<ValueHash256, LeafUpdate> accountUpdates = [];
+
         foreach (SparseTrieAccountDelta accountDelta in delta.Accounts)
         {
             ValueHash256 accountPath = accountDelta.Address.ToAccountPath;
+            session.RevealedAccounts.Add(accountPath);
             session.ProvisionalAccountValues[accountDelta.Address] = accountDelta.Account;
-            TryAddPendingAccountTouch(session, accountPath);
+            accountUpdates[accountPath] = accountDelta.Account is null
+                ? LeafUpdate.Deleted()
+                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(accountDelta.Account).Bytes);
         }
 
         foreach (SparseTrieStorageDelta storageDelta in delta.StorageDeltas)
@@ -403,7 +427,7 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
             ValueHash256 accountPath = storageDelta.Address.ToAccountPath;
             Hash256 accountHash = accountPath.ToCommitment();
             session.RetainedStorageHashes.Add(accountHash);
-            TryAddPendingAccountTouch(session, accountPath);
+            AddAccountTouch(session, accountUpdates, accountPath);
 
             ref ProvisionalStorage? provisional = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(
                 session.ProvisionalStorage,
@@ -430,6 +454,8 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 provisional.ParentStorageRoot,
                 slotPath);
         }
+
+        computer.ApplyAccountChanges(accountUpdates);
     }
 
     private static void AddAccountTouch(
@@ -728,9 +754,13 @@ public sealed class SparseTrieWorker : IDisposable, IAsyncDisposable
                 storageRoot is not null)
                 account = account.WithChangedStorageRoot(storageRoot);
 
-            accountUpdates[accountPath] = account is null
-                ? LeafUpdate.Deleted()
-                : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
+            if (!session.ProvisionalAccountValues.TryGetValue(address, out Account? provisional) ||
+                provisional != account)
+            {
+                accountUpdates[accountPath] = account is null
+                    ? LeafUpdate.Deleted()
+                    : LeafUpdate.Changed(AccountDecoder.Instance.Encode(account).Bytes);
+            }
         }
 
         foreach (AddressAsKey storageAddress in mutableStorageRoots.Keys)
