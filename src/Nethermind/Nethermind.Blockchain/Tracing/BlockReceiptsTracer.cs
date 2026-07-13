@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -91,7 +92,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
         if (!parallel)
         {
-            Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+            Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
         }
 
         // Track cumulative receipt gas (post-refund)
@@ -305,7 +306,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
         (ulong cumulativeRegular, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
+        Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
@@ -355,10 +356,16 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentIndex++;
     }
 
-    public void EndBlockTrace()
+    public void EndBlockTrace() => EndBlockTrace(accumulateBlockBloom: true);
+
+    /// <param name="accumulateBlockBloom">
+    /// Pass <c>false</c> when a background task computes the header bloom; accumulating it here
+    /// would race that task's per-receipt bloom writes.
+    /// </param>
+    public void EndBlockTrace(bool accumulateBlockBloom)
     {
         _otherTracer.EndBlockTrace();
-        if (_txReceipts.Count > 0)
+        if (accumulateBlockBloom && _txReceipts.Count > 0)
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;

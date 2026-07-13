@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
 
-        public ulong CollectionsPerDecommit { get; set; } = 25;
+        public int CollectionsPerDecommit { get; set; } = 25;
 
         public const int DefaultNewPayloadBlockProcessingTimeout = 7000;
 

@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -212,5 +216,64 @@ internal class ProposedBlockTests
         await Task.Delay(100);
 
         Assert.That(blockChain.XdcContext.CurrentRound, Is.EqualTo(roundCountBeforeStart));
+    }
+
+    /// <summary>
+    /// When HighestQC points to a fork block, we should reorg and build on top of that
+    /// </summary>
+    [Test]
+    public async Task TryPropose_WhenHighestQCIsUnprocessedForkBlock_ReorgsToForkBlockThenProposesOnIt()
+    {
+        IReadOnlyList<PrivateKey> keys = new PrivateKeyGenerator().Generate(210).ToList();
+        using XdcTestBlockchain mainChain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true, keys: keys);
+        using XdcTestBlockchain forkChain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true, keys: keys);
+
+
+        int blockCount = 10;
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            Block b = await mainChain.AddBlockWithoutCommitQc();
+            forkChain.BlockTree.SuggestBlock(b);
+
+            mainChain.CreateAndCommitQC((XdcBlockHeader)b.Header);
+            forkChain.CreateAndCommitQC((XdcBlockHeader)b.Header);
+        }
+
+        Assert.That(mainChain.BlockTree.Head!.Header.Hash, Is.EqualTo(forkChain.BlockTree.Head!.Header.Hash));
+
+        Block mainBlock = await mainChain.AddBlockFromParent(
+            mainChain.BlockTree.Head!.Header,
+            withQC: false,
+            mainChain.CreateTransactionBuilder().To(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject
+        );
+
+        Block forkBlock = await forkChain.AddBlockFromParent(
+            forkChain.BlockTree.Head!.Header,
+            withQC: false,
+            forkChain.CreateTransactionBuilder().To(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyB).TestObject
+        );
+
+        Assert.That(mainChain.BlockTree.Head!.Header.Hash, Is.Not.EqualTo(forkChain.BlockTree.Head!.Header.Hash));
+
+
+
+        // Round-trip through RLP to simulate receiving the block from a peer and remove IsSelfMined
+        BlockDecoder blockDecoder = mainChain.Container.Resolve<BlockDecoder>();
+        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock).Bytes);
+        AddBlockResult result = mainChain.BlockTree.SuggestBlock(externalForkBlock);
+
+        Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+
+        Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header), Is.True);
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.False);
+
+        mainChain.StartHotStuffModule();
+
+        mainChain.CreateAndCommitQC((XdcBlockHeader)forkBlock.Header);
+        await mainChain.TriggerBlockProposal();
+
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.True);
+        Assert.That(mainChain.BlockTree.Head!.Header.ParentHash, Is.EqualTo(externalForkBlock.Hash));
     }
 }

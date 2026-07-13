@@ -26,6 +26,7 @@ on:
         options:
           - realblocks
           - superblocks
+          - fusaka
         default: superblocks
       delay_seconds:
         description: Value used to replace <<DELAY>> placeholder (integer)
@@ -185,7 +186,7 @@ jobs:
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
-            elif [[ "${payload_set}" == "realblocks" ]]; then
+            elif [[ "${payload_set}" == "realblocks" || "${payload_set}" == "fusaka" ]]; then
               amount="1000"
             else
               amount="100"
@@ -311,8 +312,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -510,8 +515,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -573,7 +582,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
-            if [[ "${PAYLOAD_SET}" == "realblocks" ]]; then
+            if [[ "${PAYLOAD_SET}" == "realblocks" || "${PAYLOAD_SET}" == "fusaka" ]]; then
               AMOUNT="1000"
             else
               AMOUNT="100"

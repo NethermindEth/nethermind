@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
@@ -19,6 +18,7 @@ public sealed class NodeSource(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IDiscv5RecordFilter recordFilter,
+    IForkInfo forkInfo,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -145,16 +145,21 @@ public sealed class NodeSource(
     private bool TryCreatePeerCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? peerCandidate)
     {
         peerCandidate = null;
-        if (string.IsNullOrEmpty(discoveryNode.Enr))
+        if (discoveryNode.Enr is not { Signature: not null } record)
         {
             return false;
         }
 
         try
         {
-            NodeRecord record = NodeRecord.FromEnrString(discoveryNode.Enr);
             if (recordFilter.Excludes(record))
             {
+                return false;
+            }
+
+            if (!forkInfo.IsNodeRecordForkCompatible(record))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping discv5 discovered node {discoveryNode:s} with incompatible fork ID.");
                 return false;
             }
 

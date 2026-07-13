@@ -829,23 +829,15 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = epoch1;
-                callInfo[1] = epoch2;
-                return true;
-            });
-
-        _rewardsStore.HasEpochRewards(epoch1).Returns(true);
-        _rewardsStore.HasEpochRewards(epoch2).Returns(true);
-        _rewardsStore.TryGetAccountReward(account, epoch1, out Arg.Any<UInt256>())
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(true);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakB).Returns(true);
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakA, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)10;
                 return true;
             });
-        _rewardsStore.TryGetAccountReward(account, epoch2, out Arg.Any<UInt256>())
+        _rewardsStore.TryGetAccountReward(account, TestItem.KeccakB, out Arg.Any<UInt256>())
             .Returns(callInfo =>
             {
                 callInfo[2] = (UInt256)20;
@@ -863,45 +855,6 @@ public class RpcModuleTests
         Assert.That(result.Data.Total, Is.Not.Null);
         Assert.That(result.Data.Total!.Address, Is.EqualTo(account));
         Assert.That(result.Data.Total.TotalAccountReward, Is.EqualTo((UInt256)30));
-    }
-
-    [Test]
-    public void GetRewardByAccount_ShouldReturnFail_WhenRequestIsPruned()
-    {
-        // Arrange
-        Address account = TestItem.AddressA;
-        const ulong begin = 100;
-        const ulong end = 200;
-        const ulong requestedEpoch = 120;
-        const ulong oldestRetained = 150;
-        const ulong newestRetained = 300;
-
-        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
-        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
-
-        _blockTree.FindHeader(begin).Returns(beginHeader);
-        _blockTree.FindHeader(end).Returns(endHeader);
-
-        EpochSwitchInfo[] epochSwitchInfos =
-        [
-            new EpochSwitchInfo(Array.Empty<Address>(), Array.Empty<Address>(), Array.Empty<Address>(), new BlockRoundInfo(TestItem.KeccakA, 1, (long)requestedEpoch)),
-        ];
-
-        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>())
-            .Returns(callInfo =>
-            {
-                callInfo[0] = oldestRetained;
-                callInfo[1] = newestRetained;
-                return true;
-            });
-
-        // Act
-        ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);
-
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
     [Test]
@@ -925,8 +878,7 @@ public class RpcModuleTests
         ];
 
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Returns(epochSwitchInfos);
-        _rewardsStore.TryGetRetainedRange(out Arg.Any<ulong>(), out Arg.Any<ulong>()).Returns(false);
-        _rewardsStore.HasEpochRewards(epoch).Returns(false);
+        _rewardsStore.HasEpochRewards(TestItem.KeccakA).Returns(false);
 
         // Act
         ResultWrapper<AccountRewardResponse> result = _rpcModule.GetRewardByAccount(account, begin, end);

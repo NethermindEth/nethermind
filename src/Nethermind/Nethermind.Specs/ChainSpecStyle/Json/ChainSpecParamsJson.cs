@@ -191,8 +191,12 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7928TransitionTimestamp { get; set; }
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
+    public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8038TransitionTimestamp { get; set; }
+    public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
+    public ulong? Eip2780TransitionTimestamp { get; set; }
 
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —

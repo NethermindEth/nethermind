@@ -7,7 +7,11 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class NullableLongConverter() : NullableJsonConverter<long>(new LongConverter());
+public class NullableLongConverter : NullableJsonConverter<long>
+{
+    public NullableLongConverter() : base(new LongConverter()) { }
+    public NullableLongConverter(bool strictQuantity) : base(new LongConverter(strictQuantity)) { }
+}
 
 public class NullableRawLongConverter : JsonConverter<long?>
 {

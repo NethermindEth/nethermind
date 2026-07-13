@@ -20,7 +20,6 @@ using Nethermind.Wallet;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
-        typeof(InitializePlugins),
         typeof(InitializeBlockTree),
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
@@ -46,9 +45,6 @@ namespace Nethermind.Init.Steps
                 "- binary data -");
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
-
-            _api.BlockPreprocessor.AddFirst(
-                new RecoverSignatures(getApi.EthereumEcdsa, getApi.SpecProvider, getApi.LogManager));
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);

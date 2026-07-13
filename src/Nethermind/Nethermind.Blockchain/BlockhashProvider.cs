@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -18,12 +17,14 @@ namespace Nethermind.Blockchain
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
         IWorldState worldState,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        IUnresolvedBlockhashPolicy? unresolvedBlockhashPolicy = null)
         : IBlockhashProvider
     {
         public const ulong MaxDepth = 256;
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;
         private Hash256[]? _hashes;
         private long _prefetchVersion;
 
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain
                 _ => hashes is not null
                     ? hashes[(int)(depth - 1)]
                     : blockhashCache.GetHash(currentBlock, depth)
-                      ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
+                      ?? _unresolvedBlockhashPolicy.Resolve(currentBlock, number)
             };
         }
 

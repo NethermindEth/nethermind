@@ -305,7 +305,7 @@ public class CodecTests
         Assert.That(decodedNodes.RequestId, Is.EqualTo(message.RequestId));
         Assert.That(decodedNodes.Total, Is.EqualTo(message.Total));
         Assert.That(decodedNodes.Records.Count, Is.EqualTo(1));
-        Assert.That(decodedNodes.Records[0].EnrString, Is.EqualTo(expectedRecord.EnrString));
+        Assert.That(decodedNodes.Records[0].ToString(), Is.EqualTo(expectedRecord.ToString()));
     }
 
     [Test]
@@ -330,7 +330,7 @@ public class CodecTests
         Assert.That(decoded, Is.InstanceOf<NodesMsg>());
         NodesMsg nodes = (NodesMsg)decoded;
         Assert.That(nodes.Records.Count, Is.EqualTo(1));
-        Assert.That(nodes.Records[0].EnrString, Is.EqualTo(expectedRecord.EnrString));
+        Assert.That(nodes.Records[0].ToString(), Is.EqualTo(expectedRecord.ToString()));
     }
 
     [Test]

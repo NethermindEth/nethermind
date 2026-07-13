@@ -8,7 +8,7 @@ allowed-tools:
     Grep,
     Glob,
     Edit,
-    Agent,
+    Write,
   ]
 ---
 
@@ -100,7 +100,7 @@ This is the most common failure pattern for new forks. Follow these steps:
    - These guards fail when the test harness doesn't set the header field
 
 5. **Check the test harness header construction**:
-   - **State tests:** `src/Nethermind/Ethereum.Test.Base/GeneralTestBase.cs` — look at the `BlockHeader` initializer (around line 115-138)
+   - **State tests:** `src/Nethermind/Ethereum.Test.Base/GeneralStateTestBase.cs` — look at the `BlockHeader` initializer
    - **Blockchain tests:** `src/Nethermind/Ethereum.Test.Base/BlockchainTestBase.cs`
    - Look for conditional defaults that use **type checks** (`is Cancun`, `is Prague`) instead of **spec flag checks** (`IsEip4844Enabled`, `IsEip7702Enabled`) — type checks only match the exact class, not subclasses or later forks
    - Look for missing defaults for new fork fields (e.g., `ExcessBlobGas`, `RequestsHash`, `BlockAccessListHash`)
@@ -144,7 +144,8 @@ This is the most common failure pattern for new forks. Follow these steps:
    - Re-read the trace output
    - Return to Phase 2 with the new trace
    - Repeat until pass or root cause is confirmed as upstream
-4. **Report the result** — include:
+4. **Add a regression test** when the root cause was a Nethermind bug (AGENTS.md requires one for every bug fix) — extend an existing test file with a `[TestCase]` where possible; create a new test file only if no suitable one exists
+5. **Report the result** — include:
    - Root cause (one sentence)
    - What was fixed (file:line)
    - Verification result (pass/fail + new state root)
@@ -157,7 +158,7 @@ This is the most common failure pattern for new forks. Follow these steps:
 | Purpose | Path (relative to `src/Nethermind/`) |
 |---|---|
 | Test runner CLI | `Nethermind.Test.Runner/Program.cs` |
-| State test execution + header | `Ethereum.Test.Base/GeneralTestBase.cs` |
+| State test execution + header | `Ethereum.Test.Base/GeneralStateTestBase.cs` |
 | Blockchain test execution | `Ethereum.Test.Base/BlockchainTestBase.cs` |
 | Test JSON parsing | `Ethereum.Test.Base/JsonToEthereumTest.cs` |
 | Opcode registration + spec gates | `Nethermind.Evm/Instructions/EvmInstructions.cs` |
@@ -176,10 +177,10 @@ This is the most common failure pattern for new forks. Follow these steps:
 
 3. **State root mismatch** — execution completes without EVM errors but produces the wrong state root. Causes include: incorrect storage writes (wrong slot or value), wrong balance updates (fee burning, coinbase rewards, value transfer edge cases), missing or extra account touches that affect empty-account cleanup (EIP-158), or wrong nonce increments.
 
-4. **Missing header field default** — new EIPs add nullable fields to `BlockHeader`. The test harness must default them for forks that enable them when the test JSON doesn't provide them (e.g., `ExcessBlobGas = 0` for EIP-4844+ forks).
+4. **Missing header field default** — covered in Phase 3, "Check the test harness header construction".
 
-5. **Instruction runtime guard** — an opcode can be registered in the lookup table but still fail if its implementation checks a header field that wasn't set (e.g., `BLOBBASEFEE` checks `ExcessBlobGas.HasValue`).
+5. **Instruction runtime guard** — covered in Phase 3, "For BadInstruction failures" step 4.
 
 6. **Validation errors** — missing validation that should reject invalid data (e.g., not checking transaction type constraints, accepting out-of-range values) or overly strict validation that rejects valid inputs (e.g., rejecting new transaction fields not yet accounted for, wrong bounds on EIP-introduced parameters). For blockchain tests, check block and transaction validators. For state tests, check `TransactionProcessor` validation and `BlockValidator`.
 
-7. **Missing blob schedule override** — test JSON `config.blobSchedule` overrides blob parameters per fork. If `JsonToEthereumTest.LoadSpec()` doesn't handle the fork name, parameters revert to defaults.
+7. **Missing blob schedule override** — covered in Phase 3, "For state root mismatches" step 5.

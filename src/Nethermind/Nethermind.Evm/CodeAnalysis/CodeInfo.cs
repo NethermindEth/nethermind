@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
@@ -23,13 +24,25 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     // Empty
     private CodeInfo() { }
-    private CodeInfo(JumpDestinationAnalyzer analyzer) => _analyzer = analyzer;
+    private CodeInfo(JumpDestinationAnalyzer analyzer)
+    {
+        _analyzer = analyzer;
+        _streamBuildState = StreamBuildUnavailable;
+    }
 
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
         Code = code;
-        _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(this);
+        if (code.Length == 0)
+        {
+            _analyzer = _emptyAnalyzer;
+            _streamBuildState = StreamBuildUnavailable;
+        }
+        else
+        {
+            _analyzer = new JumpDestinationAnalyzer(this);
+        }
     }
 
     // Precompile
@@ -37,6 +50,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         Precompile = precompile;
         _analyzer = null;
+        _streamBuildState = StreamBuildUnavailable;
     }
 
     protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
@@ -44,6 +58,7 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         Precompile = precompile;
         Code = code;
         _analyzer = null;
+        _streamBuildState = StreamBuildUnavailable;
     }
 
     public ReadOnlyMemory<byte> Code { get; }
@@ -52,6 +67,53 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public IPrecompile? Precompile { get; }
 
     private readonly JumpDestinationAnalyzer? _analyzer;
+    private int _streamHits;
+
+    private const int StreamBuildIdle = 0;
+    private const int StreamBuildScheduled = 1;
+    private const int StreamBuildUnavailable = 2;
+    private int _streamBuildState;
+
+    // Key into the shared InstructionStreamCache (set by the repository), so a built stream
+    // survives this instance's eviction.
+    public ValueHash256 CodeHash { get; set; }
+
+    /// <summary>
+    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
+    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
+    /// </summary>
+    internal InstructionStream? GetOrBuildStream()
+    {
+        if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
+            return null;
+        if (CodeHash != default && InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+            return cached;
+        if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
+            return null;
+
+        if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
+            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
+
+        return null;
+    }
+
+    private void BuildStream()
+    {
+        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
+        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
+        {
+            InstructionStreamCache.Set(CodeHash, stream);
+        }
+        else
+        {
+            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
+        }
+    }
+
+    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
+    {
+        public void Execute() => codeInfo.BuildStream();
+    }
 
     /// <summary>
     /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
@@ -71,14 +133,10 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public void AnalyzeInBackgroundIfRequired()
     {
+#if !ZK_EVM
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
-        {
-#if ZK_EVM
-            _analyzer.Execute();
-#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 #endif
-        }
     }
 
     public override bool Equals(object? obj)

@@ -1,0 +1,112 @@
+name: Nethermind tests (Flat DB)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+  TEST_USE_FLAT: 1
+
+jobs:
+  tests:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_GCConserveMemory: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Transition.Test
+          - Ethereum.Legacy.VM.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Trie.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Runner.Test
+        chunk: ['']
+        include:
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 1of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 2of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 3of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 4of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 5of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 6of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 7of8
+          - project: Ethereum.Legacy.Blockchain.Test
+            chunk: 8of8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Fetch submodules
+        uses: ./.github/actions/fetch-submodules
+        with:
+          submodules: recursive
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.chunk }}
+        run: |
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore
+
+  # EEST fixtures under the flat state layout (formerly the Ethereum.Blockchain.Pyspec.Test
+  # flat shards and their Amsterdam parallel/batch-read variant chunks) run through the
+  # reusable nethtest workflow. The flat layout and the variant toggles are passed by the
+  # template's matrix (--flatdb / --parallelExecution / --batchRead), not by TEST_USE_FLAT,
+  # which does not propagate into called workflows. txTest is layout-independent and only
+  # runs in nethermind-tests.yml.
+  nethtest:
+    name: EEST nethtest (flat)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: engineTest,blockTest,stateTest,syncTest
+      setup_group: flat
+
+  tests-summary:
+    name: Tests summary
+    needs: [tests, nethtest]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.nethtest.result }}" == "success" \
+          ]]

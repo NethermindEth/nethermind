@@ -94,7 +94,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
-    private const int BalSyncChainLength = 15_000;
+    private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;
     private const ulong PartialBalSyncHeadPivotDistance = 500;
@@ -309,7 +309,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             // Activate configured mainnet future EIP
             ManualTimestamper timestamper = new(PostMergeStartTime);
             builder
-                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
+                .AddModule(new TestMergeModule())
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 .AddLast<IP2PCapabilityResolver, PostMergeCapabilitiesResolver>()

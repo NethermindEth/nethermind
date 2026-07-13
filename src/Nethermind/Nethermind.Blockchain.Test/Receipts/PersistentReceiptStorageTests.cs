@@ -325,8 +325,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _blockTree.BlockAddedToMain +=
             Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
         Assert.That(() => _blockTree.ReceivedCalls()
-            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock))),
-            willPruneOldIndices ? Is.Not.Empty.After(100, 10) : Is.Empty.After(100, 10));
+            .Where(static call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlockHash))),
+            willPruneOldIndices ? Is.Not.Empty.After(10000, 50) : Is.Empty.After(100, 10));
     }
 
     [Test]
@@ -487,6 +487,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _blockTree.FindBlock(block.Number).Returns(block);
         _blockTree.FindHeader(block.Number).Returns(block.Header);
         _blockTree.FindBlockHash(block.Number).Returns(block.Hash);
+        _blockStore.GetReceiptRecoveryBlock(block.Number, block.Hash!).Returns(new ReceiptRecoveryBlock(block));
         if (isFinalized)
         {
             BlockHeader farHead = Build.A.BlockHeader

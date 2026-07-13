@@ -21,6 +21,9 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 
 public class NodeSourceTests
 {
+    private const uint CompatibleForkHash = 0x11111111;
+    private const uint IncompatibleForkHash = 0x22222222;
+
     [Test]
     [CancelAfter(10000)]
     public async Task DiscoverNodes_ShouldNotRetainDroppedNodesInRecentDedupe(CancellationToken token)
@@ -98,6 +101,22 @@ public class NodeSourceTests
 
     [Test]
     [CancelAfter(10000)]
+    public async Task DiscoverNodes_ShouldSkipEnrsWithIncompatibleForkId(CancellationToken token)
+    {
+        Node incompatibleNode = CreateNode(1, ethForkHash: IncompatibleForkHash);
+        Node compatibleNode = CreateNode(2, ethForkHash: CompatibleForkHash);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns([incompatibleNode, compatibleNode]);
+        NodeSource source = CreateSource(kademlia);
+
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        Assert.That(enumerator.Current.Id, Is.EqualTo(TestItem.PrivateKeys[2].PublicKey));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
     public async Task DiscoverNodes_ShouldEmitPeerCandidateFromActiveKademliaDiscovery(CancellationToken token)
     {
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
@@ -112,6 +131,7 @@ public class NodeSourceTests
             new DiscoveryConfig { ConcurrentDiscoveryJob = 1 },
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
+            CreateForkInfo(),
             LimboLogs.Instance);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -136,10 +156,18 @@ public class NodeSourceTests
             new DiscoveryConfig { ConcurrentDiscoveryJob = 0 },
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
+            CreateForkInfo(),
             LimboLogs.Instance);
     }
 
-    private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304, bool includeEth2 = false)
+    private static IForkInfo CreateForkInfo()
+    {
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
+        return forkInfo;
+    }
+
+    private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304, bool includeEth2 = false, uint? ethForkHash = null)
     {
         PrivateKey privateKey = TestItem.PrivateKeys[index];
         string host = $"192.168.1.{index + 1}";
@@ -148,10 +176,14 @@ public class NodeSourceTests
             IPAddress.Parse(host),
             tcpPort: tcpPort,
             udpPort: udpPort,
-            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
-        return new Node(privateKey.PublicKey, host, udpPort)
+            configureExtras: enr =>
+            {
+                if (includeEth2) enr.SetEntry(new TestEth2Entry());
+                if (ethForkHash is { } forkHash) enr.SetEntry(new EthEntry(new ForkId(forkHash, 0).HashBytes, 0));
+            });
+        return new Node(privateKey.PublicKey, host, tcpPort, udpPort)
         {
-            Enr = enr.EnrString
+            Enr = enr
         };
     }
 

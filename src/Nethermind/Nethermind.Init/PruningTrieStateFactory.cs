@@ -6,7 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -27,16 +26,15 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
-    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
     INodeStorage mainNodeStorage,
-    IProcessExitSource processExit,
     IDisposableStack disposeStack,
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
+    StateBoundaryStore boundaryStore,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
 )
@@ -73,7 +71,7 @@ public class PruningTrieStateFactory(
             trieStore,
             dbProvider,
             logManager,
-            pruningConfig,
+            boundaryStore,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
@@ -84,16 +82,10 @@ public class PruningTrieStateFactory(
             disposeStack.Push(fullPruner);
         }
 
-        VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
         disposeStack.Push(compositePruningTrigger);
-        PruningTrieStateAdminRpcModule adminRpcModule = new(
-            pruningTrigger,
-            blockTree,
-            stateManager.GlobalStateReader,
-            verifyTrieStarter!
-        );
+        PruningTrieStateAdminRpcModule adminRpcModule = new(pruningTrigger);
 
         return (stateManager, adminRpcModule);
     }
@@ -113,6 +105,7 @@ public class MainPruningTrieStoreFactory
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
+        IStatePersistenceBarrier persistenceBarrier,
         ILogManager logManager
     )
     {
@@ -162,7 +155,9 @@ public class MainPruningTrieStoreFactory
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
 
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
+        // Interpose the barrier on the node storage flush so a block's deferred block-data is made durable
+        // before its state, keeping the durability invariant without changing TrieStore.
+        INodeStorage mainNodeStorage = new BarrierNodeStorage(nodeStorageFactory.WrapKeyValueStore(stateDb), persistenceBarrier);
 
         if (pruningConfig.SimulateLongFinalizationDepth != 0UL)
         {

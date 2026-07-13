@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -42,6 +43,23 @@ public class CompactionScheduleTests
         Assert.That(schedule.Offset, Is.EqualTo(7));
         byte[] after = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset)!;
         Assert.That(after, Is.EqualTo(before));
+    }
+
+    // Regression: a PersistedSnapshotMaxCompactSize below CompactSize caps GetPersistedSnapshotCompactSize
+    // under both boundary predicates (== / > CompactSize), so no persisted-snapshot boundary is ever
+    // detected; a non-power-of-2 value misclassifies boundaries and an int-overflowing value breaks the
+    // compactor's int casts. The constructor must reject all three.
+    [TestCase(32ul, 1024ul * 1024, true)]
+    [TestCase(1ul, 2ul, true)]
+    [TestCase(32ul, 32ul, true)]
+    [TestCase(32ul, 16ul, false)]
+    [TestCase(32ul, 48ul, false)]
+    [TestCase(32ul, 2147483648ul, false)]
+    public void Constructor_ValidatesPersistedSnapshotMaxCompactSize(ulong compactSize, ulong maxCompactSize, bool valid)
+    {
+        FlatDbConfig config = new() { CompactSize = compactSize, PersistedSnapshotMaxCompactSize = maxCompactSize };
+        Assert.That(() => new CompactionSchedule(new MemDb(), config, LimboLogs.Instance),
+            valid ? Throws.Nothing : Throws.InstanceOf<ArgumentException>());
     }
 
     [Test]
@@ -167,9 +185,10 @@ public class CompactionScheduleTests
 
         for (ulong block = 1UL; block <= 64UL; block++)
         {
+            StateId state = new(block, Hash256.Zero);
             Assert.That(large.GetCompactSize(block), Is.EqualTo(small.GetCompactSize(block)),
                 $"Tier mismatch at block {block} between offset {smallOffset} and {largeOffset}");
-            Assert.That(large.NextFullCompactionAfter(block), Is.EqualTo(small.NextFullCompactionAfter(block)),
+            Assert.That(large.NextFullCompactionAfter(state), Is.EqualTo(small.NextFullCompactionAfter(state)),
                 $"Next boundary mismatch from block {block} between offset {smallOffset} and {largeOffset}");
         }
     }
@@ -185,7 +204,18 @@ public class CompactionScheduleTests
         FlatDbConfig config = new() { CompactSize = 16 };
         CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
 
-        Assert.That(schedule.NextFullCompactionAfter(from), Is.EqualTo(expected));
+        Assert.That(schedule.NextFullCompactionAfter(new StateId(from, Hash256.Zero)), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 16UL)] // offset 0 -> next full at 16
+    [TestCase(3, 13UL)] // offset 3 -> 0+(16-3) = 13
+    [TestCase(7, 9UL)]  // offset 7 -> 0+(16-7) = 9
+    public void NextFullCompactionAfter_PreGenesis_AnchorsAtGenesis(int offset, ulong expected)
+    {
+        FlatDbConfig config = new() { CompactSize = 16 };
+        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
+
+        Assert.That(schedule.NextFullCompactionAfter(StateId.PreGenesis), Is.EqualTo(expected));
     }
 
     [Test]
@@ -194,11 +224,62 @@ public class CompactionScheduleTests
         FlatDbConfig config = new() { CompactSize = 1 };
         CompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
 
-        Assert.That(schedule.NextFullCompactionAfter(0), Is.EqualTo(ulong.MaxValue));
+        Assert.That(schedule.NextFullCompactionAfter(new StateId(0, Hash256.Zero)), Is.EqualTo(ulong.MaxValue));
     }
 
     [Test]
     public void Constructor_NonPowerOf2CompactSize_Throws() =>
         Assert.Throws<ArgumentException>(() =>
             new CompactionSchedule(new MemDb(), new FlatDbConfig { CompactSize = 10 }, LimboLogs.Instance));
+
+    [TestCase(0, 0, 8192, false)]   // block 0 → size 1
+    [TestCase(0, 16, 8192, false)]  // exactly CompactSize — not "large"
+    [TestCase(0, 8, 8192, false)]   // intermediate (< CompactSize)
+    [TestCase(0, 32, 8192, true)]   // 2× CompactSize
+    [TestCase(0, 64, 8192, true)]   // 4×
+    [TestCase(3, 13, 8192, false)]  // (13+3) = 16, exactly CompactSize
+    [TestCase(3, 16, 8192, false)]  // (16+3) = 19, alignment 1
+    [TestCase(3, 29, 8192, true)]   // (29+3) = 32, > CompactSize
+    [TestCase(0, 32, 16, false)]    // max == CompactSize: alignment 32 capped to 16 → not large
+    public void IsLargeCompactionBoundary_TrueWhenWindowExceedsCompactSize(int offset, int blockNumber, int maxCompactSize, bool expected)
+    {
+        FlatDbConfig config = new() { CompactSize = 16, PersistedSnapshotMaxCompactSize = (ulong)maxCompactSize };
+        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
+
+        Assert.That(schedule.IsLargeCompactionBoundary((ulong)blockNumber), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 0, 8192, 1L)]      // block 0 → 1
+    [TestCase(0, 16, 8192, 16L)]    // natural CompactSize boundary
+    [TestCase(0, 32, 8192, 32L)]    // tier above CompactSize, below cap
+    [TestCase(0, 48, 8192, 16L)]    // 48 & -48 = 16
+    [TestCase(0, 64, 8192, 64L)]    // 4×, below cap
+    [TestCase(3, 13, 8192, 16L)]    // shifted: (13+3) & -(13+3) = 16
+    [TestCase(3, 29, 8192, 32L)]    // shifted: 32 (above CompactSize=16)
+    [TestCase(0, 64, 32, 32L)]      // raw alignment 64 capped at PersistedSnapshotMaxCompactSize=32
+    [TestCase(0, 128, 32, 32L)]     // raw alignment 128 capped at 32
+    public void GetPersistedSnapshotCompactSize_CappedAndOffsetAware(int offset, int blockNumber, int maxCompactSize, long expected)
+    {
+        FlatDbConfig config = new() { CompactSize = 16, PersistedSnapshotMaxCompactSize = (ulong)maxCompactSize };
+        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
+
+        Assert.That((long)schedule.GetPersistedSnapshotCompactSize((ulong)blockNumber), Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 0, 8192, false)]   // block 0 → size 1
+    [TestCase(0, 16, 8192, true)]   // exactly CompactSize
+    [TestCase(0, 48, 8192, true)]   // 48 & -48 = 16
+    [TestCase(0, 8, 8192, false)]   // intermediate (< CompactSize)
+    [TestCase(0, 32, 8192, false)]  // large (> CompactSize)
+    [TestCase(0, 64, 8192, false)]  // large
+    [TestCase(3, 13, 8192, true)]   // shifted: (13+3) = 16
+    [TestCase(3, 29, 8192, false)]  // shifted large: 32
+    [TestCase(0, 32, 16, true)]     // max == CompactSize: alignment 32 capped to 16, exactly equals CompactSize
+    public void IsCompactSizeBoundary_TrueOnlyWhenWindowEqualsCompactSize(int offset, int blockNumber, int maxCompactSize, bool expected)
+    {
+        FlatDbConfig config = new() { CompactSize = 16, PersistedSnapshotMaxCompactSize = (ulong)maxCompactSize };
+        CompactionSchedule schedule = ScheduleHelper.CreateWithOffset(config, offset);
+
+        Assert.That(schedule.IsCompactSizeBoundary((ulong)blockNumber), Is.EqualTo(expected));
+    }
 }

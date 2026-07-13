@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -35,47 +32,18 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : MergePlugin(chainSpec, mergeConfig)
+    public class AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethermindPlugin
     {
-        private AuRaNethermindApi? _auraApi;
-        private readonly IMergeConfig _mergeConfig = mergeConfig;
-        private readonly ChainSpec _chainSpec = chainSpec;
-
-        public override string Name => "AuRaMerge";
-        public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
-
-        public override async Task Init(INethermindApi nethermindApi)
-        {
-            _api = nethermindApi;
-            if (MergeEnabled)
-            {
-                await base.Init(nethermindApi);
-                _auraApi = (AuRaNethermindApi)nethermindApi;
-
-                // this runs before all init steps that use tx filters
-                TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
-                    originalFilter is MinGasPriceContractTxFilter ? originalFilter
-                    : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
-            }
-        }
-
-        protected override void InitializeMergeFinalization()
-        {
-            IAuRaBlockFinalizationManager auRa = _auraApi!.AuRaFinalizationManager
-                ?? throw new ArgumentNullException(nameof(_auraApi.AuRaFinalizationManager),
-                    "Cannot construct AuRaTerminalBlockDisposer when AuRaFinalizationManager is null!");
-            AuRaTerminalBlockDisposer disposer = new(auRa, _poSSwitcher, _api.BlockTree!);
-            _api.DisposeStack.Push(disposer);
-        }
-
-        public override IModule Module => new AuRaMergeModule();
+        public string Name => "AuRaMerge";
+        public string Description => "AuRa Merge plugin for ETH1-ETH2";
+        public string Author => "Nethermind";
+        public bool Enabled => mergeConfig.Enabled && chainSpec.SealEngineType == SealEngineType.AuRa;
+        public bool MustInitialize => true;
+        public IModule Module => new AuRaMergeModule();
     }
 
     /// <summary>
     /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
-    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
-    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
     /// </summary>
     public class AuRaMergeModule : Module
     {
@@ -107,9 +75,19 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealValidator, MergeSealValidator>()
                 .AddDecorator<ISealer, MergeSealer>()
 
+                .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
+                // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
+                // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
+                .AddSingleton<AuRaTerminalBlockDisposer>()
+
                 // Merge-aware override: skips wiring the branch processor on post-merge chains so
                 // the AuRa finalization manager's startup catch-up walk never runs.
                 .AddStep(typeof(InitializeBlockchainAuRaMerge))
+
+                .AddStep(typeof(InitializeAuRaMergePlugin))
+
+                .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
                 ;
     }
 }

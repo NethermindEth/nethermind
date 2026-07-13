@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -86,7 +87,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
 
-    void WarmUp(AccessList? accessList);
+    void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default);
 
     void WarmUp(Address address);
 
@@ -95,6 +96,10 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
+
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
 
     void RecalculateStateRoot();
 
@@ -148,6 +153,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ResetTransient();
 
     public void AddAccountRead(Address address) { }
+
+    public void RecordAccountAccess(Address address) { }
 
     public void RecordBytecodeAccess(Address address) { }
 

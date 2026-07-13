@@ -14,6 +14,13 @@ namespace Nethermind.Blockchain.Blocks;
 public interface IBlockStore
 {
     void Insert(Block block, WriteFlags writeFlags = WriteFlags.None);
+
+    /// <summary>
+    /// Inserts a freshly suggested block, deferring the durable write off the engine API path when
+    /// the implementation supports it. Visibility is synchronous: the block is readable through all
+    /// store methods immediately, regardless of whether the database write has completed.
+    /// </summary>
+    void InsertDeferred(Block block) => Insert(block);
     void Delete(ulong blockNumber, Hash256 blockHash);
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);

@@ -47,11 +47,33 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         GasPrice = 0,
     };
 
+    private readonly SystemCall _builderDepositTransaction = new()
+    {
+        Value = 0,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderDepositRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = 0,
+    };
+
+    private readonly SystemCall _builderExitTransaction = new()
+    {
+        Value = 0,
+        Data = Array.Empty<byte>(),
+        To = Eip8282Constants.BuilderExitRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = 0,
+    };
+
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
         _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
+        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
+        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -59,7 +81,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
-        ArrayPoolListRef<byte[]> requests = new(3);
+        ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {
             ProcessDeposits(block, receipts, spec, ref requests);
@@ -78,14 +100,40 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
 
-            block.ExecutionRequests = [.. requests];
-            block.Header.RequestsHash =
-                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+            // EIP-8282: dequeued after withdrawal/consolidation so the flat encoding stays in request-type order.
+            if (spec.BuilderRequestsEnabled)
+            {
+                ReadRequests(block, state, Eip8282Constants.BuilderDepositRequestPredeployAddress, ref requests, _builderDepositTransaction,
+                    ExecutionRequestType.BuilderDepositRequest,
+                    BlockErrorMessages.BuilderDepositsContractEmpty, BlockErrorMessages.BuilderDepositsContractFailed);
+
+                ReadRequests(block, state, Eip8282Constants.BuilderExitRequestPredeployAddress, ref requests, _builderExitTransaction,
+                    ExecutionRequestType.BuilderExitRequest,
+                    BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
+            }
+
+            RecordRequests(block, ref requests);
         }
         finally
         {
             requests.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Records the requests derived from execution onto the block and computes the requests hash.
+    /// </summary>
+    /// <remarks>
+    /// The request system calls are always executed (their state effects matter); this only controls
+    /// whether the derived requests are written back to the block header. Stateless validation
+    /// overrides this to a no-op so the block keeps the consensus-layer-provided requests hash, which
+    /// the statelessly re-executed state transition does not re-derive.
+    /// </remarks>
+    protected virtual void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
+    {
+        block.ExecutionRequests = [.. requests];
+        block.Header.RequestsHash =
+            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
     private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)
@@ -96,6 +144,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
         depositRequests.Add((byte)ExecutionRequestType.Deposit);
 
+        Span<byte> depositRequestBuffer = stackalloc byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
         for (int i = 0; i < receipts.Length; i++)
         {
             LogEntry[]? logEntries = receipts[i].Logs;
@@ -106,9 +155,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     LogEntry log = logEntries[j];
                     if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
                     {
-                        Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(block, log, depositRequestBuffer);
-                        depositRequests.AddRange(depositRequestBuffer.ToArray());
+                        depositRequests.AddRange(depositRequestBuffer);
                     }
                 }
             }

@@ -144,4 +144,3 @@ public class InterlockedEx
         return current;
     }
 }
-

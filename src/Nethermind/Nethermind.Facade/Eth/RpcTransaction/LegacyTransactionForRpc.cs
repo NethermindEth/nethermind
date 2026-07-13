@@ -14,7 +14,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
+public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
 {
     public static TxType TxType => TxType.Legacy;
 
@@ -56,9 +56,11 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     public virtual UInt256? V { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonConverter(typeof(NullableUInt256Converter))]
     public virtual UInt256? R { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonConverter(typeof(NullableUInt256Converter))]
     public virtual UInt256? S { get; set; }
 
     [JsonConstructor]
@@ -131,6 +133,12 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
+
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        GasPrice ??= context.GasPrice;
+        return Result.Success;
+    }
 
     public static LegacyTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) =>
         new(tx, extraData);
