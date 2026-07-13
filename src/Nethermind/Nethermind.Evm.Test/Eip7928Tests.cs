@@ -79,7 +79,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository baseRepo = new(tracedState);
         ICodeInfoRepository codeInfoRepo = wrapPrecompileCache
-            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCache: null)
+            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCaches: null)
             : baseRepo;
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(

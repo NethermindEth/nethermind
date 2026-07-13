@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -19,11 +20,11 @@ public class PrecompileCachedCodeInfoRepository(
     IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
-    ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
+    PreBlockCaches? precompileCaches) : ICodeInfoRepository
 {
-    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCache is null
+    private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCaches is null
         ? precompileProvider.GetPrecompiles()
-        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
+        : precompileProvider.GetPrecompiles().ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCaches));
 
     public bool IsCodeOverridable => baseCodeInfoRepository.IsCodeOverridable;
 
@@ -52,23 +53,23 @@ public class PrecompileCachedCodeInfoRepository(
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache)
+        PreBlockCaches caches)
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
         return !precompile.SupportsCaching
             ? originalPrecompile.Value
-            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, cache));
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, caches.PrecompileCache, caches.SurvivingPrecompileCache));
     }
 
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache) : IPrecompile
+        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> blockCache,
+        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> survivingCache) : IPrecompile
     {
-        // Bounds retained bytes, not just entries: gas admits ~100KB hash inputs, which at full
-        // capacity would otherwise let the now-persistent cache grow to GB-class.
-        private const int MaxCachedEntryBytes = 2048;
+        // Gas admits ~100KB hash inputs, so the surviving tier is bounded in bytes as well as entries.
+        private const int MaxSurvivingEntryBytes = 2048;
 
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
@@ -78,22 +79,31 @@ public class PrecompileCachedCodeInfoRepository(
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
             PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput, releaseSpec);
-            if (!cache.TryGet(key, out Result<byte[]> result))
+            if (blockCache.TryGetValue(key, out Result<byte[]> result))
             {
-                result = precompile.Run(inputData, releaseSpec);
+                return result;
+            }
 
-                // no need to spend memory on caching invalid-length inputs
-                // it's fast to check and is the first verification done by a precompile
-                if (result is { IsError: true, Error: Errors.InvalidInputLength })
-                    return result;
+            if (survivingCache.TryGet(key, out result))
+            {
+                blockCache.TryAdd(new(address, effectiveInput.ToArray(), releaseSpec), result);
+                return result;
+            }
 
-                if (effectiveInput.Length + (result.Data?.Length ?? 0) > MaxCachedEntryBytes)
-                    return result;
+            result = precompile.Run(inputData, releaseSpec);
 
-                // we need to rebuild the key with data copy as the data can be changed by VM processing
-                // effective-input bounds are expected to remain the same
-                key = new(address, effectiveInput.ToArray(), releaseSpec);
-                cache.Set(key, result);
+            // no need to spend memory on caching invalid-length inputs
+            // it's fast to check and is the first verification done by a precompile
+            if (result is { IsError: true, Error: Errors.InvalidInputLength })
+                return result;
+
+            // we need to rebuild the key with data copy as the data can be changed by VM processing
+            // effective-input bounds are expected to remain the same
+            key = new(address, effectiveInput.ToArray(), releaseSpec);
+            blockCache.TryAdd(key, result);
+            if (effectiveInput.Length + (result.Data?.Length ?? 0) <= MaxSurvivingEntryBytes)
+            {
+                survivingCache.Set(key, result);
             }
 
             return result;

@@ -69,7 +69,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
-                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
+                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches : null);
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();

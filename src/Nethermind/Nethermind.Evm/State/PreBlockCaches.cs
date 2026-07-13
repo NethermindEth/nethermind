@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -10,15 +11,22 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
+using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
+
 namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
+    private const int InitialCapacity = 4096 * 8;
+
+    private static int LockPartitions => CollectionExtensions.LockPartitions;
+
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _precompileCache;
+    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
@@ -26,18 +34,20 @@ public class PreBlockCaches
     public PreBlockCaches(PreBlockCachesConfig config)
     {
         _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
-        _precompileCache = new ClockCache<PrecompileCacheKey, Result<byte[]>>(
-            config.PrecompileCacheMaxEntries, comparer: EqualityComparer<PrecompileCacheKey>.Default);
+        _survivingPrecompileCache = new ClockCache<PrecompileCacheKey, Result<byte[]>>(
+            config.SurvivingPrecompileCacheMaxEntries, comparer: EqualityComparer<PrecompileCacheKey>.Default);
         _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
-            () => { _stateCache.Clear(); return CacheType.None; }
+            () => { _stateCache.Clear(); return CacheType.None; },
+            () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
     }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
-    public ClockCache<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
+    public ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> PrecompileCache => _precompileCache;
+    public ClockCache<PrecompileCacheKey, Result<byte[]>> SurvivingPrecompileCache => _survivingPrecompileCache;
 
     /// <summary>
     /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
@@ -79,7 +89,7 @@ public sealed record PreBlockCachesConfig
     // 2^17 × 2 ways = 262144 entries, above the ~140K-slot working set at 300M gas.
     public int StorageCacheSetsBits { get; init; } = 17;
 
-    public int PrecompileCacheMaxEntries { get; init; } = 32768;
+    public int SurvivingPrecompileCacheMaxEntries { get; init; } = 4096;
 }
 
 [Flags]
