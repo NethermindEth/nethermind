@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -21,8 +20,6 @@ public class BranchProcessor(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
     IWorldState stateProvider,
-    IBeaconBlockRootHandler beaconBlockRootHandler,
-    IBlockhashStore blockhashStore,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
@@ -229,9 +226,7 @@ public class BranchProcessor(
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
-                token,
-                beaconBlockRootHandler,
-                blockhashStore);
+                token);
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.

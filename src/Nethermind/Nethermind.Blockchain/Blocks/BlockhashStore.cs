@@ -15,7 +15,7 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockhashStore(IWorldState worldState) : IBlockhashStore
+public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
     private static readonly byte[] EmptyBytes = [0];
 

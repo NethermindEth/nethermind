@@ -3,6 +3,9 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Core.Eip2930;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -46,6 +49,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                // System-contract access-list hints the prewarmer warms alongside tx addresses.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
+                .AddScoped<IHasAccessList>(ctx => (IHasAccessList)ctx.Resolve<IBlockhashStore>())
 
                 // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()

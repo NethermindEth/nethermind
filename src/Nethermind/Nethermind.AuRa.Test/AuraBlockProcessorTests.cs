@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Receipts;
@@ -225,8 +224,6 @@ namespace Nethermind.AuRa.Test
                 processor,
                 GnosisSpecProvider.Instance,
                 stateProvider,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(stateProvider),
                 blockhashProvider,
                 LimboLogs.Instance);
 
