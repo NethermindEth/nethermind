@@ -58,4 +58,8 @@ internal static class XdcConstants
 
     // Only sign recent head blocks.
     public const ulong MaxSignableBlockPeriods = 2;
+
+    public const string RpcAccountStatusMasternode = "MasterNode";
+    public const string RpcAccountStatusProtector = "ProtectorNode";
+    public const string RpcAccountStatusObserver = "ObserverNode";
 }
