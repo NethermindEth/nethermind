@@ -1556,8 +1556,8 @@ namespace Nethermind.Evm.TransactionProcessing
             // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
             ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
-            // Spilled state gas burns in gas_left as regular; the state dimension keeps the
-            // post-reset intrinsic remainder (EELS: tx_state_gas = intrinsic_state - state_refund).
+            // Spilled state gas burns in gas_left as regular gas; the state dimension keeps
+            // only the post-reset intrinsic remainder.
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
             // Block regular gas = before_refund - state (tx_regular_gas); refunds and the calldata
             // floor adjust only the sender charge, never this dimension.

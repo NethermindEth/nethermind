@@ -15,15 +15,14 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// Differential regression tests for EIP-8037 state-gas spill-refund accounting.
+/// End-to-end regression tests for EIP-8037 state-gas spill-refund accounting.
 /// </summary>
 /// <remarks>
-/// Each expected (spentGas, blockRegularGas, blockStateGas) triple was produced by running the
-/// identical scenario through the EELS amsterdam reference at ethereum/execution-specs commit
-/// d0338f561 (the tests-glamsterdam-devnet@v6.1.1 commit) and reading block_output directly.
+/// Each scenario pins the expected (spentGas, blockRegularGas, blockStateGas) triple for a
+/// cross-frame refund, spill-rollback, or halt shape not covered by the fixture suite.
 /// </remarks>
 [TestFixture]
-public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
+public class Eip8037GasAccountingTests : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
@@ -327,7 +326,7 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(Scenarios))]
-    public void Eip8037_block_gas_split_matches_eels_reference(Scenario scenario)
+    public void Eip8037_gas_accounting_matches_expected_split(Scenario scenario)
     {
         foreach (ContractDef c in scenario.Contracts)
         {

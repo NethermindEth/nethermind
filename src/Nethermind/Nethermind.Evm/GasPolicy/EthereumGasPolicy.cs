@@ -162,8 +162,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // Source-based LIFO rollback (EELS refill_frame_state_gas): net spill refills gas_left,
-        // (used - spill) returns to the reservoir; the rolled-back spill counters are not inherited.
+        // Source-based LIFO rollback: net spill refills gas_left, (used - spill) returns to
+        // the reservoir; the rolled-back spill counters are not inherited.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
@@ -367,7 +367,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
     {
-        // Continues the source-based LIFO refill (EELS credit_state_gas_refund).
+        // Continues the source-based LIFO refill: gas_left up to the unrefunded spill, then
+        // the reservoir.
         long toGasLeft = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
         gas.Value += (ulong)toGasLeft;
         gas.StateReservoir += amount - toGasLeft;
