@@ -30,7 +30,7 @@ on:
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.6.0
+        default: tests-zkevm@v0.6.2
         type: string
       filter:
         description: Regex filter for test names
@@ -76,7 +76,7 @@ on:
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.6.0
+        default: tests-zkevm@v0.6.2
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -106,9 +106,9 @@ env:
   EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v7.2.0' }}
   EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
-  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.6.0, which this
+  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.6.2, which this
   # branch's witness roots match (dispatch with zkevm_version to test other releases).
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.6.0' }}
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.6.2' }}
   # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
   # (throughput-oriented, collects lazily), which previously ballooned past the
   # runner limit on the full fixture set. Workstation GC keeps the heap tight,
