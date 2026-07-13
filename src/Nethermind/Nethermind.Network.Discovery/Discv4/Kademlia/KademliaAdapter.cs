@@ -434,10 +434,14 @@ public sealed class KademliaAdapter(
             return new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port);
         }
 
-        // This message carries no TCP port of its own (Pong, FindNode, EnrRequest). Reuse whatever port is
-        // already known for this peer - e.g. learned from an earlier Neighbours mention - instead of clobbering
-        // it back to the unresolved placeholder, which would make PeerPool.FeedFromNodeSource skip the peer forever.
-        if (TryGetKnownTcpPort(msg.FarPublicKey!, out int knownPort))
+        // Pong/Neighbors/EnrResponse are responses to our own Ping/FindNeighbours/SendEnrRequest, which
+        // re-assert the already-known, fully-resolved receiver right after a successful exchange - so the
+        // placeholder built here for them is corrected immediately and needs no further handling.
+        // FindNode/EnrRequest (and a Ping without an advertised TCP port) are peer-initiated instead, with no
+        // such follow-up. Reuse whatever port is already known for this peer - e.g. learned from an earlier
+        // Neighbours mention - instead of the unresolved placeholder, which would make
+        // PeerPool.FeedFromNodeSource skip the peer forever.
+        if (!IsResponse(msg.MsgType) && TryGetKnownTcpPort(msg.FarPublicKey!, out int knownPort))
         {
             return new Node(msg.FarPublicKey, new IPEndPoint(msg.FarAddress!.Address, knownPort), msg.FarAddress.Port);
         }
