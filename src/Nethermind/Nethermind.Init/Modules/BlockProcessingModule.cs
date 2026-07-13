@@ -58,6 +58,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
+                .AddSingleton<ICodeCache>(StaticCodeCache.Instance)
             .AddScoped<IWorldState, WorldState>()
             .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
@@ -71,7 +72,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
 
-            .AddSingleton<CodeInfoRepositoryFactory>(CodeInfoRepositoryFactories.Caching)
+            .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
+                worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()

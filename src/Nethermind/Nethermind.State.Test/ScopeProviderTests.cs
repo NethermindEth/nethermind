@@ -326,7 +326,7 @@ public class ScopeProviderTests(bool useFlat)
 
         // isPrewarmer: false targets the main-processing scope where HintBal actually runs.
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
@@ -346,7 +346,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat);
 
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider provider = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer);
+        PrewarmerScopeProvider provider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer), LimboLogs.Instance);
 
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null))
         {
@@ -370,7 +370,7 @@ public class ScopeProviderTests(bool useFlat)
             new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
 
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider main = new(decorated, caches, LimboLogs.Instance, isPrewarmer: false);
+        PrewarmerScopeProvider main = new(decorated, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (main.BeginScope(null))
@@ -403,7 +403,7 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
-        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock))
@@ -424,7 +424,7 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = new();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         caches.MainScope = mainScope;
-        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
         ValueAddress addressA = new(TestItem.AddressA.Bytes);
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
@@ -459,7 +459,7 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         PreBlockCaches caches = new();
-        PrewarmerScopeProvider main = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        PrewarmerScopeProvider main = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         using (IWorldStateScopeProvider.IScope scope = main.BeginScope(baseBlock))
