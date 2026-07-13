@@ -162,25 +162,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // Source-based LIFO rollback (EELS refill_frame_state_gas): the child's net spill
-        // refills gas_left and only (used - spill) returns to the reservoir. The child's
-        // spill/spill-refund counters are NOT inherited — its state charges rolled back, so
-        // the parent's own unrefunded spill must not grow.
+        // Source-based LIFO rollback (EELS refill_frame_state_gas): net spill refills gas_left,
+        // (used - spill) returns to the reservoir; the rolled-back spill counters are not inherited.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
     }
 
-    // On child exceptional halt, regular gas in the child frame is consumed, but state gas did
-    // not produce durable state growth. Restore the child's state reservoir and state usage to
-    // the parent reservoir without adding the child's state usage to parent block-state usage.
-    // Any child state spill remains state-attributed for block regular gas accounting.
+    // On a child exceptional halt state gas produced no durable growth: restore the child's
+    // reservoir and usage to the parent reservoir without adding to parent block-state usage.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
         // On a halt only the reservoir-funded portion returns to the parent; the spilled
-        // portion refills gas_left, which the halt burns as regular gas. As on revert, the
-        // child's spill/spill-refund counters are not inherited.
+        // portion refills gas_left, which the halt burns as regular gas.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
     }
@@ -361,9 +356,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
     {
-        // Discharging a child's advanced refund against this frame's usage must not mark
-        // StateGasSpillRefunded: the refund's LIFO refill was already accounted in the frame
-        // that credited it, and its marks arrive via the regular child-gas merge.
+        // No StateGasSpillRefunded marking here: the credit-time LIFO refill already marked,
+        // and the marks arrive via the regular child-gas merge.
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, discardableStateGas);
         gas.StateGasUsed -= appliedRefund;
@@ -373,9 +367,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
     {
-        // The advanced portion continues the source-based LIFO refill (EELS
-        // credit_state_gas_refund): gas_left up to the remaining unrefunded spill,
-        // the rest to the reservoir.
+        // Continues the source-based LIFO refill (EELS credit_state_gas_refund).
         long toGasLeft = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
         gas.Value += (ulong)toGasLeft;
         gas.StateReservoir += amount - toGasLeft;
@@ -386,8 +378,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Revoke what is still parked in the reservoir (never fabricating spill debt), then what
         // the credit funded from usage; any remainder refilled a net-spill hole, so restore the debt.
-        // The portion the advance refilled into gas_left stays there: its permanent
-        // StateGasSpillRefunded mark keeps the frame's net spill consistent on rollback.
         long fromReservoir = Math.Clamp(gas.StateReservoir, 0, amount);
         gas.StateReservoir -= fromReservoir;
         amount -= fromReservoir;

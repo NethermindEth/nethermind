@@ -18,12 +18,9 @@ namespace Nethermind.Evm.Test;
 /// Differential regression tests for EIP-8037 state-gas spill-refund accounting.
 /// </summary>
 /// <remarks>
-/// Every expected (spentGas, blockRegularGas, blockStateGas) triple was produced by executing
-/// the identical scenario (same bytecode, addresses, tx parameters) through the EELS amsterdam
-/// reference implementation at ethereum/execution-specs commit d0338f561 — the commit the
-/// tests-glamsterdam-devnet@v6.1.1 fixtures are built from (block_output.block_gas_used /
-/// block_state_gas_used / receipt gas). They pin the cross-frame refund-advance, source-based
-/// LIFO refill, spill non-inheritance on revert/halt, and top-level-halt block-split semantics.
+/// Each expected (spentGas, blockRegularGas, blockStateGas) triple was produced by running the
+/// identical scenario through the EELS amsterdam reference at ethereum/execution-specs commit
+/// d0338f561 (the tests-glamsterdam-devnet@v6.1.1 commit) and reading block_output directly.
 /// </remarks>
 [TestFixture]
 public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
@@ -60,8 +57,7 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
         public override string ToString() => Name;
     }
 
-    // [CALLVALUE, PUSH2 d, JUMPI, <main>, JUMPDEST, <clear>] — calling with value != 0 selects
-    // the clear section, letting another contract re-enter this one to clear its slots.
+    // [CALLVALUE, PUSH2 d, JUMPI, <main>, JUMPDEST, <clear>] — a value call selects clear mode.
     private static byte[] BranchOnCallValue(byte[] mainSection, byte[] clearSection)
     {
         int dest = 5 + mainSection.Length;
@@ -100,8 +96,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
             [],
             ExpectedSuccess: true, ExpectedSpentGas: 22_490, ExpectedBlockRegularGas: 28_112, ExpectedBlockStateGas: 0);
 
-        // Cross-frame refund advance fully discharged against the setter's usage; all frames
-        // succeed. A sets a slot, M re-enters A (value call selects clear mode) to clear it.
+        // Cross-frame refund advance fully discharged against the setter's usage: A sets a
+        // slot, M re-enters A to clear it, all frames succeed.
         {
             byte[] aMain = Prepare.EvmCode
                 .PushData(1).PushData(0).Op(Instruction.SSTORE)
@@ -141,9 +137,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 ExpectedSuccess: false, ExpectedSpentGas: 39_295, ExpectedBlockRegularGas: 39_295, ExpectedBlockStateGas: 0);
         }
 
-        // Spill imported from a reverted grandchild rides through the child's exceptional halt.
-        // The old gross spill merge docked the parent reservoir, overcharging the sender by
-        // exactly the grandchild's spill.
+        // Spill from a reverted grandchild rides through the child's exceptional halt; the old
+        // gross spill merge docked the parent reservoir, overcharging the sender.
         {
             byte[] pCode = Prepare.EvmCode
                 .Call(X, 300_000).Op(Instruction.POP)
@@ -162,9 +157,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 ExpectedSuccess: true, ExpectedSpentGas: 818_023, ExpectedBlockRegularGas: 818_023, ExpectedBlockStateGas: 0);
         }
 
-        // The double-marking trace from PR #12369 review: M imports spill from reverted X and
-        // receives a same-frame NEW_ACCOUNT refund (soft-failed value call to a dead account),
-        // then returns successfully into P (own spill), and P halts.
+        // Double-marking trace from the PR #12369 review: M imports spill from reverted X, gets
+        // a same-frame NEW_ACCOUNT refund (soft-failed value call), returns into P, P halts.
         {
             byte[] mCode = Prepare.EvmCode
                 .Call(X, 300_000).Op(Instruction.POP)
@@ -188,8 +182,7 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 ],
                 ExpectedSuccess: true, ExpectedSpentGas: 1_218_023, ExpectedBlockRegularGas: 1_218_023, ExpectedBlockStateGas: 0);
 
-            // Same shape ending in a top-level exceptional halt with non-refunded intrinsic
-            // state (fresh authority): the block split must keep the full intrinsic state.
+            // Same shape ending in a top-level halt: the block split keeps the intrinsic state.
             byte[] aHaltCode = Prepare.EvmCode
                 .Call(P, 1_200_000).Op(Instruction.POP)
                 .Op(Instruction.INVALID).Done;
@@ -206,8 +199,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 WithAuthorization: true);
         }
 
-        // Child-halt spill then top-level halt: burned spill stays in the regular dimension;
-        // block state gas keeps the full intrinsic state (no spill reattribution).
+        // Child-halt spill then top-level halt: burned spill stays regular; block state gas
+        // keeps the full intrinsic state.
         {
             byte[] pCode = Prepare.EvmCode
                 .PushData(1).PushData(0).Op(Instruction.SSTORE)
@@ -224,9 +217,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 WithAuthorization: true);
         }
 
-        // The IncorporateChildStateGasRefunds combinator case: P' (clear mode) imports spill
-        // from reverted X, clears two of P's slots (advance 2*SSET), M discharges exactly one
-        // SSET against its own SSTORE, and P halts with the re-advanced remainder revoked.
+        // Partially discharged advance: P' imports spill from reverted X and clears two of P's
+        // slots (advance 2*SSET), M discharges one SSET, P halts revoking the remainder.
         {
             byte[] pMain = Prepare.EvmCode
                 .PushData(1).PushData(0).Op(Instruction.SSTORE)
@@ -293,8 +285,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 ExpectedSuccess: true, ExpectedSpentGas: 248_141, ExpectedBlockRegularGas: 52_301, ExpectedBlockStateGas: 195_840);
         }
 
-        // Successful inner CREATE spill followed by a top-level OOG in a create tx: the tx-level
-        // create-state refund nets block state gas to zero.
+        // Inner CREATE spill then top-level OOG in a create tx: the tx-level create-state
+        // refund nets block state gas to zero.
         {
             byte[] childInitCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
             byte[] initCode = Prepare.EvmCode
@@ -313,8 +305,8 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
                 TxData: initCode);
         }
 
-        // CREATE whose deposit fails on invalid code (EIP-3541 0xEF prefix): the child create
-        // frame halts (RevertRefundToHalt path) and the parent CREATE state gas is refunded.
+        // CREATE deposit fails on invalid code (EIP-3541): the child create frame halts and
+        // the parent CREATE state gas is refunded.
         {
             byte[] initCode = Prepare.EvmCode
                 .PushData(0xef).PushData(0).Op(Instruction.MSTORE8)
@@ -374,8 +366,7 @@ public class Eip8037EelsReferenceTests : VirtualMachineTestsBase
         }
 
         TestAllTracerWithOutput tracer = CreateTracer();
-        // The EELS reference charges cold access costs; access tracing would pre-warm every
-        // touched account/slot and shift all expected values.
+        // Access tracing would pre-warm every touched account/slot and shift all expected values.
         tracer.IsTracingAccess = false;
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 

@@ -229,8 +229,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, 200);
 
-        // The reservoir is already negative, so the full claw-back drives it further negative; the
-        // refilled gas_left and the permanent spill-refund mark stay in place.
+        // The claw-back drives the reservoir further negative; the refilled gas_left and the
+        // permanent spill-refund mark stay in place.
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpillRefunded), Is.EqualTo((600UL, -500L, 0L, 200L)));
     }
 
@@ -401,8 +401,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child);
 
-        // The child's spill refilled its own gas_left (burned by the halt); RestoreChildStateGasOnHalt
-        // touches only the reservoir and never inherits the child's spill counters.
+        // The halt burns the child's refilled spill; its spill counters are not inherited.
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill, parent.StateGasSpillRefunded),
             Is.EqualTo((0L, 0L, 0L, 0L)));
     }
@@ -410,9 +409,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Revert_returns_child_spill_to_parent_gas_left()
     {
-        // Source-based LIFO rollback: a reverted child's net spill refills the parent gas_left
-        // (it was originally paid from gas_left) and the reservoir absorbs the negative balance so
-        // (spill - refunded) stays consistent. The child's spill counter is NOT propagated.
+        // A reverted child's net spill refills the parent gas_left; its spill counter
+        // is not propagated.
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
         EthereumGasPolicy child = new()
         {
@@ -432,8 +430,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Revert_with_fully_refunded_child_spill_returns_nothing_to_parent_gas_left()
     {
-        // A child that spilled then fully refunded its own spill has net spill 0: on revert nothing
-        // is added to the parent gas_left and no spill is propagated.
+        // Net spill 0 after a full self-refund: revert adds nothing to the parent gas_left.
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, GasCostOf.CreateState);
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, GasCostOf.CreateState), Is.True);
@@ -494,8 +491,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child);
 
-        // The child's net spill (200 - 80 = 120) refills the parent gas_left; the parent's own spill
-        // counters are NOT bumped — reverted child spill never inflates them.
+        // The child's net spill (200 - 80 = 120) refills the parent gas_left; the parent's
+        // own spill counters are not bumped.
         Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((1_120UL, 0L, 0L)));
         Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((0L, 0L)));
     }
@@ -511,8 +508,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.Refund(ref parent, in child);
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
 
-        // The child spill (200) was fully refunded (net 0), so RevertRefundToHalt returns nothing to
-        // the reservoir; the propagated spill/refund counters cancel and the reservoir stays 0.
+        // The child spill was fully refunded (net 0), so nothing returns to the reservoir.
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
         Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(200L));
     }
@@ -581,10 +577,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void Top_level_halt_block_state_gas_is_intrinsic_floor_not_spill()
     {
-        // Per EIP-8037, block.gasUsed = max(sum_regular, sum_state). On a top-level halt
-        // (RefundOnTopLevelHalt): block_state = post-reset StateGasUsed (the intrinsic floor). The
-        // reservoir-portion of a charge is refunded (reservoir snaps back to R0); the spilled portion
-        // was paid from gas_left and is burned as REGULAR gas, never re-added to block_state.
+        // Top-level halt: block_state = post-reset StateGasUsed (intrinsic floor); the spilled
+        // portion was paid from gas_left and burns as regular gas.
         EthereumGasPolicy gas = new() { Value = 100_000, StateReservoir = 1_000, StateGasUsed = 0 };
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 5_000), Is.True);
         Assert.That((gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill), Is.EqualTo((0L, 5_000L, 4_000L)),
@@ -592,8 +586,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.ResetForHalt(ref gas, initialStateReservoir: 1_000, initialStateGasUsed: 0);
 
-        // Block_state contribution is exactly the post-reset StateGasUsed (intrinsic floor = 0);
-        // the spill (4_000) is excluded (burned as regular) and the reservoir snaps back to R0.
+        // Block_state = post-reset StateGasUsed (0); the spill burns as regular gas.
         long blockLevelContribution = gas.StateGasUsed;
         Assert.That(blockLevelContribution, Is.EqualTo(0L),
             "block-level sum_state contribution = post-reset floor (0); spill is burned as regular gas");

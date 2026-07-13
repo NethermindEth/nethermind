@@ -230,9 +230,8 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         => TSelf.UpdateGasUp(ref gas, (ulong)amount);
 
     /// <summary>Revokes a speculative refund credited by <see cref="AddStateGasRefundToReservoir"/>.</summary>
-    /// <remarks>Claws the full amount back from the reservoir (via usage, going negative if
-    /// needed); the portion that refilled gas_left stays there, its permanent spill-refund mark
-    /// keeping the frame's net spill consistent on rollback.</remarks>
+    /// <remarks>Claws the full amount from the reservoir (negative if needed); the gas_left-refilled
+    /// portion stays there, its permanent spill-refund mark keeping the net spill consistent.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RemoveStateGasRefundFromReservoir(ref TSelf gas, long amount) { }
 
