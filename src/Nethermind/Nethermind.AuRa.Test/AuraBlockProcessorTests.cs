@@ -224,7 +224,6 @@ namespace Nethermind.AuRa.Test
                 processor,
                 GnosisSpecProvider.Instance,
                 stateProvider,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 blockhashProvider,
                 LimboLogs.Instance);
 

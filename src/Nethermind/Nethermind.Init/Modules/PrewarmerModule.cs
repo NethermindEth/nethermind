@@ -3,6 +3,10 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -46,6 +50,10 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                // System-contract access-list hints the prewarmer warms alongside tx addresses.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
+                // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
 
                 .Add<PrewarmerEnvFactory>()
 
@@ -80,6 +88,13 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     .AddScoped<MempoolStatePrewarmer>()
                     .ResolveOnServiceActivation<MempoolStatePrewarmer, IBlockCachePreWarmer>();
             }
+        }
+
+        private sealed class NoAccessList : IHasAccessList
+        {
+            public static readonly NoAccessList Instance = new();
+
+            public AccessList? GetAccessList(Block block, IReleaseSpec spec) => null;
         }
     }
 }
