@@ -85,15 +85,21 @@ public class BlockCachePreWarmerTests
     [Test]
     public void EnvPool_ReturnedBeyondCapacity_IsDisposedImmediately()
     {
-        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
 
-        IReadOnlyTxProcessorSource first = preWarmer._envPool.Get();
-        IReadOnlyTxProcessorSource second = preWarmer._envPool.Get();
+        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
+
+        ObjectPool<IReadOnlyTxProcessorSource> envPool = new DefaultObjectPoolProvider { MaximumRetained = 1 }.Create(trackingPolicy);
+
+        IReadOnlyTxProcessorSource first = envPool.Get();
+        IReadOnlyTxProcessorSource second = envPool.Get();
         Assert.That(created.Count, Is.EqualTo(2), "precondition: an empty pool must create one env per overlapping rental");
 
-        preWarmer._envPool.Return(first);
-        preWarmer._envPool.Return(second);
+        envPool.Return(first);
+        envPool.Return(second);
 
         using (Assert.EnterMultipleScope())
         {
@@ -101,7 +107,7 @@ public class BlockCachePreWarmerTests
             Assert.That(disposed, Does.Contain(second), "the first return fills the capacity-1 pool, so the second is the evicted one");
         }
 
-        preWarmer.Dispose();
+        (envPool as IDisposable)?.Dispose();
     }
 
     /// <summary>
