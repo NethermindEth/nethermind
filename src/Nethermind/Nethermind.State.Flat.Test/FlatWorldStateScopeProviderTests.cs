@@ -542,6 +542,75 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void FlatStorage_StorageRootAfterSingleCommitMatchesRawTrie()
+    {
+        using TestContext ctx = new(new FlatDbConfig { FlatNodeStorage = true });
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        (UInt256 Slot, byte[] Value)[] slots =
+        [
+            (1, [0x01, 0x02]),
+            (2, [0xAA, 0xBB, 0xCC]),
+            (100, [0xFF]),
+        ];
+
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, slots.Length);
+            foreach ((UInt256 slot, byte[] value) in slots) storageBatch.Set(slot, value);
+        }
+
+        scope.Commit(1);
+
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
+        foreach ((UInt256 slot, byte[] value) in slots) expectedTree.Set(slot, value);
+        expectedTree.UpdateRootHash();
+
+        Account? resultAccount = scope.Get(testAddress);
+        Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
+    public void FlatStorage_StorageRootAfterParallelCommitMatchesRawTrie()
+    {
+        const int slotsPerCommit = 1024;
+        const int commitCount = 2;
+        using TestContext ctx = new(new FlatDbConfig { FlatNodeStorage = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        for (int commit = 0; commit < commitCount; commit++)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(commit + 1))
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotsPerCommit);
+                int firstSlot = commit * slotsPerCommit + 1;
+                int lastSlot = firstSlot + slotsPerCommit;
+                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+            }
+
+            scope.Commit((ulong)(commit + 1));
+        }
+
+        TestMemDb testDb = new();
+        RawScopedTrieStore trieStore = new(testDb);
+        StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
+        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        expectedTree.UpdateRootHash();
+
+        Account? account = scope.Get(address);
+        Assert.That(account, Is.Not.Null);
+        Assert.That(account!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void TestStorageRootAfterMultipleCommits()
     {
         using TestContext ctx = new();
