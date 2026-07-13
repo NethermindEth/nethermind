@@ -219,7 +219,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     [Test]
-    public void Run_AfterPerBlockClear_ServesFromTheSurvivingTier()
+    public void Run_AfterPerBlockClear_ServesFromSurvivingTierWithoutRepopulating()
     {
         int runCount = 0;
         PreBlockCaches caches = CreateCaches();
@@ -235,7 +235,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runCount, Is.EqualTo(1), "the surviving tier must serve the result across the per-block clear");
-            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(1), "a surviving-tier hit must backfill the per-block tier");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "a surviving-tier hit serves directly and does not repopulate the per-block tier");
         }
     }
 
