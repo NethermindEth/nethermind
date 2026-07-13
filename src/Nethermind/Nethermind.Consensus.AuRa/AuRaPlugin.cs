@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -25,6 +24,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -50,7 +50,6 @@ namespace Nethermind.Consensus.AuRa
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -66,6 +65,8 @@ namespace Nethermind.Consensus.AuRa
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
             builder
+                .AddModule(new AuRaHeaderModule())
+                .Intercept<ChainSpec>(AuRaChainSpecLoader.ProcessChainSpec)
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
@@ -94,6 +95,9 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters>(
                     (blockTree, chainLevelInfoRepository, validatorStore, logManager, param) =>
                         new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition))
+
+                .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
+                .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
                 .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()

@@ -87,7 +87,7 @@ public partial class BlockProcessor
                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas);
                 }
 
                 ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, in intrinsicGas);
@@ -163,13 +163,9 @@ public partial class BlockProcessor
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
-                                // Pre-compute intrinsic gas on the worker thread; carry it through the
-                                // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
-                                // check doesn't recalculate dynamic state-byte costs on the validator.
-                                IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                                 try
                                 {
-                                    intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
+                                    IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
 
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
@@ -188,7 +184,7 @@ public partial class BlockProcessor
                                             state.inner,
                                             in intrinsicGas);
                                     }
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                                 }
                                 catch (InvalidBlockException ex)
                                 {
@@ -198,7 +194,7 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, intrinsicGas, ex));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
                                 }
                                 catch
                                 {
@@ -243,7 +239,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
-                return CombineReceipts(receiptsTracers, len, block);
+                return CombineReceipts(receiptsTracers, len);
             }
             finally
             {
@@ -356,22 +352,17 @@ public partial class BlockProcessor
             }
         }
 
-        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
+        private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len)
         {
             TxReceipt[] result = new TxReceipt[len];
             ulong cumulativeGas = 0;
-            Bloom blockBloom = new();
             for (int i = 0; i < len; i++)
             {
                 result[i] = receiptsTracers[i].TxReceipts[0];
                 result[i].Index = i;
                 cumulativeGas += result[i].GasUsed;
                 result[i].GasUsedTotal = cumulativeGas;
-                result[i].CalculateBloom();
-                blockBloom.Accumulate(result[i].Bloom!);
             }
-
-            block.Header.Bloom = blockBloom;
 
             return result;
         }

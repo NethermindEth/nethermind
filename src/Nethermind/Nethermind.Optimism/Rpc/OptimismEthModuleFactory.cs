@@ -54,6 +54,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
+    private readonly IBlockForRpcFactory _blockForRpcFactory;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
@@ -79,9 +80,11 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IJsonSerializer jsonSerializer,
         ITimestamper timestamper,
         ILogIndexConfig logIndexConfig,
-        IReceiptConfig receiptConfig
+        IReceiptConfig receiptConfig,
+        IBlockForRpcFactory blockForRpcFactory
     )
     {
+        _blockForRpcFactory = blockForRpcFactory;
         _secondsPerSlot = blocksConfig.SecondsPerSlot;
         _logManager = logManager;
         _stateReader = stateReader;
@@ -146,6 +149,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _receiptConfig,
             _opSpecHelper,
             _headBlockSignal,
-            _capabilitiesProvider
+            _capabilitiesProvider,
+            _blockForRpcFactory
         );
 }

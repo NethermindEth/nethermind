@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Core;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
-using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
-    private INethermindApi _nethermindApi;
     public const string Xdc = "Xdc";
     public string Author => "Nethermind";
     public string Name => Xdc;
@@ -20,9 +17,4 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => XdcConstants.XDPoS;
     public IModule Module => new XdcModule();
 
-    public Task Init(INethermindApi nethermindApi)
-    {
-        _nethermindApi = nethermindApi;
-        return Task.CompletedTask;
-    }
 }

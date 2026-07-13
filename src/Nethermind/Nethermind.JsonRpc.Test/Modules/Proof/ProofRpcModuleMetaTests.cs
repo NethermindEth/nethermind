@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -9,7 +8,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,13 +15,13 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Serialization.Json;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -76,7 +74,6 @@ public class ProofRpcModuleMetaTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)
@@ -138,7 +135,7 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta withoutStorage = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, [], BlockParameter.Earliest).Data;
 
-        HashSet<UInt256> storageKeys = [];
+        StorageKeys storageKeys = [];
         for (int i = 0; i < StorageSlotCount; i++)
         {
             storageKeys.Add((UInt256)i);
@@ -155,7 +152,7 @@ public class ProofRpcModuleMetaTests
     [Test]
     public void Rejects_too_many_storage_keys()
     {
-        HashSet<UInt256> storageKeys = [];
+        StorageKeys storageKeys = [];
         for (int i = 0; i <= EthRpcModule.GetProofStorageKeyLimit; i++)
         {
             storageKeys.Add((UInt256)i);

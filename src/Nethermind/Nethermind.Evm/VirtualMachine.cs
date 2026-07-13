@@ -75,7 +75,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
-    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
+    protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
@@ -97,8 +97,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
     public object ReturnData { get; set; }
+    public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
+    // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
+    // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
+    private bool _isTracingActionsCached;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
@@ -113,6 +117,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+    internal ExecutionMetricsCounters MetricsCounters;
+
+    public void FlushMetricsCounters() => MetricsCounters.Flush();
 
     /// <summary>
     /// Executes a transaction by iteratively processing call frames until a top-level call returns
@@ -140,6 +147,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
+        _isTracingActionsCached = txTracer.IsTracingActions;
         _worldState = worldState;
 
         // Reset Parity touch bug state to prevent cross-transaction leakage.
@@ -149,6 +157,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         PrepareOpcodes<TTracingInst>(spec);
         OpCodeCount = 0;
+        MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
@@ -174,7 +183,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current state represents a precompiled contract, handle it separately.
                 if (_currentState.IsPrecompile)
                 {
-                    callResult = ExecutePrecompile(_currentState, _txTracer.IsTracingActions, out failure, out substateError);
+                    callResult = ExecutePrecompile(_currentState, _isTracingActionsCached, out failure, out substateError);
                     if (failure is not null)
                     {
                         // Jump to the failure handler if a precompile error occurred.
@@ -188,7 +197,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         AddTransferLog(_currentState);
 
                         // Start transaction tracing for non-continuation frames if tracing is enabled.
-                        if (_txTracer.IsTracingActions)
+                        if (_isTracingActionsCached)
                         {
                             TraceTransactionActionStart(_currentState);
                         }
@@ -231,7 +240,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 // If the current execution state is the top-level call, finalize tracing and return the result.
                 if (_currentState.IsTopLevel)
                 {
-                    if (_txTracer.IsTracingActions)
+                    if (_isTracingActionsCached)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
@@ -284,6 +293,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             if (isCreate)
                             {
                                 IncorporateChildStateGasRefunds(previousState);
+                                // EIP-8037: refund the CREATE/CREATE2 up-front NEW_ACCOUNT state gas when the target
+                                // already existed — the code lands on an existing account leaf.
+                                if (previousState.IsCreateOnPreExistingAccount)
+                                {
+                                    CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+                                }
                             }
                         }
                     }
@@ -295,7 +310,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
-                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+                        }
+                        else if (previousState.NewAccountCharged)
+                        {
+                            // EIP-8037: the reverted *CALL did not create its (dead) recipient, so refund
+                            // the NEW_ACCOUNT state gas the parent charged up-front for the value transfer.
+                            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
                         }
                         // Revert state changes for the previous call frame when a revert condition is signaled.
                         HandleRevert(previousState, callResult, ref previousCallOutput);
@@ -355,7 +376,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             }
         }
 
-        if (_txTracer.IsTracingActions)
+        if (_isTracingActionsCached)
         {
             _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), ReturnDataBuffer);
         }
@@ -387,10 +408,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong regularDepositCost, out ulong stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong regularDepositCost, out long stateDepositCost))
         {
             regularDepositCost = ulong.MaxValue;
-            stateDepositCost = ulong.MaxValue;
+            stateDepositCost = long.MaxValue;
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
@@ -421,16 +442,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded,
         ulong regularDepositCost,
-        ulong stateDepositCost,
+        long stateDepositCost,
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        ulong stateSpill = stateDepositCost.SaturatingSub(childStateReservoir);
-        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
+        ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in previousState.Gas, stateDepositCost);
+        ulong codeDepositGasCost = regularDepositCost + stateSpill;
+        bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost
+            && gasAvailableForCodeDeposit - regularDepositCost >= stateSpill;
         bool chargedCodeDeposit = false;
 
         if (hasEnoughGas && !invalidCode)
@@ -441,9 +463,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             {
                 _currentState.Gas = gasAfterCodeDeposit;
                 _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
-                if (_txTracer.IsTracingActions)
+                if (_isTracingActionsCached)
                 {
-                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, code);
+                    _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
                 }
             }
         }
@@ -456,7 +478,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            // The parent's up-front create state charge is refunded LIFO: a spilled charge
+            // returns to gas_left (burned by a later halt), not the reservoir (which survives it).
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -467,12 +491,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _previousCallResult = BytesZero;
             previousStateSucceeded = false;
 
-            if (_txTracer.IsTracingActions)
+            if (_isTracingActionsCached)
             {
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
-        else if (!chargedCodeDeposit && _txTracer.IsTracingActions)
+        else if (!chargedCodeDeposit && _isTracingActionsCached)
         {
             _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
         }
@@ -516,7 +540,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
         // If transaction tracing is enabled, report the revert action along with the available gas and output bytes.
-        if (_txTracer.IsTracingActions)
+        if (_isTracingActionsCached)
         {
             _txTracer.ReportActionRevert(TGasPolicy.GetRemainingGas(previousState.Gas), outputBytes);
         }
@@ -586,6 +610,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         _previousCallResult = StatusCode.FailureBytes;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
+        // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
+        bool childNewAccountCharged = _currentState.NewAccountCharged;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -595,7 +621,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            // State-gas refunds are LIFO: spilled state gas returns to gas_left first, then
+            // the reservoir; refunding straight to the reservoir would survive a later halt.
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+        }
+        else if (childNewAccountCharged)
+        {
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
         shouldExit = false;
@@ -624,8 +656,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // state_gas_used (originally drawn from gas_left) is still in the user's pocket.
         // Refund the full state_gas_used — reservoir-portion AND spilled-portion — to the
         // reservoir. The user is billed only the regular component.
-        ulong stateGasFloor = _currentState.InitialStateGasUsed;
-        ulong revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
+        long stateGasFloor = _currentState.InitialStateGasUsed;
+        long revertedStateGas = TGasPolicy.GetStateGasUsed(in _currentState.Gas);
         if (revertedStateGas > stateGasFloor)
         {
             TGasPolicy.RefundStateGas(ref _currentState.Gas, revertedStateGas, stateGasFloor);
@@ -633,7 +665,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void CreditStateGasRefund(ref TGasPolicy gas, ulong amount, bool trackSpillRefund = true)
+    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
     {
         if (!Spec.IsEip8037Enabled || amount == 0)
         {
@@ -641,16 +673,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         VmState<TGasPolicy> vmState = VmState;
-        ulong stateGasFloor = vmState.InitialStateGasUsed;
-        ulong refundableStateGas = TGasPolicy.GetStateGasUsed(in gas).SaturatingSub(stateGasFloor);
-        ulong appliedRefund = Math.Min(amount, refundableStateGas);
+        long stateGasFloor = vmState.InitialStateGasUsed;
+        long refundableStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gas) - stateGasFloor);
+        long appliedRefund = Math.Min(amount, refundableStateGas);
 
         if (appliedRefund > 0)
         {
             TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
         }
 
-        ulong pendingRefund = amount - appliedRefund;
+        long pendingRefund = amount - appliedRefund;
         if (pendingRefund > 0)
         {
             // Restored state gas paid by an ancestor frame stays spendable here; the
@@ -666,8 +698,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (childState.StateGasRefundPending > 0)
         {
-            ulong pendingRefund = childState.StateGasRefundPending;
-            ulong unappliedRefund = TGasPolicy.DiscardStateGas(
+            long pendingRefund = childState.StateGasRefundPending;
+            long unappliedRefund = TGasPolicy.DiscardStateGas(
                 ref _currentState.Gas,
                 pendingRefund,
                 _currentState.InitialStateGasUsed,
@@ -767,6 +799,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         _previousCallResult = StatusCode.FailureBytes;
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
+        // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
+        bool childNewAccountCharged = _currentState.NewAccountCharged;
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -776,7 +810,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+        }
+        else if (childNewAccountCharged)
+        {
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.
@@ -856,6 +894,43 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return default;
     }
 
+    /// <summary>
+    /// Whether a STATICCALL into the precompile at <paramref name="codeSource"/> may be executed inline
+    /// instead of building a full child call frame.
+    /// </summary>
+    /// <remarks>
+    /// The Parity touch-bug account (RIPEMD-160) is excluded because <see cref="RunPrecompile"/> records its
+    /// EIP-161 empty-account deletion, which the inline path does not replay.
+    /// </remarks>
+    protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
+        !codeSource.Equals(_parityTouchBugAccount.Address);
+
+    /// <summary>
+    /// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same
+    /// exception handling as <see cref="ExecutePrecompileCall"/>.
+    /// </summary>
+    /// <returns><c>false</c> when the precompile threw a non-fatal exception; otherwise <c>true</c> with its result in <paramref name="output"/>.</returns>
+    internal bool TryRunPrecompileDirectly(IPrecompile precompile, ReadOnlyMemory<byte> callData, IReleaseSpec spec, out Result<byte[]> output)
+    {
+        try
+        {
+            output = precompile.Run(callData, spec);
+            return true;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        {
+            if (_logger.IsError) LogMissingDependency(precompile, (exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException)!);
+            Environment.Exit(ExitCodes.MissingPrecompile);
+            throw; // Unreachable
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) LogExecutionException(precompile, exception);
+            output = default;
+            return false;
+        }
+    }
+
     protected void TraceTransactionActionStart(VmState<TGasPolicy> currentState)
     {
         _txTracer.ReportAction(TGasPolicy.GetRemainingGas(currentState.Gas),
@@ -902,15 +977,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong regularDepositCost = 0;
-        ulong stateDepositCost = 0;
-        ulong codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas);
+        long stateDepositCost = 0;
+        ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
         if (currentState.ExecutionType.IsAnyCreate())
         {
-            _ = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost);
-            hasEnoughGasForCodeDeposit =
-                TGasPolicy.GetRemainingGas(currentState.Gas) >= regularDepositCost &&
-                TGasPolicy.GetRemainingGas(currentState.Gas) + TGasPolicy.GetStateReservoir(in currentState.Gas) >= stateDepositCost;
+            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out regularDepositCost, out stateDepositCost))
+            {
+                ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
+                ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
+                codeDepositGasCost = regularDepositCost + stateSpill;
+                hasEnoughGasForCodeDeposit = remainingGas >= regularDepositCost
+                    && remainingGas - regularDepositCost >= stateSpill;
+            }
+            else
+            {
+                codeDepositGasCost = ulong.MaxValue;
+                hasEnoughGasForCodeDeposit = false;
+            }
         }
 
         // Cache the output bytes for reuse in the tracing reports.
@@ -987,8 +1071,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        ulong baseGasCost = precompile.BaseGasCost(spec);
-        ulong dataGasCost = precompile.DataGasCost(callData, spec);
 
         bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
@@ -1008,9 +1090,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             _parityTouchBugAccount.ShouldDelete = true;
         }
 
-        // Guard against ulong overflow before summing into UpdateGas.
-        if (baseGasCost > ulong.MaxValue - dataGasCost ||
-            !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
+        // The policy reads the precompile's own base/data cost (with the overflow guard inside).
+        if (!TGasPolicy.ConsumePrecompileGas(ref gas, precompile, callData, spec))
         {
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1129,10 +1210,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // If no machine code is present, treat the call as empty.
         if (codeSpan.Length == 0)
         {
-            // Increment a metric for empty calls if this is a nested call.
             if (!vmState.IsTopLevel)
             {
-                Metrics.IncrementEmptyCalls();
+                MetricsCounters.IncrementEmptyCalls();
             }
             goto Empty;
         }
@@ -1172,7 +1252,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             UInt256 localPreviousDest = previousCallOutputDestination;
 
             // Attempt to update the memory cost; if insufficient gas is available, jump to the out-of-gas handler.
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, vmState))
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in localPreviousDest, (ulong)previousCallOutput.Length, ref vmState.Memory))
             {
                 goto OutOfGas;
             }

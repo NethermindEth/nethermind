@@ -76,10 +76,10 @@ public class ExecutionProcessorTests
 
         _spec = ReleaseSpecSubstitute.Create();
 
-        _spec.RequestsEnabled.Returns(true);
         _spec.DepositsEnabled.Returns(true);
         _spec.WithdrawalRequestsEnabled.Returns(true);
         _spec.ConsolidationRequestsEnabled.Returns(true);
+        _spec.BuilderRequestsEnabled.Returns(false);
 
         _spec.DepositContractAddress.Returns(DepositContractAddress);
         _spec.Eip7002ContractAddress.Returns(eip7002Account);

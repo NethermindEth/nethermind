@@ -28,6 +28,11 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
     /// </remarks>
     private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
+#if ZK_EVM
+    // Precompile CodeInfo indexed by precompile address number (0x01..0x100):
+    // replaces a FrozenDictionary hash+probe on every precompile CALL.
+    private readonly CodeInfo[] _localPrecompileArray = new CodeInfo[0x101];
+#endif
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -39,6 +44,13 @@ public class CodeInfoRepository : ICodeInfoRepository
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _codeInfoLoader = codeInfoLoader;
+#if ZK_EVM
+        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in _localPrecompiles)
+        {
+            int idx = ((Address)kv.Key).PrecompileIndexOrNegative();
+            if ((uint)idx < (uint)_localPrecompileArray.Length) _localPrecompileArray[idx] = kv.Value;
+        }
+#endif
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -47,7 +59,12 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
+#if ZK_EVM
+            return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
+#else
             return _localPrecompiles[codeSource];
+#endif
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
@@ -78,6 +95,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
+        // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
+        worldState.RecordBytecodeAccess(address);
         // When executing in parallel must get by address
         byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)

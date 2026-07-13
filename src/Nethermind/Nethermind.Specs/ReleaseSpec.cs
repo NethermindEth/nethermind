@@ -89,6 +89,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
+    public bool IsEip8038Enabled { get; set; }
+    public bool IsEip8282Enabled { get; set; }
     public bool IsEip4788Enabled { get; set; }
     public bool IsEip7702Enabled { get; set; }
     public bool IsEip7823Enabled { get; set; }
@@ -118,8 +120,6 @@ public class ReleaseSpec : IReleaseSpec
     [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
-    Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
-    Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
@@ -169,6 +169,8 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
+    public bool IsEip8246Enabled { get; set; }
+    public bool IsEip2780Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

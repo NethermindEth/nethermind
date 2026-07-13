@@ -24,6 +24,7 @@
     <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   </Folder>
+  <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
   <Project Path="Nethermind.Stateless.ZiskGuest/Nethermind.Stateless.ZiskGuest.csproj" />
 </Solution>

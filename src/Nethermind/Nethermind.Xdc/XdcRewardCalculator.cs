@@ -30,8 +30,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache,
-    ITransactionProcessor transactionProcessor,
-    IRewardsStore rewardsStore) : IRewardCalculator
+    ITransactionProcessor transactionProcessor) : IRewardCalculator
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -41,7 +40,6 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     private readonly IMintedRecordContract _mintedRecordContract = mintedRecordContract;
     private readonly ISigningTxCache _signingTxCache = signingTxCache;
     private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
-    private readonly IRewardsStore _rewardsStore = rewardsStore;
 
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
@@ -57,15 +55,18 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         ArgumentNullException.ThrowIfNull(block);
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
+        if (xdcHeader.ProcessedRewards is not null)
+            return xdcHeader.ProcessedRewards;
+
         if (xdcHeader.Number == 0)
-            return Array.Empty<BlockReward>();
+            return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         // Rewards in XDC are calculated only if it's an epoch switch block
-        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return Array.Empty<BlockReward>();
+        if (!_epochSwitchManager.IsEpochSwitchAtBlock(xdcHeader)) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         ulong number = xdcHeader.Number;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
-        if (number == spec.SwitchBlock + 1) return Array.Empty<BlockReward>();
+        if (number == spec.SwitchBlock + 1) return xdcHeader.ProcessedRewards = Array.Empty<BlockReward>();
 
         Address foundationWalletAddr = spec.FoundationWallet;
         if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
@@ -79,7 +80,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         {
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-            AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(foundationWalletAddr, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
         }
         else
         {
@@ -93,9 +94,9 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 spec.ObserverReward,
                 observerSigners);
 
-            AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
-            AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
-            AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+            AddDistributedRewards(foundationWalletAddr, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
 
             _mintedRecordContract.UpdateAccounting(
                 _transactionProcessor,
@@ -107,9 +108,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
 
         if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
 
-        BlockReward[] finalRewards = rewards.ToArray();
-        _rewardsStore.SaveEpochRewards(xdcHeader.Number, finalRewards);
-        return finalRewards;
+        return xdcHeader.ProcessedRewards = rewards.ToArray();
     }
 
     private (
@@ -152,11 +151,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                 if (epochCount == rewardEpochCount)
                 {
                     startBlockNumber = blockIdx + 1;
-                    // Get masternodes from epoch switch header
-                    if (h.Number <= spec.SwitchBlock)
-                        masternodes = [.. h.ExtraData.ParseV1Masternodes()];
-                    else
-                        masternodes = [.. h.ValidatorsAddress!];
+                    masternodes = GetRewardMasternodes(h, spec);
 
                     if (spec.IsTipUpgradeRewardEnabled)
                     {
@@ -220,11 +215,21 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
     }
 
+    protected internal virtual HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec)
+    {
+        if (checkpointHeader.Number <= spec.SwitchBlock)
+        {
+            return [.. checkpointHeader.ExtraData.ParseV1Masternodes()];
+        }
+
+        return [.. checkpointHeader.ValidatorsAddress!];
+    }
+
     private Address[] GetCandidatesByStakeForReward(XdcBlockHeader checkpointHeader)
     {
         // We intentionally avoid GetCandidatesByStake here to preserve Go-equivalent ordering:
         // fetch candidates at the checkpoint header and apply a stable stake-descending sort locally.
-        Address[] candidates = _masternodeVotingContract.GetCandidates(checkpointHeader) ?? [];
+        Address[] candidates = _masternodeVotingContract.GetCandidates(_transactionProcessor, checkpointHeader) ?? [];
         if (candidates.Length == 0)
             return [];
 
@@ -237,7 +242,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             candidatesAndStake.Add(new CandidateStake
             {
                 Address = candidate,
-                Stake = _masternodeVotingContract.GetCandidateStake(checkpointHeader, candidate),
+                Stake = _masternodeVotingContract.GetCandidateStake(_transactionProcessor, checkpointHeader, candidate),
             });
         }
 
@@ -320,9 +325,12 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     }
 
     internal (BlockReward HolderReward, UInt256 FoundationWalletReward) DistributeRewards(
-        Address masternodeAddress, UInt256 reward, XdcBlockHeader header)
+        Address masternodeAddress, UInt256 reward, Address foundationWalletAddr)
     {
-        Address owner = _masternodeVotingContract.GetCandidateOwner(_transactionProcessor, header, masternodeAddress);
+        if (_transactionProcessor is not XdcTransactionProcessor xdcTransactionProcessor)
+            throw new InvalidOperationException($"{nameof(XdcRewardCalculator)} requires {nameof(XdcTransactionProcessor)}.");
+
+        Address owner = _masternodeVotingContract.GetCandidateOwner(xdcTransactionProcessor.RewardWorldState, masternodeAddress);
 
         // 90% of the reward goes to the masternode
         UInt256 masterReward = reward * 90 / 100;
@@ -330,11 +338,17 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         // 10% of the reward goes to the foundation wallet
         UInt256 foundationReward = reward / 10;
 
+        // The reference client stores both entries in a map, so the foundation reward replaces the owner reward on collision.
+        if (owner == foundationWalletAddr)
+        {
+            return (new BlockReward(owner, foundationReward), UInt256.Zero);
+        }
+
         return (new BlockReward(owner, masterReward), foundationReward);
     }
 
     private void AddDistributedRewards(
-        XdcBlockHeader header,
+        Address foundationWalletAddr,
         Dictionary<Address, UInt256> rewardSigners,
         List<BlockReward> rewards,
         ref UInt256 totalFoundationWalletReward,
@@ -342,7 +356,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
     {
         foreach ((Address signer, UInt256 reward) in rewardSigners)
         {
-            (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, header);
+            (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, foundationWalletAddr);
             totalFoundationWalletReward += foundationWalletReward;
             totalMintedInEpoch += holderReward.Value + foundationWalletReward;
             rewards.Add(holderReward);

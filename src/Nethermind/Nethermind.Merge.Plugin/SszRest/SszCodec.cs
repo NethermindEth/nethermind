@@ -5,7 +5,9 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Consensus.Producers;
@@ -16,10 +18,9 @@ namespace Nethermind.Merge.Plugin.SszRest;
 
 public static class SszCodec
 {
-    /// <summary>
-    /// SSZ-encodes <paramref name="value"/> directly into <paramref name="writer"/>'s buffer
-    /// (no intermediate pooled allocation) and returns the number of bytes written.
-    /// </summary>
+    private const int ValidationErrorMaxBytes = 1024;
+
+    /// <summary>Encode directly into the writer's buffer (no intermediate alloc); returns bytes written.</summary>
     private static int EncodeToWriter<T>(T value, IBufferWriter<byte> writer) where T : ISszCodec<T>
     {
         int length = T.GetLength(value);
@@ -31,6 +32,44 @@ public static class SszCodec
 
     public static int EncodePayloadStatus(PayloadStatusV1 ps, IBufferWriter<byte> writer)
         => EncodeToWriter(BuildPayloadStatusWire(ps), writer);
+
+    public static int EncodeNewPayloadWithWitnessResponse(PayloadStatusV1 ps, Witness? witness, IBufferWriter<byte> writer)
+    {
+        bool hasWitness = witness is not null && ps.Status == PayloadStatus.Valid;
+        return EncodeToWriter(new PayloadStatusWithWitnessWire
+        {
+            PayloadStatus = BuildPayloadStatusWire(ps),
+            Witness = hasWitness ? [BuildExecutionWitnessV1Wire(witness!)] : []
+        }, writer);
+    }
+
+    /// <summary>Test helper: round-trip decode of PayloadStatusWithWitness SSZ output.</summary>
+    public static (byte Status, Hash256? LatestValidHash, bool WitnessPresent)
+        DecodeNewPayloadWithWitnessResponse(ReadOnlySpan<byte> data)
+    {
+        PayloadStatusWithWitnessWire.Decode(data, out PayloadStatusWithWitnessWire wire);
+        Hash256? latestValidHash = wire.PayloadStatus.LatestValidHash is { Length: > 0 } lvh ? lvh[0] : null;
+        bool witnessPresent = wire.Witness is { Length: > 0 };
+        return (wire.PayloadStatus.Status, latestValidHash, witnessPresent);
+    }
+
+    private static ExecutionWitnessV1Wire BuildExecutionWitnessV1Wire(Witness witness)
+    {
+        return new ExecutionWitnessV1Wire
+        {
+            State = ToWitnessItems(witness.State),
+            Codes = ToWitnessItems(witness.Codes),
+            Headers = ToWitnessItems(witness.Headers)
+        };
+
+        static SszWitnessItem[] ToWitnessItems(IOwnedReadOnlyList<byte[]> items)
+        {
+            SszWitnessItem[] result = new SszWitnessItem[items.Count];
+            for (int i = 0; i < items.Count; i++)
+                result[i] = new SszWitnessItem { Bytes = items[i] };
+            return result;
+        }
+    }
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
@@ -308,7 +347,6 @@ public static class SszCodec
 
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
-        const int MaxErrorBytes = 1024;
         SszValidationError[] error;
         if (ps.ValidationError is null)
         {
@@ -317,7 +355,7 @@ public static class SszCodec
         else
         {
             byte[] errorBytes = Encoding.UTF8.GetBytes(ps.ValidationError);
-            if (errorBytes.Length > MaxErrorBytes) errorBytes = errorBytes[..MaxErrorBytes];
+            if (errorBytes.Length > ValidationErrorMaxBytes) errorBytes = errorBytes[..ValidationErrorMaxBytes];
             error = [new SszValidationError { Bytes = errorBytes }];
         }
 
@@ -345,7 +383,8 @@ public static class SszCodec
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: pa.Withdrawals.ToDomain(),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
-            slotNumber: pa.SlotNumber);
+            slotNumber: pa.SlotNumber,
+            targetGasLimit: pa.TargetGasLimit);
 
     private static PayloadAttributes BuildPayloadAttributes(
         ulong timestamp,
@@ -353,14 +392,16 @@ public static class SszCodec
         Address suggestedFeeRecipient,
         Withdrawal[]? withdrawals = null,
         Hash256? parentBeaconBlockRoot = null,
-        ulong? slotNumber = null) => new()
+        ulong? slotNumber = null,
+        ulong? targetGasLimit = null) => new()
         {
             Timestamp = timestamp,
             PrevRandao = prevRandao,
             SuggestedFeeRecipient = suggestedFeeRecipient,
             Withdrawals = withdrawals,
             ParentBeaconBlockRoot = parentBeaconBlockRoot,
-            SlotNumber = slotNumber
+            SlotNumber = slotNumber,
+            TargetGasLimit = targetGasLimit
         };
 
     public static Hash256[] GetBlobVersionedHashes(ExecutionPayload payload)

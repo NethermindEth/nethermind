@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -53,7 +52,7 @@ public readonly record struct ResourceAvailability(
 
 /// <summary>Rolling-window deletion strategy for a resource.</summary>
 /// <param name="Type">Strategy type — currently always <c>"window"</c>; the spec uses <c>oneOf</c> to leave room for future strategies.</param>
-/// <param name="RetentionBlocks">Number of recent blocks retained. Per spec this is a JSON integer (not a hex quantity).</param>
+/// <param name="RetentionBlocks">Number of recent blocks retained, serialized as a hex QUANTITY string per the spec's <c>uint</c> type.</param>
 public readonly record struct DeleteStrategy(
     string Type,
-    [property: JsonConverter(typeof(ULongRawJsonConverter))] ulong RetentionBlocks);
+    ulong RetentionBlocks);

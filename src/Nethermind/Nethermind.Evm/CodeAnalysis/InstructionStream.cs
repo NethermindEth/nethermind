@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -123,6 +124,14 @@ internal sealed class InstructionStream
     /// <summary>Entry index for every entry-start pc; <see cref="InvalidEntry"/> for immediate
     /// bytes and fused-pair interiors; index one past the last op at pc == code length.</summary>
     public readonly ushort[] PcToEntry;
+
+    public int RetainedBytes =>
+        Ops.Length * Unsafe.SizeOf<StreamOp>()
+        + BlockGas.Length * sizeof(ulong)
+        + Constants.Length * Unsafe.SizeOf<UInt256>()
+        + ConstantBytes.Length
+        + PcToEntry.Length * sizeof(ushort);
+
     private InstructionStream(StreamOp[] ops, ulong[] blockGas, UInt256[] constants, ushort[] pcToEntry, bool buildConstantBytes)
     {
         Ops = ops;

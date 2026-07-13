@@ -140,6 +140,20 @@ namespace Nethermind.Network
             return ValidationResult.Valid;
         }
 
+        /// <inheritdoc/>
+        public bool IsForkIdCompatible(ForkId peerId)
+        {
+            EnsureInitialized();
+
+            if (!DictForks.TryGetValue(peerId.ForkHash, out Fork found))
+            {
+                return false;
+            }
+
+            // EIP-2124 uses next=0 when no following fork is known.
+            return peerId.Next == 0 || found.Id.Next == 0 || peerId.Next == found.Id.Next;
+        }
+
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head)
         {
             EnsureInitialized();

@@ -174,7 +174,7 @@ public class OptimismTransactionProcessor(
     }
 
     protected override GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, ulong postIntrinsicStateReservoir)
+        in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool createdTargetAlive = false)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -186,6 +186,6 @@ public class OptimismTransactionProcessor(
             return gas;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas, intrinsicGasStandard, postIntrinsicStateReservoir);
+        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, codeInsertRefunds, floorGas, intrinsicGasStandard, postIntrinsicStateReservoir, createdTargetAlive);
     }
 }

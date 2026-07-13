@@ -33,7 +33,7 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Deduct the base gas cost for reading the program counter.
-        TGasPolicy.Consume(ref gas, GasCostOf.Base);
+        TGasPolicy.Consume<BaseGasCost>(ref gas);
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         return stack.PushUInt32<TTracingInst>((uint)(programCounter - 1));
     }
@@ -54,7 +54,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost specific for a jump destination marker.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpDest);
+        TGasPolicy.Consume<JumpDestGasCost>(ref gas);
 
         return EvmExceptionType.None;
     }
@@ -77,7 +77,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the gas cost for performing a jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.Jump);
+        TGasPolicy.Consume<JumpGasCost>(ref gas);
         // Pop the jump destination from the stack.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
@@ -112,7 +112,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         // Deduct the high gas cost for a conditional jump.
-        TGasPolicy.Consume(ref gas, GasCostOf.JumpI);
+        TGasPolicy.Consume<JumpIGasCost>(ref gas);
         // Pop the jump destination.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
 
@@ -173,7 +173,7 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, vm.VmState) ||
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {
             goto OutOfGas;
@@ -200,8 +200,7 @@ public static partial class EvmInstructions
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
     {
-        // Increment metrics for self-destruct operations.
-        Metrics.IncrementSelfDestructs();
+        vm.MetricsCounters.IncrementSelfDestructs();
 
         VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
@@ -219,7 +218,7 @@ public static partial class EvmInstructions
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
-        Address inheritor = stack.PopAddress();
+        Address inheritor = stack.PopAddress(vm.AddressCache);
         if (inheritor is null)
             goto StackUnderflow;
 
@@ -248,7 +247,11 @@ public static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        bool outOfGas = chargesNewAccount && !(TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
+        // EIP-8038 adds an ACCOUNT_WRITE regular charge on top of the NEW_ACCOUNT state gas;
+        // charge regular first so a regular-gas OOG does not spill state gas.
+        bool outOfGas = chargesNewAccount &&
+            !((!spec.IsEip8038Enabled || TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite))
+              && TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
 
@@ -262,9 +265,9 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Special handling when SELFDESTRUCT is limited to the same transaction.
-        // No ETH moves and no log is emitted for this no-op case.
-        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
+        // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
+        if (inheritor.Equals(executingAccount) && (spec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
@@ -289,7 +292,7 @@ public static partial class EvmInstructions
     public static EvmExceptionType InstructionInvalid<TGasPolicy>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        TGasPolicy.Consume(ref gas, GasCostOf.High);
+        TGasPolicy.Consume<HighGasCost>(ref gas);
         return EvmExceptionType.BadInstruction;
     }
 

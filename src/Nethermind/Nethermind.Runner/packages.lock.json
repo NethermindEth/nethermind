@@ -801,8 +801,7 @@
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
-          "Nethermind.Specs": "[1.40.0-unstable, )",
-          "Nethermind.Trie": "[1.40.0-unstable, )"
+          "Nethermind.Specs": "[1.40.0-unstable, )"
         }
       },
       "nethermind.evm.precompiles": {
@@ -860,6 +859,7 @@
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "[9.0.0, )",
           "KubernetesClient": "[19.0.2, )",
           "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.40.0-unstable, )"
         }
       },
@@ -967,6 +967,7 @@
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Db": "[1.40.0-unstable, )",
           "Nethermind.Evm": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
           "Nethermind.Specs": "[1.40.0-unstable, )",
           "Nethermind.State": "[1.40.0-unstable, )"
@@ -976,6 +977,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Ssz": "[1.40.0-unstable, )"
         }
       },
@@ -997,6 +999,7 @@
           "Nethermind.Crypto": "[1.40.0-unstable, )",
           "Nethermind.DotNetty.Handlers": "[1.0.2.76, )",
           "Nethermind.Network.Contract": "[1.40.0-unstable, )",
+          "Nethermind.Network.Enr": "[1.40.0-unstable, )",
           "Nethermind.Network.Stats": "[1.40.0-unstable, )",
           "Nethermind.Synchronization": "[1.40.0-unstable, )",
           "Snappier": "[1.3.1, )"
@@ -1054,6 +1057,7 @@
           "Nethermind.Config": "[1.40.0-unstable, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Evm": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
           "Nethermind.Logging": "[1.40.0-unstable, )",
           "Nethermind.Synchronization": "[1.40.0-unstable, )"
         }
