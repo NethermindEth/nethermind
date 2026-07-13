@@ -363,19 +363,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> senderGroups = GroupTransactionsBySender(block);
 
             try
             {
-                // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
                     0,
-                    groupArray.Count,
+                    senderGroups.Count,
                     parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
+                    (blockState, senderGroups, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
                         (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
@@ -416,8 +413,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
+                foreach (ArrayPoolList<(int Index, Transaction Tx)> group in senderGroups.AsSpan())
+                    group.Dispose();
             }
         }
         catch (OperationCanceledException)
@@ -430,7 +427,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
@@ -451,7 +448,45 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             list.Add((i, tx));
         }
 
-        return groups;
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> result = new(groups.Count);
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.Values)
+        {
+            if (ShouldSplitGroup(group))
+            {
+                // A heavy same-sender chain warms sequentially slower than the main loop executes
+                // it, and the MainThreadTxIndex guard then skips its tail entirely (e.g. XEN batch
+                // claims). Warming each tx in parallel from parent state is approximate but arrives
+                // in time.
+                foreach ((int Index, Transaction Tx) item in group.AsSpan())
+                {
+                    result.Add(new ArrayPoolList<(int, Transaction)>(1) { item });
+                }
+                group.Dispose();
+            }
+            else
+            {
+                result.Add(group);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Total gas limit above which a multi-tx sender group warms per-tx in parallel
+    /// instead of sequentially; sized so only heavy chains lose sequential state fidelity.</summary>
+    private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+
+    private static bool ShouldSplitGroup(ArrayPoolList<(int Index, Transaction Tx)> group)
+    {
+        if (group.Count < 2) return false;
+
+        ulong totalGasLimit = 0;
+        foreach ((int _, Transaction tx) in group.AsSpan())
+        {
+            totalGasLimit += tx.GasLimit;
+        }
+
+        return totalGasLimit > SplitSenderGroupGasThreshold;
     }
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
