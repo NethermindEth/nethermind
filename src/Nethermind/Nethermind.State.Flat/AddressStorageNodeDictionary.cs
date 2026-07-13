@@ -15,6 +15,8 @@ namespace Nethermind.State.Flat;
 /// <remarks>
 /// A storage-trie commit exclusively owns one address, so sequential commits write directly to its inner dictionary.
 /// Parallel subtree commits buffer their nodes and publish them after joining.
+/// The per-address dictionaries are not thread-safe: each address must have at most one writer, and reads must not
+/// overlap writes to that address. Enumeration and <see cref="Count"/> require all addresses to be quiescent.
 /// </remarks>
 public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>>
 {
