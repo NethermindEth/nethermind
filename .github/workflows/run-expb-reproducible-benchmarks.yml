@@ -655,9 +655,13 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
-          echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "rendered_config_file=${RENDERED_CONFIG_FILE}"
+            echo "amount=${AMOUNT}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
+        id: install-expb
         shell: bash
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
@@ -681,6 +685,9 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+          expb_version="$(uv tool list 2>/dev/null | awk '/^expb([ \t]|$)/ { v=$2; sub(/^v/, "", v); print v; exit }')"
+          echo "expb_version=${expb_version:-unknown}" >> "${GITHUB_OUTPUT}"
 
       - name: Run expb scenarios
         id: run-expb
@@ -774,6 +781,23 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          PAYLOAD_SET: ${{ matrix.payload_set }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          IMAGE: ${{ env.NETHERMIND_IMAGE }}
+          EXPB_VERSION: ${{ steps.install-expb.outputs.expb_version }}
+          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
+          EXPB_REF: ${{ needs.resolve.outputs.expb_branch }}
+          RUN_INDEX: ${{ matrix.run }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          AMOUNT: ${{ steps.render-config.outputs.amount }}
+          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
         run: |
           set -euo pipefail
 
@@ -889,7 +913,35 @@ jobs:
             echo "${prefix}MAX=${max}"
           }
 
-          compute_percentiles "${processing_ms}" "" > "${metrics_file}"
+          # Write dimension metadata so downstream analysis can group/filter by
+          # branch / sha / state_layout / payload_set / delay / image / expb_version, etc.
+          extra_flags_one_line="$(printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" | tr '\r\n' '  ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+          {
+            echo "BRANCH=${BRANCH}"
+            echo "CLEAN_BRANCH=${CLEAN_BRANCH}"
+            echo "SHA=${SHA}"
+            echo "STATE_LAYOUT=${STATE_LAYOUT}"
+            echo "PAYLOAD_SET=${PAYLOAD_SET}"
+            echo "DELAY_SECONDS=${DELAY_SECONDS}"
+            echo "AMOUNT=${AMOUNT}"
+            echo "IMAGE=${IMAGE}"
+            echo "EXPB_VERSION=${EXPB_VERSION:-unknown}"
+            echo "EXPB_REPO=${EXPB_REPO}"
+            echo "EXPB_REF=${EXPB_REF}"
+            echo "SCENARIO_NAME=${SCENARIO_NAME}"
+            echo "CONFIG_FILE=${CONFIG_FILE}"
+            echo "ADDITIONAL_EXTRA_FLAGS=${extra_flags_one_line}"
+            echo "EVENT_NAME=${EVENT_NAME}"
+            echo "RUN_ID=${RUN_ID}"
+            echo "RUN_ATTEMPT=${RUN_ATTEMPT}"
+            echo "RUN_INDEX=${RUN_INDEX}"
+            echo "RUN_COUNT=${RUN_COUNT}"
+            echo "EXCEPTION_FOUND=${exception_found}"
+            echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+            echo "TIMESTAMP=$(date -u -Iseconds)"
+          } > "${metrics_file}"
+
+          compute_percentiles "${processing_ms}" "" >> "${metrics_file}"
 
           # Also compute K6 TTFB metrics when client metrics were primary
           if [[ -s "${client_ms}" ]]; then
@@ -917,9 +969,9 @@ jobs:
             echo "  Processing Metrics (K6 TTFB)"
           fi
           echo "========================================="
-          while IFS='=' read -r key val; do
+          grep -E "^(COUNT|AVG|MEDIAN|P90|P95|P99|MIN|MAX)=" "${metrics_file}" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
-          done < "${metrics_file}"
+          done
           if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
             echo "-----------------------------------------"
             echo "  K6 TTFB (secondary)"
@@ -1740,6 +1792,7 @@ jobs:
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
+        id: install-expb
         shell: bash
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
@@ -1760,6 +1813,9 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+          expb_version="$(uv tool list 2>/dev/null | awk '/^expb([ \t]|$)/ { v=$2; sub(/^v/, "", v); print v; exit }')"
+          echo "expb_version=${expb_version:-unknown}" >> "${GITHUB_OUTPUT}"
 
       - name: Run expb scenarios
         id: run-expb
@@ -1853,6 +1909,25 @@ jobs:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           TAG: ${{ matrix.tag }}
           RUN: ${{ matrix.run }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
+          PAYLOAD_SET: ${{ fromJson(needs.resolve.outputs.payload_sets)[0] }}
+          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          IMAGE: ${{ matrix.image }}
+          IMAGE_DATE: ${{ matrix.date }}
+          EXPB_VERSION: ${{ steps.install-expb.outputs.expb_version }}
+          EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
+          EXPB_REF: ${{ needs.resolve.outputs.expb_branch }}
+          RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          AMOUNT: ${{ needs.resolve.outputs.amount }}
+          ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          CONFIG_FILE: ${{ env.CONFIG_FILE }}
+          SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
         run: |
           set -euo pipefail
 
@@ -1866,11 +1941,40 @@ jobs:
 
           mkdir -p "${metrics_dir}"
 
+          extra_flags_one_line="$(printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" | tr '\r\n' '  ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+
+          # Emits dimension metadata so downstream analysis can group/filter by
+          # branch / sha / state_layout / payload_set / delay / image / expb_version, etc.
+          emit_dimensions() {
+            echo "TAG=${TAG}"
+            echo "RUN=${RUN}"
+            echo "BRANCH=${BRANCH}"
+            echo "CLEAN_BRANCH=${CLEAN_BRANCH}"
+            echo "SHA=${SHA}"
+            echo "STATE_LAYOUT=${STATE_LAYOUT}"
+            echo "PAYLOAD_SET=${PAYLOAD_SET}"
+            echo "DELAY_SECONDS=${DELAY_SECONDS}"
+            echo "AMOUNT=${AMOUNT}"
+            echo "IMAGE=${IMAGE}"
+            echo "IMAGE_DATE=${IMAGE_DATE}"
+            echo "EXPB_VERSION=${EXPB_VERSION:-unknown}"
+            echo "EXPB_REPO=${EXPB_REPO}"
+            echo "EXPB_REF=${EXPB_REF}"
+            echo "SCENARIO_NAME=${SCENARIO_NAME}"
+            echo "CONFIG_FILE=${CONFIG_FILE}"
+            echo "ADDITIONAL_EXTRA_FLAGS=${extra_flags_one_line}"
+            echo "EVENT_NAME=${EVENT_NAME}"
+            echo "RUN_ID=${RUN_ID}"
+            echo "RUN_ATTEMPT=${RUN_ATTEMPT}"
+            echo "RUN_INDEX=${RUN}"
+            echo "RUN_COUNT=${RUN_COUNT}"
+            echo "TIMESTAMP=$(date -u -Iseconds)"
+          }
+
           if [[ ! -f "${RAW_RUN_LOG}" ]]; then
             echo "Run output log '${RAW_RUN_LOG}' was not produced."
             {
-              echo "TAG=${TAG}"
-              echo "RUN=${RUN}"
+              emit_dimensions
               echo "ERROR=no_log"
             } > "${metrics_dir}/metrics.env"
             exit 1
@@ -1930,8 +2034,7 @@ jobs:
           if [[ "${count}" -eq 0 ]]; then
             echo "Could not extract any processing_ms data from benchmark output."
             {
-              echo "TAG=${TAG}"
-              echo "RUN=${RUN}"
+              emit_dimensions
               echo "EXCEPTION_FOUND=${exception_found}"
               echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
               echo "ERROR=no_metrics"
@@ -1984,8 +2087,7 @@ jobs:
           }
 
           {
-            echo "TAG=${TAG}"
-            echo "RUN=${RUN}"
+            emit_dimensions
             echo "EXCEPTION_FOUND=${exception_found}"
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
           } > "${metrics_dir}/metrics.env"
@@ -2017,7 +2119,7 @@ jobs:
             echo "  Source: K6 TTFB"
           fi
           echo "========================================="
-          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+          grep -E "^(COUNT|AVG|MEDIAN|P90|P95|P99|MIN|MAX)=" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
           done
           if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
