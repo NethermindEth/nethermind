@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -49,7 +48,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
     public string Name => "Optimism";
     public string Description => "Optimism support for Nethermind";
 
-    private OptimismNethermindApi? _api;
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
     #region IConsensusPlugin
@@ -63,18 +61,6 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
         api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
-    }
-
-    public Task Init(INethermindApi api)
-    {
-        _api = (OptimismNethermindApi)api;
-
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
-
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-
-        return Task.CompletedTask;
     }
 
     public bool MustInitialize => true;
