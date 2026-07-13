@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core.Collections;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -640,11 +641,11 @@ public class Startup : IStartup
 
         private void RentCapacity(int newCapacity)
         {
-            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
+            byte[] newBuffer = SafeArrayPool<byte>.Shared.Rent(newCapacity);
             if (_buffer is not null)
             {
                 _buffer.AsSpan(0, BytesRead).CopyTo(newBuffer);
-                ArrayPool<byte>.Shared.Return(_buffer);
+                SafeArrayPool<byte>.Shared.Return(_buffer);
             }
 
             _buffer = newBuffer;
@@ -671,7 +672,7 @@ public class Startup : IStartup
                 return;
             }
 
-            ArrayPool<byte>.Shared.Return(_buffer);
+            SafeArrayPool<byte>.Shared.Return(_buffer);
             _buffer = null;
             BytesRead = 0;
         }
