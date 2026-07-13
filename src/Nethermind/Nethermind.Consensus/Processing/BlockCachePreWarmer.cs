@@ -469,6 +469,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
+        // Warm the heaviest groups first: they take longest to warm, and warming them late (or
+        // never) leaves their reads cold on the main thread. Small groups the main thread reaches
+        // first are skipped cheaply by the MainThreadTxIndex guard.
+        result.AsSpan().Sort(static (a, b) => TotalGasLimit(b).CompareTo(TotalGasLimit(a)));
+
         return result;
     }
 
@@ -476,18 +481,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// instead of sequentially; sized so only heavy chains lose sequential state fidelity.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
 
-    private static bool ShouldSplitGroup(ArrayPoolList<(int Index, Transaction Tx)> group)
+    private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
-        if (group.Count < 2) return false;
-
         ulong totalGasLimit = 0;
         foreach ((int _, Transaction tx) in group.AsSpan())
         {
             totalGasLimit += tx.GasLimit;
         }
 
-        return totalGasLimit > SplitSenderGroupGasThreshold;
+        return totalGasLimit;
     }
+
+    private static bool ShouldSplitGroup(ArrayPoolList<(int Index, Transaction Tx)> group) =>
+        group.Count >= 2 && TotalGasLimit(group) > SplitSenderGroupGasThreshold;
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
     {
