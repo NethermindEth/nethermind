@@ -11,6 +11,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Eip8141;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -54,6 +55,7 @@ namespace Nethermind.Core
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
+        public bool SupportsFrames => Type.SupportsFrames();
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
         private ulong _blockGasUsed;
@@ -202,6 +204,18 @@ namespace Nethermind.Core
         public AuthorizationTuple[]? AuthorizationList { get; set; }
 
         /// <summary>
+        /// List of frames of a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public Frame[]? Frames { get; set; }
+
+        /// <summary>
+        /// List of protocol-validated signatures available to a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public FrameSignature[]? FrameSignatures { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -318,6 +332,8 @@ namespace Nethermind.Core
                 obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
+                obj.Frames = default;
+                obj.FrameSignatures = default;
 
                 return true;
             }
@@ -350,6 +366,8 @@ namespace Nethermind.Core
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
+            tx.Frames = Frames;
+            tx.FrameSignatures = FrameSignatures;
         }
 
         public virtual ProofVersion? GetProofVersion() =>

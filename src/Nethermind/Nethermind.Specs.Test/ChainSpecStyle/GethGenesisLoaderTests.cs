@@ -52,6 +52,12 @@ public class GethGenesisLoaderTests
         "MergeNetsplitBlock", // fork ID transition, not a fork class
     ];
 
+    // Fork classes that are not real Geth fork names and therefore have no genesis config property
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp =
+    [
+        "Eip8141Prototype", // frame transaction prototype — not scheduled on any network
+    ];
+
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
     private static ChainSpec LoadChainSpec(string path) =>
@@ -538,7 +544,7 @@ public class GethGenesisLoaderTests
         // Every fork class that introduces EIPs must have a *Time or *Block property
         foreach ((Type type, NamedReleaseSpec instance) in allForks)
         {
-            if (instance.Parent is not null && GetNewlyEnabledEips(instance, instance.Parent).Any())
+            if (instance.Parent is not null && !ForkClassesWithoutConfigProp.Contains(type.Name) && GetNewlyEnabledEips(instance, instance.Parent).Any())
             {
                 forkClassesChecked++;
                 bool hasBlockProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Block", StringComparison.OrdinalIgnoreCase));
