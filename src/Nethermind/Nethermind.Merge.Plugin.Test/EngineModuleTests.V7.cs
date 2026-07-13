@@ -242,7 +242,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList) => new()
+    private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL) => new()
     {
         Timestamp = Timestamper.UnixTime.Seconds,
         PrevRandao = Keccak.Zero,
@@ -250,6 +250,8 @@ public partial class EngineModuleTests
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
         SlotNumber = 1,
+        // V4 attributes require TargetGasLimit (added by upstream after this test was written).
+        TargetGasLimit = targetGasLimit,
         InclusionListTransactions = inclusionList,
     };
 }

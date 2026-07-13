@@ -49,7 +49,9 @@ public class InclusionListValidatorTests
             yield return Case("Blob tx", [BuildBlobTx()], true);
             // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
             // a tx whose GasLimit is below the intrinsic cost cannot execute.
-            yield return Case("Intrinsic gas too low", [BuildTx(gasLimit: 20_999)], true);
+            // Non-self recipient so we hit the full 21_000 floor (self-transfers collapse into
+            // TX_BASE_COST=12_000 post-EIP-2780; the point of the case is intrinsic > gasLimit).
+            yield return Case("Intrinsic gas too low", [BuildTx(gasLimit: 20_999, to: TestItem.AddressB)], true);
             // Spec disallows duplicates, but adversarial input must not cause false rejection:
             // the duplicate correctly fails the appendability check (nonce advanced).
             yield return Case("Duplicate IL entries with tx included", [_validTx, _validTx], true, blockTxs: [_validTx], senderNonce: 1);
