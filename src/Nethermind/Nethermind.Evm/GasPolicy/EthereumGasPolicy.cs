@@ -28,10 +28,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public long StateGasSpill;
-    /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
-    public long StateGasSpillBurned;
-    /// <summary>Spill that should remain in the block regular dimension.</summary>
-    public long StateGasSpillReclassified;
     /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
@@ -77,9 +73,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetStateGasSpillBurned(in EthereumGasPolicy gas) => gas.StateGasSpillBurned;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
@@ -161,25 +154,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateReservoir += childGas.StateReservoir;
         gas.StateGasUsed += childGas.StateGasUsed;
         gas.StateGasSpill += childGas.StateGasSpill;
-        gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
-    // state gas usage. Propagate spill so block-regular accounting can exclude it.
+    // state gas usage.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
-        // The child's net spill refills gas_left and only (used - spill) returns to the
-        // reservoir, else a later top-level halt under-burns.
+        // Source-based LIFO rollback (EELS refill_frame_state_gas): the child's net spill
+        // refills gas_left and only (used - spill) returns to the reservoir. The child's
+        // spill/spill-refund counters are NOT inherited — its state charges rolled back, so
+        // the parent's own unrefunded spill must not grow.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.Value += (ulong)childNetSpill;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
-        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
-        parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
     // On child exceptional halt, regular gas in the child frame is consumed, but state gas did
@@ -190,12 +179,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)
     {
         // On a halt only the reservoir-funded portion returns to the parent; the spilled
-        // portion refills gas_left, which the halt burns as regular gas.
+        // portion refills gas_left, which the halt burns as regular gas. As on revert, the
+        // child's spill/spill-refund counters are not inherited.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
-        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned + childNetSpill;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -372,34 +359,35 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
+    public static long DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
     {
+        // Discharging a child's advanced refund against this frame's usage must not mark
+        // StateGasSpillRefunded: the refund's LIFO refill was already accounted in the frame
+        // that credited it, and its marks arrive via the regular child-gas merge.
         long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, discardableStateGas);
-        if (trackSpillRefund)
-        {
-            TrackStateGasSpillRefund(ref gas, appliedRefund);
-        }
-
         gas.StateGasUsed -= appliedRefund;
         return amount - appliedRefund;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
+    public static void AddStateGasRefundToReservoir(ref EthereumGasPolicy gas, long amount, bool trackSpillRefund)
     {
-        long trackedSpillRefund = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
-        gas.StateReservoir += amount;
-        return trackedSpillRefund;
+        // The advanced portion continues the source-based LIFO refill (EELS
+        // credit_state_gas_refund): gas_left up to the remaining unrefunded spill,
+        // the rest to the reservoir.
+        long toGasLeft = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
+        gas.Value += (ulong)toGasLeft;
+        gas.StateReservoir += amount - toGasLeft;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount, long trackedSpillRefund)
+    public static void RemoveStateGasRefundFromReservoir(ref EthereumGasPolicy gas, long amount)
     {
-        gas.StateGasSpillRefunded -= Math.Min(trackedSpillRefund, gas.StateGasSpillRefunded);
-
         // Revoke what is still parked in the reservoir (never fabricating spill debt), then what
         // the credit funded from usage; any remainder refilled a net-spill hole, so restore the debt.
+        // The portion the advance refilled into gas_left stays there: its permanent
+        // StateGasSpillRefunded mark keeps the frame's net spill consistent on rollback.
         long fromReservoir = Math.Clamp(gas.StateReservoir, 0, amount);
         gas.StateReservoir -= fromReservoir;
         amount -= fromReservoir;
@@ -426,8 +414,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Snap state-gas back to its tx-start shape (reservoir=R0, used=intrinsic floor,
         // spill=0). The post-reset StateGasUsed feeds SpentGas so the user does not keep
         // paying for state-gas that did not commit.
-        // StateGasSpillBurned is preserved: the top-level halt formula still needs it to
-        // reattribute earlier burned spill from the state to the regular dimension.
         gas.StateReservoir = initialStateReservoir;
         gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
