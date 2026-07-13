@@ -216,6 +216,77 @@ public class StorageLayerTests
         Assert.That(loc.Offset, Is.EqualTo(PageLayout.RoundUpToOsPage(baselineLoc.Offset + baselineLoc.Size)));
     }
 
+    // Regression test: all previously-live bytes dying while a writer holds a shared arena must
+    // not tear the file down mid-write (the completed reservation would point at a deleted file)
+    // nor re-add the dead arena's id to the mutable pool on the writer's Complete/Cancel (the
+    // next pool scan then threw KeyNotFoundException, wedging the persisted compactor).
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ArenaManager_ArenaFullyDeadWhileWriterActive_SurvivesUntilWriterFinishes(bool completeSecondWrite)
+    {
+        string arenaDir = Path.Combine(_testDir, "arenas");
+        using ArenaManager manager = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
+        manager.Initialize([]);
+
+        byte[] baseline = [1, 2, 3];
+        SnapshotLocation baselineLoc;
+        ArenaReservation baselineReservation;
+        using (ArenaWriter bw = manager.CreateWriter(baseline.Length))
+        {
+            baseline.CopyTo(bw.GetWriter().GetSpan(baseline.Length));
+            bw.GetWriter().Advance(baseline.Length);
+            (baselineLoc, baselineReservation) = bw.Complete();
+        }
+
+        byte[] data = [4, 5, 6, 7];
+        ArenaReservation? reservation = null;
+        using (ArenaWriter w = manager.CreateWriter(data.Length))
+        {
+            // The only live reservation dies while the writer holds the arena.
+            baselineReservation.Dispose();
+
+            if (completeSecondWrite)
+            {
+                data.CopyTo(w.GetWriter().GetSpan(data.Length));
+                w.GetWriter().Advance(data.Length);
+                (SnapshotLocation loc, reservation) = w.Complete();
+                Assert.That(loc.ArenaId, Is.EqualTo(baselineLoc.ArenaId));
+                using WholeReadSession session = reservation.BeginWholeReadSession();
+                Assert.That(TestFixtureHelpers.ReadAll(session), Is.EqualTo(data));
+            }
+            // else: Dispose cancels the write; with no live bytes left the arena must be
+            // dropped rather than returned to the pool.
+        }
+
+        byte[] next = [8, 9];
+        SnapshotLocation nextLoc;
+        using (ArenaWriter nw = manager.CreateWriter(next.Length))
+        {
+            next.CopyTo(nw.GetWriter().GetSpan(next.Length));
+            nw.GetWriter().Advance(next.Length);
+            (nextLoc, _) = nw.Complete();
+        }
+
+        if (completeSecondWrite)
+        {
+            // The arena stayed live (its second reservation is still alive), so the next write
+            // packs into it at the page-aligned frontier.
+            Assert.That(nextLoc.ArenaId, Is.EqualTo(baselineLoc.ArenaId));
+            reservation!.Dispose();
+        }
+        else
+        {
+            // The fully-dead arena was dropped on cancel — its file is gone and the next write
+            // gets a fresh arena instead of the poisoned id.
+            Assert.That(nextLoc.ArenaId, Is.Not.EqualTo(baselineLoc.ArenaId));
+            Assert.That(Directory.GetFiles(arenaDir, "arena_*.bin"), Has.Length.EqualTo(1));
+        }
+    }
+
     [Test]
     public void ArenaManager_CreateWriter_NextReservationIsPageAligned()
     {
