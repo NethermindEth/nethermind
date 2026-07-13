@@ -29,21 +29,30 @@ public sealed class SparsePatriciaTree : IDisposable
     /// </summary>
     public void RevealNodes(IReadOnlyList<ProofNode> proofNodes)
     {
-        _subtrie.ReserveForReveal(proofNodes.Count);
-        Span<RevealCursorEntry> cursor = stackalloc RevealCursorEntry[65];
-        int cursorLength = 0;
-
+        long additionalChildren = 0;
         bool sorted = true;
-        for (int i = 1; i < proofNodes.Count; i++)
+        for (int i = 0; i < proofNodes.Count; i++)
         {
-            TreePath previous = proofNodes[i - 1].Path;
-            TreePath current = proofNodes[i].Path;
-            if (previous.CompareTo(in current) > 0)
+            ProofNode proofNode = proofNodes[i];
+            additionalChildren += proofNode.Kind switch
             {
-                sorted = false;
-                break;
+                ProofNodeKind.Branch => proofNode.ChildMask.CountBits(),
+                ProofNodeKind.Extension => 1,
+                _ => 0,
+            };
+
+            if (sorted && i > 0)
+            {
+                TreePath previous = proofNodes[i - 1].Path;
+                TreePath current = proofNode.Path;
+                if (previous.CompareTo(in current) > 0)
+                    sorted = false;
             }
         }
+
+        _subtrie.ReserveForReveal(proofNodes.Count, additionalChildren);
+        Span<RevealCursorEntry> cursor = stackalloc RevealCursorEntry[65];
+        int cursorLength = 0;
 
         if (sorted)
         {

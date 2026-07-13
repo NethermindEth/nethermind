@@ -47,6 +47,7 @@ public sealed class SparseSubtrie : IDisposable
     /// count (freed slots aren't subtracted), but monotonic with real allocation pressure.
     /// </summary>
     public int ArenaHighWater => _arenaCount;
+    internal int ChildrenCapacity => _children.Length;
 
     public SparseSubtrie()
     {
@@ -59,30 +60,29 @@ public sealed class SparseSubtrie : IDisposable
 
 
     /// <summary>
-    /// Grows the node and children backing arrays once to fit an incoming batch of known size,
-    /// instead of letting AllocNode/AllocChildren hit repeated doubling Array.Resize calls during
-    /// a reveal. Pure capacity hint â€” does not change counts, free lists, or any node. Reth
+    /// Grows the node and children backing arrays once to fit an incoming proof batch,
+    /// instead of letting AllocNode/AllocChildren resize them during a reveal. Pure capacity
+    /// hint â€” does not change counts, free lists, or any node. Reth
     /// reserves before reveal batches for the same reason.
     /// </summary>
-    public void ReserveForReveal(int additionalNodes)
+    internal void ReserveForReveal(int additionalNodes, long additionalChildren)
     {
         if (additionalNodes <= 0) return;
-        int neededNodes = _arenaCount + additionalNodes;
-        if (neededNodes > _arena.Length)
-        {
-            int newLen = _arena.Length;
-            while (newLen < neededNodes) newLen *= 2;
-            Array.Resize(ref _arena, newLen);
-        }
-        // A proof node may be a branch with up to 16 children; reserve children proportionally so
-        // the dense child slices don't trigger their own resize cascade mid-reveal.
-        int neededChildren = _childrenCount + additionalNodes * MaxBranchChildren;
-        if (neededChildren > _children.Length)
-        {
-            int newLen = _children.Length;
-            while (newLen < neededChildren) newLen *= 2;
-            Array.Resize(ref _children, newLen);
-        }
+
+        EnsureCapacity(ref _arena, (long)_arenaCount + additionalNodes);
+        EnsureCapacity(ref _children, _childrenCount + additionalChildren);
+    }
+
+    private static void EnsureCapacity<T>(ref T[] buffer, long requiredCapacity)
+    {
+        if (requiredCapacity <= buffer.Length) return;
+        if (requiredCapacity > Array.MaxLength) throw new OutOfMemoryException();
+
+        int newLength = buffer.Length;
+        while (newLength < requiredCapacity)
+            newLength = (int)Math.Min((long)newLength * 2, Array.MaxLength);
+
+        Array.Resize(ref buffer, newLength);
     }
 
     public int AllocNode(SparseTrieNode node)
@@ -184,8 +184,6 @@ public sealed class SparseSubtrie : IDisposable
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public byte[]? ValueAt(int idx) => idx >= 0 && idx < _values.Length ? _values[idx] : null;
-
-
 
     public int InsertLeaf(byte[] nibbleKey, byte[] value)
     {

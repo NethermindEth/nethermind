@@ -30,6 +30,10 @@ public sealed class SparseRootComputer : IDisposable
     private readonly bool _ownsTrie;
     private readonly ConcurrentDictionary<Hash256, (Hash256 PreviousStorageRoot, Dictionary<ValueHash256, LeafUpdate> Updates)> _storageChanges = new();
     private readonly ConcurrentDictionary<Hash256, Hash256> _storageBaseRoots = new();
+    private readonly Dictionary<TreePath, byte[]> _revealedAccountProofNodes = [];
+    private readonly Dictionary<
+        (Hash256 AccountPathHash, Hash256 PreviousStorageRoot), Dictionary<TreePath, byte[]>>
+        _revealedStorageProofNodes = [];
     private Dictionary<ValueHash256, LeafUpdate>? _accountChanges;
 
     public SparseRootComputer(ITrieNodeReader reader, Hash256 previousStateRoot)
@@ -148,7 +152,7 @@ public sealed class SparseRootComputer : IDisposable
     }
 
     internal void RevealAccountProofBatch(IReadOnlyList<WarmedTrieNode> nodes) =>
-        RevealWitness(_trie.AccountTrie, nodes);
+        RevealWitness(_trie.AccountTrie, nodes, _revealedAccountProofNodes);
 
     internal void RevealStorageProofBatch(
         Hash256 accountPathHash,
@@ -156,25 +160,55 @@ public sealed class SparseRootComputer : IDisposable
         IReadOnlyList<WarmedTrieNode> nodes)
     {
         SparsePatriciaTree storageTrie = GetStorageTrie(accountPathHash, previousStorageRoot);
-        RevealWitness(storageTrie, nodes);
+        (Hash256 AccountPathHash, Hash256 PreviousStorageRoot) proofTrie =
+            (accountPathHash, previousStorageRoot);
+        if (!_revealedStorageProofNodes.TryGetValue(
+            proofTrie,
+            out Dictionary<TreePath, byte[]>? revealedNodes))
+        {
+            revealedNodes = [];
+            _revealedStorageProofNodes.Add(proofTrie, revealedNodes);
+        }
+
+        RevealWitness(storageTrie, nodes, revealedNodes);
     }
 
     private void RevealWitness(
         SparsePatriciaTree trie,
-        IReadOnlyList<WarmedTrieNode> nodes)
+        IReadOnlyList<WarmedTrieNode> nodes,
+        Dictionary<TreePath, byte[]> revealedNodes)
     {
         if (nodes.Count == 0)
             return;
 
         long startedAt = Stopwatch.GetTimestamp();
-        List<ProofNode> decoded = new(nodes.Count);
+        List<ProofNode>? decoded = null;
         for (int i = 0; i < nodes.Count; i++)
         {
             WarmedTrieNode node = nodes[i];
+            if (revealedNodes.TryGetValue(node.Path, out byte[]? existingRlp))
+            {
+                if (!existingRlp.AsSpan().SequenceEqual(node.Rlp))
+                {
+                    throw new InvalidOperationException(
+                        $"Conflicting warmed proof nodes at trie path {node.Path}.");
+                }
+                continue;
+            }
+
+            decoded ??= new List<ProofNode>(nodes.Count);
             decoded.Add(MultiProofReader.DecodeProofNode(node.Rlp, node.Path));
         }
 
+        if (decoded is null)
+            return;
+
         trie.RevealNodes(decoded);
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            WarmedTrieNode node = nodes[i];
+            revealedNodes.TryAdd(node.Path, node.Rlp);
+        }
         LastRevealMs += ToMilliseconds(Stopwatch.GetTimestamp() - startedAt);
         LastProofNodeCount += decoded.Count;
     }

@@ -22,6 +22,48 @@ namespace Nethermind.Trie.Test.Sparse;
 [Parallelizable(ParallelScope.All)]
 public class SparseTrieRegressionTests
 {
+    [TestCase(ProofNodeKind.Leaf, 9, 0, 128)]
+    [TestCase(ProofNodeKind.Extension, 65, 0, 128)]
+    [TestCase(ProofNodeKind.Branch, 33, 4, 256)]
+    [TestCase(ProofNodeKind.Branch, 9, 16, 256)]
+    public void RevealNodes_ReservesProofNodeChildCount(
+        ProofNodeKind kind,
+        int proofNodeCount,
+        int branchChildCount,
+        int expectedCapacity)
+    {
+        List<ProofNode> proofNodes = new(proofNodeCount);
+        TrieMask childMask = CreateChildMask(branchChildCount);
+        for (int i = 0; i < proofNodeCount; i++)
+        {
+            proofNodes.Add(new ProofNode
+            {
+                Kind = kind,
+                ChildMask = childMask,
+                Key = kind == ProofNodeKind.Extension ? [0] : null,
+            });
+        }
+
+        using SparsePatriciaTree sparse = new();
+        sparse.RevealNodes(proofNodes);
+        int reservedCapacity = sparse.Subtrie.ChildrenCapacity;
+
+        int childCount = kind switch
+        {
+            ProofNodeKind.Branch => branchChildCount,
+            ProofNodeKind.Extension => 1,
+            _ => 0,
+        };
+        for (int i = 1; i < proofNodes.Count; i++)
+            sparse.Subtrie.AllocChildren(childCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reservedCapacity, Is.EqualTo(expectedCapacity));
+            Assert.That(sparse.Subtrie.ChildrenCapacity, Is.EqualTo(reservedCapacity));
+        }
+    }
+
     [Test]
     public void SingleLeaf_DirectSubtrie_MatchesPatricia()
     {
@@ -240,6 +282,14 @@ public class SparseTrieRegressionTests
             keys[i] = new Hash256(bytes);
         }
         return keys;
+    }
+
+    private static TrieMask CreateChildMask(int childCount)
+    {
+        TrieMask mask = TrieMask.Empty;
+        for (int i = 0; i < childCount; i++)
+            mask = mask.SetBit(i);
+        return mask;
     }
 
     private static byte[] CreateValue(int key, int version)

@@ -1814,10 +1814,12 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
     private readonly SparseTrieWorker _worker;
     private readonly SparseTrieWorker.WorkerSession _session;
     private readonly object _gate = new();
+    private readonly object _speculativeGate = new();
     private Task<bool>? _prepareFinalTask;
     private SparseTrieFinalState? _preparedFinalState;
     private Task<SparseTrieBlockResult>? _finishTask;
     private Task? _completionTask;
+    private bool _acceptSpeculativeTouches = true;
     private bool _finalizing;
     private bool _terminal;
 
@@ -1828,6 +1830,8 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         _worker = worker;
         _session = session;
     }
+
+    internal int ProofNodeCount => _session.GetComputer().LastProofNodeCount;
 
     public void EnqueueDelta(SparseTriePhaseDelta delta)
     {
@@ -1841,9 +1845,9 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
 
     public bool TryEnqueueAccountTouch(ValueHash256 accountPath)
     {
-        lock (_gate)
+        lock (_speculativeGate)
         {
-            if (_finalizing || _finishTask is not null || _completionTask is not null || _terminal)
+            if (!_acceptSpeculativeTouches)
                 return false;
             return _worker.TryEnqueueAccountTouch(_session, accountPath);
         }
@@ -1853,9 +1857,9 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         ValueHash256 accountPath,
         IReadOnlyList<WarmedTrieNode> proof)
     {
-        lock (_gate)
+        lock (_speculativeGate)
         {
-            if (_finalizing || _finishTask is not null || _completionTask is not null || _terminal)
+            if (!_acceptSpeculativeTouches)
                 return false;
             return _worker.TryEnqueueAccountTouch(_session, accountPath, proof);
         }
@@ -1866,9 +1870,9 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         Hash256 parentStorageRoot,
         ValueHash256 slotPath)
     {
-        lock (_gate)
+        lock (_speculativeGate)
         {
-            if (_finalizing || _finishTask is not null || _completionTask is not null || _terminal)
+            if (!_acceptSpeculativeTouches)
                 return false;
             return _worker.TryEnqueueStorageTouch(
                 _session,
@@ -1884,9 +1888,9 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         ValueHash256 slotPath,
         IReadOnlyList<WarmedTrieNode> proof)
     {
-        lock (_gate)
+        lock (_speculativeGate)
         {
-            if (_finalizing || _finishTask is not null || _completionTask is not null || _terminal)
+            if (!_acceptSpeculativeTouches)
                 return false;
             return _worker.TryEnqueueStorageTouch(
                 _session,
@@ -1905,6 +1909,7 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
                 throw new InvalidOperationException("The sparse trie block is already complete.");
             if (_preparedFinalState is not null && !SameFinalState(_preparedFinalState, finalState))
                 throw new InvalidOperationException("Finish state differs from the prepared final state.");
+            CloseSpeculativeIntakeCore();
             _finalizing = true;
             return _finishTask ??= _worker.FinishAsync(_session, finalState);
         }
@@ -1919,6 +1924,7 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
             if (_preparedFinalState is not null && !SameFinalState(_preparedFinalState, finalState))
                 throw new InvalidOperationException("A different sparse trie final state is already prepared.");
 
+            CloseSpeculativeIntakeCore();
             _finalizing = true;
             _preparedFinalState = finalState;
             return _prepareFinalTask ??= _worker.PrepareFinalAsync(_session, finalState);
@@ -1931,8 +1937,15 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         {
             if (_finishTask is not null || _completionTask is not null || _terminal)
                 throw new InvalidOperationException("The sparse trie block is already finalizing.");
+            CloseSpeculativeIntakeCore();
             _finalizing = true;
         }
+    }
+
+    private void CloseSpeculativeIntakeCore()
+    {
+        lock (_speculativeGate)
+            _acceptSpeculativeTouches = false;
     }
 
     private static bool SameFinalState(SparseTrieFinalState prepared, SparseTrieFinalState finalState) =>
@@ -1964,6 +1977,7 @@ internal sealed class SparseTrieBlockHandle : IDisposable, IAsyncDisposable
         {
             if (_terminal)
                 return Task.CompletedTask;
+            CloseSpeculativeIntakeCore();
             return _completionTask ??= CompleteCoreAsync(completion);
         }
     }
