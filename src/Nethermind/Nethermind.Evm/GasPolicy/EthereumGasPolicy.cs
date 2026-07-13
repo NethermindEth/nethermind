@@ -101,6 +101,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             : 0;
     }
 
+    /// <summary>Subtracts <paramref name="cost"/> from the regular gas budget with no affordability check.</summary>
+    /// <remarks>The caller must have already proven <c>gas.Value &gt;= cost</c>; otherwise the value underflows.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ConsumeRaw(ref EthereumGasPolicy gas, ulong cost) => gas.Value -= cost;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Consume(ref EthereumGasPolicy gas, ulong cost)
     {
@@ -111,16 +116,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
         else
         {
-            gas.Value -= cost;
+            ConsumeRaw(ref gas, cost);
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsume(ref EthereumGasPolicy gas, ulong cost)
     {
-        ulong v = gas.Value;
-        if (v < cost) return false;
-        gas.Value = v - cost;
+        if (gas.Value < cost) return false;
+        ConsumeRaw(ref gas, cost);
         return true;
     }
 
@@ -319,7 +323,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return false;
         }
 
-        Consume(ref gas, gasCost);
+        ConsumeRaw(ref gas, gasCost);
         return true;
     }
 
