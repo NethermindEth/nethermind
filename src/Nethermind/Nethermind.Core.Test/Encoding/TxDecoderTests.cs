@@ -501,6 +501,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             yield return new TestCaseData(new byte[] { 0 }).SetName("Zero byte nonce");
             yield return new TestCaseData(new byte[] { 0, 1 }).SetName("Leading zero nonce");
+            yield return new TestCaseData(new byte[] { 0, 1, 0, 0, 0, 0, 0, 0, 0 }).SetName("Oversized nonce with leading zero");
         }
 
         private static byte[] BuildSetCodeTxBytes(int authCount) => _txDecoder.Encode(new Transaction
