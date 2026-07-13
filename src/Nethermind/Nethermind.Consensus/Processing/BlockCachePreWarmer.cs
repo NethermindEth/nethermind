@@ -375,42 +375,39 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             try
             {
-                // Parallel across jobs; sequential within an unsplit sender group
+                // Parallel across jobs; sequential within an unsplit sender group. Each worker
+                // rents one env for its lifetime (the helper runs init only after a worker claims
+                // a job, and the finalizer on success, cancellation, and captured exceptions);
+                // each job still builds and disposes its own scope, so no speculative state
+                // crosses jobs.
                 ParallelUnbalancedWork.For(
                     0,
                     senderGroups.Count,
                     parallelOptions,
-                    (blockState, senderGroups, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
+                    () => new TxWarmupWorker(blockState, senderGroups, parallelOptions.CancellationToken),
+                    static (groupIndex, worker) =>
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
+                        BlockState blockState = worker.BlockState;
+                        ArrayPoolList<(int Index, Transaction Tx)> txList = worker.Groups[groupIndex];
 
                         // Indices are ascending, so if the main thread has started the job's last tx
                         // it has started them all; the per-tx guard would discard each one, so skip
-                        // before renting an env and building a scope.
-                        if (blockState.PreWarmer.MainThreadTxIndex >= txList[^1].Index) return tupleState;
+                        // before building a scope.
+                        if (blockState.PreWarmer.MainThreadTxIndex >= txList[^1].Index) return worker;
 
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
-                        {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
+                        using IReadOnlyTxProcessingScope scope = worker.Env.Build(blockState.Parent);
+                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
-                            {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
-                            }
-                        }
-                        finally
+                        foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                         {
-                            blockState.PreWarmer._envPool.Return(env);
+                            if (worker.Token.IsCancellationRequested) return worker;
+                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
                         }
 
-                        return tupleState;
-                    });
+                        return worker;
+                    },
+                    static worker => worker.ReturnEnv());
             }
             finally
             {
@@ -752,6 +749,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+
+    /// <summary>
+    /// Per-worker state for the transaction-warming loop: one env rented for the worker's
+    /// lifetime and returned exactly once by the loop finalizer.
+    /// </summary>
+    private sealed class TxWarmupWorker(
+        BlockState blockState,
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups,
+        CancellationToken token)
+    {
+        public readonly BlockState BlockState = blockState;
+        public readonly ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> Groups = groups;
+        public readonly CancellationToken Token = token;
+        public readonly IReadOnlyTxProcessorSource Env = blockState.PreWarmer._envPool.Get();
+
+        public void ReturnEnv() => BlockState.PreWarmer._envPool.Return(Env);
+    }
 
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
 }
