@@ -4,8 +4,8 @@
 using System;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
