@@ -548,8 +548,11 @@ public struct EvmPooledMemory
             // The zeroed prefix survives the copy, so _lastZeroedSize remains valid.
         }
 
-        // Lazily guarantee [0..Size) reads as zeros; rented buffers are dirty.
-        ulong zeroUpTo = Math.Min(Math.Max(Size, _lastZeroedSize + ZeroAheadSize), (ulong)memory.Length);
+        // Lazily guarantee [0..Size) reads as zeros; rented buffers are dirty. The first clear is
+        // exact (small frames dominate); growth clears a chunk ahead so word-at-a-time expansion
+        // (e.g. MSTORE copy loops) amortizes to one RentSlow per chunk.
+        ulong target = _lastZeroedSize == 0 ? Size : Math.Max(Size, _lastZeroedSize + ZeroAheadSize);
+        ulong zeroUpTo = Math.Min(target, (ulong)memory.Length);
         if (zeroUpTo > _lastZeroedSize)
         {
             Array.Clear(memory, (int)_lastZeroedSize, (int)(zeroUpTo - _lastZeroedSize));
