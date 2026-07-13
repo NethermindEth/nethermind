@@ -299,6 +299,7 @@ namespace Nethermind.Consensus.Processing
         private void CaptureReportData(in BlockData data) => ThreadPool.UnsafeQueueUserWorkItem(_executeFromThreadPool, data, preferLocal: false);
 
         private readonly Lock _reportLock = new();
+        private TimeSpan _lastGcPauseTotal;
         void ExecuteFromThreadPool(BlockData data)
         {
             try
@@ -337,6 +338,14 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             ulong blockNumber = data.Block.Number;
+
+            // [GCDIAG] Attribute process-wide GC pause time to the block window it landed in.
+            TimeSpan gcPauseTotal = GC.GetTotalPauseDuration();
+            TimeSpan gcPauseDelta = gcPauseTotal - _lastGcPauseTotal;
+            _lastGcPauseTotal = gcPauseTotal;
+            if (gcPauseDelta.TotalMilliseconds > 200 && _logger.IsWarn)
+                _logger.Warn($"[GCDIAG] {gcPauseDelta.TotalMilliseconds:F0}ms of GC pause during block {blockNumber} window (total {gcPauseTotal.TotalSeconds:F1}s)");
+
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here
