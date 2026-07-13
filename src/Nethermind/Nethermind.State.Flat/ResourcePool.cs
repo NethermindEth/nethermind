@@ -25,7 +25,7 @@ public class ResourcePool : IResourcePool
         _categories = new()
         {
             // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2) },
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize * 3, 2) },
 
             // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
             { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
@@ -35,11 +35,11 @@ public class ResourcePool : IResourcePool
             { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
             // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
-            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
-            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
-            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
-            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
-            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
+            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 8, 1) },
+            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 6, 1) },
+            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 4, 1) },
+            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 4, 1) },
+            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 4, 1) },
             { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
             { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
             { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
