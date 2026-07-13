@@ -19,6 +19,11 @@ public sealed class GCScheduler
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
+    // Blocking collections are allowed only after this much quiet time since the last processed
+    // block. Below the post-block delay GCKeeper fires at (SecondsPerSlot / 8, i.e. 1.5s on
+    // mainnet), so an idle node still gets its blocking collections, while back-to-back
+    // processing (sync, replay, short-slot chains) downgrades them to concurrent background ones.
+    private const long BlockingGCQuietPeriodMs = 1000;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -35,6 +40,11 @@ public sealed class GCScheduler
 
     private bool _skipNextGC = false;
 
+    // Tracks whether block processing is active or completed only moments ago, so blocking
+    // collections can be downgraded while blocks stream back-to-back.
+    private volatile bool _isProcessingBlocks;
+    private long _lastProcessingCompletedMs;
+
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
@@ -48,6 +58,9 @@ public sealed class GCScheduler
     /// <param name="queueCount">Number of items in the processing queue.</param>
     public void SwitchOnBackgroundGC(int queueCount)
     {
+        _isProcessingBlocks = queueCount > 0;
+        Volatile.Write(ref _lastProcessingCompletedMs, Environment.TickCount64);
+
         if (_fireGC)
         {
             _countToGC--;
@@ -79,6 +92,8 @@ public sealed class GCScheduler
     /// <param name="queueCount">Number of items in the processing queue.</param>
     public void SwitchOffBackgroundGC(int queueCount)
     {
+        _isProcessingBlocks = true;
+
         if (!_fireGC && queueCount > BlocksBacklogTriggeringManualGC)
         {
             // Long chains in archive sync don't force GC and don't call MallocTrim
@@ -170,8 +185,23 @@ public sealed class GCScheduler
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
     /// <returns>True if GC was performed; false if another GC was in progress.</returns>
+    /// <remarks>
+    /// A blocking collection requested while blocks stream back-to-back (sync, replay, short-slot
+    /// chains) is downgraded to a concurrent background one: a blocking (possibly compacting)
+    /// gen2 collection pauses every managed thread for seconds on a large heap, which is fine in
+    /// an idle slot gap but lands on the block-processing critical path otherwise.
+    /// </remarks>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
     {
+        bool requestedBlocking = blocking;
+        (mode, blocking, compacting) = ResolveGCSeverity(mode, blocking, compacting, IsProcessingRecently());
+        if (requestedBlocking && !blocking)
+        {
+            // Disarm any caller-armed LOH compaction: it cannot run without a blocking full
+            // collection and would otherwise stay pending until an unrelated one picks it up.
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
+        }
+
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
@@ -188,6 +218,21 @@ public sealed class GCScheduler
 
         return true;
     }
+
+    private bool IsProcessingRecently() =>
+        _isProcessingBlocks
+        || Environment.TickCount64 - Volatile.Read(ref _lastProcessingCompletedMs) < BlockingGCQuietPeriodMs;
+
+    /// <summary>
+    /// Downgrades a blocking collection to a concurrent background one while block processing is
+    /// active or completed less than <see cref="BlockingGCQuietPeriodMs"/> ago. Aggressive mode
+    /// requires blocking and compacting, so it falls back to <see cref="GCCollectionMode.Forced"/>.
+    /// </summary>
+    internal static (GCCollectionMode Mode, bool Blocking, bool Compacting) ResolveGCSeverity(
+        GCCollectionMode mode, bool blocking, bool compacting, bool isProcessingRecently) =>
+        blocking && isProcessingRecently
+            ? (mode == GCCollectionMode.Aggressive ? GCCollectionMode.Forced : mode, false, false)
+            : (mode, blocking, compacting);
 
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
 }
