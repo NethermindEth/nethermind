@@ -29,10 +29,7 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore
 
     public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
         TryGetParentHashCell(block.Header, spec, out StorageCell blockHashStoreCell)
-            ? new AccessList.Builder()
-                .AddAddress(blockHashStoreCell.Address)
-                .AddStorage(blockHashStoreCell.Index)
-                .Build()
+            ? AccessList.ForSingleStorageCell(in blockHashStoreCell)
             : null;
 
     private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
