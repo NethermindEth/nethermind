@@ -1545,7 +1545,7 @@
                 .concat(chainState.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, isNft: true })));
 
             // one batched request per node: sync state, then prices, then all balances
-            const calls = [['eth_syncing', []], ['eth_blockNumber', []]];
+            const calls = [['eth_syncing', []], ['eth_getBlockByNumber', ['latest', false]]];
             const priceIndex = new Map();
             if (fiat) {
                 for (const asset of assets) {
@@ -1757,10 +1757,18 @@
         // eth_syncing may still report false
         const STALL_AFTER_MS = 90 * 1000;
 
-        // Nethermind can keep returning a sync object while already processing at head
-        // (background stages like state heal); treat "at head" as synced so balances show
-        function isNodeSyncing(syncingResult, headHex) {
-            if (headHex === '0x0') return true;
+        // A node is "behind" whenever its latest block is more than this old: a synced
+        // node's head is always seconds fresh. This is the robust signal — eth_syncing
+        // reports false both when at head AND during full-sync catch-up of a backlog,
+        // and it can return a sync object while already processing at head.
+        const HEAD_STALE_SECONDS = 180;
+
+        function isNodeSyncing(syncingResult, headBlock) {
+            if (!headBlock || headBlock.number === '0x0') return true;
+            try {
+                return Date.now() / 1000 - Number(BigInt(headBlock.timestamp)) > HEAD_STALE_SECONDS;
+            } catch { }
+            // fallback if the block lacks a timestamp
             if (syncingResult === false || syncingResult === null) return false;
             try {
                 return BigInt(syncingResult.highestBlock) - BigInt(syncingResult.currentBlock) > 16n;
@@ -1773,9 +1781,10 @@
             let changed = false;
             for (const node of nodes) {
                 try {
-                    const [head, syncing] = await rpcBatch([['eth_blockNumber', []], ['eth_syncing', []]], node.rpcPath);
+                    const [headBlock, syncing] = await rpcBatch([['eth_getBlockByNumber', ['latest', false]], ['eth_syncing', []]], node.rpcPath);
+                    const head = headBlock?.number ?? null;
                     node.unreachable = head === null && syncing === null;
-                    node.syncing = !node.unreachable && isNodeSyncing(syncing, head);
+                    node.syncing = !node.unreachable && isNodeSyncing(syncing, headBlock);
                     if (head !== null && head !== node.head) {
                         node.head = head;
                         node.headChangedAt = Date.now();
