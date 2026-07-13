@@ -32,6 +32,8 @@ public sealed class KademliaAdapter(
 {
     private const int MaxNodesPerNeighborsMsg = 12;
 
+    private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.Id.Hash;
+
     private readonly TimeSpan _requestEnrTimeout = TimeSpan.FromMilliseconds(discoveryConfig.EnrTimeout);
     private readonly TimeSpan _findNeighbourTimeout = TimeSpan.FromMilliseconds(discoveryConfig.SendNodeTimeout);
     private readonly TimeSpan _pingTimeout = TimeSpan.FromMilliseconds(discoveryConfig.PingTimeout);
@@ -211,6 +213,12 @@ public sealed class KademliaAdapter(
             session.OnPongReceived(pongEndpoint);
             if (!session.HasEndpointBond(endpoint)) return false;
 
+            // The generic incoming-message dispatch (OnIncomingMsg) also registers the pong sender, but only
+            // from the bare envelope, which carries no TCP port. Re-assert the full receiver - whose port is
+            // already known from wherever it was discovered (e.g. a Neighbours mention) - so the routing table
+            // doesn't end up with the unresolved placeholder port for a peer we've just successfully bonded with.
+            nodeHealthTracker.Value.OnIncomingMessageFrom(receiver);
+
             await RefreshRemoteRecordIfNewer(receiver, response.Value.EnrSequence, token);
             return true;
         }
@@ -229,6 +237,13 @@ public sealed class KademliaAdapter(
 
             return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize), receiver, session, msg, _findNeighbourTimeout, token);
         }, token);
+
+        if (response.HasResponse)
+        {
+            // See the comment in Ping: re-assert the full receiver so a successful exchange doesn't leave the
+            // routing table with the unresolved placeholder port from the generic incoming-message dispatch.
+            nodeHealthTracker.Value.OnIncomingMessageFrom(receiver);
+        }
 
         return response.HasResponse ? response.Value : null;
     }
@@ -259,6 +274,13 @@ public sealed class KademliaAdapter(
 
             return CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), receiver, session, msg, _requestEnrTimeout, token);
         }, token);
+
+        if (response.HasResponse)
+        {
+            // See the comment in Ping: re-assert the full receiver so a successful exchange doesn't leave the
+            // routing table with the unresolved placeholder port from the generic incoming-message dispatch.
+            nodeHealthTracker.Value.OnIncomingMessageFrom(receiver);
+        }
 
         return response.HasResponse ? response.Value : null;
     }
@@ -405,10 +427,40 @@ public sealed class KademliaAdapter(
 
     private static bool IsResponse(MsgType msgType) => msgType is MsgType.Neighbors or MsgType.Pong or MsgType.EnrResponse;
 
-    private static Node CreateNode(DiscoveryMsg msg)
-        => msg is PingMsg { SourceTcpPort: > 0 } ping
-            ? new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port)
-            : Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
+    private Node CreateNode(DiscoveryMsg msg)
+    {
+        if (msg is PingMsg { SourceTcpPort: > 0 } ping)
+        {
+            return new Node(ping.FarPublicKey!, new IPEndPoint(ping.FarAddress!.Address, ping.SourceTcpPort), ping.FarAddress.Port);
+        }
+
+        // This message carries no TCP port of its own (Pong, FindNode, EnrRequest). Reuse whatever port is
+        // already known for this peer - e.g. learned from an earlier Neighbours mention - instead of clobbering
+        // it back to the unresolved placeholder, which would make PeerPool.FeedFromNodeSource skip the peer forever.
+        if (TryGetKnownTcpPort(msg.FarPublicKey!, out int knownPort))
+        {
+            return new Node(msg.FarPublicKey, new IPEndPoint(msg.FarAddress!.Address, knownPort), msg.FarAddress.Port);
+        }
+
+        return Node.FromDiscoveryEndpoint(msg.FarPublicKey, msg.FarAddress);
+    }
+
+    private bool TryGetKnownTcpPort(PublicKey id, out int port)
+    {
+        int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(_currentNodeHash, id.Hash);
+        Node[] nodes = kademlia.Value.GetAllAtDistance(distance);
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            if (nodes[i].Port != 0 && nodes[i].Id.Equals(id))
+            {
+                port = nodes[i].Port;
+                return true;
+            }
+        }
+
+        port = 0;
+        return false;
+    }
 
     private bool ValidatePingAddress(PingMsg msg)
     {

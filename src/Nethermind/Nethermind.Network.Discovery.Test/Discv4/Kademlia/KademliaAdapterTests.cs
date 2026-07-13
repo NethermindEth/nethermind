@@ -256,6 +256,26 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Ping_should_register_receiver_with_its_already_known_port(CancellationToken token)
+        {
+            // The pong carries no TCP port of its own, so the generic incoming-message dispatch registers the
+            // receiver with the unresolved placeholder port (0) first. A successful bond must still register the
+            // receiver's real, already-known port afterwards, so it is the one that ends up stored (the routing
+            // table's AddOrRefresh always keeps the most recently registered value for a given peer).
+            ConfigureBondCallback();
+
+            bool result = await _adapter.Ping(_receiver, token);
+
+            Assert.That(result, Is.True);
+            Received.InOrder(() =>
+            {
+                _nodeHealthTracker.OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id == _receiver.Id && n.Port == 0));
+                _nodeHealthTracker.OnIncomingMessageFrom(Arg.Is<Node>(n => n.Id == _receiver.Id && n.Port == _receiver.Port));
+            });
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Ping_should_not_bond_requested_endpoint_when_pong_source_differs(CancellationToken token)
         {
             IPEndPoint pongFarAddress = new(IPAddress.Parse("192.168.1.4"), _receiver.Address.Port);
@@ -537,7 +557,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             await _adapter.OnIncomingMsg(pingMsg);
 
-            _nodeHealthTracker.Received(1).OnIncomingMessageFrom(Arg.Is<Node>(n =>
+            // Since we were not bonded with the sender yet, handling this ping also triggers a reverse Ping to
+            // bond back, which independently re-asserts the same, already-correct node - hence at least once
+            // rather than exactly once.
+            _nodeHealthTracker.Received().OnIncomingMessageFrom(Arg.Is<Node>(n =>
                 n.Id == _receiver.Id &&
                 n.Port == 30303 &&
                 n.DiscoveryPort == 30304));
