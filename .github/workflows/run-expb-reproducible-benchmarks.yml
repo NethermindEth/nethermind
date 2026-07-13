@@ -26,6 +26,7 @@ on:
         options:
           - realblocks
           - superblocks
+          - fusaka
         default: superblocks
       delay_seconds:
         description: Value used to replace <<DELAY>> placeholder (integer)
@@ -185,7 +186,7 @@ jobs:
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
-            elif [[ "${payload_set}" == "realblocks" ]]; then
+            elif [[ "${payload_set}" == "realblocks" || "${payload_set}" == "fusaka" ]]; then
               amount="1000"
             else
               amount="100"
@@ -217,7 +218,7 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -232,7 +233,7 @@ jobs:
             branch="${PUSH_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -311,8 +312,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -510,8 +515,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -573,7 +582,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
-            if [[ "${PAYLOAD_SET}" == "realblocks" ]]; then
+            if [[ "${PAYLOAD_SET}" == "realblocks" || "${PAYLOAD_SET}" == "fusaka" ]]; then
               AMOUNT="1000"
             else
               AMOUNT="100"
@@ -1074,6 +1083,16 @@ jobs:
           restore-keys: |
             expb-master-metrics-v3-realblocks-
 
+      - name: Restore master metrics (fusaka)
+        id: restore-master-fusaka
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka
+          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v3-fusaka-
+
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
@@ -1081,6 +1100,7 @@ jobs:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
           MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
+          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
@@ -1216,11 +1236,11 @@ jobs:
             current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
 
             # Master metrics from cache
-            if [[ "${ps}" == "superblocks" ]]; then
-              master_metrics="${MASTER_SUPERBLOCKS}"
-            else
-              master_metrics="${MASTER_REALBLOCKS}"
-            fi
+            case "${ps}" in
+              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
+              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
+              *) master_metrics="${MASTER_REALBLOCKS}" ;;
+            esac
 
             build_table "${ps}" "${current_metrics}" "${master_metrics}"
           done

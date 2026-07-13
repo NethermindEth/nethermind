@@ -3,6 +3,10 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -20,7 +24,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        if (blocksConfig.PreWarmStateOnBlockProcessing)
+        if (blocksConfig.PreWarming != PreWarmMode.None)
         {
             builder
 
@@ -37,13 +41,19 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                // System-contract access-list hints the prewarmer warms alongside tx addresses.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
+                // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
+                .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
 
                 // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
@@ -71,5 +81,22 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+
+            if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
+            {
+                // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved
+                // when the prewarmer is activated so it subscribes to head updates as soon as processing is wired up.
+                builder
+                    .AddScoped<MempoolStatePrewarmer>()
+                    .ResolveOnServiceActivation<MempoolStatePrewarmer, IBlockCachePreWarmer>();
+            }
+        }
+
+        private sealed class NoAccessList : IHasAccessList
+        {
+            public static readonly NoAccessList Instance = new();
+
+            public AccessList? GetAccessList(Block block, IReleaseSpec spec) => null;
+        }
     }
 }

@@ -107,7 +107,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
         addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
 
-        storageDb.Set(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros().ToArray());
+        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
     }
 
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
@@ -118,7 +118,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             : ValueKeccak.Compute(address.Bytes);
 
         using ArrayPoolSpan<byte> stream = SlimAccountDecoder.EncodeToArrayPoolSpan(corruptedAccount);
-        accountDb.Set(addrKey.BytesAsSpan[..20], ((ReadOnlySpan<byte>)stream).ToArray());
+        accountDb.PutSpan(addrKey.BytesAsSpan[..20], (ReadOnlySpan<byte>)stream);
     }
 
     private static ValueHash256 CreatePreimageAddressKey(Address address)
