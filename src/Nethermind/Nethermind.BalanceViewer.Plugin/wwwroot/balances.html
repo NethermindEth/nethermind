@@ -271,6 +271,37 @@
 
         .thumbs img:hover { border-color: var(--accent); }
 
+        .lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 24px;
+            cursor: zoom-out;
+            animation: fade 0.12s ease-out;
+        }
+
+        .lightbox img {
+            max-width: min(90vw, 640px);
+            max-height: 82vh;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0a0a0a;
+        }
+
+        .lightbox-caption {
+            font-family: 'DM Mono', ui-monospace, monospace;
+            font-size: 13px;
+            color: var(--c-name);
+        }
+
+        @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
         .thumbs .more { color: var(--muted); font-size: 11px; }
         .thumbs .more.expand { cursor: pointer; }
         .thumbs .more.expand:hover { color: var(--accent); }
@@ -952,17 +983,20 @@
             return thumbs;
         }
 
-        // browsers block navigating a new tab straight to a data: URI, so serve it as a blob
-        function openArt(dataUri) {
-            try {
-                const comma = dataUri.indexOf(',');
-                const header = dataUri.slice(5, comma);
-                const payload = dataUri.slice(comma + 1);
-                const bytes = header.endsWith(';base64')
-                    ? Uint8Array.from(atob(payload), (c) => c.charCodeAt(0))
-                    : utf8(decodeURIComponent(payload));
-                window.open(URL.createObjectURL(new Blob([bytes], { type: header.replace(';base64', '') })), '_blank');
-            } catch { setStatus('Could not open artwork', true); }
+        // Full-size view in an in-page lightbox. The art is rendered via <img>, which puts
+        // SVG in the browser's secure static mode — embedded scripts/external refs never
+        // run — so a malicious on-chain NFT can't execute code (unlike opening it as a tab).
+        function openArt(src, title) {
+            const overlay = el('div', 'lightbox');
+            const img = el('img');
+            img.src = src;
+            img.alt = title || '';
+            const caption = el('div', 'lightbox-caption', title || '');
+            overlay.append(img, caption);
+            overlay.onclick = () => overlay.remove();
+            const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
+            document.addEventListener('keydown', onKey);
+            document.body.append(overlay);
         }
 
         function fillThumbs(box, cached, node, owner, collection) {
@@ -972,8 +1006,8 @@
                 if (thumb.src) {
                     const img = el('img');
                     img.src = thumb.src;
-                    img.title = thumb.title + ' (click to open)';
-                    img.onclick = () => openArt(thumb.src);
+                    img.title = thumb.title + ' (click to enlarge)';
+                    img.onclick = () => openArt(thumb.src, thumb.title);
                     box.append(img);
                 } else {
                     box.append(el('span', 'more number', thumb.title));
