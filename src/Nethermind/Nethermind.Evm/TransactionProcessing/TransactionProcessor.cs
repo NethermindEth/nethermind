@@ -180,7 +180,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
             }
@@ -1149,6 +1150,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (balance < balanceCheck)
             {
+                // A warm sender may be funded earlier in the block by another sender's
+                // transaction, which per-sender warm groups cannot see; charge best-effort
+                // instead of losing that sender's warming entirely.
+                if (opts.HasFlag(ExecutionOptions.Warmup))
+                {
+                    UInt256 warmCharge = UInt256.Min(senderReservedGasPayment, balance);
+                    if (!warmCharge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, warmCharge, spec);
+                    return TransactionResult.Ok;
+                }
+
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
@@ -1603,7 +1614,18 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            if (!tx.ValueRef.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            if (tx.ValueRef.IsZero) return;
+
+            // Same best-effort rule as BuyGas: a warm sender funded earlier in the block has no
+            // parent-state balance to move, and failing here would abort its warming.
+            if (opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                UInt256 charge = UInt256.Min(tx.Value, WorldState.GetBalance(tx.SenderAddress!));
+                if (!charge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in charge, spec);
+                return;
+            }
+
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
