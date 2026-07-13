@@ -197,8 +197,17 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         }
 
         // The L0 throttle stays outside the gate so reader snapshot creation is not stalled behind compaction.
-        foreach (FlatDbColumns column in IngestColumns)
-            ((ISstIngestible)db.GetColumnDb(column)).WaitForIngestCompactionHeadroom();
+        // The persist is already durable here (pointer advanced, marker cleared), so this backpressure is
+        // best-effort: a throw must not surface a committed persist as a failure to the caller.
+        try
+        {
+            foreach (FlatDbColumns column in IngestColumns)
+                ((ISstIngestible)db.GetColumnDb(column)).WaitForIngestCompactionHeadroom();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Ingest compaction backpressure after persisting {to} failed; the state is already durable, continuing. {e}");
+        }
     }
 
     private void RollbackFailedIngest(ISstIngestWriteBatch[] batches)
