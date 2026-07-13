@@ -82,6 +82,16 @@ public sealed class TxValidator : ITxValidator
             AuthorizationListTxValidator.Instance,
             GasLimitCapTxValidator.Instance
         ]));
+        // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
+        // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
+        // signature validation happen during processing.
+        RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
+            NonceCapTxValidator.Instance,
+            expectedChainIdTxValidator,
+            GasFieldsTxValidator.Instance,
+            FrameTxFieldsTxValidator.Instance
+        ]));
     }
 
     public void RegisterValidator(TxType type, ITxValidator validator) => _validators[(byte)type] = validator;
@@ -167,6 +177,18 @@ public sealed class GasFieldsTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
+}
+
+/// <summary>
+/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes).
+/// </summary>
+public sealed class FrameTxFieldsTxValidator : ITxValidator
+{
+    public static readonly FrameTxFieldsTxValidator Instance = new();
+    private FrameTxFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator
