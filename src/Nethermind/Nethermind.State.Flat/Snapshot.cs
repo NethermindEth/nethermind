@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,13 @@ public class Snapshot : RefCountingDisposable
     private readonly SnapshotContent? _mutable;
     private readonly SortedSnapshotContent? _sorted;
     private readonly bool _isSorted;
+    // Counts sealed on first observation: ConcurrentDictionary.Count acquires every stripe lock, so
+    // serving live counts would stall concurrent writers on each estimate, and the repository's
+    // add/remove memory ledger needs the same value on both sides even if stragglers still write.
+    // Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
+    // construct-then-populate contract working: population always precedes the first count observation.
+    // Boxed so publication is a single reference CAS.
+    private StrongBox<SnapshotContentCounts>? _sealedCounts;
 
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
     {
@@ -47,8 +55,28 @@ public class Snapshot : RefCountingDisposable
         _isSorted = true;
     }
 
-    public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : _mutable!.EstimateMemory();
-    public long EstimateCompactedMemory() => _isSorted ? _sorted!.EstimateCompactedMemory() : _mutable!.EstimateCompactedMemory();
+    public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
+    public long EstimateCompactedMemory() => _isSorted ? _sorted!.EstimateCompactedMemory() : Counts.EstimateCompactedMemory();
+
+    /// <summary>
+    /// The mutable content's counts, captured once on first access and immutable afterwards. Racing
+    /// first observers may compute different candidates, but CompareExchange publishes exactly one,
+    /// so every reader (including the repository's add and remove ledger sides) sees the same value.
+    /// </summary>
+    private SnapshotContentCounts Counts
+    {
+        get
+        {
+            StrongBox<SnapshotContentCounts>? sealedCounts = Volatile.Read(ref _sealedCounts);
+            if (sealedCounts is null)
+            {
+                StrongBox<SnapshotContentCounts> candidate = new(_mutable!.CaptureCounts());
+                sealedCounts = Interlocked.CompareExchange(ref _sealedCounts, candidate, null) ?? candidate;
+            }
+
+            return sealedCounts.Value;
+        }
+    }
     // Test-only observability (SnapshotCompactorTests); not consumed by production.
     internal ResourcePool.Usage Usage => _usage;
 
@@ -61,10 +89,10 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
-    public int AccountsCount => _isSorted ? _sorted!.AccountsCount : _mutable!.Accounts.Count;
-    public int StoragesCount => _isSorted ? _sorted!.StoragesCount : _mutable!.Storages.Count;
-    public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : _mutable!.StateNodes.Count;
-    public int StorageNodesCount => _isSorted ? _sorted!.StorageNodesCount : _mutable!.StorageNodes.Count;
+    public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
+    public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
+    public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : Counts.StateNodes;
+    public int StorageNodesCount => _isSorted ? _sorted!.StorageNodesCount : Counts.StorageNodes;
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
@@ -97,8 +125,6 @@ public class Snapshot : RefCountingDisposable
 
 public sealed class SnapshotContent : IDisposable, IResettable
 {
-    private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
-
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
@@ -122,13 +148,48 @@ public sealed class SnapshotContent : IDisposable, IResettable
         StorageNodes.NoLockClear();
     }
 
+    /// <summary>
+    /// Captures the five map counts in one pass. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
+    /// acquires every stripe lock, so callers should capture once at a writer-quiescent boundary and
+    /// reuse the result instead of re-reading live counts.
+    /// </summary>
+    internal SnapshotContentCounts CaptureCounts() => new(
+        Accounts.Count,
+        Storages.Count,
+        SelfDestructedStorageAddresses.Count,
+        StateNodes.Count,
+        StorageNodes.Count);
+
+    public long EstimateMemory() => CaptureCounts().EstimateMemory();
+
+    /// <inheritdoc cref="SnapshotContentCounts.EstimateCompactedMemory"/>
+    public long EstimateCompactedMemory() => CaptureCounts().EstimateCompactedMemory();
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>
+/// Entry counts of a <see cref="SnapshotContent"/>, captured once so memory estimates are pure
+/// functions of a single consistent capture.
+/// </summary>
+internal readonly record struct SnapshotContentCounts(
+    int Accounts,
+    int Storages,
+    int SelfDestructedStorageAddresses,
+    int StateNodes,
+    int StorageNodes)
+{
+    private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
+
     public long EstimateMemory() =>
         // Cast Count to long before multiplying to avoid int overflow for large snapshots
-        (long)Accounts.Count * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
-            (long)Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
-            (long)SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
-            (long)StateNodes.Count * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-            (long)StorageNodes.Count * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+        (long)Accounts * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
+            (long)StateNodes * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            (long)StorageNodes * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
 
     /// <summary>
     /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.
@@ -138,13 +199,9 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public long EstimateCompactedMemory() =>
         // ConcurrentDictionary entry overhead ~48 bytes
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
-        Accounts.Count * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
-            Storages.Count * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
-            SelfDestructedStorageAddresses.Count * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
-            StateNodes.Count * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
-            StorageNodes.Count * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
-
-    public void Dispose()
-    {
-    }
+        (long)Accounts * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
+            (long)StateNodes * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
+            (long)StorageNodes * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
 }

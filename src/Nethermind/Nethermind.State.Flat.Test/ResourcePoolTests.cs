@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -98,6 +99,19 @@ public class ResourcePoolTests
         Assert.That(resource, Is.Not.Null);
         Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
         Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ShouldPrewarm_AddressOverloadsUseSameHash(bool includeSlot)
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+        Address address = new("0x1234567890123456789012345678901234567890");
+        ValueAddress valueAddress = new(address.Bytes);
+        UInt256? slot = includeSlot ? (UInt256)1 : null;
+
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
+        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
     }
 
     [Test]

@@ -38,6 +38,7 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
@@ -247,6 +248,79 @@ public class FlatWorldStateScopeProviderTests
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot(bool isNull)
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account? account = isNull ? null : TestItem.GenerateRandomAccount();
+
+        ctx.SnapshotBundle.SetAccount(address, account);
+
+        Account? result = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.True);
+        }
+    }
+
+    [Test]
+    public void GetAccount_ReportsAccountFromPersistenceIsNotInCurrentSnapshot()
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        Account? result = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.False);
+        }
+    }
+
+    [Test]
+    public void Get_PromotesAccountFromPersistenceIntoCurrentSnapshot()
+    {
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        Assert.That(ctx.Scope.Get(address), Is.EqualTo(account));
+
+        Account? promoted = ctx.SnapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(promoted, Is.EqualTo(account));
+            Assert.That(isInCurrentSnapshot, Is.True);
+        }
+    }
+
+    [Test]
+    public void HintGet_DoesNotOverwriteDirtyAccount()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account dirtyAccount = TestItem.GenerateIndexedAccount(1);
+        Account staleAccount = TestItem.GenerateIndexedAccount(0);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, dirtyAccount);
+        }
+
+        scope.HintGet(address, staleAccount);
+
+        Assert.That(scope.Get(address), Is.EqualTo(dirtyAccount));
     }
 
     [Test]

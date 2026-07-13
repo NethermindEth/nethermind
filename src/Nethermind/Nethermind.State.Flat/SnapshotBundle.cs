@@ -71,15 +71,24 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
     }
 
-    public Account? GetAccount(Address address) => DoGetAccount(address, false);
+    public Account? GetAccount(Address address) => DoGetAccount(address, excludeChanged: false, out _);
 
-    private Account? DoGetAccount(Address address, bool excludeChanged)
+    internal Account? GetAccount(Address address, out bool isInCurrentSnapshot) =>
+        DoGetAccount(address, excludeChanged: false, out isInCurrentSnapshot);
+
+    private Account? DoGetAccount(Address address, bool excludeChanged, out bool isInCurrentSnapshot)
     {
         GuardDispose();
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc)) return acc;
+        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc))
+        {
+            isInCurrentSnapshot = true;
+            return acc;
+        }
+
+        isInCurrentSnapshot = false;
 
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -360,6 +369,9 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
+    internal void PromoteAccount(Address address, Account? account) =>
+        _changedAccounts.TryAdd(address, account);
+
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
@@ -381,7 +393,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        Account? account = DoGetAccount(address, excludeChanged: true);
+        Account? account = DoGetAccount(address, excludeChanged: true, out _);
         // So... a clear is always sent even on a new account. This makes is a minor optimization as
         // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
