@@ -15,6 +15,8 @@ public class ExecutionRequestExtensionsTests
     private static readonly TestExecutionRequest[] DepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
     private static readonly TestExecutionRequest[] WithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
     private static readonly TestExecutionRequest[] ConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
+    private static readonly TestExecutionRequest[] BuilderDepositRequests = [TestItem.ExecutionRequestJ, TestItem.ExecutionRequestK];
+    private static readonly TestExecutionRequest[] BuilderExitRequests = [TestItem.ExecutionRequestL, TestItem.ExecutionRequestM];
 
     [Test]
     public void GetFlatEncodedRequests_encodes_request_groups()
@@ -22,12 +24,16 @@ public class ExecutionRequestExtensionsTests
         using ArrayPoolList<byte[]> flatEncodedRequests = ExecutionRequestExtensions.GetFlatEncodedRequests(
             DepositRequests,
             WithdrawalRequests,
-            ConsolidationRequests);
+            ConsolidationRequests,
+            BuilderDepositRequests,
+            BuilderExitRequests);
 
-        Assert.That(flatEncodedRequests, Has.Count.EqualTo(ExecutionRequestExtensions.StatelessRequestTypesCount));
+        Assert.That(flatEncodedRequests, Has.Count.EqualTo(ExecutionRequestExtensions.MaxRequestsCount));
         AssertFlatEncodedRequests(flatEncodedRequests[0], ExecutionRequestType.Deposit, DepositRequests, ExecutionRequestExtensions.DepositRequestsBytesSize);
         AssertFlatEncodedRequests(flatEncodedRequests[1], ExecutionRequestType.WithdrawalRequest, WithdrawalRequests, ExecutionRequestExtensions.WithdrawalRequestsBytesSize);
         AssertFlatEncodedRequests(flatEncodedRequests[2], ExecutionRequestType.ConsolidationRequest, ConsolidationRequests, ExecutionRequestExtensions.ConsolidationRequestsBytesSize);
+        AssertFlatEncodedRequests(flatEncodedRequests[3], ExecutionRequestType.BuilderDepositRequest, BuilderDepositRequests, ExecutionRequestExtensions.BuilderDepositRequestsBytesSize);
+        AssertFlatEncodedRequests(flatEncodedRequests[4], ExecutionRequestType.BuilderExitRequest, BuilderExitRequests, ExecutionRequestExtensions.BuilderExitRequestsBytesSize);
     }
 
     [Test]
@@ -38,6 +44,8 @@ public class ExecutionRequestExtensionsTests
         using ArrayPoolList<byte[]> flatEncodedRequests = ExecutionRequestExtensions.GetFlatEncodedRequests(
             [],
             withdrawalRequests,
+            [],
+            [],
             []);
 
         Assert.That(flatEncodedRequests, Has.Count.EqualTo(1));
@@ -50,15 +58,21 @@ public class ExecutionRequestExtensionsTests
         using ArrayPoolList<byte[]> flatEncodedRequests = ExecutionRequestExtensions.GetFlatEncodedRequests(
             DepositRequests,
             WithdrawalRequests,
-            ConsolidationRequests);
+            ConsolidationRequests,
+            BuilderDepositRequests,
+            BuilderExitRequests);
         (CoreExecutionRequest[] decodedDepositRequests,
             CoreExecutionRequest[] decodedWithdrawalRequests,
-            CoreExecutionRequest[] decodedConsolidationRequests) =
+            CoreExecutionRequest[] decodedConsolidationRequests,
+            CoreExecutionRequest[] decodedBuilderDepositRequests,
+            CoreExecutionRequest[] decodedBuilderExitRequests) =
             ExecutionRequestExtensions.GetFlatDecodedRequests([.. flatEncodedRequests]);
 
         AssertRequests(DepositRequests, decodedDepositRequests);
         AssertRequests(WithdrawalRequests, decodedWithdrawalRequests);
         AssertRequests(ConsolidationRequests, decodedConsolidationRequests);
+        AssertRequests(BuilderDepositRequests, decodedBuilderDepositRequests);
+        AssertRequests(BuilderExitRequests, decodedBuilderExitRequests);
     }
 
     [Test]
@@ -66,7 +80,9 @@ public class ExecutionRequestExtensionsTests
     {
         (CoreExecutionRequest[] depositRequests,
             CoreExecutionRequest[] withdrawalRequests,
-            CoreExecutionRequest[] consolidationRequests) =
+            CoreExecutionRequest[] consolidationRequests,
+            CoreExecutionRequest[] builderDepositRequests,
+            CoreExecutionRequest[] builderExitRequests) =
             ExecutionRequestExtensions.GetFlatDecodedRequests([[(byte)ExecutionRequestType.Deposit]]);
 
         using (Assert.EnterMultipleScope())
@@ -74,6 +90,8 @@ public class ExecutionRequestExtensionsTests
             Assert.That(depositRequests, Is.Empty);
             Assert.That(withdrawalRequests, Is.Empty);
             Assert.That(consolidationRequests, Is.Empty);
+            Assert.That(builderDepositRequests, Is.Empty);
+            Assert.That(builderExitRequests, Is.Empty);
         }
     }
 
@@ -84,6 +102,8 @@ public class ExecutionRequestExtensionsTests
     [TestCase((byte)ExecutionRequestType.Deposit, ExecutionRequestExtensions.DepositRequestsBytesSize)]
     [TestCase((byte)ExecutionRequestType.WithdrawalRequest, ExecutionRequestExtensions.WithdrawalRequestsBytesSize)]
     [TestCase((byte)ExecutionRequestType.ConsolidationRequest, ExecutionRequestExtensions.ConsolidationRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.BuilderDepositRequest, ExecutionRequestExtensions.BuilderDepositRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.BuilderExitRequest, ExecutionRequestExtensions.BuilderExitRequestsBytesSize)]
     public void GetFlatDecodedRequests_rejects_partial_request_data(byte type, int requestDataSize)
     {
         byte[] encodedRequests = new byte[requestDataSize];

@@ -57,17 +57,22 @@ public partial class NewPayloadRequest<TExecutionPayload>
             {
                 Deposits = [],
                 Withdrawals = [],
-                Consolidations = []
+                Consolidations = [],
+                BuilderDeposits = [],
+                BuilderExits = []
             };
         }
         else
         {
-            (ExecutionRequest[] deposits, ExecutionRequest[] withdrawals, ExecutionRequest[] consolidations)
+            (ExecutionRequest[] deposits, ExecutionRequest[] withdrawals, ExecutionRequest[] consolidations,
+                ExecutionRequest[] builderDeposits, ExecutionRequest[] builderExits)
                 = ExecutionRequestExtensions.GetFlatDecodedRequests(block.ExecutionRequests);
 
             DepositRequest[] depositRequests = new DepositRequest[deposits.Length];
             WithdrawalRequest[] withdrawalRequests = new WithdrawalRequest[withdrawals.Length];
             ConsolidationRequest[] consolidationRequests = new ConsolidationRequest[consolidations.Length];
+            BuilderDepositRequest[] builderDepositRequests = new BuilderDepositRequest[builderDeposits.Length];
+            BuilderExitRequest[] builderExitRequests = new BuilderExitRequest[builderExits.Length];
 
             for (int i = 0; i < deposits.Length; i++)
                 depositRequests[i] = DepositRequest.From(deposits[i]);
@@ -78,11 +83,19 @@ public partial class NewPayloadRequest<TExecutionPayload>
             for (int i = 0; i < consolidations.Length; i++)
                 consolidationRequests[i] = ConsolidationRequest.From(consolidations[i]);
 
+            for (int i = 0; i < builderDeposits.Length; i++)
+                builderDepositRequests[i] = BuilderDepositRequest.From(builderDeposits[i]);
+
+            for (int i = 0; i < builderExits.Length; i++)
+                builderExitRequests[i] = BuilderExitRequest.From(builderExits[i]);
+
             request.ExecutionRequests = new()
             {
                 Deposits = depositRequests,
                 Withdrawals = withdrawalRequests,
-                Consolidations = consolidationRequests
+                Consolidations = consolidationRequests,
+                BuilderDeposits = builderDepositRequests,
+                BuilderExits = builderExitRequests
             };
         }
 
@@ -112,8 +125,18 @@ public partial class NewPayloadRequest<TExecutionPayload>
         for (int i = 0; i < consolidations.Length; i++)
             consolidations[i] = ExecutionRequests.Consolidations[i].ToExecutionRequest();
 
+        ExecutionRequest[] builderDeposits = new ExecutionRequest[ExecutionRequests.BuilderDeposits.Length];
+
+        for (int i = 0; i < builderDeposits.Length; i++)
+            builderDeposits[i] = ExecutionRequests.BuilderDeposits[i].ToExecutionRequest();
+
+        ExecutionRequest[] builderExits = new ExecutionRequest[ExecutionRequests.BuilderExits.Length];
+
+        for (int i = 0; i < builderExits.Length; i++)
+            builderExits[i] = ExecutionRequests.BuilderExits[i].ToExecutionRequest();
+
         using ArrayPoolList<byte[]> pool = ExecutionRequestExtensions.GetFlatEncodedRequests(
-            deposits, withdrawals, consolidations);
+            deposits, withdrawals, consolidations, builderDeposits, builderExits);
 
         payload.ExecutionRequests = [.. pool];
 

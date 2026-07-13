@@ -59,11 +59,7 @@ internal sealed class StatelessSpecProvider(
         ForkConfig forkConfig,
         ProtocolFork protocolFork)
     {
-        string forkName = protocolFork switch
-        {
-            ProtocolFork.Amsterdam => Amsterdam.Instance.Name,
-            _ => throw new ArgumentOutOfRangeException(nameof(protocolFork), protocolFork, "Unknown protocol fork")
-        };
+        string forkName = protocolFork.GetName();
 
         IReleaseSpec spec;
         if (!baseProvider.TryGetForkSpec(forkName, out IReleaseSpec? configuredSpec) || configuredSpec is null)

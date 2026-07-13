@@ -26,12 +26,9 @@ public static class ExecutionRequestExtensions
 
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
+    public const int BuilderDepositRequestsBytesSize = PublicKeySize + WithdrawalCredentialsSize + AmountSize + SignatureSize;
+    public const int BuilderExitRequestsBytesSize = Address.Size + PublicKeySize;
     public const int MaxRequestsCount = 5;
-    /// <summary>
-    /// Number of request types representable in the flat-encoded stateless input format
-    /// (deposit, withdrawal, consolidation).
-    /// </summary>
-    public const int StatelessRequestTypesCount = 3;
 
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
@@ -53,14 +50,15 @@ public static class ExecutionRequestExtensions
     }
 
 
-    // the following functions are only used in tests
     public static ArrayPoolList<byte[]> GetFlatEncodedRequests(
         ExecutionRequest[] depositRequests,
         ExecutionRequest[] withdrawalRequests,
-        ExecutionRequest[] consolidationRequests
+        ExecutionRequest[] consolidationRequests,
+        ExecutionRequest[] builderDepositRequests,
+        ExecutionRequest[] builderExitRequests
     )
     {
-        ArrayPoolList<byte[]> result = new(StatelessRequestTypesCount);
+        ArrayPoolList<byte[]> result = new(MaxRequestsCount);
 
         if (depositRequests.Length > 0)
         {
@@ -75,6 +73,16 @@ public static class ExecutionRequestExtensions
         if (consolidationRequests.Length > 0)
         {
             result.Add(FlatEncodeRequests(consolidationRequests, consolidationRequests.Length * ConsolidationRequestsBytesSize, (byte)ExecutionRequestType.ConsolidationRequest));
+        }
+
+        if (builderDepositRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(builderDepositRequests, builderDepositRequests.Length * BuilderDepositRequestsBytesSize, (byte)ExecutionRequestType.BuilderDepositRequest));
+        }
+
+        if (builderExitRequests.Length > 0)
+        {
+            result.Add(FlatEncodeRequests(builderExitRequests, builderExitRequests.Length * BuilderExitRequestsBytesSize, (byte)ExecutionRequestType.BuilderExitRequest));
         }
 
         return result;
@@ -93,11 +101,17 @@ public static class ExecutionRequestExtensions
     }
 
     /// <summary>
-    /// Decodes flat encoded execution request groups into deposit, withdrawal, and consolidation requests.
+    /// Decodes flat encoded execution request groups into deposit, withdrawal, consolidation,
+    /// builder deposit, and builder exit requests.
     /// </summary>
     /// <param name="requests">Flat encoded request groups, each prefixed by an execution request type byte.</param>
     /// <returns>The decoded request groups.</returns>
-    public static (ExecutionRequest[] DepositRequests, ExecutionRequest[] WithdrawalRequests, ExecutionRequest[] ConsolidationRequests)
+    public static (
+        ExecutionRequest[] DepositRequests,
+        ExecutionRequest[] WithdrawalRequests,
+        ExecutionRequest[] ConsolidationRequests,
+        ExecutionRequest[] BuilderDepositRequests,
+        ExecutionRequest[] BuilderExitRequests)
         GetFlatDecodedRequests(byte[][] requests)
     {
         ArgumentNullException.ThrowIfNull(requests);
@@ -105,6 +119,8 @@ public static class ExecutionRequestExtensions
         ExecutionRequest[] depositRequests = [];
         ExecutionRequest[] withdrawalRequests = [];
         ExecutionRequest[] consolidationRequests = [];
+        ExecutionRequest[] builderDepositRequests = [];
+        ExecutionRequest[] builderExitRequests = [];
         int lastType = -1;
 
         for (int i = 0; i < requests.Length; i++)
@@ -133,15 +149,17 @@ public static class ExecutionRequestExtensions
                     consolidationRequests = DecodeRequests(encoded, ConsolidationRequestsBytesSize, type, nameof(ExecutionRequestType.ConsolidationRequest), nameof(requests));
                     break;
                 case ExecutionRequestType.BuilderDepositRequest:
+                    builderDepositRequests = DecodeRequests(encoded, BuilderDepositRequestsBytesSize, type, nameof(ExecutionRequestType.BuilderDepositRequest), nameof(requests));
+                    break;
                 case ExecutionRequestType.BuilderExitRequest:
-                    throw new NotSupportedException(
-                        $"EIP-8282 builder requests (type {type}) are not representable in the stateless input format.");
+                    builderExitRequests = DecodeRequests(encoded, BuilderExitRequestsBytesSize, type, nameof(ExecutionRequestType.BuilderExitRequest), nameof(requests));
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(requests), type, "Unknown execution request type.");
             }
         }
 
-        return (depositRequests, withdrawalRequests, consolidationRequests);
+        return (depositRequests, withdrawalRequests, consolidationRequests, builderDepositRequests, builderExitRequests);
 
         static ExecutionRequest[] DecodeRequests(byte[] encodedRequests, int requestDataSize, byte type, string typeName, string parameterName)
         {
