@@ -290,7 +290,8 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    internal void SetStateNode(in TreePath path, TrieNode newNode)
+    // This is called only during trie commit
+    public void SetStateNode(in TreePath path, TrieNode newNode)
     {
         GuardDispose();
         if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
@@ -313,6 +314,13 @@ public sealed class SnapshotBundle : IDisposable
 
     internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
         _changedStorageNodes.GetOrAddAddress(address);
+
+    // This is called only during trie commit
+    public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
+    {
+        GuardDispose();
+        SetStorageNode(GetStorageNodeDestination(addr), addr, path, newNode);
+    }
 
     internal void SetStorageNode(
         AddressStorageNodeDictionary.AddressNodes nodes,
