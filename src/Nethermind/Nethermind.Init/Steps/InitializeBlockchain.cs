@@ -10,8 +10,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
@@ -51,23 +49,6 @@ namespace Nethermind.Init.Steps
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, _api.NonceManager!, getApi.EthereumEcdsa!);
-
-            IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
-
-            ICensorshipDetectorConfig censorshipDetectorConfig = _api.Config<ICensorshipDetectorConfig>();
-            if (censorshipDetectorConfig.Enabled)
-            {
-                CensorshipDetector censorshipDetector = new(
-                    _api.BlockTree!,
-                    txPool,
-                    CreateTxPoolTxComparer(),
-                    mainBranchProcessor,
-                    _api.LogManager,
-                    censorshipDetectorConfig
-                );
-                setApi.CensorshipDetector = censorshipDetector;
-                _api.DisposeStack.Push(censorshipDetector);
-            }
 
             return Task.CompletedTask;
         }
