@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -73,18 +74,26 @@ public static class BasePersistence
         int size = 8 + 32;
         foreach (string file in files) size += 2 + Encoding.UTF8.GetByteCount(Path.GetFileName(file));
 
-        Span<byte> bytes = size <= 4096 ? stackalloc byte[size] : new byte[size];
-        BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], to.BlockNumber);
-        to.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
-        int offset = 8 + 32;
-        foreach (string file in files)
+        byte[]? rented = size <= 4096 ? null : ArrayPool<byte>.Shared.Rent(size);
+        Span<byte> bytes = rented is null ? stackalloc byte[size] : rented.AsSpan(0, size);
+        try
         {
-            int written = Encoding.UTF8.GetBytes(Path.GetFileName(file), bytes[(offset + 2)..]);
-            BinaryPrimitives.WriteUInt16BigEndian(bytes[offset..], (ushort)written);
-            offset += 2 + written;
-        }
+            BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], to.BlockNumber);
+            to.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
+            int offset = 8 + 32;
+            foreach (string file in files)
+            {
+                int written = Encoding.UTF8.GetBytes(Path.GetFileName(file), bytes[(offset + 2)..]);
+                BinaryPrimitives.WriteUInt16BigEndian(bytes[offset..], (ushort)written);
+                offset += 2 + written;
+            }
 
-        kv.PutSpan(IngestMarkerKey, bytes);
+            kv.PutSpan(IngestMarkerKey, bytes);
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     internal static (StateId To, string[] Files)? ReadIngestMarker(IReadOnlyKeyValueStore kv)
