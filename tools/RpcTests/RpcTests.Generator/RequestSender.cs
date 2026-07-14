@@ -51,6 +51,7 @@ public class RequestSender(Uri clientUrl, HttpClient httpClient)
         }
     }
 }
+
 public readonly record struct FilePos(string FilePath, int LineNumber)
 {
     public override string ToString() => LineNumber == 0 ? FilePath : $"{FilePath}:{LineNumber}";
@@ -64,3 +65,4 @@ public readonly record struct FilePos(string FilePath, int LineNumber)
             : new FilePos(location, 0);
     }
 }
+

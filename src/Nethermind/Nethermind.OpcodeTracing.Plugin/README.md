@@ -449,3 +449,4 @@ And then use `--loggerConfigSource=/nethermind/data/customNLog.config` with the 
 ## Additional Resources
 
 - [Nethermind Plugin Documentation](https://docs.nethermind.io/developers/plugins/)
+

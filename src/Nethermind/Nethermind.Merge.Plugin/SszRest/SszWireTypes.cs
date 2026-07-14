@@ -19,6 +19,7 @@ public partial struct SszTransaction
 {
     [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
 }
+
 [SszContainer]
 public partial struct SszWithdrawal
 {
