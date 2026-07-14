@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -162,25 +163,32 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         if (logger.IsWarn) logger.Warn($"L0 of {_mainDb.Name} column {Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
     }
 
-    private sealed class SstIngestWriteBatch(ColumnDb columnDb) : ISstIngestWriteBatch
+    private sealed class SstIngestWriteBatch : ISstIngestWriteBatch
     {
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
         private const int SlabSize = 1 << 20;
 
         // Worst-case permanent retention: slabs <= 1024 x 1 MiB = 1 GiB; entries <= 6 arrays/bucket over 2^16..2^22 x 32 B ~= 1.5 GiB.
         // 6 covers peak concurrency: six column batches alive per persist, one persist in flight.
-        private static readonly ArrayPool<byte> s_slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
-        private static readonly ArrayPool<Entry> s_entryPool = ArrayPool<Entry>.Create(1 << 22, 6);
-        private static readonly EnvOptions s_envOptions = new();
+        private static readonly ArrayPool<byte> _slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
+        private static readonly ArrayPool<Entry> _entryPool = ArrayPool<Entry>.Create(1 << 22, 6);
+        private static readonly EnvOptions _envOptions = new();
 
-        private readonly ColumnDb _columnDb = columnDb;
+        private readonly ColumnDb _columnDb;
+        private readonly EntryComparer _comparer;
         private readonly List<byte[]> _slabs = [];
-        private readonly List<string> _stagedFiles = [];
-        private Entry[] _index = s_entryPool.Rent(1 << 16);
+        private readonly ArrayPoolList<string> _stagedFiles = new(4);
+        private Entry[] _index = _entryPool.Rent(1 << 16);
         private int _count;
         private int _slabIndex = -1;
         private int _slabOffset;
         private long _bufferedBytes;
+
+        public SstIngestWriteBatch(ColumnDb columnDb)
+        {
+            _columnDb = columnDb;
+            _comparer = new EntryComparer(this);
+        }
 
         private struct Entry
         {
@@ -255,7 +263,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 }
                 while (_slabIndex < _slabs.Count && _slabs[_slabIndex].Length != SlabSize);
 
-                if (_slabIndex == _slabs.Count) _slabs.Add(s_slabPool.Rent(SlabSize));
+                if (_slabIndex == _slabs.Count) _slabs.Add(_slabPool.Rent(SlabSize));
                 _slabOffset = 0;
             }
 
@@ -267,9 +275,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         private void GrowIndex()
         {
-            Entry[] grown = s_entryPool.Rent(_index.Length * 2);
+            Entry[] grown = _entryPool.Rent(_index.Length * 2);
             Array.Copy(_index, grown, _count);
-            s_entryPool.Return(_index);
+            _entryPool.Return(_index);
             _index = grown;
         }
 
@@ -305,7 +313,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         {
             if (_count == 0) return;
 
-            Array.Sort(_index, 0, _count, new EntryComparer(this));
+            Array.Sort(_index, 0, _count, _comparer);
 
             Directory.CreateDirectory(_columnDb.IngestStagingDir);
             string file = Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
@@ -314,7 +322,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             {
                 ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
                     ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
-                IntPtr writer = Native.Instance.rocksdb_sstfilewriter_create(s_envOptions.Handle, writerOptions.Handle);
+                IntPtr writer = Native.Instance.rocksdb_sstfilewriter_create(_envOptions.Handle, writerOptions.Handle);
                 try
                 {
                     Native.Instance.rocksdb_sstfilewriter_open(writer, file);
@@ -323,6 +331,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                         ref Entry e = ref _index[i];
                         // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
                         if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
+                        // Safety: Reserve wrote KeyLen (+ ValLen for puts) contiguous bytes at [Offset, Offset + length)
+                        // inside _slabs[Slab], so data, data + KeyLen and data + KeyLen + ValLen all stay within the pinned
+                        // slab; the native put/delete therefore cannot read or write past the slab's bounds.
                         fixed (byte* slabPtr = &MemoryMarshal.GetArrayDataReference(_slabs[e.Slab]))
                         {
                             byte* data = slabPtr + e.Offset;
@@ -339,7 +350,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             }
             catch
             {
-                try { if (File.Exists(file)) File.Delete(file); } catch { }
+                try
+                {
+                    if (File.Exists(file)) File.Delete(file);
+                }
+                catch (Exception cleanupError)
+                {
+                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete partial SST file '{file}' after a writer error; it will be swept on next startup. {cleanupError}");
+                }
                 throw;
             }
 
@@ -363,7 +381,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         {
             foreach (string file in _stagedFiles)
             {
-                try { if (File.Exists(file)) File.Delete(file); } catch { }
+                try
+                {
+                    if (File.Exists(file)) File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete staged SST file '{file}' during cleanup; it will be swept on next startup. {e}");
+                }
             }
             _stagedFiles.Clear();
         }
@@ -372,11 +397,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         {
             foreach (byte[] slab in _slabs)
             {
-                if (slab.Length == SlabSize) s_slabPool.Return(slab);
+                if (slab.Length == SlabSize) _slabPool.Return(slab);
             }
             _slabs.Clear();
-            s_entryPool.Return(_index);
+            _entryPool.Return(_index);
             _index = [];
+            _stagedFiles.Dispose();
         }
     }
 
