@@ -60,10 +60,17 @@ public class BlockProfilerModule(FrozenSet<ulong> targets) : Module
 /// </summary>
 public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
 {
+    // The dotTrace measure session is process-global while branch processors are per-scope, so the
+    // collection window is coordinated statically: overlapping processors (e.g. main processing and
+    // block production) must not clobber each other's start/stop/save sequence.
+    private static readonly object s_profilerSync = new();
+    private static bool s_collecting;
+    private static int s_armedLogged;
+    private static int s_apiUnavailableLogged;
+
     private readonly IBranchProcessor _inner;
     private readonly FrozenSet<ulong> _targets;
     private readonly ILogger _logger;
-    private bool _collecting;
 
     public ProfilingBranchProcessor(IBranchProcessor inner, FrozenSet<ulong> targets, ILogManager logManager)
     {
@@ -72,28 +79,53 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
         _logger = logManager.GetClassLogger<ProfilingBranchProcessor>();
         _inner.BlockProcessing += OnBlockProcessing;
         _inner.BlockProcessed += OnBlockProcessed;
-        if (_logger.IsInfo) _logger.Info($"BlockProfiler armed for blocks: {string.Join(",", _targets)}");
+        // Branch processors are scoped; log the arming once per process, not per scope.
+        if (Interlocked.Exchange(ref s_armedLogged, 1) == 0)
+        {
+            if (_logger.IsInfo) _logger.Info($"BlockProfiler armed for blocks: {string.Join(",", _targets)}");
+        }
     }
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
         => _inner.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
 
+    /// <summary>Whether the profiler session accepts measure-API control (requires dotTrace <c>--use-api</c>).</summary>
+    private bool IsMeasureApiAvailable()
+    {
+        if ((MeasureProfiler.GetFeatures() & MeasureFeatures.Ready) != 0) return true;
+        if (Interlocked.Exchange(ref s_apiUnavailableLogged, 1) == 0)
+        {
+            if (_logger.IsWarn) _logger.Warn(
+                "dotTrace measure API is not available: the profiler session was not started with --use-api. " +
+                "Per-block snapshots will NOT be captured; only the profiler's own whole-run snapshot is produced.");
+        }
+        return false;
+    }
+
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
         // (ulong) cast keeps this source compilable as a drop-in against older images where Block.Number was long
         if (!_targets.Contains((ulong)e.Block.Number)) return;
-        if (_collecting) MeasureProfiler.StopCollectingData(); // close any stray window (e.g. a prior target that errored)
-        MeasureProfiler.StartCollectingData();
-        _collecting = true;
+        if (!IsMeasureApiAvailable()) return;
+        lock (s_profilerSync)
+        {
+            if (s_collecting) MeasureProfiler.StopCollectingData(); // close any stray window (e.g. a prior target that errored)
+            MeasureProfiler.StartCollectingData();
+            s_collecting = true;
+        }
         if (_logger.IsInfo) _logger.Info($"dotTrace: started collecting for block {e.Block.Number}");
     }
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_collecting || !_targets.Contains((ulong)e.Block.Number)) return;
-        _collecting = false;
-        MeasureProfiler.StopCollectingData();
-        MeasureProfiler.SaveData(); // one snapshot per target block
+        if (!_targets.Contains((ulong)e.Block.Number)) return;
+        lock (s_profilerSync)
+        {
+            if (!s_collecting) return;
+            s_collecting = false;
+            MeasureProfiler.StopCollectingData();
+            MeasureProfiler.SaveData(); // one snapshot per target block
+        }
         if (_logger.IsInfo) _logger.Info($"dotTrace: saved snapshot for block {e.Block.Number}");
     }
 
@@ -125,6 +157,6 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
     {
         _inner.BlockProcessing -= OnBlockProcessing;
         _inner.BlockProcessed -= OnBlockProcessed;
-        (_inner as IDisposable)?.Dispose();
+        // The container owns the decorated instance; disposing it here would double-dispose.
     }
 }
