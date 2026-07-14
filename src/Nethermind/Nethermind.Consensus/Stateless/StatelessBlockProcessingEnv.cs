@@ -60,7 +60,10 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            witnessMode: true
+            // Witness mode disables the CodeInfo cache to record every code access, but this env only
+            // consumes an already-built witness, so caching is safe here and avoids re-running
+            // jump-destination analysis on every CALL.
+            witnessMode: false
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
