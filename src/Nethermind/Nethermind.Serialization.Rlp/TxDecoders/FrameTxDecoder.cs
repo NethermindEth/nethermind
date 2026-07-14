@@ -51,8 +51,26 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        writer.StartSequence(GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId));
+        int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int sequenceLength = Rlp.LengthOfSequence(contentLength);
+
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
+        {
+            writer.StartByteArray(sequenceLength + 1, false);
+        }
+
+        writer.WriteByte((byte)Type);
+        writer.StartSequence(contentLength);
         EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
+    }
+
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
+        bool isEip155Enabled = false, ulong chainId = 0)
+    {
+        int txPayloadLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
+            ? 1 + txPayloadLength
+            : Rlp.LengthOfSequence(1 + txPayloadLength);
     }
 
     protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>

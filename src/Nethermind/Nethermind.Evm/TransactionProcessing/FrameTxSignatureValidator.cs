@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -23,13 +22,11 @@ public static class FrameTxSignatureValidator
     public const string InvalidP256Signer = "frame transaction P256 signer does not match the public key";
     public const string P256NotSupported = "frame transaction P256 signatures are not yet supported by the prototype pre-flight";
 
-    public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, out string? error)
+    public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, out string? error)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
         if (signatures is null || signatures.Length == 0) return true;
-
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
 
         for (int i = 0; i < signatures.Length; i++)
         {

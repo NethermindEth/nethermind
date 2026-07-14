@@ -112,8 +112,9 @@ public class FrameTxValidationTests
             static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, NonZeroDigest(), new byte[65])],
             null);
 
-        // EIP8141-DEVIATION: not in the spec constraint block — Nethermind rejects a non-zero
-        // max_fee_per_blob_gas without blob hashes statically instead of at gas accounting time.
+        // Spec-backed via the max_fee_per_blob_gas field description ("must be 0 when
+        // blob_versioned_hashes is empty") — the rule just is not in the Constraints block.
+        // EIP8141-ISSUE: propose moving it into Constraints upstream.
         yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
             static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
 

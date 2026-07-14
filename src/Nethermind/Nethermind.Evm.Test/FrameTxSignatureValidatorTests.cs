@@ -30,7 +30,7 @@ public class FrameTxSignatureValidatorTests
     {
         Transaction tx = CreateFrameTx();
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -40,7 +40,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -51,7 +51,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx(sender: TestItem.PrivateKeyA.Address);
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyA, signer: null)];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -61,7 +61,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
     }
 
@@ -71,7 +71,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, new byte[64])];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignatureLength));
     }
 
@@ -86,7 +86,7 @@ public class FrameTxSignatureValidatorTests
         rawIdBytes[0] -= 27;
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, rawIdBytes)];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -101,7 +101,7 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, digest.ToByteArray(), ToVrs(signature)),
         ];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -117,7 +117,7 @@ public class FrameTxSignatureValidatorTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, claimedDigest.ToByteArray(), ToVrs(signature)),
         ];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
     }
 
@@ -128,7 +128,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad })];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(Validate(tx, out string? error), Is.True);
         Assert.That(error, Is.Null);
     }
 
@@ -140,7 +140,7 @@ public class FrameTxSignatureValidatorTests
         Transaction tx = CreateFrameTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, new byte[TxFrameSignature.P256SignatureLength])];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidP256Signer));
     }
 
@@ -155,7 +155,7 @@ public class FrameTxSignatureValidatorTests
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.P256NotSupported));
     }
 
@@ -163,18 +163,32 @@ public class FrameTxSignatureValidatorTests
     public void Validate_SecondEntryInvalid_WholeValidationFails()
     {
         Transaction tx = CreateFrameTx();
+        TxFrameSignature invalid = new(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[65]);
         tx.FrameSignatures =
         [
-            Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address),
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[65]),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, default),
+            invalid,
+        ];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = _ecdsa.Sign(TestItem.PrivateKeyB, in sigHash);
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, ToVrs(signature)),
+            invalid,
         ];
 
-        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(Validate(tx, out string? error), Is.False);
         Assert.That(error, Is.Not.Null);
     }
 
+    private bool Validate(Transaction tx, out string? error) =>
+        FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, out error);
+
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {
+        // compute_sig_hash covers the signature entries (scheme/signer/msg) and elides only the
+        // raw bytes of canonical-hash entries, so the hash is computed with the entry installed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));

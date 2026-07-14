@@ -28,10 +28,8 @@ public static class FrameTxSigHash
         return writer.GetValueHash();
     }
 
+    // SkipTypedWrapping makes the decoder emit exactly FRAME_TX_TYPE || rlp(tx).
     private static void WriteTypedForSigning<TWriter>(ref TWriter writer, Transaction transaction)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        writer.WriteByte((byte)TxType.FrameTx);
-        Decoder.Encode(transaction, ref writer, forSigning: true);
-    }
+        => Decoder.Encode(transaction, ref writer, RlpBehaviors.SkipTypedWrapping, forSigning: true);
 }

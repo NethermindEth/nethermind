@@ -39,9 +39,15 @@ public sealed class FrameTxContext(
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
 
-    /// <summary>Per-frame completion + success, populated as frames finish (for FRAMEPARAM status reads).</summary>
-    public bool[] FrameCompleted { get; } = new bool[frames.Length];
-    public bool[] FrameSucceeded { get; } = new bool[frames.Length];
+    /// <summary>Per-frame success bits (MAX_FRAMES is 64), populated as frames finish.</summary>
+    private ulong _frameSucceededBits;
+
+    /// <summary>EVM code only runs while some frame executes, so completed means strictly earlier.</summary>
+    public bool IsFrameCompleted(int frameIndex) => frameIndex < CurrentFrameIndex;
+
+    public bool HasFrameSucceeded(int frameIndex) => (_frameSucceededBits & (1UL << frameIndex)) != 0;
+
+    public void MarkFrameSucceeded(int frameIndex) => _frameSucceededBits |= 1UL << frameIndex;
 
     public bool SenderApproved { get; set; }
     public Address? Payer { get; set; }

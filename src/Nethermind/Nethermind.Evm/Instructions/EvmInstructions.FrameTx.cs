@@ -182,8 +182,8 @@ public static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Reading the status of the current or a future frame is an exceptional halt.
-        if (!ctx.FrameCompleted[index]) return EvmExceptionType.BadInstruction;
-        return stack.PushUInt32<TTracingInst>((uint)(ctx.FrameSucceeded[index] ? 1 : 0));
+        if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt32<TTracingInst>((uint)(ctx.HasFrameSucceeded(index) ? 1 : 0));
     }
 
     /// <summary>SIGPARAM (0xb4): read a signature-scoped field, or copy ARBITRARY signature bytes.</summary>

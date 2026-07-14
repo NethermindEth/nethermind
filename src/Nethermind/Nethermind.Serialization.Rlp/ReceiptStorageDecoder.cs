@@ -11,6 +11,11 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
+    // EIP8141-GAP: the storage decoders (this, CompactReceiptStorageDecoder,
+    // ReceiptArrayStorageDecoder) have no frame-transaction branch — a frame receipt would be
+    // silently persisted in the legacy [status, cumGas, bloom, logs] shape, dropping
+    // Payer/FrameReceipts, so storage and wire representations would diverge after restart.
+    // Latent until frame receipt production lands; must be addressed in that slice.
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
     public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -136,7 +136,7 @@ public static class FrameTxValidation
                     return false;
                 }
 
-                if (msgLength == 32 && signature.Msg.Span.IndexOfAnyExcept((byte)0) < 0)
+                if (msgLength == 32 && signature.Msg.Span.IsZero())
                 {
                     error = ZeroDigestMsg;
                     return false;

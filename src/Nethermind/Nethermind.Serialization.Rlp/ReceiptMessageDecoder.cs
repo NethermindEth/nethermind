@@ -16,6 +16,7 @@ namespace Nethermind.Serialization.Rlp
     {
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
+        private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
 
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -108,6 +109,7 @@ namespace Nethermind.Serialization.Rlp
 
             int framesEnd = ctx.ReadSequenceLength() + ctx.Position;
             int frameCount = ctx.PeekNumberOfItemsRemaining(framesEnd, Eip8141Constants.MaxFrames + 1);
+            ctx.GuardLimit(frameCount, FrameReceiptsRlpLimit);
             TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
             int totalLogs = 0;
             for (int i = 0; i < frameCount; i++)

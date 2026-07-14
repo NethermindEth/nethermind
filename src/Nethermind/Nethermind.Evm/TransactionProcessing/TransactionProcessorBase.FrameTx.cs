@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
@@ -24,6 +25,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    // EIP8141: ExecutionOptions is not honored yet — no commit under Commit, no restore under
+    // Restore/CommitAndRestore — so CallAndRestore-style entries (RPC, tracing) must not reach
+    // this path until commit/restore semantics land together with receipts.
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
@@ -38,7 +42,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return nonceError.WithDetail("frame transaction nonce mismatch");
         }
 
-        if (!FrameTxSignatureValidator.Validate(tx, Ecdsa, out string? signatureError))
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, out string? signatureError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
         }
@@ -48,9 +53,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP8141: max cost approximated as sum(frame.gas_limit) * effective price; the full formula
         // (intrinsic + per-frame + calldata + signature verification) is wired with gas accounting
-        // in a later slice.
+        // in a later slice. The sum is overflow-checked so the processor does not depend on static
+        // validation having run.
         ulong totalFrameGas = 0;
-        foreach (TxFrame frame in frames) totalFrameGas += frame.GasLimit;
+        foreach (TxFrame frame in frames)
+        {
+            ulong accumulated = totalFrameGas + frame.GasLimit;
+            if (accumulated < totalFrameGas)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
+            }
+
+            totalFrameGas = accumulated;
+        }
+
         UInt256 maxCost = (UInt256)totalFrameGas * effectiveGasPrice;
 
         FrameTxContext frameContext = new(
@@ -58,7 +74,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.Nonce,
             frames,
             tx.FrameSignatures ?? [],
-            FrameTxSigHash.ComputeValue(tx),
+            sigHash,
             in maxCost,
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
@@ -85,16 +101,28 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, spec, tracer);
 
-            frameContext.FrameCompleted[i] = true;
-            frameContext.FrameSucceeded[i] = !substate.ShouldRevert && !substate.IsError;
+            bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
+            if (frameSucceeded)
+            {
+                frameContext.MarkFrameSucceeded(i);
+            }
 
-            if (frame.Mode == TxFrame.ModeVerify && !frameContext.FrameSucceeded[i])
+            if (frame.Mode == TxFrame.ModeVerify && !frameSucceeded)
             {
                 // A failed VERIFY frame invalidates the whole transaction.
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
-            ApplyApproval(frameContext, resolvedTarget, spec);
+            if (frameSucceeded)
+            {
+                ApplyApproval(frameContext, resolvedTarget, spec);
+            }
+            else
+            {
+                // An APPROVE that terminated an inner call can leave a signal behind even though
+                // the enclosing frame reverted; its effects must not apply.
+                frameContext.ApprovalScopeSignal = 0;
+            }
         }
 
         if (frameContext.Payer is null)
@@ -102,6 +130,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction never set a payer");
         }
 
+        // EIP8141: Execute post-conditions (tracer MarkAsSuccess/MarkAsFailed, header.GasUsed,
+        // receipts) are pending — inside full block processing a frame tx leaves the receipts
+        // tracer one receipt short, so this path must stay unreachable there until that slice.
         return TransactionResult.Ok;
     }
 
@@ -133,6 +164,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.SubtractFromBalance(caller, in value, spec);
         }
 
+        // EIP8141: a fresh tracker per frame resets EIP-2929 warm/cold state, but the spec shares
+        // the warm/cold journal across frames (with per-frame revert of touches) — restructure
+        // together with the gas-accounting slice.
         StackAccessTracker accessTracker = new();
 
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
@@ -155,8 +189,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private void ApplyApproval(FrameTxContext frameContext, Address resolvedTarget, IReleaseSpec spec)
     {
         // Approval validity (scope allowance, re-approval, target, prior execution approval, payer
-        // balance) is enforced by the APPROVE handler, which reverts the frame on violation; a
-        // signal only arrives here from a successfully completed frame.
+        // balance) is enforced by the APPROVE handler, which reverts the frame on violation; the
+        // outer loop only forwards signals of successfully completed frames.
         byte scope = frameContext.ApprovalScopeSignal;
         if (scope == 0) return;
         frameContext.ApprovalScopeSignal = 0;
@@ -168,6 +202,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if ((scope & TxFrame.ApprovePayment) != 0)
         {
+            // Re-checked at charge time: the frame may have moved the payer's balance after an
+            // APPROVE issued from an inner call, and the debit must never throw mid-block. A void
+            // payment leaves Payer unset, so the transaction fails the payer gate unless a later
+            // frame approves payment.
+            if (WorldState.GetBalance(resolvedTarget) < frameContext.MaxCost) return;
+
             // EIP8141: charge the max cost up front from the payer and consume the sender nonce.
             // Refund of unused gas is wired with full gas accounting in a later slice.
             WorldState.SubtractFromBalance(resolvedTarget, frameContext.MaxCost, spec);

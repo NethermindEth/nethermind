@@ -204,49 +204,81 @@ public class FrameTxProcessorTests
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
     }
 
-    [Test]
-    public void Execute_TxParamIntrospection_ExposesTransactionFields()
+    [TestCase((byte)0x00, 6UL, TestName = "Execute_TxParam_TxType")]
+    [TestCase((byte)0x01, 0UL, TestName = "Execute_TxParam_Nonce")]
+    [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
+    [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
+    [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
+    [TestCase((byte)0x06, 400_000UL, TestName = "Execute_TxParam_MaxCost")]
+    [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
+    [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
+    [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
+    [TestCase((byte)0x0B, 0UL, TestName = "Execute_TxParam_SignatureCount")]
+    public void Execute_TxParamIntrospection_ExposesTransactionField(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x00).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)   // tx type
-            .PushData(0x02).Op(Instruction.TXPARAM).PushData(1).Op(Instruction.SSTORE)   // sender
-            .PushData(0x08).Op(Instruction.TXPARAM).PushData(2).Op(Instruction.SSTORE)   // sig hash
-            .PushData(0x09).Op(Instruction.TXPARAM).PushData(3).Op(Instruction.SSTORE)   // len(frames)
-            .PushData(0x0A).Op(Instruction.TXPARAM).PushData(4).Op(Instruction.SSTORE)   // current index
+            .PushData(param).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
 
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, (UInt256)(int)TxType.FrameTx);
-        AssertStorage(Observer, 1, AddressAsWord(Sender));
-        AssertStorage(Observer, 2, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
-        AssertStorage(Observer, 3, 2);
-        AssertStorage(Observer, 4, 1);
+        AssertStorage(Observer, 0, (UInt256)expected);
     }
 
     [Test]
-    public void Execute_FrameParamIntrospection_ReadsCompletedFrame()
+    public void Execute_TxParamSender_ExposesSenderAddress()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x02).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, AddressAsWord(Sender));
+    }
+
+    [Test]
+    public void Execute_TxParamSigHash_ExposesCanonicalHash()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x08).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
+    }
+
+    [TestCase((byte)0x01, 200_000UL, TestName = "Execute_FrameParam_GasLimit")]
+    [TestCase((byte)0x02, 1UL, TestName = "Execute_FrameParam_Mode")]
+    [TestCase((byte)0x03, 3UL, TestName = "Execute_FrameParam_Flags")]
+    [TestCase((byte)0x04, 0UL, TestName = "Execute_FrameParam_DataLength")]
+    [TestCase((byte)0x05, 1UL, TestName = "Execute_FrameParam_Status")]
+    [TestCase((byte)0x06, 3UL, TestName = "Execute_FrameParam_AllowedScope")]
+    [TestCase((byte)0x07, 0UL, TestName = "Execute_FrameParam_AtomicBatch")]
+    [TestCase((byte)0x08, 0UL, TestName = "Execute_FrameParam_Value")]
+    public void Execute_FrameParamIntrospection_ReadsCompletedFrame(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         // Spec stack order: frameIndex on top, param second.
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x02).PushData(0).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE) // mode of frame 0
-            .PushData(0x03).PushData(0).Op(Instruction.FRAMEPARAM).PushData(1).Op(Instruction.SSTORE) // flags of frame 0
-            .PushData(0x05).PushData(0).Op(Instruction.FRAMEPARAM).PushData(2).Op(Instruction.SSTORE) // status of frame 0
-            .PushData(0x06).PushData(0).Op(Instruction.FRAMEPARAM).PushData(3).Op(Instruction.SSTORE) // allowed scope
+            .PushData(param).PushData(0).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
 
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, TxFrame.ModeVerify);
-        AssertStorage(Observer, 1, TxFrame.ApproveExecutionAndPayment);
-        AssertStorage(Observer, 2, 1);
-        AssertStorage(Observer, 3, TxFrame.ApproveExecutionAndPayment);
+        AssertStorage(Observer, 0, (UInt256)expected);
     }
 
     [Test]
