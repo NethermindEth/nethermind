@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Autofac.Core;
 
 namespace Nethermind.Api.Extensions;
@@ -16,9 +15,6 @@ public interface INethermindPlugin
 
     void InitTxTypesAndRlpDecoders(INethermindApi api) { }
 
-    Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
-
-    Task InitRpcModules() => Task.CompletedTask;
     bool MustInitialize => false;
     bool Enabled { get; }
     IModule? Module => null;

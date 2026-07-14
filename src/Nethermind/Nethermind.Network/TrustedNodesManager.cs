@@ -33,7 +33,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
         LogNodeList("Trusted nodes", nodes);
 
-        _nodes = nodes;
+        SetNodes(nodes);
     }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
@@ -55,7 +55,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     public async Task<bool> AddAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
-        if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
+        if (!TryAddNode(networkNode))
         {
             if (_logger.IsInfo)
             {

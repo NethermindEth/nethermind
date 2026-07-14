@@ -64,7 +64,7 @@ public class TestBlockchain : IDisposable
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
-    public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
+    public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => _fromContainer.BlockPreprocessorSteps;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
 
@@ -132,7 +132,7 @@ public class TestBlockchain : IDisposable
         Lazy<IReceiptStorage> receiptStorage,
         Lazy<ITxPool> txPool,
         Lazy<IWorldStateManager> worldStateManager,
-        Lazy<IBlockPreprocessorStep> blockPreprocessorStep,
+        Lazy<IReadOnlyList<IBlockPreprocessorStep>> blockPreprocessorSteps,
         Lazy<IBlockTree> blockTree,
         Lazy<IBlockFinder> blockFinder,
         Lazy<ILogFinder> logFinder,
@@ -162,7 +162,7 @@ public class TestBlockchain : IDisposable
         public IReceiptStorage ReceiptStorage => receiptStorage.Value;
         public ITxPool TxPool => txPool.Value;
         public IWorldStateManager WorldStateManager => worldStateManager.Value;
-        public IBlockPreprocessorStep BlockPreprocessorStep => blockPreprocessorStep.Value;
+        public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => blockPreprocessorSteps.Value;
         public IBlockTree BlockTree => blockTree.Value;
         public IBlockFinder BlockFinder => blockFinder.Value;
         public ILogFinder LogFinder => logFinder.Value;
@@ -244,7 +244,7 @@ public class TestBlockchain : IDisposable
     /// <remarks>
     /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
     /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
-    /// healing, <c>BestPersistedState</c>, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix.
     /// </remarks>
     public bool UseFlatDb { get; set; } = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
@@ -360,6 +360,15 @@ public class TestBlockchain : IDisposable
             {
                 state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
                 state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
+            }
+
+            if (finalSpec?.BuilderRequestsEnabled is true)
+            {
+                state.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, specProvider.GenesisSpec);
+
+                state.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, specProvider.GenesisSpec);
             }
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;

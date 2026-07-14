@@ -17,6 +17,7 @@ public sealed class NodeSource(
     IKademliaAdapter discv4Adapter,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
+    IForkInfo forkInfo,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -136,5 +137,19 @@ public sealed class NodeSource(
         }
     }
 
-    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash);
+    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash) || HasIncompatibleForkId(node);
+
+    private bool HasIncompatibleForkId(Node node)
+    {
+        try
+        {
+            return !forkInfo.IsNodeRecordForkCompatible(node.Enr);
+        }
+        catch (Exception e)
+        {
+            // Keep the candidate if local validation fails; discv4 callers have no per-node exception guard.
+            if (_logger.IsTrace) _logger.Trace($"Unable to validate fork ID of discv4 discovered node {node:s}: {e}");
+            return false;
+        }
+    }
 }

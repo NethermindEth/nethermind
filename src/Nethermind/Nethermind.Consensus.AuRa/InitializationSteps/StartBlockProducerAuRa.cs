@@ -164,7 +164,7 @@ public class StartBlockProducerAuRa(
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
         BlockAccessListManager balManager = new(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory,
-            transactionProcessorFactory: transactionProcessorFactory);
+            static worldState => new EthereumCodeInfoRepository(worldState), transactionProcessorFactory: transactionProcessorFactory);
 
         BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(
             new BuildUpTransactionProcessorAdapter(txProcessor),

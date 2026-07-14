@@ -29,10 +29,10 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
-    public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
+    public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
     public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
-    public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
+    public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; } = [];
 
     public Address[] GenesisMasterNodes { get; set; }
@@ -62,10 +62,18 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
         V2ConfigParams configParams = GetConfigAtRound(V2Configs, round);
         SwitchRound = configParams.SwitchRound;
         MaxMasternodes = configParams.MaxMasternodes;
+        MaxProtectorNodes = configParams.MaxProtectorNodes;
+        MaxObserverNodes = configParams.MaxObserverNodes;
         CertificateThreshold = configParams.CertificateThreshold;
         TimeoutSyncThreshold = configParams.TimeoutSyncThreshold;
         TimeoutPeriod = configParams.TimeoutPeriod;
         MinePeriod = configParams.MinePeriod;
+        MasternodeReward = configParams.MasternodeReward;
+        ProtectorReward = configParams.ProtectorReward;
+        ObserverReward = configParams.ObserverReward;
+        MinimumMinerBlockPerEpoch = configParams.MinimumMinerBlockPerEpoch;
+        LimitPenaltyEpoch = configParams.LimitPenaltyEpoch;
+        MinimumSigningTx = configParams.MinimumSigningTx;
     }
 
     internal static V2ConfigParams GetConfigAtRound(List<V2ConfigParams> list, ulong round)
@@ -118,11 +126,11 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
     public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
     public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
-    public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
+    public ulong MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public ulong LimitPenaltyEpoch { get; set; }         // Epochs in a row that a penalty node needs to be penalized
     public ulong LimitPenaltyEpochV2 { get; set; }       // Epochs in a row that a penalty node needs to be penalized
     public ulong RangeReturnSigner { get; set; }
-    public int MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
+    public ulong MinimumSigningTx { get; set; }            // Signing txs that a node needs to produce to get out of penalty, after `LimitPenaltyEpoch`
     public List<V2ConfigParams> V2Configs { get; set; }
     public Address[] GenesisMasterNodes { get; set; }
     public ulong MergeSignRange { get; set; }

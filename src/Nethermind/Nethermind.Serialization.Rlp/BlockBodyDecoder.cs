@@ -106,6 +106,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
+        ctx.Check(lastPosition);
         return new BlockBody(transactions, uncles, withdrawals);
     }
 

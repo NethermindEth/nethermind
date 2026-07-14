@@ -262,12 +262,6 @@ namespace Nethermind.JsonRpc.Modules
 
         public void Return(ResolvedMethodInfo method, IRpcModule rpcModule) => method.ReturnModule(rpcModule);
 
-        public IRpcModulePool? GetPoolForMethod(string methodName)
-        {
-            MethodCache cache = EnsureMethodCache();
-            return TryGetResolvedMethod(cache, methodName, out ResolvedMethodInfo? result) ? result.ModulePool : null;
-        }
-
         private sealed class MethodCache(
             FrozenDictionary<string, ResolvedMethodInfo> methods,
             ResolvedMethodInfo?[] hotMethods)

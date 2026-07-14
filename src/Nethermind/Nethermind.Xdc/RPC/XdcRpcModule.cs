@@ -309,17 +309,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
         }
 
-        if (epochSwitchInfos.Length != 0 && rewardsStore.TryGetRetainedRange(out ulong oldestRetainedEpochBlockNumber, out _))
-        {
-            ulong requestedOldestEpoch = (ulong)epochSwitchInfos[0].EpochSwitchBlockInfo.BlockNumber;
-            if (requestedOldestEpoch < oldestRetainedEpochBlockNumber)
-            {
-                return ResultWrapper<AccountRewardResponse>.Fail(
-                    $"Cannot return pruned historical reward data before epoch block {oldestRetainedEpochBlockNumber}.",
-                    ErrorCodes.PrunedHistoryUnavailable);
-            }
-        }
-
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
         UInt256 totalReward = UInt256.Zero;
 
@@ -327,12 +316,13 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
         {
             ulong epochBlockNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            if (!rewardsStore.HasEpochRewards(epochBlockNumber))
+            Hash256 epochBlockHash = epochSwitchInfo.EpochSwitchBlockInfo.Hash;
+            if (!rewardsStore.HasEpochRewards(epochBlockHash))
             {
                 return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
             }
 
-            if (!rewardsStore.TryGetAccountReward(account, epochBlockNumber, out UInt256 accountReward))
+            if (!rewardsStore.TryGetAccountReward(account, epochBlockHash, out UInt256 accountReward))
             {
                 continue;
             }

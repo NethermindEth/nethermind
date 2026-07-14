@@ -5,6 +5,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Timers;
@@ -45,6 +46,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>(singleInstance: true)
+
+            // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
+            .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
 
             .AddSingleton<EnodeProvider>()
@@ -55,6 +59,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Rlpxhost
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
+            .AddSingleton<IPrivilegedIpProvider, PrivilegedIpProvider>()
             .AddSingleton<IRlpxHost, RlpxHost>()
             .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 

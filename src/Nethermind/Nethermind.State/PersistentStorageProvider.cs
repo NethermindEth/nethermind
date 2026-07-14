@@ -39,6 +39,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private readonly Dictionary<StorageCell, byte[]> _originalValues = [];
+    private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly HashSet<StorageCell> _committedThisRound = [];
 
     /// <summary>
@@ -49,6 +50,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Reset();
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
         if (resetBlockChanges)
         {
             _storages.ResetAndClear();
@@ -63,6 +65,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         _metrics.IncrementStorageWrites();
         base.Set(in storageCell, newValue);
+        // Write-time warm-up hint: the commit-time HintSet fires too late for speculative
+        // (populator) executions, which never commit. No-op for backends without trie warm-up.
+        _currentScope.HintWarmSlot(new ValueAddress(storageCell.Address.Bytes), storageCell.Index);
     }
 
     /// <summary>
@@ -85,15 +90,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
 
-        if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+        if (_intraBlockCache.TryGetValue(storageCell, out HeadChange head))
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+            if (head.CurrentIdx <= currentSnapshot)
             {
-                if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                {
-                    return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
-                }
+                // Untouched this transaction — the current value is the tx original.
+                return head.Value;
             }
+
+            // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
+            return head.OriginalIdx != -1 ? _changes[head.OriginalIdx].Value : value;
         }
 
         return value;
@@ -116,6 +123,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentPosition = _changes.Count - 1;
         if (currentPosition < 0)
         {
+            _destroyedThisRound.Clear();
             return;
         }
         if (_changes[currentPosition].IsNull)
@@ -132,31 +140,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             trace = [];
         }
 
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         for (int i = 0; i <= currentPosition; i++)
         {
-            Change change = _changes[currentPosition - i];
-            if (!isTracing && change!.ChangeType == ChangeType.JustCache)
-            {
-                continue;
-            }
-
+            ref readonly Change change = ref changes[currentPosition - i];
             if (_committedThisRound.Contains(change!.StorageCell))
             {
-                if (isTracing && change.ChangeType == ChangeType.JustCache)
-                {
-                    trace![change.StorageCell] = new StorageChangeTrace(change.Value, trace[change.StorageCell].After);
-                }
-
                 continue;
-            }
-
-            if (isTracing && change.ChangeType == ChangeType.JustCache)
-            {
-                tracer!.ReportStorageRead(change.StorageCell);
             }
 
             _committedThisRound.Add(change.StorageCell);
-            int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+            int forAssertion = _intraBlockCache[change.StorageCell].CurrentIdx;
             if (forAssertion != currentPosition - i)
             {
                 throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
@@ -164,6 +158,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             if (change.ChangeType == ChangeType.Update)
             {
+                // A SaveChange would resurrect the dead value over the Clear() marker;
+                // tracers still see the cell zeroed, as the journaled path reported it.
+                if (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(change.StorageCell.Address))
+                {
+                    if (isTracing)
+                    {
+                        trace![change.StorageCell] = new StorageChangeTrace(StorageTree.ZeroBytes);
+                    }
+
+                    continue;
+                }
+
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
@@ -211,9 +217,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         toUpdateRoots.Clear();
 
+        if (isTracing)
+        {
+            foreach ((StorageCell cell, byte[] originalValue) in _originalValues)
+            {
+                if (trace!.TryGetValue(cell, out StorageChangeTrace changeTrace))
+                {
+                    trace[cell] = new StorageChangeTrace(originalValue, changeTrace.After);
+                }
+                else
+                {
+                    tracer.ReportStorageRead(cell);
+                }
+            }
+        }
+
         base.CommitCore(tracer);
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _destroyedThisRound.Clear();
 
         if (isTracing)
         {
@@ -304,12 +326,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
-    private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+    /// <summary>
+    /// Reads skip the registry/change journal that writes use: repeat reads are served by
+    /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
+    /// no side effects). Only the first-loaded value is captured here, backing
+    /// <see cref="GetOriginal"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
+    /// </summary>
+    private void CaptureOriginalValue(in StorageCell cell, byte[] value)
     {
-        StackList<int> stack = SetupRegistry(cell);
-        _originalValues[cell] = value;
-        stack.Push(_changes.Count);
-        _changes.Add(new Change(in cell, value, ChangeType.JustCache));
+        ref byte[]? slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
+        if (!exists)
+        {
+            slot = value;
+        }
     }
 
     private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
@@ -327,17 +356,59 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Clear all storage at specified address
+    /// Reads are not journaled, so a commit round can have an empty change list while cells were
+    /// still read this round: those reads must be reported to storage tracers and the round's
+    /// original-value capture must be cleared, which the change-driven commit otherwise does.
     /// </summary>
-    /// <param name="address">Contract address</param>
+    public override void Commit(IStorageTracer tracer)
+    {
+        if (_changes.Count == 0)
+        {
+            if (_originalValues.Count != 0)
+            {
+                if (tracer.IsTracingStorage)
+                {
+                    foreach (StorageCell cell in _originalValues.Keys)
+                    {
+                        tracer.ReportStorageRead(cell);
+                    }
+                }
+
+                _originalValues.Clear();
+            }
+
+            _destroyedThisRound.Clear();
+            return;
+        }
+
+        base.Commit(tracer);
+    }
+
+    public void MarkStorageDestroyed(Address address)
+    {
+        _destroyedThisRound.Add(address);
+        ResetContractState(address);
+    }
+
+    private void ResetContractState(Address address)
+    {
+        _toUpdateRoots.TryAdd(address, true);
+        GetOrCreateStorage(address).Clear();
+    }
+
     public override void ClearStorage(Address address)
     {
+        foreach (KeyValuePair<StorageCell, byte[]> readCell in _originalValues)
+        {
+            if (readCell.Key.Address == address)
+            {
+                Set(readCell.Key, StorageTree.ZeroBytes);
+            }
+        }
+
         base.ClearStorage(address);
 
-        _toUpdateRoots.TryAdd(address, true);
-
-        PerContractState state = GetOrCreateStorage(address);
-        state.Clear();
+        ResetContractState(address);
     }
 
     private sealed class DefaultableDictionary()
@@ -488,11 +559,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
 
-            if (!storageCell.IsHash)
-            {
-                EnsureStorageTree();
-                _backend.HintSet(storageCell.Index, value);
-            }
+            EnsureStorageTree();
+            _backend.HintSet(storageCell.Index, value);
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
@@ -509,7 +577,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _provider._metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) _provider.PushToRegistryOnly(storageCell, valueChange.After);
+            _provider.CaptureOriginalValue(storageCell, valueChange.After);
             return valueChange.After;
         }
 
@@ -518,9 +586,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider._metrics.IncrementStorageTreeReads();
 
             EnsureStorageTree();
-            return !storageCell.IsHash
-                ? _backend.Get(storageCell.Index)
-                : _backend.Get(storageCell.Hash);
+            return _backend.Get(storageCell.Index);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
