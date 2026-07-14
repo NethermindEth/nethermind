@@ -265,6 +265,10 @@ public sealed class SnapshotBundle : IDisposable
         TransientResource captured = LeaseTransientResourceForWarmer();
         (SnapshotBundle Owner, TransientResource Resource) previous = t_warmerJobCapture;
         t_warmerJobCapture = (this, captured);
+        // Invariant: the per-node warmer's in-place GetOrAdd into this captured resource may race a
+        // concurrent Commit->PopulateTrieNodeCache enumeration of the same shards. Tolerated by design --
+        // a torn tuple read yields at worst a misplaced/lost cache entry (Keccak-validated on read -> DB
+        // fallback), never a wrong node, and the lease pins the resource so the shards are not reallocated.
         return new WarmerTransientLease(captured, previous);
     }
 
