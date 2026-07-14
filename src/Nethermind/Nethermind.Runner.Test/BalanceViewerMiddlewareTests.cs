@@ -75,7 +75,8 @@ public class BalanceViewerMiddlewareTests
             _ => { nextCalled = true; return Task.CompletedTask; },
             CreateUrlCollection(),
             Substitute.For<ISiblingNodeRegistry>(),
-            Substitute.For<IDetectionCache>());
+            Substitute.For<IDetectionCache>(),
+            Substitute.For<IDetectionScanner>());
         await middleware.InvokeAsync(ctx);
 
         Assert.That(nextCalled, Is.True);
@@ -130,7 +131,7 @@ public class BalanceViewerMiddlewareTests
     }
 
     private static BalanceViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null) =>
-        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>());
+        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), Substitute.For<IDetectionScanner>());
 
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>
         new TestJsonRpcUrlCollection(new JsonRpcUrl("http", "127.0.0.1", Port, RpcEndpoint.Http, isAuthenticated, [ModuleType.Eth]));

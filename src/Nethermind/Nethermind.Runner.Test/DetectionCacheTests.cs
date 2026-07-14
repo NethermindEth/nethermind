@@ -38,14 +38,14 @@ public class DetectionCacheTests
     public void Put_then_Get_round_trips_and_is_case_insensitive()
     {
         DetectionCache cache = new(_dir, LimboLogs.Instance);
-        DetectionEntry entry = new([new DetectedToken("0xToKeN", "PEPE", 18)], ScannedFrom: 0, Head: 100, Complete: true, UpdatedMs: 1);
+        DetectionEntry entry = new(["0xToKeN"], ScannedFrom: 0, Head: 100, Complete: true, UpdatedMs: 1);
         cache.Put(1, "0xABCDEF", entry);
 
         DetectionEntry? read = cache.Get(1, "0xabcdef");
         Assert.That(read, Is.Not.Null);
         Assert.That(read!.Complete, Is.True);
-        Assert.That(read.Tokens, Has.Count.EqualTo(1));
-        Assert.That(read.Tokens[0].Symbol, Is.EqualTo("PEPE"));
+        Assert.That(read.Contracts, Has.Count.EqualTo(1));
+        Assert.That(read.Contracts[0], Is.EqualTo("0xToKeN"));
     }
 
     [Test]
@@ -62,26 +62,25 @@ public class DetectionCacheTests
     }
 
     [Test]
-    public void Caps_tokens_per_entry()
+    public void Caps_contracts_per_entry()
     {
-        DetectionCache cache = new(_dir, LimboLogs.Instance, maxTokensPerEntry: 2);
-        DetectedToken[] many = [new("0x1", "A", 18), new("0x2", "B", 18), new("0x3", "C", 18)];
-        cache.Put(1, "0xa", new DetectionEntry(many, 0, 1, true, UpdatedMs: 1));
+        DetectionCache cache = new(_dir, LimboLogs.Instance, maxContractsPerEntry: 2);
+        cache.Put(1, "0xa", new DetectionEntry(["0x1", "0x2", "0x3"], 0, 1, true, UpdatedMs: 1));
 
-        Assert.That(cache.Get(1, "0xa")!.Tokens, Has.Count.EqualTo(2));
+        Assert.That(cache.Get(1, "0xa")!.Contracts, Has.Count.EqualTo(2));
     }
 
     [Test]
     public void Entries_persist_across_instances()
     {
-        DetectionEntry entry = new([new DetectedToken("0xtoken", "GNO", 18)], ScannedFrom: 5, Head: 200, Complete: false, UpdatedMs: 2);
-        new DetectionCache(_dir, LimboLogs.Instance).Put(100, "0xdead", entry);
+        new DetectionCache(_dir, LimboLogs.Instance).Put(100, "0xdead",
+            new DetectionEntry(["0xtoken"], ScannedFrom: 5, Head: 200, Complete: false, UpdatedMs: 2));
 
         // a fresh instance (as after a node restart) loads the persisted file
         DetectionCache reopened = new(_dir, LimboLogs.Instance);
         DetectionEntry? read = reopened.Get(100, "0xDEAD");
         Assert.That(read, Is.Not.Null);
         Assert.That(read!.ScannedFrom, Is.EqualTo(5));
-        Assert.That(read.Tokens[0].Symbol, Is.EqualTo("GNO"));
+        Assert.That(read.Contracts[0], Is.EqualTo("0xtoken"));
     }
 }

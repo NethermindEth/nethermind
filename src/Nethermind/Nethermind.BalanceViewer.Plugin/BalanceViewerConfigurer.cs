@@ -9,6 +9,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Facade.Find;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
@@ -22,14 +25,17 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// <see cref="IJsonRpcUrlCollection"/> only exists there (it is created by the StartRpc step,
 /// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
-public sealed class BalanceViewerConfigurer(IBalanceViewerConfig config, IInitConfig initConfig, ILogManager logManager) : IJsonRpcServiceConfigurer
+public sealed class BalanceViewerConfigurer(
+    IBalanceViewerConfig config, IInitConfig initConfig, ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
+        DetectionCache cache = new(initConfig.BaseDbPath, logManager);
         services.AddSingleton(config);
         services.AddSingleton(logManager);
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
-        services.AddSingleton<IDetectionCache>(new DetectionCache(initConfig.BaseDbPath, logManager));
+        services.AddSingleton<IDetectionCache>(cache);
+        services.AddSingleton<IDetectionScanner>(new DetectionScanner(logFinder, blockFinder, cache, logManager));
         services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
     }
 }
@@ -49,7 +55,7 @@ internal sealed class BalanceViewerStartupFilter : IStartupFilter
 /// sibling-node discovery list at <c>/balances-nodes</c>, and proxies JSON-RPC to discovered
 /// siblings via <c>/balances-rpc/{port}</c> so the multi-chain view works through a single port.
 /// </summary>
-public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection)
+public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner)
 {
     private static readonly PathString NodesPath = new("/balances-nodes");
     private static readonly PathString ProxyPathPrefix = new("/balances-rpc");
@@ -138,21 +144,21 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
     }
 
-    // POST /balances-detect — the client persists a scan's results and progress for one account.
+    // POST /balances-detect — trigger (or resume) an in-process detection scan for one account,
+    // then return the current cached progress so the client can start polling.
     private async Task ServeDetectPostAsync(HttpContext context)
     {
         DetectPost? post = await JsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);
-        if (post is null || string.IsNullOrEmpty(post.Address))
+        if (post is null || !Address.TryParse(post.Address, out Address? account) || account is null)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
         }
 
-        detection.Put(post.ChainId, post.Address, new DetectionEntry(
-            post.Tokens ?? [], post.ScannedFrom, post.Head, post.Complete, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
-        context.Response.StatusCode = StatusCodes.Status200OK;
+        scanner.RequestScan(post.ChainId, account);
+        context.Response.ContentType = "application/json";
+        await JsonSerializer.SerializeAsync(context.Response.Body, detection.Get(post.ChainId, post.Address), JsonOpts, context.RequestAborted);
     }
 
-    private sealed record DetectPost(
-        long ChainId, string Address, DetectedToken[]? Tokens, long ScannedFrom, long Head, bool Complete);
+    private sealed record DetectPost(long ChainId, string Address);
 }

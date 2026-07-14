@@ -9,26 +9,23 @@ using Nethermind.Logging;
 
 namespace Nethermind.BalanceViewer.Plugin;
 
-/// <summary>An ERC-20 contract found to hold a positive balance for an account.</summary>
-public sealed record DetectedToken(string Address, string Symbol, int Decimals);
-
-/// <summary>Cached result and progress of one account's token-detection scan on one chain.</summary>
-/// <param name="Tokens">ERC-20 contracts found holding a positive balance for the account.</param>
+/// <summary>Result and progress of one account's node-side token-detection scan on one chain.</summary>
+/// <param name="Contracts">ERC-20 contract addresses the account has transferred to/from (candidates
+/// the client confirms with a live balance check). Discovered in-process via the node's log index.</param>
 /// <param name="ScannedFrom">Lowest block scanned so far (inclusive) — a resumable cursor.</param>
 /// <param name="Head">Head block when the scan started, so the covered range is known.</param>
 /// <param name="Complete">True once the sweep reached the bottom of the node's retained history.</param>
 /// <param name="UpdatedMs">Unix-milliseconds timestamp of the last update.</param>
 public sealed record DetectionEntry(
-    IReadOnlyList<DetectedToken> Tokens, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
+    IReadOnlyList<string> Contracts, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
 
 /// <summary>
 /// Node-side cache of per-account token-detection results and scan progress.
 /// </summary>
 /// <remarks>
 /// Shared across every client of this node and persisted to the data directory, so a completed
-/// (or partially completed) deep scan is never repeated on reload or from another device. Keyed
-/// by chain id and lower-cased address. Only data derived from the node itself is stored — no
-/// information leaves the machine.
+/// (or partially completed) scan is never repeated on reload or from another device. Keyed by
+/// chain id and lower-cased address. Only data derived from the node itself is stored.
 /// </remarks>
 public interface IDetectionCache
 {
@@ -44,27 +41,26 @@ public sealed class DetectionCache : IDetectionCache
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    // Bounds the on-disk cache. A per-address entry is tiny, so 10k addresses is generous for a
-    // node while capping the file at a few MB; the token list is capped so a pathologically active
-    // address can't bloat one entry. Eviction is LRU by last update — the actively-viewed working
-    // set stays cached, so it does not thrash (and an evicted entry only re-scans if a *new* client
-    // session revisits that address; the client tracks completion within a session, so no loop).
+    // Bounds the on-disk cache. Each entry is small; eviction is LRU by last update so the actively
+    // viewed working set stays cached and does not thrash (an evicted entry only re-scans if a new
+    // client session revisits that address). The contract list is capped so a pathologically active
+    // address can't bloat one entry.
     private const int DefaultMaxEntries = 10_000;
-    private const int DefaultMaxTokensPerEntry = 500;
+    private const int DefaultMaxContractsPerEntry = 2_000;
 
     private readonly ConcurrentDictionary<string, DetectionEntry> _entries = new();
     private readonly string _path;
     private readonly ILogger _logger;
     private readonly Lock _fileLock = new();
     private readonly int _maxEntries;
-    private readonly int _maxTokensPerEntry;
+    private readonly int _maxContractsPerEntry;
 
-    public DetectionCache(string dbPath, ILogManager logManager, int maxEntries = DefaultMaxEntries, int maxTokensPerEntry = DefaultMaxTokensPerEntry)
+    public DetectionCache(string dbPath, ILogManager logManager, int maxEntries = DefaultMaxEntries, int maxContractsPerEntry = DefaultMaxContractsPerEntry)
     {
         _logger = logManager.GetClassLogger<DetectionCache>();
         _path = Path.Combine(dbPath, "balance-viewer-detection.json");
         _maxEntries = maxEntries;
-        _maxTokensPerEntry = maxTokensPerEntry;
+        _maxContractsPerEntry = maxContractsPerEntry;
         Load();
     }
 
@@ -75,9 +71,9 @@ public sealed class DetectionCache : IDetectionCache
 
     public void Put(long chainId, string address, DetectionEntry entry)
     {
-        if (entry.Tokens.Count > _maxTokensPerEntry)
+        if (entry.Contracts.Count > _maxContractsPerEntry)
         {
-            entry = entry with { Tokens = entry.Tokens.Take(_maxTokensPerEntry).ToArray() };
+            entry = entry with { Contracts = entry.Contracts.Take(_maxContractsPerEntry).ToArray() };
         }
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();

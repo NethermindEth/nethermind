@@ -1392,27 +1392,26 @@
             finally { node.scanning = false; }
         }
 
-        // ---------- auto token detection (node-cached) ----------
-        // With the top-bar 🔍 toggle on (default), held ERC-20s surface automatically as
-        // removable "auto" token rows: new ones in real time (each poll scans the freshly
-        // arrived blocks for Transfer logs touching a pinned address), and historical ones via
-        // a one-time deep backfill that walks each node's retained history. Results and scan
-        // progress are cached on the serving node (see IDetectionCache) so the backfill is never
-        // repeated — reloads and other devices load instantly and an interrupted scan resumes.
-        // Backfills are throttled so only a few addresses scan at once. Only node data is read.
-        const DETECT_CHUNK = 50000n;        // blocks per historical getLogs query (topic+address filtered → cheap over large ranges)
-        const DETECT_CONCURRENCY = 4;       // getLogs chunk-pairs in flight within one address's backfill
-        const DETECT_MAX_ADDRESSES = 2;     // historical backfills running at once (throttle)
-        const DETECT_PERSIST_EVERY = 6;     // batches between progress writes to the node cache
-        const DETECT_REALTIME_MAX = 2000n;  // cap on the forward range scanned per poll
+        // ---------- auto token detection ----------
+        // With the top-bar 🔍 toggle on (default), held ERC-20s surface automatically as removable
+        // "auto" token rows. Two node-data-only sources:
+        //  • real-time — each poll scans the few newly-arrived blocks (client eth_getLogs, kept under
+        //    the node's 1000-block range cap) for Transfer logs touching a pinned address.
+        //  • historical — the node scans its own retained history IN-PROCESS via its bloom-indexed log
+        //    finder (see DetectionScanner), which avoids the RPC range/result caps and thousands of
+        //    round-trips, and is throttled/cancellable so it can't starve validator duties. Results are
+        //    cached on the node, so the scan runs once and reloads/other devices load instantly.
+        // Historical detection covers the chain of the node you're connected to (its /balances-detect
+        // endpoint); sibling chains get real-time detection only. Every candidate is confirmed with a
+        // live balanceOf before it's shown.
+        const DETECT_REALTIME_MAX = 900n;   // forward blocks scanned per poll (under the 1000-block getLogs cap)
         let detectEnabled = true;           // top-bar toggle, default on
-        const detectionRunning = new Set(); // "chainId:address" backfills currently running
-        const detectComplete = new Set();   // "chainId:address" backfills known finished (skip re-enqueue)
-        const detectQueue = [];             // pending { node, address, rkey } backfills awaiting a slot
+        let detecting = false;              // node historical scan still in progress (drives the spinner)
+        let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
 
-        // ERC-20 Transfer logs carry exactly 3 topics (ERC-721's are fully indexed → 4); the
-        // emitting contract is a token the account moved. Returns lowercased contract addresses
-        // not already tracked (known) or hidden (ignored).
+        // ERC-20 Transfer logs carry exactly 3 topics (ERC-721's are fully indexed → 4); the emitting
+        // contract is a token the account moved. Returns lowercased contract addresses not already
+        // tracked (known) or hidden (ignored).
         function erc20ContractsFromLogs(logs, known, ignored) {
             const found = new Set();
             for (const log of logs) {
@@ -1424,90 +1423,24 @@
             return [...found];
         }
 
-        // node-side detection cache (served by the plugin on the origin node, keyed by chain+address)
-        async function getDetectCache(chainId, address) {
-            try {
-                const res = await fetch('balances-detect?chainId=' + chainId + '&address=' + address);
-                return res.ok ? await res.json() : null; // DetectionEntry | null
-            } catch { return null; }
-        }
-        async function putDetectCache(chainId, address, tokens, scannedFrom, head, complete) {
-            try {
-                await fetch('balances-detect', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chainId, address, tokens, scannedFrom: Number(scannedFrom), head: Number(head), complete }),
-                });
-            } catch { /* cache is best-effort */ }
-        }
-
-        // merges cache/scan tokens into a chain's detected list, skipping tracked/ignored/dupes;
-        // returns whether anything was added
-        // ignored holds hidden token objects; this is the set of their (lower-cased) addresses,
-        // used only for client-side display filtering — it never reaches the scan or node cache
+        // hidden token addresses (lower-cased) — a client-side display filter only; never sent to the node
         function ignoredAddrs(chainId) {
             return new Set(stateOf(chainId).ignored.map((t) => (typeof t === 'string' ? t : t.address).toLowerCase()));
         }
 
-        function mergeDetected(chainId, tokens) {
-            const state = stateOf(chainId);
-            const have = new Set(tokensOf(chainId).map((t) => t.address.toLowerCase()));
-            const ignored = ignoredAddrs(chainId);
-            let added = false;
-            for (const t of tokens) {
-                const key = t.address.toLowerCase();
-                const ticker = t.symbol ?? t.ticker;
-                if (!ticker || have.has(key) || ignored.has(key)) continue;
-                state.detected.push({ address: checksum(t.address), ticker, decimals: t.decimals, name: ticker, auto: true });
-                have.add(key);
-                added = true;
-            }
-            if (added) store.save(chainId);
-            return added;
-        }
-
-        // loads cached detection results into state (no scanning), so tokens found on a previous
-        // visit or another device appear instantly
-        async function loadDetectionFromCache() {
-            const addresses = mergedAddresses();
-            if (addresses.length === 0) return;
-            let changed = false;
-            for (const node of enabledNodes()) {
-                for (const entry of addresses) {
-                    const cached = await getDetectCache(node.chainId, entry.address);
-                    if (cached?.tokens?.length && mergeDetected(node.chainId, cached.tokens)) changed = true;
-                }
-            }
-            if (changed) { renderTokens(); renderCards(); refreshBalances(); }
-        }
-
-        // scans one block range for ERC-20 contracts the address transferred to/from
-        async function scanRange(node, addrTopics, lo, to, known, ignored) {
-            const range = { fromBlock: '0x' + lo.toString(16), toBlock: '0x' + to.toString(16) };
-            const [outLogs, inLogs] = await rpcBatch([
-                ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, addrTopics] }]],
-                ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, addrTopics] }]],
-            ], node.rpcPath);
-            return erc20ContractsFromLogs((outLogs ?? []).concat(inLogs ?? []), known, ignored);
-        }
-
-        // resolves symbol/decimals and confirms a positive balance for candidate contracts,
-        // adding genuine holdings (held by any of addrList) to the chain's detected list
-        // Confirms a positive balance for candidate contracts. Returns every held token (the
-        // objective set, for the node cache) and separately adds to the displayed detected list
-        // only those that aren't manually tracked or hidden — so hiding a token never removes it
-        // from the shared cache.
+        // confirms a positive balance for candidate contracts and adds genuine holdings (held by any of
+        // addrList) to the chain's detected list, skipping manually-tracked and hidden ones
         async function vetAndAdd(node, addrList, candidates) {
             const state = stateOf(node.chainId);
             const manual = new Set(state.tokens.map((t) => t.address.toLowerCase()));
             const shown = new Set(state.detected.map((t) => t.address.toLowerCase()));
             const ignored = ignoredAddrs(node.chainId);
-            const fresh = candidates.filter((c) => !manual.has(c));
-            if (fresh.length === 0) return [];
+            const fresh = candidates.map((c) => c.toLowerCase()).filter((c) => !manual.has(c) && !shown.has(c) && !ignored.has(c));
+            if (fresh.length === 0) return;
             await resolveTokenMetas(node, fresh);
             const calls = [];
             for (const c of fresh) for (const a of addrList) calls.push(['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]);
             const bals = await rpcBatch(calls, node.rpcPath);
-            const held = [];
             let added = false;
             for (let ci = 0; ci < fresh.length; ci++) {
                 const meta = tokenMetaCache.get(node.chainId + '|' + fresh[ci]);
@@ -1518,104 +1451,67 @@
                     try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { has = true; break; } } catch { }
                 }
                 if (!has) continue;
-                held.push({ address: checksum(fresh[ci]), symbol: meta.ticker, decimals: meta.decimals });
-                if (!ignored.has(fresh[ci]) && !shown.has(fresh[ci])) {
-                    state.detected.push({ address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
-                    added = true;
-                }
+                // re-check synchronously (no await before the push) so concurrent vet passes can't double-add
+                if (state.detected.some((t) => t.address.toLowerCase() === fresh[ci])) continue;
+                state.detected.push({ address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
+                added = true;
             }
             if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
-            return held;
         }
 
-        // real-time detection: scans the blocks that arrived since the last poll for Transfer
-        // logs touching any pinned address, surfacing newly held tokens immediately (cheap —
-        // one getLogs pair over a small forward range per node)
+        // real-time: scan blocks arrived since the last poll for Transfer logs touching a pinned address
         async function realtimeDetect(node) {
             const addresses = mergedAddresses();
             if (!detectEnabled || addresses.length === 0 || !node.head) return;
             const head = BigInt(node.head);
-            if (node.detectHead === null || node.detectHead === undefined) { node.detectHead = head; return; } // seed, don't backscan on first sight
+            if (node.detectHead === null || node.detectHead === undefined) { node.detectHead = head; return; } // seed
             if (head <= node.detectHead) return;
             const from = head - node.detectHead > DETECT_REALTIME_MAX ? head - DETECT_REALTIME_MAX + 1n : node.detectHead + 1n;
             node.detectHead = head;
             const addrTopics = addresses.map((a) => '0x' + pad32(a.address));
+            const range = { fromBlock: '0x' + from.toString(16), toBlock: '0x' + head.toString(16) };
             const known = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
             try {
-                // ignored is not filtered here — vetAndAdd decides what to display; discovery stays objective
-                const contracts = await scanRange(node, addrTopics, from, head, known, new Set());
+                const [outLogs, inLogs] = await rpcBatch([
+                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, addrTopics] }]],
+                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, addrTopics] }]],
+                ], node.rpcPath);
+                const contracts = erc20ContractsFromLogs((outLogs ?? []).concat(inLogs ?? []), known, new Set());
                 if (contracts.length) await vetAndAdd(node, addresses.map((a) => a.address), contracts);
             } catch { /* next poll retries from the advanced cursor */ }
         }
 
-        // historical backfill: deep-scans one node's retained history for an address, resuming
-        // from and persisting to the node cache; walks backward from head in large chunks with
-        // bounded concurrency. Runs under the throttle (queue) and stops if detection is disabled.
-        async function deepScanNode(node, address) {
-            const chainId = node.chainId;
-            const rkey = chainId + ':' + address.toLowerCase();
-            if (!node.head || node.head === '0x0') return; // node not ready — retried on a later poll
-            const cached = await getDetectCache(chainId, address);
-            if (cached?.tokens?.length) mergeDetected(chainId, cached.tokens);
-            if (cached?.complete) { detectComplete.add(rkey); renderTokens(); renderCards(); refreshBalances(); return; }
-            const head = BigInt(node.head);
-            const addrTopics = ['0x' + pad32(address)];
-            const known0 = new Set(tokensOf(chainId).map((t) => t.address.toLowerCase()));
-            const ignored0 = new Set(); // discovery is objective; hidden tokens still go to the cache
-            const foundTokens = new Map();
-            for (const t of (cached?.tokens ?? [])) foundTokens.set(t.address.toLowerCase(), { address: t.address, symbol: t.symbol ?? t.ticker, decimals: t.decimals });
-            // resume just below the lowest previously scanned block, else start at head
-            let cursor = cached && cached.scannedFrom ? BigInt(cached.scannedFrom) - 1n : head;
-            let batches = 0;
-            while (cursor > 0n && detectEnabled) {
-                const ranges = [];
-                for (let c = 0; c < DETECT_CONCURRENCY && cursor > 0n; c++) {
-                    const to = cursor;
-                    const lo = cursor > DETECT_CHUNK ? cursor - DETECT_CHUNK + 1n : 0n;
-                    ranges.push([lo, to]);
-                    cursor = lo - 1n;
+        // historical: ask the serving node to scan its retained history in-process (POST triggers/resumes
+        // and returns progress), then vet whatever contracts it has found so far. Runs each poll; the node
+        // resumes and caches, so it converges then no-ops. Only the connected node exposes this endpoint.
+        async function nodeDetect(node) {
+            if (!detectEnabled || node.rpcPath !== '/' || nodeDetectBusy) return;
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) { detecting = false; updateDetectIndicator(); return; }
+            nodeDetectBusy = true;
+            try {
+                let scanning = false;
+                for (const entry of addresses) {
+                    let data;
+                    try {
+                        const res = await fetch('balances-detect', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chainId: node.chainId, address: entry.address }),
+                        });
+                        data = res.ok ? await res.json() : null;
+                    } catch { continue; }
+                    if (!data) { scanning = true; continue; } // scan just started; nothing cached yet
+                    if (data.contracts?.length) await vetAndAdd(node, [entry.address], data.contracts);
+                    if (!data.complete) scanning = true;
                 }
-                const results = await Promise.all(ranges.map(([lo, to]) => scanRange(node, addrTopics, lo, to, known0, ignored0).catch(() => [])));
-                const candidates = [...new Set(results.flat())].filter((c) => !foundTokens.has(c));
-                if (candidates.length) for (const t of await vetAndAdd(node, [address], candidates)) foundTokens.set(t.address.toLowerCase(), t);
-                if (++batches % DETECT_PERSIST_EVERY === 0) await putDetectCache(chainId, address, [...foundTokens.values()], cursor < 0n ? 0n : cursor + 1n, head, false);
-            }
-            const done = cursor <= 0n;
-            if (done) detectComplete.add(rkey);
-            await putDetectCache(chainId, address, [...foundTokens.values()], done ? 0n : cursor + 1n, head, done);
+                detecting = scanning;
+                updateDetectIndicator();
+            } finally { nodeDetectBusy = false; }
         }
 
         function updateDetectIndicator() {
             const btn = $('detectToggle');
-            if (btn) btn.classList.toggle('scanning', detectEnabled && (detectionRunning.size > 0 || detectQueue.length > 0));
-        }
-
-        // throttled backfill queue: at most DETECT_MAX_ADDRESSES address scans run concurrently
-        function enqueueBackfill(node, address) {
-            const rkey = node.chainId + ':' + address.toLowerCase();
-            if (detectComplete.has(rkey) || detectionRunning.has(rkey) || detectQueue.some((q) => q.rkey === rkey)) return;
-            detectQueue.push({ node, address, rkey });
-            pumpDetect();
-        }
-        function pumpDetect() {
-            while (detectEnabled && detectionRunning.size < DETECT_MAX_ADDRESSES && detectQueue.length) {
-                const { node, address, rkey } = detectQueue.shift();
-                detectionRunning.add(rkey);
-                deepScanNode(node, address).catch(() => { }).finally(() => {
-                    detectionRunning.delete(rkey);
-                    pumpDetect();
-                });
-            }
-            updateDetectIndicator();
-        }
-
-        // queues a historical backfill for every pinned address on every enabled chain (cheap
-        // for already-complete ones — deepScanNode returns after a single cache read)
-        function startDetectionForAll() {
-            if (!detectEnabled) return;
-            for (const node of enabledNodes())
-                for (const entry of mergedAddresses())
-                    enqueueBackfill(node, entry.address);
+            if (btn) btn.classList.toggle('scanning', detectEnabled && detecting);
         }
 
         // restores hidden tokens by moving the stored objects back to the detected list — works
@@ -2108,9 +2004,7 @@
                 setStatus(label ? `${label} → ${address}` : 'Pinned ' + address);
                 renderCards();
                 refreshBalances();
-                // show any tokens already scanned for this address (here or another device), then backfill it
-                loadDetectionFromCache();
-                if (detectEnabled) for (const node of enabledNodes()) enqueueBackfill(node, address);
+                nodeDetect(own()); // kick off the node-side historical scan for the new address
             } catch (e) {
                 setStatus(e.message, true);
             }
@@ -2262,7 +2156,7 @@
                 }
             }
             if (changed) refreshBalances();
-            if (detectEnabled) startDetectionForAll(); // (re)queue backfills now that heads are known; deduped/cached so cheap
+            nodeDetect(own()); // advance the node-side historical scan (own chain); no-op once complete
         }
 
         async function init() {
@@ -2293,8 +2187,7 @@
                 detectEnabled = !detectEnabled;
                 localStorage.setItem(DETECT_KEY, detectEnabled ? '1' : '0');
                 detectBtn.classList.toggle('on', detectEnabled);
-                if (detectEnabled) startDetectionForAll();
-                updateDetectIndicator();
+                if (detectEnabled) nodeDetect(own()); else { detecting = false; updateDetectIndicator(); }
                 setStatus(detectEnabled ? 'Token auto-detection on' : 'Token auto-detection off');
             };
 
@@ -2331,7 +2224,7 @@
                 $('addrInput').placeholder = '0x address (ENS unavailable on ' + enabledNodes().map((n) => n.meta.name).join('/') + ')';
             }
             applyNodeLayout();
-            loadDetectionFromCache().then(startDetectionForAll); // show cached tokens, then real-time + backfill
+            nodeDetect(own()); // start the node-side historical scan (own chain); real-time runs per poll
             renderFeed();
             pollHead();
             setInterval(pollHead, 12000);
