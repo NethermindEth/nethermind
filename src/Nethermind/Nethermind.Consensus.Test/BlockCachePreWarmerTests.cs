@@ -717,61 +717,6 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>
-    /// Verifies cancellation eligibility covers exceptional jobs AND every child of an
-    /// exceptional split, including children individually below the hoist threshold
-    /// (two 3M children from a 6M parent).
-    /// </summary>
-    [Test]
-    public void GroupTransactionsBySender_JobMetadataMarksSplitOriginAndCancellationEligibility()
-    {
-        Block block = Build.A.Block.WithTransactions(
-            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
-            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000),
-            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 5_000_000),
-            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000)).TestObject;
-
-        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
-        try
-        {
-            Assert.That(groups.Count, Is.EqualTo(4));
-            BlockCachePreWarmer.WarmupJob heavySingle = groups[0];
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(heavySingle.Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB));
-                Assert.That(heavySingle.IsHoisted, Is.True);
-                Assert.That(heavySingle.FromSplit, Is.False);
-                Assert.That(heavySingle.CancellationEligible, Is.True);
-                Assert.That(heavySingle.GasEstimate, Is.EqualTo(5_000_000UL));
-            }
-
-            int splitGroupId = -1;
-            foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
-            {
-                if (job.Transactions[0].Tx.SenderAddress == TestItem.AddressA)
-                {
-                    using (Assert.EnterMultipleScope())
-                    {
-                        Assert.That(job.FromSplit, Is.True);
-                        Assert.That(job.IsHoisted, Is.False, "each 3M child is below the hoist threshold");
-                        Assert.That(job.CancellationEligible, Is.True, "split children stay eligible regardless of their own gas");
-                        Assert.That(job.GasEstimate, Is.EqualTo(3_000_000UL));
-                    }
-                    if (splitGroupId < 0) splitGroupId = job.OriginalGroupId;
-                    else Assert.That(job.OriginalGroupId, Is.EqualTo(splitGroupId), "split siblings share the original group identity");
-                }
-                else if (job.Transactions[0].Tx.SenderAddress == TestItem.AddressC)
-                {
-                    Assert.That(job.CancellationEligible, Is.False, "an ordinary light job is not eligible");
-                }
-            }
-        }
-        finally
-        {
-            DisposeGroups(groups);
-        }
-    }
-
     [Test]
     public void GroupTransactionsBySender_EqualHeavyEstimatesKeepBlockOrder()
     {

@@ -447,10 +447,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         ArrayPoolList<WarmupJob> result = new(groups.Count);
-        int groupId = 0;
         foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.Values)
         {
-            groupId++;
             // The sender counters stay per original sender group; splitting below must not inflate them.
             if (speculativelyWarmed is not null)
             {
@@ -479,13 +477,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         // Already warmed speculatively — a singleton job for it would do no work.
                         continue;
                     }
-                    result.Add(new WarmupJob(new ArrayPoolList<(int, Transaction)>(1) { item }, item.Tx.GasLimit, groupId, fromSplit: true));
+                    result.Add(new WarmupJob(new ArrayPoolList<(int, Transaction)>(1) { item }, item.Tx.GasLimit));
                 }
                 group.Dispose();
             }
             else
             {
-                result.Add(new WarmupJob(group, groupGas, groupId, fromSplit: false));
+                result.Add(new WarmupJob(group, groupGas));
             }
         }
 
@@ -526,31 +524,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>
     /// One transaction-warming job: an unsplit sender group, or a singleton child of a split
-    /// exceptional group. Scheduling values are cached at formation so sorting and eligibility
-    /// checks never rescan the transaction list. The job owns <see cref="Transactions"/>; the
-    /// warm loop's outer finally disposes it.
+    /// exceptional group. Scheduling values are cached at formation so sorting never rescans
+    /// the transaction list. The job owns <see cref="Transactions"/>; the warm loop's outer
+    /// finally disposes it.
     /// </summary>
     /// <remarks>Deliberately a plain struct, not a record struct: generated equality and
     /// with-copying would obscure ownership of the pooled transaction list.</remarks>
     internal readonly struct WarmupJob(
         ArrayPoolList<(int Index, Transaction Tx)> transactions,
-        ulong gasEstimate,
-        int originalGroupId,
-        bool fromSplit)
+        ulong gasEstimate)
     {
         public readonly ArrayPoolList<(int Index, Transaction Tx)> Transactions = transactions;
         /// <summary>Saturating aggregate of the declared gas limits (see <see cref="TotalGasLimit"/>).</summary>
         public readonly ulong GasEstimate = gasEstimate;
         /// <summary>Block position of the job's first transaction; also the hoist sort's tie-break.</summary>
         public readonly int FirstIndex = transactions[0].Index;
-        /// <summary>Ordinal of the original sender group in the block, shared by split siblings.</summary>
-        public readonly int OriginalGroupId = originalGroupId;
-        public readonly bool FromSplit = fromSplit;
 
         public int LastIndex => Transactions[^1].Index;
         public bool IsHoisted => GasEstimate > SplitSenderGroupGasThreshold;
-        /// <summary>Exceptional jobs and children of an exceptional split; the mid-EVM cancellation experiment scopes to these.</summary>
-        public bool CancellationEligible => FromSplit || IsHoisted;
     }
 
     private static bool AllSpeculativelyWarmed(ArrayPoolList<(int Index, Transaction Tx)> group, ISet<Hash256> warmed)
