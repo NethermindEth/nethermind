@@ -208,7 +208,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Interlocked.Increment(ref _compactedSnapshotCount);
             Metrics.CompactedSnapshotCount++;
 
-            long compactedBytes = snapshot.Content.EstimateCompactedMemory();
+            long compactedBytes = snapshot.EstimateCompactedMemory();
             Metrics.CompactedSnapshotMemory += compactedBytes;
             Metrics.TotalSnapshotMemory += compactedBytes;
 
@@ -291,7 +291,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Interlocked.Decrement(ref _compactedSnapshotCount);
                 Metrics.CompactedSnapshotCount--;
 
-                long compactedBytes = existingState.Content.EstimateCompactedMemory();
+                long compactedBytes = existingState.EstimateCompactedMemory();
                 Metrics.CompactedSnapshotMemory -= compactedBytes;
                 Metrics.TotalSnapshotMemory -= compactedBytes;
 

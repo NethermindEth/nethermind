@@ -260,9 +260,7 @@ public partial class BlockProcessor(
     {
         using MetricsTimer<BloomsTimeSink> _ = new();
 
-        // Avoid parallel scheduling overhead for small receipt counts: ParallelUnbalancedWork queues
-        // ProcessorCount-1 ThreadPool items regardless of work size, which adds scheduling jitter and
-        // allocation overhead that exceeds the bloom computation cost for small blocks.
+        // Parallel scheduling overhead exceeds the bloom computation cost for small blocks.
         if (receipts.Length <= Environment.ProcessorCount)
         {
             foreach (TxReceipt? t in receipts)
@@ -345,8 +343,9 @@ public partial class BlockProcessor(
     }
 
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) =>
-        // Setting canonical is done when the BlockAddedToMain event is fired
-        receiptStorage.Insert(block, txReceipts, spec, false);
+        // Setting canonical is done when the BlockAddedToMain event is fired.
+        // The durable write is deferred off the processing path; visibility is synchronous.
+        receiptStorage.InsertDeferred(block, txReceipts, spec);
 
     protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {

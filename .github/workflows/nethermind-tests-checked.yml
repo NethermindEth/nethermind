@@ -32,7 +32,8 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
-          - label: no-intrinsics
+          - &no_intrinsics
+            label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
         project:
@@ -94,6 +95,14 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        exclude:
+          - { variant: *no_intrinsics, project: Nethermind.Api.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Config.Test }
+          - { variant: *no_intrinsics, project: Nethermind.EthStats.Test }
+          - { variant: *no_intrinsics, project: Nethermind.HealthChecks.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Logging.NLog.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Monitoring.Test }
+          - { variant: *no_intrinsics, project: Nethermind.Sockets.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

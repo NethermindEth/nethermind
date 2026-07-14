@@ -83,6 +83,9 @@ namespace Nethermind.Core
             AuthorizationList is not null &&
             AuthorizationList.Length > 0;
 
+        [JsonIgnore]
+        public IIntrinsicGasMemo? IntrinsicGasMemo;
+
         private Hash256? _hash;
 
         [JsonIgnore]
@@ -121,6 +124,7 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+                    IntrinsicGasMemo = null;
                     _hash = value;
                 }
             }
@@ -141,6 +145,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
 
             int size = transactionSequence.Length;
             _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
@@ -152,6 +157,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
         }
@@ -283,6 +289,7 @@ namespace Nethermind.Core
                     return false;
 
                 obj.ClearPreHash();
+                obj.IntrinsicGasMemo = null;
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
