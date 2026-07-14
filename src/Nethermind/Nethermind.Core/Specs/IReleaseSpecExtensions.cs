@@ -16,6 +16,7 @@ public static partial class IReleaseSpecExtensions
         public bool DepositsEnabled => spec.IsEip6110Enabled;
         public bool WithdrawalRequestsEnabled => spec.IsEip7002Enabled;
         public bool ConsolidationRequestsEnabled => spec.IsEip7251Enabled;
+        public bool BuilderRequestsEnabled => spec.IsEip8282Enabled;
         public bool LimitCodeSize => spec.IsEip170Enabled;
 
         public bool UseTxAccessLists => spec.IsEip2930Enabled;
@@ -44,12 +45,13 @@ public static partial class IReleaseSpecExtensions
         public bool TransientStorageEnabled => spec.IsEip1153Enabled;
         public bool WithdrawalsEnabled => spec.IsEip4895Enabled;
         public bool SelfdestructOnlyOnSameTransaction => spec.IsEip6780Enabled;
+        public bool RemoveSelfdestructBurn => spec.IsEip8246Enabled;
         public bool IsBeaconBlockRootAvailable => spec.IsEip4788Enabled;
         public bool IsBlockHashInStateAvailable => spec.IsEip7709Enabled;
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
-        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled;
+        public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
@@ -59,13 +61,13 @@ public static partial class IReleaseSpecExtensions
         /// Used when applying state overrides to preserve EIP-7610 CREATE collision detection.
         /// </summary>
         public IReleaseSpec WithoutEip158() =>
-            spec.IsEip158Enabled ? new NoEip158Spec(spec) : spec;
+            spec.IsEip158Enabled ? GetNoEip158Spec(spec) : spec;
 
         /// <summary>
         /// Returns a spec with EIP-3607 disabled, allowing contract addresses to act as transaction senders.
         /// Used in <c>eth_simulateV1</c> where state-overridden contracts may be the <c>from</c> address.
         /// </summary>
         public IReleaseSpec WithoutEip3607() =>
-            spec.IsEip3607Enabled ? new NoEip3607Spec(spec) : spec;
+            spec.IsEip3607Enabled ? GetNoEip3607Spec(spec) : spec;
     }
 }

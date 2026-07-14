@@ -159,7 +159,7 @@ public static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         // Pop destination offset, source offset, and length from the stack.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
@@ -172,6 +172,10 @@ public static partial class EvmInstructions
 
         // Charge gas for account access (considering hot/cold storage costs).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+            goto OutOfGas;
+
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         if (!result.IsZero)
@@ -201,6 +205,7 @@ public static partial class EvmInstructions
         else
         {
             vm.WorldState.AddAccountRead(address);
+            vm.WorldState.RecordBytecodeAccess(address);
         }
 
         return EvmExceptionType.None;
@@ -240,11 +245,15 @@ public static partial class EvmInstructions
         TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
 
         // Pop the account address from the stack.
-        Address address = stack.PopAddress();
+        Address address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+            goto OutOfGas;
+
+        // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
+        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);

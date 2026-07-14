@@ -28,42 +28,77 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
-            Transaction firstTx = txs[0];
-            if (firstTx.IsSigned && firstTx.SenderAddress is not null)
-                // already recovered a sender for a signed tx in this block,
-                // so we assume the rest of txs in the block are already recovered
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
-            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            RecoverData(txs, releaseSpec);
+        }
+
+        private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (!tx.IsSigned)
+                    continue;
+
+                if (tx.SenderAddress is null)
+                    return false;
+
+                if (checkAuthorities && tx.HasAuthorizationList)
+                {
+                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                    {
+                        if (tuple.Authority is null)
+                            return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec)
+        {
+            if (txs.Length == 0)
+                return;
+
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+                return;
+
             bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (txs.Length > 3)
             {
-                // Recover ecdsa in Parallel
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
                     ParallelUnbalancedWork.DefaultOptions,
                     (recover: this, txs, releaseSpec, useSignatureChainId),
-                    static (i, state) =>
-                {
-                    Transaction tx = state.txs[i];
-
-                    tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
-                    state.recover.RecoverAuthorities(tx, state.releaseSpec);
-                    if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-
-                    return state;
-                });
+                    RecoverSingle);
             }
             else
             {
                 foreach (Transaction tx in txs)
                 {
-                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                    RecoverAuthorities(tx, releaseSpec);
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                    Recover(tx, releaseSpec);
                 }
             }
+        }
+
+        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) RecoverSingle(
+            int i,
+            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool useSignatureChainId) state)
+        {
+            state.recover.Recover(state.txs[i], state.releaseSpec);
+            return state;
+        }
+
+        private void Recover(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            _ = tx.Hash;
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+            RecoverAuthorities(tx, releaseSpec);
+            if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
         }
 
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)

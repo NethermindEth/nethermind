@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -18,12 +19,15 @@ namespace Nethermind.Consensus.Tracing;
 public sealed class BlockchainProcessorFacade(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
-    CompositeBlockPreprocessorStep preprocessorStep
+    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps
 )
 {
     public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
-        preprocessorStep.RecoverData(block);
+        for (int i = 0; i < preprocessorSteps.Count; i++)
+        {
+            preprocessorSteps[i].RecoverData(block);
+        }
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 

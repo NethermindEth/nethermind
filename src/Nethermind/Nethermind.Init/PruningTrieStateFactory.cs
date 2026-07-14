@@ -105,6 +105,7 @@ public class MainPruningTrieStoreFactory
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
+        IStatePersistenceBarrier persistenceBarrier,
         ILogManager logManager
     )
     {
@@ -154,7 +155,9 @@ public class MainPruningTrieStoreFactory
             pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
         }
 
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
+        // Interpose the barrier on the node storage flush so a block's deferred block-data is made durable
+        // before its state, keeping the durability invariant without changing TrieStore.
+        INodeStorage mainNodeStorage = new BarrierNodeStorage(nodeStorageFactory.WrapKeyValueStore(stateDb), persistenceBarrier);
 
         if (pruningConfig.SimulateLongFinalizationDepth != 0UL)
         {

@@ -3040,6 +3040,89 @@ public class BlockTreeTests
         }
     }
 
+    [Test]
+    public void RecalculateTreeLevels_WhenKnownHeadersSitBelowLowestInsertedBeaconHeader_MovesPointerToSuggestedChainBoundary()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+
+        BlockHeader header5 = Build.A.BlockHeader.WithNumber(5).WithParent(tree.Head!.Header).TestObject;
+        BlockHeader header6 = Build.A.BlockHeader.WithNumber(6).WithParent(header5).TestObject;
+        BlockHeader header7 = Build.A.BlockHeader.WithNumber(7).WithParent(header6).TestObject;
+        tree.Insert(header5, beaconInsert);
+        tree.Insert(header6, beaconInsert);
+        tree.Insert(header7, beaconInsert);
+        // An interrupted backfill persists the pointer above headers it already inserted.
+        tree.LowestInsertedBeaconHeader = header7;
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL));
+    }
+
+    [Test]
+    public void RecalculateTreeLevels_WhenBeaconHeaderParentIsUnknown_KeepsPointer()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+
+        BlockHeader detached = Build.A.BlockHeader.WithNumber(7).WithParentHash(TestItem.KeccakA).TestObject;
+        tree.Insert(detached, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        tree.RecalculateTreeLevels();
+
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(7UL));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void RecalculateTreeLevels_WhenBestSuggestedHeaderUnresolvableInPoS_StopsAtBeaconJunction()
+    {
+        // Post-merge repro of the O(n) startup walk (#12273): on a node whose best-suggested
+        // header sits ahead of the processed main-chain head, FindHeader(number, None) returns
+        // null (GetBlockHashOnMainOrBestDifficultyHash bails post-merge), so BestSuggestedHeader
+        // is null and the old stop bound collapsed to 1. The reconciliation must still stop at the
+        // beacon/non-beacon junction rather than walking every already-synced header to genesis.
+        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
+        {
+            TerminalTotalDifficulty = UInt256.Zero
+        };
+
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+        BlockTree tree = Build.A.BlockTree(specProvider)
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        // Already-synced, processed main chain 0..4 (non-beacon, canonical).
+        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(previous);
+        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
+        for (int i = 1; i <= 4; i++)
+        {
+            Block block = Build.A.Block.WithNumber((ulong)i).WithDifficulty(0).WithParent(previous).TestObject;
+            tree.SuggestBlock(block);
+            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
+            previous = block;
+        }
+
+        // A non-beacon header suggested ahead of the processed head: the best-suggested number
+        // resolves to a level with no main-chain block, so BestSuggestedHeader is null post-merge.
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        tree.SuggestBlock(block5);
+
+        // Beacon header backfilled on top; pointer parked one above the junction.
+        BlockHeader header6 = Build.A.BlockHeader.WithNumber(6).WithParent(block5.Header).TestObject;
+        tree.Insert(header6, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        tree.RecalculateTreeLevels();
+
+        // Must stay at the lowest beacon header, not descend into the synced chain (was 1 before the fix).
+        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(6UL));
+    }
+
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
     {
         using (Assert.EnterMultipleScope())

@@ -23,6 +23,12 @@ public sealed class LocalMetrics
     public long StateSkippedWrites;
     public long StorageTreeCache;
     public long StorageTreeReads;
+    // Pre-block (prewarmer-shared) cache probes, split from the per-block change-dict layer above:
+    // hits+misses = first-in-block touches only, so hit rate here = prewarm coverage.
+    public long PreBlockAccountHits;
+    public long PreBlockAccountMisses;
+    public long PreBlockStorageHits;
+    public long PreBlockStorageMisses;
     // Storage write/skipped counters are deliberately absent: reported from parallel worker finalizers,
     // so they go straight to the atomic global Db.Metrics (see PersistentStorageProvider.ReportMetrics).
 
@@ -45,6 +51,14 @@ public sealed class LocalMetrics
     public void IncrementStorageTreeCache() => StorageTreeCache++;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementStorageTreeReads() => StorageTreeReads++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void IncrementPreBlockAccountHits() => PreBlockAccountHits++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void IncrementPreBlockAccountMisses() => PreBlockAccountMisses++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void IncrementPreBlockStorageHits() => PreBlockStorageHits++;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void IncrementPreBlockStorageMisses() => PreBlockStorageMisses++;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementStorageWrites()
@@ -84,6 +98,10 @@ public sealed class LocalMetrics
         StateSkippedWrites = 0;
         StorageTreeCache = 0;
         StorageTreeReads = 0;
+        PreBlockAccountHits = 0;
+        PreBlockAccountMisses = 0;
+        PreBlockStorageHits = 0;
+        PreBlockStorageMisses = 0;
         AccountWrites = 0;
         AccountDeleted = 0;
         StorageWrites = 0;

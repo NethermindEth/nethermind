@@ -135,14 +135,17 @@ public class ChainParameters
     public Address Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
     public Address Eip7251ContractAddress { get; set; }
+    public ulong? Eip2935Transition { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702Transition { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
 
     public ulong? Eip7594TransitionTimestamp { get; set; }
+    public ulong? Eip7623Transition { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7778TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
@@ -184,6 +187,10 @@ public class ChainParameters
 
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
+    public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8038TransitionTimestamp { get; set; }
+    public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
+    public ulong? Eip2780TransitionTimestamp { get; set; }
 }

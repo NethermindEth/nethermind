@@ -71,6 +71,22 @@ public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5R
     }
 }
 
+public interface INewPayloadWithWitnessVersion<TWire> where TWire : struct, ISszCodec<TWire>
+{
+    static abstract int VersionNumber { get; }
+    static abstract Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in TWire wire);
+}
+
+public readonly struct NewPayloadWithWitnessDescriptorV1 : INewPayloadWithWitnessVersion<NewPayloadV5RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.NewPayload.V5;
+    public static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> Call(IEngineRpcModule engine, in NewPayloadV5RequestWire wire)
+    {
+        ExecutionPayloadV4 ep = wire.ExecutionPayload.AsExecutionPayload();
+        return engine.engine_newPayloadWithWitness(ep, SszCodec.GetBlobVersionedHashes(ep), wire.ParentBeaconBlockRoot, wire.ExecutionRequests.ToExecutionRequests());
+    }
+}
+
 public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCodec<TWire>
 {
     static abstract int VersionNumber { get; }

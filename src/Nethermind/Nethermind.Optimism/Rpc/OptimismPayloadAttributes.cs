@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,7 +31,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
     }
     public bool NoTxPool { get; set; }
     public ulong GasLimit { get; set; }
-    public override ulong? GetGasLimit() => GasLimit;
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => GasLimit;
 
     /// <remarks>
     /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>

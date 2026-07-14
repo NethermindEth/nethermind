@@ -197,7 +197,7 @@ namespace Nethermind.AuRa.Test
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
-            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
+            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
             ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
                 new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -224,7 +224,6 @@ namespace Nethermind.AuRa.Test
                 processor,
                 GnosisSpecProvider.Instance,
                 stateProvider,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 blockhashProvider,
                 LimboLogs.Instance);
 

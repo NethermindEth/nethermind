@@ -142,10 +142,8 @@ public class MergePluginTests
     public void Init_merge_plugin_does_not_throw_exception(bool enabled)
     {
         using IContainer container = BuildContainer();
-        INethermindApi api = container.Resolve<INethermindApi>();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
-        Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
+        Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
         Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
@@ -186,11 +184,10 @@ public class MergePluginTests
     {
         await using IContainer container = BuildContainer();
         INethermindApi api = container.Resolve<INethermindApi>();
-        Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
-        await _plugin.Init(api);
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
         ISyncConfig syncConfig = api.Config<ISyncConfig>();
         Assert.That(syncConfig.NetworkingEnabled, Is.True);
-        Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
+        Assert.That(container.Resolve<IGossipPolicy>().CanGossipBlocks, Is.True);
         IBlockProducer blockProducer = container.Resolve<IBlockProducerFactory>().InitBlockProducer();
         Assert.That(blockProducer, Is.InstanceOf<MergeBlockProducer>());
         Assert.That(container.Resolve<IBlockProductionPolicy>(), Is.InstanceOf<MergeBlockProductionPolicy>());
@@ -200,9 +197,7 @@ public class MergePluginTests
     public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
     {
         await using IContainer container = BuildContainer();
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _consensusPlugin!.Init(api);
-        await _plugin.Init(api);
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
 
         Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
     }
@@ -231,8 +226,8 @@ public class MergePluginTests
         }
 
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        Assert.That(async () => await _plugin.Init(api), Throws.TypeOf<InvalidConfigurationException>());
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
     }
 
     [Test]
@@ -250,8 +245,7 @@ public class MergePluginTests
         };
 
         await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
-        INethermindApi api = container.Resolve<INethermindApi>();
-        await _plugin.Init(api);
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
 
         Assert.That(jsonRpcConfig.Enabled, Is.True);
         Assert.That(jsonRpcConfig.EnabledModules, Is.Empty);

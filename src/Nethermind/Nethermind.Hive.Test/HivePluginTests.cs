@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using NSubstitute;
-using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -30,14 +29,6 @@ namespace Nethermind.Hive.Test
         [Test]
         public void Can_create() =>
             _ = new HivePlugin(new HiveConfig() { Enabled = true });
-
-        [Test]
-        public void Can_initialize()
-        {
-            INethermindPlugin plugin = new HivePlugin(new HiveConfig() { Enabled = true });
-            plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
-            plugin.InitRpcModules();
-        }
 
         [Test]
         public void Can_resolve_hive_step()

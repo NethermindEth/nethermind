@@ -6,7 +6,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -60,10 +59,11 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            // Witness mode disables the CodeInfo cache to record every code access, but this env only
-            // consumes an already-built witness, so caching is safe here and avoids re-running
-            // jump-destination analysis on every CALL.
-            witnessMode: false
+            // This env only consumes an already-built witness (guest side), so serving CodeInfo from
+            // the code-hash cache is safe here and avoids re-running jump-destination analysis on
+            // every CALL.
+            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -96,7 +96,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor),
+            new StatelessExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }
@@ -107,7 +107,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider()),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
             logManager
         );
 }

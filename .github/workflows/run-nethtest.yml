@@ -1,0 +1,786 @@
+name: Run nethtest (EEST tests)
+
+# Reusable EEST fixture-execution workflow ("nethtest"). Callers (nethermind-tests.yml,
+# nethermind-tests-flat.yml) invoke it via workflow_call in place of the former
+# Ethereum.Blockchain.Pyspec.Test NUnit shards; workflow_dispatch supports manual runs.
+#
+# The fixture set is split into deterministic interleaved file chunks (--chunk NofM) so
+# every job fits on a standard ubuntu-latest runner, and the configuration matrix mirrors
+# the pyspec fixture classes: sequential, flat_sequential, and the Amsterdam BAL
+# parallel-execution / batch-read variants.
+
+on:
+  workflow_call:
+    inputs:
+      test_types:
+        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, txTest)
+        required: false
+        default: engineTest
+        type: string
+      setup_group:
+        description: Which configuration group to run (sequential, flat, all)
+        required: false
+        default: sequential
+        type: string
+      eest_version:
+        description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
+        required: false
+        default: tests-glamsterdam-devnet@v6.1.1
+        type: string
+      zkevm_version:
+        description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
+        required: false
+        default: tests-zkevm@v0.5.0
+        type: string
+      filter:
+        description: Regex filter for test names
+        required: false
+        default: ''
+        type: string
+      idle_timeout_minutes:
+        description: Fail nethtest if no test progress is logged for this many minutes
+        required: false
+        default: '10'
+        type: string
+      variant:
+        description: Build/runtime variant (checked, no-intrinsics); empty = standard build
+        required: false
+        default: ''
+        type: string
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to test
+        required: false
+        default: ''
+        type: string
+      test_types:
+        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, txTest)
+        required: false
+        default: engineTest
+        type: string
+      setup_group:
+        description: Which configuration group to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - sequential
+          - flat
+          - all
+      eest_version:
+        description: EEST release tag, or latest / latest-<keyword> to resolve dynamically
+        required: false
+        default: tests-glamsterdam-devnet@v6.1.1
+        type: string
+      zkevm_version:
+        description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
+        required: false
+        default: tests-zkevm@v0.5.0
+        type: string
+      filter:
+        description: Regex filter for test names (optional)
+        required: false
+        default: ''
+        type: string
+      idle_timeout_minutes:
+        description: Fail nethtest if no test progress is logged for this many minutes
+        required: false
+        default: '10'
+        type: string
+      variant:
+        description: Build/runtime variant (checked, no-intrinsics); empty = standard build
+        required: false
+        default: ''
+        type: string
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+  FILTER: ${{ inputs.filter || '' }}
+  IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
+  # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
+  # fixtures for all forks (Frontier..Amsterdam) with the devnet-6 Amsterdam semantics
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v6.1.1) to pin.
+  EEST_REPOSITORY: ethereum/execution-specs
+  EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v6.1.1' }}
+  EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
+  # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
+  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.5.0, which this
+  # branch's witness roots match (dispatch with zkevm_version to test other releases).
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.5.0' }}
+  # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
+  # (throughput-oriented, collects lazily), which previously ballooned past the
+  # runner limit on the full fixture set. Workstation GC keeps the heap tight,
+  # and ConserveMemory trades CPU for headroom on the marginal flat
+  # parallel-execution chunks (same setting the NUnit flat workflow uses).
+  DOTNET_gcServer: '0'
+  DOTNET_GCConserveMemory: '9'
+  # Build/runtime variant for the nethermind-tests-checked matrix: checked builds the
+  # runner with TRACE;DEBUG defines (overflow/assert checks); no-intrinsics disables
+  # hardware intrinsics at run time (SIMD software-fallback paths). Empty = standard.
+  VARIANT: ${{ inputs.variant || '' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare-matrix:
+    name: Prepare nethtest matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+      eest_version: ${{ steps.resolve.outputs.eest_version }}
+      zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
+    steps:
+      # Build the runner ONCE here and share it as an artifact, instead of rebuilding the
+      # identical binary in every matrix job (~80s/job of pure redundancy). Test jobs
+      # download it and run the DLL directly.
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind.Test.Runner
+        working-directory: src/Nethermind
+        run: |
+          BUILD_ARGS=""
+          # checked variant: build with TRACE;DEBUG defines to enable overflow/assert checks.
+          # The semicolon must be MSBuild-escaped (%3B), else it is parsed as a -p property
+          # separator (MSB1006: Switch: DEBUG) - same escaping the NUnit checked matrix uses.
+          [ "$VARIANT" = "checked" ] && BUILD_ARGS='-p:DefineConstants=TRACE%3BDEBUG'
+          dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false $BUILD_ARGS
+
+      - name: Upload runner artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # Variant-suffixed so a caller can invoke this workflow once per variant in the
+          # same run without the artifact names colliding.
+          name: nethtest-runner-${{ inputs.variant || 'default' }}
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
+          retention-days: 1
+          include-hidden-files: true
+
+      - name: Generate matrix
+        id: generate
+        env:
+          TEST_TYPES: ${{ inputs.test_types || 'engineTest' }}
+          SETUP_GROUP: ${{ inputs.setup_group || 'sequential' }}
+        run: |
+          ENTRIES_FILE="$(mktemp)"
+
+          emit() {
+            local type=$1 setup=$2 scope=$3 flatdb=$4 parallel=$5 batchread=$6 workers=$7 chunks=$8
+            for i in $(seq 1 "$chunks"); do
+              jq -nc \
+                --arg type "$type" --arg setup "$setup" --arg chunk "${i}of${chunks}" \
+                --arg scope "$scope" --arg flatdb "$flatdb" --arg parallel "$parallel" \
+                --arg batchread "$batchread" --arg workers "$workers" \
+                '{test_type: $type, test_setup: $setup, chunk: $chunk, scope: $scope, flatdb: $flatdb, parallel: $parallel, batchread: $batchread, workers: $workers}' \
+                >> "$ENTRIES_FILE"
+            done
+          }
+
+          run_sequential() { [ "$SETUP_GROUP" = "sequential" ] || [ "$SETUP_GROUP" = "all" ]; }
+          run_flat() { [ "$SETUP_GROUP" = "flat" ] || [ "$SETUP_GROUP" = "all" ]; }
+
+          IFS=',' read -ra TYPES <<< "$TEST_TYPES"
+          for raw_type in "${TYPES[@]}"; do
+            type="$(echo "$raw_type" | tr -d '[:space:]')"
+            case "$type" in
+              engineTest|blockTest)
+                # Mirrors the pyspec fixture classes: sequential merkle baseline over the
+                # full set, plus the flat layout and its Amsterdam BAL parallel/batch-read
+                # variants (the toggles are EIP-7928-gated, hence the amsterdam scope).
+                # The default (patricia) layout disposes its state store per test, so these
+                # jobs never approach the 16 GB runner limit; chunk counts here are sized for
+                # wall-clock, not memory.
+                if [ -n "$VARIANT" ] && run_sequential; then
+                  # Build-variant coverage (checked / no-intrinsics): only the plain
+                  # sequential config, coarsely chunked. The variant exercises arithmetic
+                  # and SIMD-fallback code paths, which are independent of the BAL/parallel
+                  # and flat sub-variants, so those add no coverage here. Variant builds run
+                  # slower, so chunks are kept modest but under the job timeout.
+                  if [ "$type" = "engineTest" ]; then
+                    emit "$type" sequential full '' false false 4 3
+                  else
+                    emit "$type" sequential full '' false false 4 2
+                  fi
+                elif run_sequential; then
+                  # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
+                  # unfiltered, so the Amsterdam parallel/batch-read variant classes also
+                  # ran under the default (patricia) layout — including parallel-full,
+                  # which is the production configuration. Mirror that coverage here.
+                  # Chunk counts are sized to keep every job under ~8 min wall (measured):
+                  # engineTest fixtures run ~2x slower than blockTest, so engine gets more.
+                  if [ "$type" = "engineTest" ]; then
+                    emit "$type" sequential   full      '' false false 4 5
+                    emit "$type" parallel     amsterdam '' true  false 1 2
+                    emit "$type" batchread    amsterdam '' false true  4 2
+                    emit "$type" parallelfull amsterdam '' true  true  1 2
+                  else
+                    emit "$type" sequential   full      '' false false 4 4
+                    emit "$type" parallel     amsterdam '' true  false 1 1
+                    emit "$type" batchread    amsterdam '' false true  4 1
+                    emit "$type" parallelfull amsterdam '' true  true  1 1
+                  fi
+                fi
+                if run_flat; then
+                  # The flat in-memory backend NEVER PRUNES, so state accumulates across a
+                  # chunk: it is both slower per test (heap grows -> GC pressure) and bounded
+                  # by the 16 GB runner limit, hence the denser split than patricia. The
+                  # parallel-exec chunks run short (~2-4 min) but each job pays ~50s fixed
+                  # overhead, so they are merged down to the memory floor: on this v7.3.2 set
+                  # parallel OOMed at 5 chunks and parallel-full at 4, so 6 / 5 are the safe
+                  # minimums. Engine is the heaviest combination.
+                  if [ "$type" = "engineTest" ]; then
+                    emit "$type" flat_sequential  full      1 false false 2 9
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
+                    emit "$type" flat_batchread   amsterdam 1 false true  4 3
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
+                  else
+                    emit "$type" flat_sequential  full      1 false false 4 6
+                    emit "$type" flat_parallel    amsterdam 1 true  false 1 6
+                    emit "$type" flat_batchread   amsterdam 1 false true  4 2
+                    emit "$type" flat_parallelfull amsterdam 1 true true  1 5
+                  fi
+                fi
+                ;;
+              stateTest)
+                # State tests execute a single tx via the tx processor - the block-level
+                # parallel/batch-read toggles do not apply, only the state layout does.
+                if run_sequential; then
+                  # The state set is memory-heavy even on patricia: 1 chunk GC-thrashed into
+                  # the idle watchdog (same failure as flat state at 3 chunks), so keep 2 -
+                  # the proven-stable floor.
+                  emit "$type" sequential full '' '' '' 4 2
+                fi
+                if run_flat; then
+                  # Flat + 4 workers is memory-heavy for the state set; 3 chunks GC-thrashed
+                  # until the idle watchdog killed a chunk, 4 is the proven-stable floor.
+                  emit "$type" flat_sequential full 1 '' '' 4 4
+                fi
+                ;;
+              syncTest)
+                # Sync fixtures share the engine-payload format; the sync-specific payload
+                # is not exercised yet (same coverage the NUnit sync fixtures provided).
+                if run_sequential; then
+                  emit "$type" sequential full '' false false 4 1
+                fi
+                if run_flat; then
+                  emit "$type" flat_sequential full 1 false false 4 1
+                fi
+                ;;
+              txTest)
+                # Raw-tx validation touches neither the state layout nor block execution,
+                # so it only runs in the sequential group (flat would be a duplicate).
+                if run_sequential; then
+                  emit "$type" sequential full '' '' '' 4 1
+                fi
+                ;;
+              zkevmTest)
+                # Stateless witness execution builds its own in-memory state, so the
+                # layout and BAL toggles are irrelevant - sequential group only.
+                # ~20s per chunk, so a single runner is plenty.
+                if run_sequential; then
+                  emit "$type" sequential full '' '' '' 4 1
+                fi
+                ;;
+              *)
+                echo "::error::Unknown test type: '$type'"
+                exit 1
+                ;;
+            esac
+          done
+
+          MATRIX="$(jq -cs '{include: .}' "$ENTRIES_FILE")"
+          COUNT="$(jq -s 'length' "$ENTRIES_FILE")"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::Matrix is empty for test_types='$TEST_TYPES' setup_group='$SETUP_GROUP'"
+            exit 1
+          fi
+          echo "Generated $COUNT matrix entries"
+          jq -s '.' "$ENTRIES_FILE"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve fixture releases
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_TYPES: ${{ inputs.test_types || 'engineTest' }}
+        run: |
+          # Resolved once per run, authenticated. Per-job unauthenticated API calls hit
+          # the per-IP rate limit on large matrices (curl exit 22 on shared runner IPs).
+          resolve() {
+            local version=$1
+            local resolved
+            if [ "$version" = "latest" ]; then
+              resolved="$(gh api "repos/$EEST_REPOSITORY/releases/latest" | jq -r '.tag_name')"
+            elif [[ "$version" == latest-* ]]; then
+              local keyword="${version#latest-}"
+              resolved="$(gh api "repos/$EEST_REPOSITORY/releases?per_page=20" \
+                | jq -r --arg keyword "$keyword" '[.[] | select(.tag_name | contains($keyword))] | first | .tag_name')"
+            else
+              resolved="$version"
+            fi
+
+            if [ -z "$resolved" ] || [ "$resolved" = "null" ]; then
+              echo "::error::Could not resolve release for $EEST_REPOSITORY ($version)" >&2
+              return 1
+            fi
+            echo "$resolved"
+          }
+
+          RESOLVED_EEST="$(resolve "$EEST_VERSION")"
+          echo "eest_version=$RESOLVED_EEST" >> "$GITHUB_OUTPUT"
+          echo "Resolved EEST release: $RESOLVED_EEST"
+
+          if [[ "$TEST_TYPES" == *zkevmTest* ]]; then
+            RESOLVED_ZKEVM="$(resolve "$ZKEVM_VERSION")"
+            echo "zkevm_version=$RESOLVED_ZKEVM" >> "$GITHUB_OUTPUT"
+            echo "Resolved zkEVM release: $RESOLVED_ZKEVM"
+          fi
+
+  nethtest:
+    name: nethtest ${{ matrix.test_type }} ${{ matrix.test_setup }} ${{ matrix.chunk }}
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    env:
+      TEST_TYPE: ${{ matrix.test_type }}
+      TEST_SETUP: ${{ matrix.test_setup }}
+      CHUNK: ${{ matrix.chunk }}
+      SCOPE: ${{ matrix.scope }}
+      FLATDB: ${{ matrix.flatdb }}
+      PARALLEL: ${{ matrix.parallel }}
+      BATCHREAD: ${{ matrix.batchread }}
+      WORKERS: ${{ matrix.workers }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download runner artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: nethtest-runner-${{ inputs.variant || 'default' }}
+          path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
+
+      - name: Select fixture release
+        id: eest_release
+        env:
+          RESOLVED_EEST: ${{ needs.prepare-matrix.outputs.eest_version }}
+          RESOLVED_ZKEVM: ${{ needs.prepare-matrix.outputs.zkevm_version }}
+        run: |
+          # Releases are resolved once in prepare-matrix; this step only picks the
+          # release line and archive for this job's test type.
+          if [ "$TEST_TYPE" = "zkevmTest" ]; then
+            RESOLVED_EEST_VERSION="$RESOLVED_ZKEVM"
+            VERSION_INPUT="$ZKEVM_VERSION"
+            EEST_ARCHIVE="fixtures_zkevm.tar.gz"
+          else
+            RESOLVED_EEST_VERSION="$RESOLVED_EEST"
+            VERSION_INPUT="$EEST_VERSION"
+          fi
+
+          if [ -z "$RESOLVED_EEST_VERSION" ]; then
+            echo "::error::No resolved release available for $TEST_TYPE"
+            exit 1
+          fi
+
+          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_input=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
+          echo "archive=$EEST_ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "Using $EEST_ARCHIVE @ $RESOLVED_EEST_VERSION"
+
+      - name: Cache EEST fixtures
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/eest-fixtures
+          key: eest-${{ env.EEST_REPOSITORY }}-${{ steps.eest_release.outputs.version }}-${{ steps.eest_release.outputs.archive }}
+
+      - name: Download EEST fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
+          if [ ! -d "$EEST_DIR" ]; then
+            mkdir -p "$EEST_DIR"
+            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
+            echo "Downloading EEST fixtures from $ARCHIVE_URL"
+            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
+          else
+            echo "EEST fixtures already cached at $EEST_DIR"
+          fi
+
+      - name: Resolve fixture path
+        id: fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
+
+          case "$TEST_TYPE" in
+            engineTest) FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
+            blockTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--blockTest ;;
+            stateTest)  FIXTURE_NAME=state_tests;             RUNNER_FLAG=--stateTest ;;
+            # Sync fixtures use the engine-payload format; run them through the engine harness.
+            syncTest)   FIXTURE_NAME=blockchain_tests_sync;   RUNNER_FLAG=--engineTest ;;
+            txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
+            # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
+            zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;
+            *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
+          esac
+
+          FIXTURE_DIR="$(find "$EEST_DIR" -type d -name "$FIXTURE_NAME" | head -1)"
+          if [ -z "$FIXTURE_DIR" ] || [ ! -d "$FIXTURE_DIR" ]; then
+            echo "::error::Could not find fixture directory for $TEST_TYPE in $EEST_DIR"
+            find "$EEST_DIR" -maxdepth 3 -type d | head -30
+            exit 1
+          fi
+
+          if [ "$SCOPE" = "amsterdam" ]; then
+            # Newer releases prefix fork dirs with "for_"; older ones don't.
+            SCOPED_DIR="$(find "$FIXTURE_DIR" -maxdepth 1 -type d \( -name 'for_amsterdam' -o -name 'amsterdam' \) | head -1)"
+            if [ -z "$SCOPED_DIR" ]; then
+              echo "::error::Could not find Amsterdam fixture subdirectory in $FIXTURE_DIR"
+              find "$FIXTURE_DIR" -maxdepth 1 -type d | head -30
+              exit 1
+            fi
+            FIXTURE_DIR="$SCOPED_DIR"
+          fi
+
+          echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
+          echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
+          echo "Found fixture directory: $FIXTURE_DIR"
+          echo "Fixture count: $(find "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
+
+      - name: Run nethtest and parse results
+        working-directory: src/Nethermind
+        timeout-minutes: 55
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
+          EEST_VERSION: ${{ steps.eest_release.outputs.version_input }}
+          EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
+          RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
+        run: |
+          FILTER_ARG=""
+          if [ -n "$FILTER" ]; then
+            FILTER_ARG="--filter $FILTER"
+          fi
+
+          SETUP_ARGS="--chunk $CHUNK"
+          if [ "$FLATDB" = "1" ]; then
+            SETUP_ARGS="$SETUP_ARGS --flatdb"
+          fi
+          if [ -n "$PARALLEL" ]; then
+            SETUP_ARGS="$SETUP_ARGS --parallelExecution $PARALLEL"
+          fi
+          if [ -n "$BATCHREAD" ]; then
+            SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
+          fi
+
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          RESULTS_FILE="$RUNNER_TMP/nethtest-results.json"
+          STDERR_FILE="$RUNNER_TMP/nethtest-stderr.log"
+          CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
+          LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
+          WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
+
+          # Write summary even if the process crashes
+          write_summary() {
+            # Strip ANSI codes and extract only progress/failure lines
+            sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -E "^(PROGRESS|FAIL|EXCEPTION) " > "$CLEAN_FILE" 2>/dev/null || true
+
+            HAS_JSON=false
+            if [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
+              HAS_JSON=true
+              TOTAL=$(jq 'length' "$RESULTS_FILE")
+              PASSED=$(jq '[.[] | select(.pass == true)] | length' "$RESULTS_FILE")
+              FAILED=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
+            else
+              FAILED=$(awk '/^(FAIL|EXCEPTION) / { count++ } END { print count + 0 }' "$CLEAN_FILE" 2>/dev/null)
+              PROGRESS_STATS=$(grep -E "^(PROGRESS|FAIL|EXCEPTION) \\[[0-9]+/[0-9]+\\]" "$CLEAN_FILE" 2>/dev/null \
+                | sed -E 's/.*\[([0-9]+)\/([0-9]+)\].*/\1 \2/' \
+                | awk '{ if ($1 > done) done = $1; total = $2 } END { printf "%d %d", done, total }')
+              DONE="${PROGRESS_STATS%% *}"
+              TOTAL="${PROGRESS_STATS##* }"
+              if [ "$TOTAL" -eq 0 ]; then
+                TOTAL=$FAILED
+              fi
+              PASSED=$(( DONE > FAILED ? DONE - FAILED : 0 ))
+            fi
+
+            HEADER="nethtest results"
+            if [ "$HAS_JSON" = false ] && [ "$TOTAL" -gt 0 ]; then
+              HEADER="nethtest results (process crashed - partial results from stderr)"
+            elif [ "$TOTAL" -eq 0 ]; then
+              HEADER="nethtest results (process crashed before producing output)"
+            fi
+
+            {
+              echo "## $HEADER"
+              echo ""
+              echo "| Metric | Value |"
+              echo "|--------|-------|"
+              echo "| Test type | \`$TEST_TYPE\` (\`$RUNNER_FLAG\`) |"
+              echo "| Test setup | \`$TEST_SETUP\` |"
+              echo "| Chunk | \`$CHUNK\` |"
+              echo "| Scope | \`$SCOPE\` |"
+              echo "| Setup args | \`$SETUP_ARGS\` |"
+              echo "| EEST repository | \`$EEST_REPOSITORY\` |"
+              echo "| EEST version | \`$RESOLVED_EEST_VERSION\` |"
+              if [ "$EEST_VERSION" != "$RESOLVED_EEST_VERSION" ]; then
+                echo "| EEST version input | \`$EEST_VERSION\` |"
+              fi
+              echo "| EEST archive | \`$EEST_ARCHIVE\` |"
+              echo "| Workers | $WORKERS |"
+              echo "| Total | $TOTAL |"
+              echo "| Passed | **$PASSED** |"
+              echo "| Failed | **$FAILED** |"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$FAILED" -gt 0 ]; then
+              MAX_SUMMARY_FAILURES=500
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ "$HAS_JSON" = true ]; then
+                jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' "$RESULTS_FILE" \
+                  | awk 'NR <= 30' | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+              else
+                # Group by error: extract text after the status separator
+                grep -E "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null \
+                  | sed -E 's/.*( - |— )//' | sort | uniq -c | sort -rn \
+                  | awk 'NR <= 30 {printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
+                  | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+              fi
+
+              {
+                echo ""
+                if [ "$FAILED" -gt "$MAX_SUMMARY_FAILURES" ]; then
+                  echo "> Showing first $MAX_SUMMARY_FAILURES failed tests. Full results are available in the uploaded artifact."
+                  echo ""
+                fi
+                echo "<details><summary>Failed tests</summary>"
+                echo ""
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              if [ "$HAS_JSON" = true ]; then
+                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name) | \(.error[:100])"' "$RESULTS_FILE" \
+                  | sort | awk -v max="$MAX_SUMMARY_FAILURES" 'NR <= max' >> "$GITHUB_STEP_SUMMARY"
+              else
+                grep -E "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null \
+                  | sort | awk -v max="$MAX_SUMMARY_FAILURES" 'NR <= max' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              { echo '```'; echo "</details>"; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Local repro command
+            FILTER_CMD=""
+            if [ -n "$FILTER" ]; then
+              FILTER_CMD=" --filter '$FILTER'"
+            fi
+            {
+              echo ""
+              echo "### Run locally"
+              echo ""
+              echo '```bash'
+              echo "# 1. Download EEST fixtures (once)"
+              echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest"
+              echo ""
+              echo "# 2. Build and run"
+              echo "cd src/Nethermind"
+              echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false"
+              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- $RUNNER_FLAG --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace ${SETUP_ARGS}${FILTER_CMD}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
+          }
+
+          cleanup() {
+            if [ -n "${WATCHDOG_PID:-}" ]; then
+              kill "$WATCHDOG_PID" 2>/dev/null || true
+              wait "$WATCHDOG_PID" 2>/dev/null || true
+            fi
+
+            write_summary
+          }
+
+          trap cleanup EXIT
+
+          touch "$RESULTS_FILE" "$STDERR_FILE"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
+
+          print_diagnostics() {
+            echo ""
+            echo "=== nethtest diagnostics $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+            echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
+            echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
+            echo ""
+            echo "--- memory ---"
+            free -h || true
+            if [ -f /sys/fs/cgroup/memory.current ]; then
+              echo "cgroup memory.current=$(cat /sys/fs/cgroup/memory.current)"
+              echo "cgroup memory.max=$(cat /sys/fs/cgroup/memory.max)"
+              if [ -f /sys/fs/cgroup/memory.events ]; then
+                echo "--- cgroup memory.events ---"
+                cat /sys/fs/cgroup/memory.events
+              fi
+            fi
+            echo ""
+            echo "--- largest processes by RSS ---"
+            ps -eo pid,ppid,stat,comm,%mem,rss,vsz,etime,args --sort=-rss | head -20 || true
+            echo ""
+            echo "--- recent nethtest status ---"
+            tail -30 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g' || true
+            echo ""
+            echo "--- managed thread stacks (deadlock diagnostics) ---"
+            if kill -0 "$NETHTEST_PID" 2>/dev/null; then
+              dotnet tool install --global dotnet-stack >/dev/null 2>&1 || true
+              "$HOME/.dotnet/tools/dotnet-stack" report -p "$NETHTEST_PID" 2>&1 | head -600 || true
+            fi
+            echo "================================"
+          }
+
+          terminate_nethtest() {
+            kill -QUIT "$NETHTEST_PID" 2>/dev/null || true
+            sleep 10
+            kill -TERM "$NETHTEST_PID" 2>/dev/null || true
+            sleep 10
+            kill -KILL "$NETHTEST_PID" 2>/dev/null || true
+          }
+
+          check_memory_pressure() {
+            local available_mb
+            available_mb=$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null || echo 0)
+            if [ "$available_mb" -gt 0 ] && [ "$available_mb" -lt 1024 ]; then
+              echo "::error::MemAvailable is ${available_mb}MiB; terminating nethtest before the runner OOMs"
+              touch "$LOW_MEMORY_FILE"
+              print_diagnostics
+              terminate_nethtest
+              return 1
+            fi
+
+            return 0
+          }
+
+          on_termination() {
+            echo "::warning::Run step received a termination signal"
+            print_diagnostics
+            exit 143
+          }
+          trap on_termination TERM INT
+
+          watchdog() {
+            local idle_timeout_seconds=$((IDLE_TIMEOUT_MINUTES * 60))
+            while kill -0 "$NETHTEST_PID" 2>/dev/null; do
+              sleep 10 || exit 0
+
+              check_memory_pressure || exit 0
+
+              local last_progress
+              last_progress=$(stat -c %Y "$STDERR_FILE" 2>/dev/null || echo 0)
+              local now
+              now=$(date +%s)
+              local idle_seconds=$((now - last_progress))
+
+              if [ "$idle_seconds" -ge "$idle_timeout_seconds" ]; then
+                echo "::error::nethtest produced no stderr progress for ${idle_seconds}s; terminating it"
+                touch "$WATCHDOG_TIMEOUT_FILE"
+                print_diagnostics
+                terminate_nethtest
+                exit 0
+              fi
+            done
+          }
+
+          set +e
+          # no-intrinsics variant: disable hardware intrinsics so the EVM/crypto SIMD
+          # software-fallback paths are exercised.
+          [ "$VARIANT" = "no-intrinsics" ] && export DOTNET_EnableHWIntrinsic=0
+          # Run the prebuilt runner directly (built once in prepare-matrix, downloaded above).
+          dotnet artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll \
+            $RUNNER_FLAG \
+            --input "${{ steps.fixtures.outputs.fixture_dir }}" \
+            --jsonout \
+            --workers "$WORKERS" \
+            --neverTrace \
+            $SETUP_ARGS \
+            $FILTER_ARG \
+            > "$RESULTS_FILE" \
+            2> >(tee "$STDERR_FILE" >&2) &
+          NETHTEST_PID=$!
+          watchdog &
+          WATCHDOG_PID=$!
+          wait "$NETHTEST_PID"
+          rc=$?
+          set -e
+
+          echo "Exit code: $rc"
+
+          if [ -f "$LOW_MEMORY_FILE" ]; then
+            if [ $rc -eq 0 ] && [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
+              # The watchdog can fire while the process is already exiting; with a clean
+              # exit code and complete results this is not a failure.
+              echo "::warning::Memory watchdog fired during shutdown, but nethtest completed with valid results"
+            else
+              echo "::error::nethtest was terminated because runner memory was nearly exhausted"
+              rc=137
+            fi
+          elif [ -f "$WATCHDOG_TIMEOUT_FILE" ]; then
+            echo "::error::nethtest was terminated by the idle watchdog"
+            rc=124
+          fi
+
+          if [ $rc -eq 0 ]; then
+            if [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
+              FAILED_AFTER_RUN=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
+            else
+              FAILED_AFTER_RUN=$(sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | awk '/^(FAIL|EXCEPTION) / { count++ } END { print count + 0 }')
+            fi
+
+            if [ "$FAILED_AFTER_RUN" -gt 0 ]; then
+              echo "::error::$FAILED_AFTER_RUN nethtest cases failed"
+              rc=1
+            fi
+          fi
+
+          if [ $rc -ne 0 ]; then
+            echo "::warning::nethtest exited with code $rc"
+            exit $rc
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethtest-results-${{ matrix.test_type }}-${{ matrix.test_setup }}-${{ matrix.chunk }}
+          path: |
+            ${{ runner.temp }}/nethtest-results.json
+            ${{ runner.temp }}/nethtest-stderr.log
+          retention-days: 30

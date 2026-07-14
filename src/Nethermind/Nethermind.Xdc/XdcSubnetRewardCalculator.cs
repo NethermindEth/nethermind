@@ -18,8 +18,7 @@ internal sealed class XdcSubnetRewardCalculator(
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache,
-    ITransactionProcessor transactionProcessor,
-    IRewardsStore rewardsStore)
+    ITransactionProcessor transactionProcessor)
     : XdcRewardCalculator(
         epochSwitchManager,
         specProvider,
@@ -27,8 +26,7 @@ internal sealed class XdcSubnetRewardCalculator(
         masternodeVotingContract,
         mintedRecordContract,
         signingTxCache,
-        transactionProcessor,
-        rewardsStore)
+        transactionProcessor)
 {
     protected internal override HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec) =>
         checkpointHeader.ValidatorsAddress is { } validators
