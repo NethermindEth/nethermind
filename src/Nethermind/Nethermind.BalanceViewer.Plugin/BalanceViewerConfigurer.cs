@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -21,13 +22,14 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// <see cref="IJsonRpcUrlCollection"/> only exists there (it is created by the StartRpc step,
 /// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
-public sealed class BalanceViewerConfigurer(IBalanceViewerConfig config, ILogManager logManager) : IJsonRpcServiceConfigurer
+public sealed class BalanceViewerConfigurer(IBalanceViewerConfig config, IInitConfig initConfig, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
         services.AddSingleton(config);
         services.AddSingleton(logManager);
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
+        services.AddSingleton<IDetectionCache>(new DetectionCache(initConfig.BaseDbPath, logManager));
         services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
     }
 }
@@ -47,10 +49,14 @@ internal sealed class BalanceViewerStartupFilter : IStartupFilter
 /// sibling-node discovery list at <c>/balances-nodes</c>, and proxies JSON-RPC to discovered
 /// siblings via <c>/balances-rpc/{port}</c> so the multi-chain view works through a single port.
 /// </summary>
-public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings)
+public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection)
 {
     private static readonly PathString NodesPath = new("/balances-nodes");
     private static readonly PathString ProxyPathPrefix = new("/balances-rpc");
+    private static readonly PathString DetectPath = new("/balances-detect");
+
+    private static readonly JsonSerializerOptions JsonOpts =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
     private static readonly ManifestEmbeddedFileProvider FileProvider =
         new(typeof(BalanceViewerMiddleware).Assembly, "wwwroot");
@@ -69,7 +75,9 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         bool isStaticFile = HttpMethods.IsGet(context.Request.Method) && Routes.ContainsKey(path);
         bool isNodesList = HttpMethods.IsGet(context.Request.Method) && path == NodesPath;
         bool isProxy = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(ProxyPathPrefix);
-        if (!isStaticFile && !isNodesList && !isProxy)
+        bool isDetectGet = HttpMethods.IsGet(context.Request.Method) && path == DetectPath;
+        bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectGet && !isDetectPost)
         {
             return next(context);
         }
@@ -83,6 +91,8 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
 
         if (isNodesList) return ServeNodesAsync(context);
         if (isProxy) return ProxyAsync(context);
+        if (isDetectGet) return ServeDetectGetAsync(context);
+        if (isDetectPost) return ServeDetectPostAsync(context);
 
         (IFileInfo file, string contentType) = Routes[path];
         if (!file.Exists)
@@ -117,4 +127,32 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         context.Response.ContentType = "application/json";
         await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
+
+    // GET /balances-detect?chainId=<id>&address=<0x…> — the cached detection entry, or null.
+    private async Task ServeDetectGetAsync(HttpContext context)
+    {
+        long chainId = long.TryParse(context.Request.Query["chainId"], out long parsed) ? parsed : 0;
+        string address = context.Request.Query["address"].ToString();
+        DetectionEntry? entry = string.IsNullOrEmpty(address) ? null : detection.Get(chainId, address);
+        context.Response.ContentType = "application/json";
+        await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
+    }
+
+    // POST /balances-detect — the client persists a scan's results and progress for one account.
+    private async Task ServeDetectPostAsync(HttpContext context)
+    {
+        DetectPost? post = await JsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);
+        if (post is null || string.IsNullOrEmpty(post.Address))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        detection.Put(post.ChainId, post.Address, new DetectionEntry(
+            post.Tokens ?? [], post.ScannedFrom, post.Head, post.Complete, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        context.Response.StatusCode = StatusCodes.Status200OK;
+    }
+
+    private sealed record DetectPost(
+        long ChainId, string Address, DetectedToken[]? Tokens, long ScannedFrom, long Head, bool Complete);
 }
