@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
@@ -139,6 +140,41 @@ namespace Nethermind.Network.Test.Stats
                 Assert.That(result, Is.True);
                 Assert.That(node!.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("8.8.8.8"), 30303)));
                 Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:4860:4860::8888"), 30304)));
+            }
+        }
+
+        [Test]
+        public void UpdateEndpoint_publishes_consistent_endpoint_snapshots()
+        {
+            Node node = CreateNode("192.0.2.1", 30303, "198.51.100.1", 30304);
+            Node first = CreateNode("192.0.2.1", 30303, "198.51.100.1", 30304);
+            Node second = CreateNode("192.0.2.2", 30305, "198.51.100.2", 30306);
+            HashSet<string> expectedAddresses = [first.Address.ToString(), second.Address.ToString()];
+            HashSet<string> expectedDiscoveryAddresses = [first.DiscoveryAddress.ToString(), second.DiscoveryAddress.ToString()];
+            HashSet<string> expectedFormats = [first.ToString("s"), second.ToString("s")];
+
+            Task writer = Task.Run(() =>
+            {
+                for (int i = 0; i < 100_000; i++)
+                {
+                    node.UpdateEndpoint((i & 1) == 0 ? second : first);
+                }
+            });
+
+            while (!writer.IsCompleted)
+            {
+                Assert.That(expectedAddresses, Does.Contain(node.Address.ToString()));
+                Assert.That(expectedDiscoveryAddresses, Does.Contain(node.DiscoveryAddress.ToString()));
+                Assert.That(expectedFormats, Does.Contain(node.ToString("s")));
+            }
+
+            writer.GetAwaiter().GetResult();
+
+            static Node CreateNode(string tcpHost, int tcpPort, string discoveryHost, int discoveryPort)
+            {
+                Node result = new(TestItem.PublicKeyA, tcpHost, tcpPort);
+                result.SetDiscoveryEndpoint(new IPEndPoint(IPAddress.Parse(discoveryHost), discoveryPort));
+                return result;
             }
         }
 
