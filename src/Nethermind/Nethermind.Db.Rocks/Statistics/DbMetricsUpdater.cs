@@ -192,9 +192,13 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
         }
 
-        logger.Info($"[RocksDbMem] {dbName}: table_readers={tableReaders / MB:F0}MB memtables={memtables / MB:F0}MB " +
-                    $"block_cache={blockCache / MB:F0}MB(pinned {blockCachePinned / MB:F0}MB) " +
-                    $"live_sst={liveSst / GB:F1}GB sst_files={liveFiles} keys={numKeys}");
+        // Prop() returns -1 when a property is unavailable; render those as "n/a" rather than "-0MB".
+        string Mb(long v) => v < 0 ? "n/a" : $"{v / MB:F0}MB";
+        string Gb(long v) => v < 0 ? "n/a" : $"{v / GB:F1}GB";
+
+        logger.Info($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
+                    $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)}) " +
+                    $"live_sst={Gb(liveSst)} sst_files={liveFiles} keys={(numKeys < 0 ? "n/a" : numKeys.ToString())}");
     }
 
     public void Dispose()

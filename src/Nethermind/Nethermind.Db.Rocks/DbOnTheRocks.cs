@@ -562,6 +562,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // block_based_table_factory fields set via the C# table-options API.
             // Deliberately self-contained: some keys duplicate RocksDbOptions defaults so the
             // partitioned-index setup holds even when users override RocksDbOptions without them.
+            // index_type=kTwoLevelIndexSearch intentionally overrides the flat state columns' default
+            // kBinarySearch: the partitioned (two-level) index is what lets the index/filter blocks live
+            // in — and be bounded by — the block cache. That is the whole point of the flag; the extra
+            // top-level index lookup is the accepted cost.
             rocksDbOptions +=
                 "block_based_table_factory.cache_index_and_filter_blocks=true;" +
                 "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
