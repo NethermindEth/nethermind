@@ -461,7 +461,7 @@ public class ScopeProviderTests(bool useFlat)
         // Populator probes must not move the pre-block counters: populators miss by design while
         // filling the cache, so counting them would skew the exported coverage ratio.
         LocalMetrics populatorMetrics = new();
-        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, populatorMetrics))
         {
             scope.Get(TestItem.AddressA);
@@ -473,7 +473,7 @@ public class ScopeProviderTests(bool useFlat)
 
         // Consumer probes count: AddressA / slot 1 were just populated (hits); AddressB / slot 2 are cold (misses).
         LocalMetrics consumerMetrics = new();
-        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(baseBlock, consumerMetrics))
         {
             scope.Get(TestItem.AddressA);
