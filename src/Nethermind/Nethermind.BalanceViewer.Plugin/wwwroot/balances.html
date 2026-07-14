@@ -258,7 +258,8 @@
         .hidden-tokens { margin-top: 6px; }
         @keyframes bvspin { to { transform: rotate(360deg); } }
         button.zero-toggle.scanning { position: relative; }
-        button.zero-toggle.scanning { color: transparent; } /* hide the glyph so the centred spinner reads cleanly */
+        /* hide the glyph (visibility keeps the button's width) so the centred spinner reads cleanly */
+        button.zero-toggle.scanning .glyph { visibility: hidden; }
         button.zero-toggle.scanning::after {
             content: '';
             position: absolute; top: 50%; left: 50%;
@@ -445,7 +446,7 @@
         </div>
         <div id="chainToggles"></div>
         <div class="toggles">
-            <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens">🔍</button>
+            <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens"><span class="glyph">🔍</span></button>
             <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
         </div>
         <div class="total" id="totalBox">
