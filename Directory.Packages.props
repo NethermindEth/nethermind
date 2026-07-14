@@ -28,7 +28,7 @@
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Build.Tasks.Git" Version="10.0.301" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.5.1" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.5.1" />
@@ -42,7 +42,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.4" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.10" />
