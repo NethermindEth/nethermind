@@ -213,6 +213,11 @@ jobs:
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            # "off" disables the floor injection entirely (an empty dispatch input falls back to the default,
+            # so it cannot express "no floor"; needed to benchmark images predating the config key).
+            if [[ "${flat_write_buffer_floor}" == "off" ]]; then
+              flat_write_buffer_floor=""
+            fi
             expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
@@ -1597,13 +1602,11 @@ jobs:
             page_size=100
             remaining="${LAST}"
 
+            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
+            # page_size on the last page shifts the window (duplicating mid-range tags and
+            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
-              fetch_size="${page_size}"
-              if [[ "${remaining}" -lt "${page_size}" ]]; then
-                fetch_size="${remaining}"
-              fi
-
-              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
 
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
@@ -1623,6 +1626,12 @@ jobs:
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
+
+            if [[ "${#all_tags[@]}" -gt "${LAST}" ]]; then
+              all_tags=("${all_tags[@]:0:LAST}")
+              all_images=("${all_images[@]:0:LAST}")
+              all_dates=("${all_dates[@]:0:LAST}")
+            fi
 
             echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
@@ -1739,6 +1748,7 @@ jobs:
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
