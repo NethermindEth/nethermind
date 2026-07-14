@@ -567,7 +567,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(2));
@@ -593,15 +593,15 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: gasPerTx),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: gasPerTx)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(expectedJobs));
             if (expectedJobs > 1)
             {
-                foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+                foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
                 {
-                    Assert.That(group.Count, Is.EqualTo(1), "a split group must warm per-tx");
+                    Assert.That(job.Transactions.Count, Is.EqualTo(1), "a split group must warm per-tx");
                 }
             }
         }
@@ -617,7 +617,7 @@ public class BlockCachePreWarmerTests
         Block block = Build.A.Block.WithTransactions(
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(1), "there is nothing to parallelize within a single transaction");
@@ -639,7 +639,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(expectedJobs));
@@ -659,7 +659,7 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: ulong.MaxValue),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 4_000_001)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(2), "an extreme declared gas limit must saturate, not wrap, the aggregate");
@@ -679,13 +679,13 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(3));
-            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
-            Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
-            Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
+            Assert.That(groups[1].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[2].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
         }
         finally
         {
@@ -703,13 +703,91 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
         try
         {
             Assert.That(groups.Count, Is.EqualTo(3));
-            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "the light sender at block index 0 warms first");
-            Assert.That(groups[1][0].Index, Is.EqualTo(1));
-            Assert.That(groups[2][0].Index, Is.EqualTo(2));
+            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "the light sender at block index 0 warms first");
+            Assert.That(groups[1].FirstIndex, Is.EqualTo(1));
+            Assert.That(groups[2].FirstIndex, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    /// <summary>
+    /// Verifies cancellation eligibility covers exceptional jobs AND every child of an
+    /// exceptional split, including children individually below the hoist threshold
+    /// (two 3M children from a 6M parent).
+    /// </summary>
+    [Test]
+    public void GroupTransactionsBySender_JobMetadataMarksSplitOriginAndCancellationEligibility()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 5_000_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(4));
+            BlockCachePreWarmer.WarmupJob heavySingle = groups[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(heavySingle.Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB));
+                Assert.That(heavySingle.IsHoisted, Is.True);
+                Assert.That(heavySingle.FromSplit, Is.False);
+                Assert.That(heavySingle.CancellationEligible, Is.True);
+                Assert.That(heavySingle.GasEstimate, Is.EqualTo(5_000_000UL));
+            }
+
+            int splitGroupId = -1;
+            foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
+            {
+                if (job.Transactions[0].Tx.SenderAddress == TestItem.AddressA)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(job.FromSplit, Is.True);
+                        Assert.That(job.IsHoisted, Is.False, "each 3M child is below the hoist threshold");
+                        Assert.That(job.CancellationEligible, Is.True, "split children stay eligible regardless of their own gas");
+                        Assert.That(job.GasEstimate, Is.EqualTo(3_000_000UL));
+                    }
+                    if (splitGroupId < 0) splitGroupId = job.OriginalGroupId;
+                    else Assert.That(job.OriginalGroupId, Is.EqualTo(splitGroupId), "split siblings share the original group identity");
+                }
+                else if (job.Transactions[0].Tx.SenderAddress == TestItem.AddressC)
+                {
+                    Assert.That(job.CancellationEligible, Is.False, "an ordinary light job is not eligible");
+                }
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_EqualHeavyEstimatesKeepBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 5_000_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            for (int i = 0; i < groups.Count; i++)
+            {
+                Assert.That(groups[i].FirstIndex, Is.EqualTo(i), "equal-estimate heavy jobs tie-break by first block index");
+            }
         }
         finally
         {
@@ -740,7 +818,7 @@ public class BlockCachePreWarmerTests
         long skippedBefore = PrewarmMetrics.MempoolPrewarmSendersSkipped;
         long warmedBefore = PrewarmMetrics.MempoolPrewarmSendersWarmed;
 
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups =
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups =
             BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, warmed);
         try
         {
@@ -752,9 +830,9 @@ public class BlockCachePreWarmerTests
                     "the partially warmed sender counts once despite splitting into several jobs");
                 Assert.That(groups.Count, Is.EqualTo(2), "already-warmed split children are pruned");
             }
-            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+            foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
             {
-                Assert.That(group[0].Index, Is.InRange(3, 4), "only the unwarmed tail of the chain remains");
+                Assert.That(job.FirstIndex, Is.InRange(3, 4), "only the unwarmed tail of the chain remains");
             }
         }
         finally
@@ -899,21 +977,21 @@ public class BlockCachePreWarmerTests
         Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
 
     private static ArrayPoolList<(int Index, Transaction Tx)> FindGroup(
-        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, Address sender)
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups, Address sender)
     {
-        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
         {
-            if (group[0].Tx.SenderAddress == sender) return group;
+            if (job.Transactions[0].Tx.SenderAddress == sender) return job.Transactions;
         }
 
         throw new InvalidOperationException($"No group for {sender}");
     }
 
-    private static void DisposeGroups(ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups)
+    private static void DisposeGroups(ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups)
     {
-        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
         {
-            group.Dispose();
+            job.Transactions.Dispose();
         }
         groups.Dispose();
     }
