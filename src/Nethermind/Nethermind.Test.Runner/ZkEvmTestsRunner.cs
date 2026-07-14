@@ -39,9 +39,6 @@ public static class ZkEvmTestsRunner
         return results;
     }
 
-    /// <summary>
-    /// Counts the test cases <see cref="RunTest"/> would produce for a fixture, without executing them.
-    /// </summary>
     public static int CountCases(BlockchainTest test)
     {
         if (test.Blocks is not { Length: > 0 } blocks)

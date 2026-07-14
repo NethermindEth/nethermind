@@ -471,9 +471,6 @@ internal class Program
     {
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
-        // Witness fixtures are large, so files are parsed one at a time and released instead of
-        // materializing the whole set up front. The test-case total for progress reporting
-        // therefore comes from a count-only pre-pass over the same files.
         int CountFile(int index)
         {
             try
@@ -492,7 +489,6 @@ internal class Program
             }
             catch (Exception)
             {
-                // The execution pass reports the failure and yields exactly one EXCEPTION result.
                 return 1;
             }
         }
@@ -522,6 +518,8 @@ internal class Program
         int completedCases = 0;
         List<EthereumTestResult>[] resultsByFile = new List<EthereumTestResult>[files.Count];
 
+        // Witness fixtures are large, so each file is parsed, executed, and released before
+        // the next one instead of materializing the whole set up front.
         void ProcessFile(int index)
         {
             List<EthereumTestResult> fileResults = [];
