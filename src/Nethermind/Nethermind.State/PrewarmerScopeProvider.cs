@@ -145,7 +145,14 @@ public class PrewarmerScopeProvider(
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                 // Consumers seed the scope-local cache on a hit for their later commit; populators don't.
-                if (!isPrewarmer) baseScope.HintGet(address, account);
+                // Pre-block counters are consumer-only: populators miss by design while filling the cache,
+                // so counting their probes would drag the exported coverage ratio below the true value.
+                if (!isPrewarmer)
+                {
+                    baseScope.HintGet(address, account);
+                    _metrics.IncrementPreBlockAccountHits();
+                }
+
                 _metrics.IncrementStateTreeCacheHits();
             }
             else
@@ -154,6 +161,7 @@ public class PrewarmerScopeProvider(
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
                 mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
+                if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
             return account;
@@ -228,6 +236,7 @@ public class PrewarmerScopeProvider(
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
+                if (!isPrewarmer) _metrics.IncrementPreBlockStorageHits();
             }
             else
             {
@@ -243,7 +252,10 @@ public class PrewarmerScopeProvider(
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)
         {
-            _metrics.IncrementStorageTreeReads();
+            // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
+            // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
+            // fully-cold reads. Populator probes are excluded — they miss by design while filling.
+            if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
 
             return baseStorageTree.Get(storageCell.Index);
         }

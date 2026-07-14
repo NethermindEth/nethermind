@@ -437,6 +437,59 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_PreBlockCacheCounters_CountConsumerProbesOnly()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set(1, [1, 2, 3]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+
+        // Populator probes must not move the pre-block counters: populators miss by design while
+        // filling the cache, so counting them would skew the exported coverage ratio.
+        LocalMetrics populatorMetrics = new();
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: true);
+        using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(baseBlock, populatorMetrics))
+        {
+            scope.Get(TestItem.AddressA);
+            scope.CreateStorageTree(TestItem.AddressA).Get(1);
+        }
+
+        Assert.That(populatorMetrics.PreBlockAccountHits + populatorMetrics.PreBlockAccountMisses, Is.Zero);
+        Assert.That(populatorMetrics.PreBlockStorageHits + populatorMetrics.PreBlockStorageMisses, Is.Zero);
+
+        // Consumer probes count: AddressA / slot 1 were just populated (hits); AddressB / slot 2 are cold (misses).
+        LocalMetrics consumerMetrics = new();
+        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, caches, LimboLogs.Instance, isPrewarmer: false);
+        using (IWorldStateScopeProvider.IScope scope = consumer.BeginScope(baseBlock, consumerMetrics))
+        {
+            scope.Get(TestItem.AddressA);
+            scope.Get(TestItem.AddressB);
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+            storage.Get(1);
+            storage.Get(2);
+        }
+
+        Assert.That(consumerMetrics.PreBlockAccountHits, Is.EqualTo(1));
+        Assert.That(consumerMetrics.PreBlockAccountMisses, Is.EqualTo(1));
+        Assert.That(consumerMetrics.PreBlockStorageHits, Is.EqualTo(1));
+        Assert.That(consumerMetrics.PreBlockStorageMisses, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Test_FlatScope_TrieWarmHints_Smoke()
     {
         Assume.That(useFlat, Is.True);
