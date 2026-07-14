@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
@@ -113,7 +115,10 @@ public sealed class DiscoveryPersistenceManager(
                 foreach (Node node in _kademlia.IterateNodes())
                 {
                     long reputation = _nodeStatsManager.GetNewPersistedReputation(node);
-                    nodes.Add(CreatePersistedNode(node, reputation));
+                    if (TryCreatePersistedNode(node, reputation, out NetworkNode? persistedNode))
+                    {
+                        nodes.Add(persistedNode);
+                    }
                 }
 
                 _discoveryStorage.StartBatch();
@@ -127,13 +132,32 @@ public sealed class DiscoveryPersistenceManager(
         }
     }
 
-    private static NetworkNode CreatePersistedNode(Node node, long reputation)
+    private static bool TryCreatePersistedNode(
+        Node node,
+        long reputation,
+        [NotNullWhen(true)] out NetworkNode? persistedNode)
     {
-        if (node.Enr is not null)
+        if (node.HasDiscoveryEndpoint &&
+            node.Enr is { } record &&
+            record.TryGetTcpEndpoint(out IPEndPoint? recordTcpEndpoint) &&
+            recordTcpEndpoint.Equals(node.Address) &&
+            record.TryGetDiscoveryEndpoint(out IPEndPoint? recordDiscoveryEndpoint) &&
+            recordDiscoveryEndpoint.Equals(node.DiscoveryAddress))
         {
-            return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
+            persistedNode = new NetworkNode(record.ToString()) { Reputation = reputation };
+            return true;
         }
 
-        return new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort)) { Reputation = reputation };
+        if (node.HasDiscoveryEndpoint && node.Address.Address.Equals(node.DiscoveryAddress.Address))
+        {
+            persistedNode = new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort))
+            {
+                Reputation = reputation
+            };
+            return true;
+        }
+
+        persistedNode = null;
+        return false;
     }
 }

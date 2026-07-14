@@ -16,6 +16,7 @@ using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -204,6 +205,171 @@ public class PeerPoolTests
             // Static node bypasses throttling: consumed and registered even though the pool is full.
             Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(0).After(100, 10));
             Assert.That(pool.TryGet(staticNode.Id, out _), Is.True);
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldUpdateDynamicNodeEndpointInPlace()
+    {
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(
+            nodeSource,
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 1);
+        Node initialNode = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
+        Node upgradedNode = new(TestItem.PublicKeyA, "1.2.3.5", 30304, 30305);
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(initialNode);
+            Assert.That(() => pool.TryGet(initialNode.Id, out _), Is.True.After(2000, 10));
+            Assert.That(pool.TryGet(initialNode.Id, out Peer? peer), Is.True);
+
+            nodeSource.AddNode(upgradedNode);
+            Assert.That(() => peer.Node.Port, Is.EqualTo(30304).After(2000, 10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.Node.Host, Is.EqualTo("1.2.3.5"));
+                Assert.That(peer.Node.DiscoveryPort, Is.EqualTo(30305));
+                Assert.That(peer.Node, Is.SameAs(initialNode));
+            }
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldNotDowngradeEndpointFromOlderEnr()
+    {
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(
+            nodeSource,
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 1);
+        Node currentNode = new(TestItem.PublicKeyA, "1.2.3.4", 30304, 30305)
+        {
+            Enr = new NodeRecord { EnrSequence = 2 }
+        };
+        Node olderNode = new(TestItem.PublicKeyA, "1.2.3.5", 30306, 30307)
+        {
+            Enr = new NodeRecord { EnrSequence = 1 }
+        };
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(currentNode);
+            Assert.That(() => pool.TryGet(currentNode.Id, out _), Is.True.After(2000, 10));
+            Assert.That(pool.TryGet(currentNode.Id, out Peer? peer), Is.True);
+
+            nodeSource.AddNode(olderNode);
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.Zero.After(2000, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.Node.Address, Is.EqualTo(currentNode.Address));
+                Assert.That(peer.Node.DiscoveryAddress, Is.EqualTo(currentNode.DiscoveryAddress));
+                Assert.That(peer.Node.Enr.EnrSequence, Is.EqualTo(2));
+                Assert.That(peer.Node, Is.SameAs(currentNode));
+            }
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldNotReplaceConfiguredEndpointWithDynamicCandidate()
+    {
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(
+            nodeSource,
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        Node staticNode = new(TestItem.PublicKeyA, "1.2.3.4", 30303) { IsStatic = true };
+        Node dynamicCandidate = new(TestItem.PublicKeyA, "1.2.3.5", 30304);
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(staticNode);
+            Assert.That(() => pool.TryGet(staticNode.Id, out _), Is.True.After(2000, 10));
+            Assert.That(pool.TryGet(staticNode.Id, out Peer? peer), Is.True);
+
+            nodeSource.AddNode(dynamicCandidate);
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.Zero.After(2000, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.Node.Address, Is.EqualTo(staticNode.Address));
+                Assert.That(peer.Node.IsStatic, Is.True);
+            }
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(false, false, true)]
+    public async Task PeerPool_ShouldPromoteConfiguredEndpointAfterDynamicCandidate(
+        bool isStatic,
+        bool isTrusted,
+        bool isBootnode)
+    {
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(
+            nodeSource,
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 1);
+        Node initialNode = new(TestItem.PublicKeyA, "1.2.3.4", 30303)
+        {
+            Enr = new NodeRecord { EnrSequence = 2 }
+        };
+        Node configuredNode = new(TestItem.PublicKeyA, "1.2.3.5", 30304)
+        {
+            IsStatic = isStatic,
+            IsTrusted = isTrusted,
+            IsBootnode = isBootnode,
+            Enr = new NodeRecord { EnrSequence = 1 }
+        };
+        Node laterCandidate = new(TestItem.PublicKeyA, "1.2.3.6", 30305);
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(initialNode);
+            Assert.That(() => pool.TryGet(initialNode.Id, out _), Is.True.After(2000, 10));
+            Assert.That(pool.TryGet(initialNode.Id, out Peer? peer), Is.True);
+
+            nodeSource.AddNode(configuredNode);
+            Assert.That(() => peer.Node.Address, Is.EqualTo(configuredNode.Address).After(2000, 10));
+            nodeSource.AddNode(laterCandidate);
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.Zero.After(2000, 10));
+            peer.Node.UpdateEndpoint(laterCandidate);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.Node.Address, Is.EqualTo(configuredNode.Address));
+                Assert.That(peer.Node.IsStatic, Is.EqualTo(isStatic));
+                Assert.That(peer.Node.IsTrusted, Is.EqualTo(isTrusted));
+                Assert.That(peer.Node.IsBootnode, Is.EqualTo(isBootnode));
+                Assert.That(peer.Node.Enr.EnrSequence, Is.EqualTo(1));
+            }
         }
         finally
         {
