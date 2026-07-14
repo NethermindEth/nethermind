@@ -80,7 +80,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         SimulateDictionaryHeaderStore tmpHeaderStore,
         IBlockAccessListStore tmpBalStore)
     {
-        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         const int badBlocksStored = 1;
 
         SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
