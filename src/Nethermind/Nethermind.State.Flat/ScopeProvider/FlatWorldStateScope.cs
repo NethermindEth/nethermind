@@ -32,6 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -140,9 +141,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Account? Get(Address address)
     {
-        Account? account = _snapshotBundle.GetAccount(address);
+        Account? account = _snapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
 
-        HintGet(address, account);
+        HintGet(address, account, promote: !isInCurrentSnapshot);
 
         if (_configuration.VerifyWithTrie)
         {
@@ -156,9 +157,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account)
+    public void HintGet(Address address, Account? account) => HintGet(address, account, promote: true);
+
+    private void HintGet(Address address, Account? account, bool promote)
     {
-        _snapshotBundle.SetAccount(address, account);
+        if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
@@ -343,6 +346,57 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
+    public void HintWarmAccount(in ValueAddress address)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        // The managed Address is materialized only after the dedupe bloom passes, so the
+        // allocation happens at most once per account per block.
+        if (_snapshotBundle.ShouldQueuePrewarm(address)
+            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+    {
+        if (IsDisposed || _pausePrewarmer) return;
+        if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
+
+        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
+        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
+    private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
+        GetHintWarmStorages().GetOrAdd(address, static (key, scope) =>
+        {
+            Hash256 storageRoot = scope._snapshotBundle.GetAccount(key.Value)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            return storageRoot == Keccak.EmptyTreeHash
+                ? null
+                : new FlatStorageTree(
+                    scope,
+                    scope._warmer,
+                    scope._snapshotBundle,
+                    scope._configuration,
+                    scope._concurrencyQuota,
+                    storageRoot,
+                    key.Value,
+                    scope._logManager);
+        }, this);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> GetHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? storages = Volatile.Read(ref _hintWarmStorages);
+        return storages ?? InitializeHintWarmStorages();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ConcurrentDictionary<AddressAsKey, FlatStorageTree?> InitializeHintWarmStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, FlatStorageTree?> newStorages = new();
+        return Interlocked.CompareExchange(ref _hintWarmStorages, newStorages, null) ?? newStorages;
+    }
+
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => CreateStorageTreeImpl(address);
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
@@ -379,6 +433,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _stateTree.Commit();
 
         _storages.Clear();
+        _hintWarmStorages?.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;

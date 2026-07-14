@@ -23,5 +23,6 @@ namespace Nethermind.Db
         public const string PeersDb = "peers";
         public const string LogIndex = "logIndex";
         public const string Preimage = "preimage";
+        public const string PersistedSnapshotCatalog = "persistedSnapshotCatalog";
     }
 }

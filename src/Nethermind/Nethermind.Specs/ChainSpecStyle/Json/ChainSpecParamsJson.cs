@@ -157,6 +157,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
+    public ulong? Eip2935Transition { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Eip2935RingBufferSize { get; set; }
@@ -166,6 +167,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip6110TransitionTimestamp { get; set; }
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
+    public ulong? Eip7623Transition { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7976TransitionTimestamp { get; set; }
     public ulong? Eip7981TransitionTimestamp { get; set; }
@@ -174,6 +176,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702Transition { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
@@ -191,8 +194,12 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7928TransitionTimestamp { get; set; }
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
+    public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8038TransitionTimestamp { get; set; }
+    public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
+    public ulong? Eip2780TransitionTimestamp { get; set; }
 
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
