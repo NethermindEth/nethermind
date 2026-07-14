@@ -1436,10 +1436,16 @@
 
         // merges cache/scan tokens into a chain's detected list, skipping tracked/ignored/dupes;
         // returns whether anything was added
+        // ignored holds hidden token objects; this is the set of their (lower-cased) addresses,
+        // used only for client-side display filtering — it never reaches the scan or node cache
+        function ignoredAddrs(chainId) {
+            return new Set(stateOf(chainId).ignored.map((t) => (typeof t === 'string' ? t : t.address).toLowerCase()));
+        }
+
         function mergeDetected(chainId, tokens) {
             const state = stateOf(chainId);
             const have = new Set(tokensOf(chainId).map((t) => t.address.toLowerCase()));
-            const ignored = new Set(state.ignored);
+            const ignored = ignoredAddrs(chainId);
             let added = false;
             for (const t of tokens) {
                 const key = t.address.toLowerCase();
@@ -1480,31 +1486,40 @@
 
         // resolves symbol/decimals and confirms a positive balance for candidate contracts,
         // adding genuine holdings (held by any of addrList) to the chain's detected list
+        // Confirms a positive balance for candidate contracts. Returns every held token (the
+        // objective set, for the node cache) and separately adds to the displayed detected list
+        // only those that aren't manually tracked or hidden — so hiding a token never removes it
+        // from the shared cache.
         async function vetAndAdd(node, addrList, candidates) {
             const state = stateOf(node.chainId);
-            const known = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
-            const ignored = new Set(state.ignored);
-            const fresh = candidates.filter((c) => !known.has(c) && !ignored.has(c));
+            const manual = new Set(state.tokens.map((t) => t.address.toLowerCase()));
+            const shown = new Set(state.detected.map((t) => t.address.toLowerCase()));
+            const ignored = ignoredAddrs(node.chainId);
+            const fresh = candidates.filter((c) => !manual.has(c));
             if (fresh.length === 0) return [];
             await resolveTokenMetas(node, fresh);
             const calls = [];
             for (const c of fresh) for (const a of addrList) calls.push(['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]);
             const bals = await rpcBatch(calls, node.rpcPath);
-            const added = [];
+            const held = [];
+            let added = false;
             for (let ci = 0; ci < fresh.length; ci++) {
                 const meta = tokenMetaCache.get(node.chainId + '|' + fresh[ci]);
                 if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
-                let held = false;
+                let has = false;
                 for (let ai = 0; ai < addrList.length; ai++) {
                     const raw = bals[ci * addrList.length + ai];
-                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { held = true; break; } } catch { }
+                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { has = true; break; } } catch { }
                 }
-                if (!held) continue;
-                state.detected.push({ address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
-                added.push({ address: checksum(fresh[ci]), symbol: meta.ticker, decimals: meta.decimals });
+                if (!has) continue;
+                held.push({ address: checksum(fresh[ci]), symbol: meta.ticker, decimals: meta.decimals });
+                if (!ignored.has(fresh[ci]) && !shown.has(fresh[ci])) {
+                    state.detected.push({ address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
+                    added = true;
+                }
             }
-            if (added.length) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
-            return added;
+            if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
+            return held;
         }
 
         // real-time detection: scans the blocks that arrived since the last poll for Transfer
@@ -1520,9 +1535,9 @@
             node.detectHead = head;
             const addrTopics = addresses.map((a) => '0x' + pad32(a.address));
             const known = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
-            const ignored = new Set(stateOf(node.chainId).ignored);
             try {
-                const contracts = await scanRange(node, addrTopics, from, head, known, ignored);
+                // ignored is not filtered here — vetAndAdd decides what to display; discovery stays objective
+                const contracts = await scanRange(node, addrTopics, from, head, known, new Set());
                 if (contracts.length) await vetAndAdd(node, addresses.map((a) => a.address), contracts);
             } catch { /* next poll retries from the advanced cursor */ }
         }
@@ -1540,7 +1555,7 @@
             const head = BigInt(node.head);
             const addrTopics = ['0x' + pad32(address)];
             const known0 = new Set(tokensOf(chainId).map((t) => t.address.toLowerCase()));
-            const ignored0 = new Set(stateOf(chainId).ignored);
+            const ignored0 = new Set(); // discovery is objective; hidden tokens still go to the cache
             const foundTokens = new Map();
             for (const t of (cached?.tokens ?? [])) foundTokens.set(t.address.toLowerCase(), { address: t.address, symbol: t.symbol ?? t.ticker, decimals: t.decimals });
             // resume just below the lowest previously scanned block, else start at head
@@ -1597,15 +1612,23 @@
                     enqueueBackfill(node, entry.address);
         }
 
-        // restores hidden auto-detected tokens: clears the ignore lists and re-merges from cache
-        async function restoreHidden() {
+        // restores hidden tokens by moving the stored objects back to the detected list — works
+        // regardless of cache/scan state
+        function restoreHidden() {
             for (const node of nodes) {
                 const state = stateOf(node.chainId);
-                if (state.ignored.length) { state.ignored = []; store.save(node.chainId); }
+                if (!state.ignored.length) continue;
+                const have = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
+                for (const t of state.ignored) {
+                    if (typeof t === 'string' || !t.ticker || have.has(t.address.toLowerCase())) continue;
+                    state.detected.push({ address: t.address, ticker: t.ticker, decimals: t.decimals, name: t.name ?? t.ticker, auto: true });
+                }
+                state.ignored = [];
+                store.save(node.chainId);
             }
             renderTokens();
-            await loadDetectionFromCache();
-            startDetectionForAll();
+            renderCards();
+            refreshBalances();
         }
 
         // ---------- ENS (simple forward + reverse resolution) ----------
@@ -1673,12 +1696,15 @@
         }
 
         // ---------- rendering ----------
-        // hides an auto-detected token and remembers it so a later scan won't re-add it
-        function hideDetected(node, address) {
-            const key = address.toLowerCase();
+        // hides an auto-detected token from the display and stores it so it can be restored; the
+        // node cache still records it (ignore is a client-side preference only)
+        function hideDetected(node, token) {
+            const key = token.address.toLowerCase();
             const state = stateOf(node.chainId);
             state.detected = state.detected.filter((t) => t.address.toLowerCase() !== key);
-            if (!state.ignored.includes(key)) state.ignored.push(key);
+            if (!state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === key)) {
+                state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker });
+            }
             store.save(node.chainId);
             renderTokens();
             renderCards();
@@ -1700,7 +1726,7 @@
                 chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + (isAuto ? ' · auto-detected' : '') + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
-                    if (isAuto) { hideDetected(node, item.address); return; }
+                    if (isAuto) { hideDetected(node, item); return; }
                     const state = stateOf(node.chainId);
                     state[list] = state[list].filter((t) => t !== item);
                     store.save(node.chainId);
