@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -19,8 +18,8 @@ public class GetPayloadV4Handler(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IEnumerable<IBuilderOverridePolicy>? builderOverridePolicies = null)
-    : GetPayloadHandlerBase<GetPayloadV4Result>(EngineApiVersions.GetPayload.V4, payloadPreparationService, specProvider, logManager, builderOverridePolicies)
+    IBuilderOverridePolicy builderOverridePolicy)
+    : GetPayloadHandlerBase<GetPayloadV4Result>(EngineApiVersions.GetPayload.V4, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
     protected override GetPayloadV4Result GetPayloadResultFromBlock(IBlockProductionContext context) => new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

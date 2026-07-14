@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -18,7 +17,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     IPayloadPreparationService payloadPreparationService,
     ISpecProvider specProvider,
     ILogManager logManager,
-    IEnumerable<IBuilderOverridePolicy>? builderOverridePolicies = null)
+    IBuilderOverridePolicy? builderOverridePolicy = null)
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
@@ -55,18 +54,10 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
         return ResultWrapper<TGetPayloadResult?>.Success(getPayloadResult);
     }
 
-    protected bool ShouldOverrideBuilder(Block block)
-    {
-        if (builderOverridePolicies is not null)
-        {
-            foreach (IBuilderOverridePolicy policy in builderOverridePolicies)
-            {
-                if (policy.ShouldOverrideBuilder(block)) return true;
-            }
-        }
-
-        return false;
-    }
+    /// <summary>
+    /// Evaluates policies used by Engine API getPayload V3 and later to populate the <c>shouldOverrideBuilder</c> field.
+    /// </summary>
+    protected bool ShouldOverrideBuilder(Block block) => builderOverridePolicy?.ShouldOverrideBuilder(block) ?? false;
 
     protected abstract TGetPayloadResult GetPayloadResultFromBlock(IBlockProductionContext blockProductionContext);
 }

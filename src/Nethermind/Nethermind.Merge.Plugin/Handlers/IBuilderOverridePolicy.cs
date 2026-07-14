@@ -12,3 +12,20 @@ public interface IBuilderOverridePolicy
 {
     bool ShouldOverrideBuilder(Block block);
 }
+
+/// <summary>
+/// Requests a builder override when any registered policy requests one.
+/// </summary>
+public class CompositeBuilderOverridePolicy(params IBuilderOverridePolicy[] policies) : IBuilderOverridePolicy
+{
+    /// <inheritdoc />
+    public bool ShouldOverrideBuilder(Block block)
+    {
+        foreach (IBuilderOverridePolicy policy in policies)
+        {
+            if (policy.ShouldOverrideBuilder(block)) return true;
+        }
+
+        return false;
+    }
+}
