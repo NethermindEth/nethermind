@@ -19,6 +19,8 @@ public sealed class GCScheduler
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
+    // Blocks between concurrent background gen2 sweeps while blocks stream back-to-back.
+    internal const int SustainedSweepBlockInterval = 256;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -34,6 +36,7 @@ public sealed class GCScheduler
     private long _countToGC = 0L;
 
     private bool _skipNextGC = false;
+    private int _blocksSinceSustainedSweep;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -190,4 +193,31 @@ public sealed class GCScheduler
     }
 
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
+
+    /// <summary>
+    /// Per-processed-block notification driving a concurrent background gen2 sweep every
+    /// <see cref="SustainedSweepBlockInterval"/> blocks.
+    /// </summary>
+    /// <remarks>
+    /// When blocks stream back-to-back (sync, benchmark replay, short-slot chains) the idle-window
+    /// sweeps never engage, so gen2 garbage accumulates for minutes until the runtime escalates to a
+    /// multi-second blocking full collection that freezes block processing. A periodic concurrent
+    /// sweep keeps gen2 small enough that the escalation never happens; on a 12s-slot chain it fires
+    /// less than once an hour and is negligible. Call from a background (non-processing) thread: the
+    /// initiating thread absorbs the collection's start-up pause. The GC guard may be held (the
+    /// NoGCRegion bracket around a payload), in which case the counter stays armed and the sweep
+    /// retries on the next block rather than skipping a whole interval.
+    /// </remarks>
+    public void NotifyBlockProcessed()
+    {
+        if (Interlocked.Increment(ref _blocksSinceSustainedSweep) < SustainedSweepBlockInterval) return;
+
+        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
+        {
+            Interlocked.Exchange(ref _blocksSinceSustainedSweep, 0);
+        }
+    }
+
+    // Test-only visibility into the sustained-sweep counter.
+    internal int BlocksSinceSustainedSweep => Volatile.Read(ref _blocksSinceSustainedSweep);
 }
