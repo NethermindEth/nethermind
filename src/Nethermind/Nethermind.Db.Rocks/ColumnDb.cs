@@ -3,21 +3,32 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, ISstIngestible
 {
+    private static long _sstIngestSeq;
+
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
+    // Test-only injection point: invoked before the native ingest so tests can simulate a mid-commit failure.
+    internal Action? _testIngestFailureHook;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
     private readonly RocksDbReader _reader;
@@ -117,6 +128,282 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
             underlyingWriteBatch.Merge(key, value, columnDb._columnFamily, flags);
+    }
+
+    public ISstIngestWriteBatch StartSstIngestBatch() => new SstIngestWriteBatch(this);
+
+    public string IngestStagingDir => Path.Combine(_mainDb.FullPath, "sst_ingest");
+
+    private const int MaxL0FilesBeforeThrottle = 20;
+    private const int L0DrainMaxPolls = 1500;
+    private const int L0DrainPollMs = 20;
+
+    private readonly IngestExternalFileOptions _ingestOptions = new IngestExternalFileOptions()
+        .SetMoveFiles(true)
+        .SetAllowGlobalSeqno(true)
+        .SetAllowBlockingFlush(true);
+
+    public void IngestStagedFiles(IReadOnlyList<string> files)
+    {
+        if (files.Count == 0) return;
+        _testIngestFailureHook?.Invoke();
+        _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
+    }
+
+    public void WaitForIngestCompactionHeadroom()
+    {
+        for (int i = 0; i < L0DrainMaxPolls; i++)
+        {
+            string? v = _rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnFamily);
+            if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
+            Thread.Sleep(L0DrainPollMs);
+        }
+
+        ILogger logger = _mainDb.Logger;
+        if (logger.IsWarn) logger.Warn($"L0 of {_mainDb.Name} column {Name} did not drain below {MaxL0FilesBeforeThrottle} files within {L0DrainMaxPolls * L0DrainPollMs / 1000}s; continuing SST ingestion without compaction headroom");
+    }
+
+    private sealed class SstIngestWriteBatch : ISstIngestWriteBatch
+    {
+        private const long MaxBufferedBytes = 128L * 1024 * 1024;
+        private const int SlabSize = 1 << 20;
+
+        // Worst-case permanent retention: slabs <= 1024 x 1 MiB = 1 GiB; entries <= 6 arrays/bucket over 2^16..2^22 x 32 B ~= 1.5 GiB.
+        // 6 covers peak concurrency: six column batches alive per persist, one persist in flight.
+        private static readonly ArrayPool<byte> _slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
+        private static readonly ArrayPool<Entry> _entryPool = ArrayPool<Entry>.Create(1 << 22, 6);
+        private static readonly EnvOptions _envOptions = new();
+
+        private readonly ColumnDb _columnDb;
+        private readonly EntryComparer _comparer;
+        private readonly List<byte[]> _slabs = [];
+        private readonly ArrayPoolList<string> _stagedFiles = new(4);
+        private Entry[] _index = _entryPool.Rent(1 << 16);
+        private int _count;
+        private int _slabIndex = -1;
+        private int _slabOffset;
+        private long _bufferedBytes;
+
+        public SstIngestWriteBatch(ColumnDb columnDb)
+        {
+            _columnDb = columnDb;
+            _comparer = new EntryComparer(this);
+        }
+
+        private struct Entry
+        {
+            public ulong KeyPrefix;
+            public int Slab;
+            public int Offset;
+            public int KeyLen;
+            public int ValLen; // -1 encodes delete
+            public int Seq;
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (value is null) Append(key, default, isDelete: true);
+            else Append(key, value, isDelete: false);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+            Append(key, value, isDelete: false);
+
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
+            throw new NotSupportedException("SST ingestion does not support merge writes");
+
+        private void Append(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool isDelete)
+        {
+            int length = key.Length + (isDelete ? 0 : value.Length);
+            Span<byte> destination = Reserve(length, out int slab, out int offset);
+            key.CopyTo(destination);
+            if (!isDelete) value.CopyTo(destination[key.Length..]);
+
+            if (_count == _index.Length) GrowIndex();
+            _index[_count] = new Entry
+            {
+                KeyPrefix = ReadPrefix(key),
+                Slab = slab,
+                Offset = offset,
+                KeyLen = key.Length,
+                ValLen = isDelete ? -1 : value.Length,
+                Seq = _count,
+            };
+            _count++;
+
+            _bufferedBytes += length + Unsafe.SizeOf<Entry>();
+            if (_bufferedBytes >= MaxBufferedBytes) FlushChunk();
+        }
+
+        private static ulong ReadPrefix(ReadOnlySpan<byte> key)
+        {
+            if (key.Length >= sizeof(ulong)) return BinaryPrimitives.ReadUInt64BigEndian(key);
+            Span<byte> padded = stackalloc byte[sizeof(ulong)];
+            padded.Clear();
+            key.CopyTo(padded);
+            return BinaryPrimitives.ReadUInt64BigEndian(padded);
+        }
+
+        private Span<byte> Reserve(int length, out int slab, out int offset)
+        {
+            if (length > SlabSize)
+            {
+                byte[] dedicated = new byte[length];
+                _slabs.Add(dedicated);
+                slab = _slabs.Count - 1;
+                offset = 0;
+                return dedicated;
+            }
+
+            if (_slabIndex < 0 || _slabOffset + length > SlabSize)
+            {
+                do
+                {
+                    _slabIndex++;
+                }
+                while (_slabIndex < _slabs.Count && _slabs[_slabIndex].Length != SlabSize);
+
+                if (_slabIndex == _slabs.Count) _slabs.Add(_slabPool.Rent(SlabSize));
+                _slabOffset = 0;
+            }
+
+            slab = _slabIndex;
+            offset = _slabOffset;
+            _slabOffset += length;
+            return _slabs[slab].AsSpan(offset, length);
+        }
+
+        private void GrowIndex()
+        {
+            Entry[] grown = _entryPool.Rent(_index.Length * 2);
+            Array.Copy(_index, grown, _count);
+            _entryPool.Return(_index);
+            _index = grown;
+        }
+
+        public void Clear()
+        {
+            for (int i = _slabs.Count - 1; i >= 0; i--)
+            {
+                if (_slabs[i].Length != SlabSize) _slabs.RemoveAt(i);
+            }
+            _count = 0;
+            _slabIndex = _slabs.Count > 0 ? 0 : -1;
+            _slabOffset = 0;
+            _bufferedBytes = 0;
+        }
+
+        private ReadOnlySpan<byte> KeySpan(in Entry e) => _slabs[e.Slab].AsSpan(e.Offset, e.KeyLen);
+
+        private bool IsSameKey(in Entry x, in Entry y) =>
+            x.KeyPrefix == y.KeyPrefix && x.KeyLen == y.KeyLen && KeySpan(in x).SequenceEqual(KeySpan(in y));
+
+        private sealed class EntryComparer(SstIngestWriteBatch batch) : IComparer<Entry>
+        {
+            public int Compare(Entry x, Entry y)
+            {
+                int c = x.KeyPrefix.CompareTo(y.KeyPrefix);
+                if (c != 0) return c;
+                c = batch.KeySpan(in x).SequenceCompareTo(batch.KeySpan(in y));
+                return c != 0 ? c : x.Seq.CompareTo(y.Seq);
+            }
+        }
+
+        private unsafe void FlushChunk()
+        {
+            if (_count == 0) return;
+
+            Array.Sort(_index, 0, _count, _comparer);
+
+            Directory.CreateDirectory(_columnDb.IngestStagingDir);
+            string file = Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
+
+            try
+            {
+                ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
+                    ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
+                IntPtr writer = Native.Instance.rocksdb_sstfilewriter_create(_envOptions.Handle, writerOptions.Handle);
+                try
+                {
+                    Native.Instance.rocksdb_sstfilewriter_open(writer, file);
+                    for (int i = 0; i < _count; i++)
+                    {
+                        ref Entry e = ref _index[i];
+                        // Equal keys sort by ascending Seq; only the last of each run (the latest write) is emitted.
+                        if (i + 1 < _count && IsSameKey(in e, in _index[i + 1])) continue;
+                        // Safety: Reserve wrote KeyLen (+ ValLen for puts) contiguous bytes at [Offset, Offset + length)
+                        // inside _slabs[Slab], so data, data + KeyLen and data + KeyLen + ValLen all stay within the pinned
+                        // slab; the native put/delete therefore cannot read or write past the slab's bounds.
+                        fixed (byte* slabPtr = &MemoryMarshal.GetArrayDataReference(_slabs[e.Slab]))
+                        {
+                            byte* data = slabPtr + e.Offset;
+                            if (e.ValLen < 0) Native.Instance.rocksdb_sstfilewriter_delete(writer, data, (UIntPtr)e.KeyLen);
+                            else Native.Instance.rocksdb_sstfilewriter_put(writer, data, (UIntPtr)e.KeyLen, data + e.KeyLen, (UIntPtr)e.ValLen);
+                        }
+                    }
+                    Native.Instance.rocksdb_sstfilewriter_finish(writer);
+                }
+                finally
+                {
+                    Native.Instance.rocksdb_sstfilewriter_destroy(writer);
+                }
+            }
+            catch
+            {
+                try
+                {
+                    if (File.Exists(file)) File.Delete(file);
+                }
+                catch (Exception cleanupError)
+                {
+                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete partial SST file '{file}' after a writer error; it will be swept on next startup. {cleanupError}");
+                }
+                throw;
+            }
+
+            _stagedFiles.Add(file);
+            Clear();
+        }
+
+        public IReadOnlyList<string> SealToStagedFiles()
+        {
+            FlushChunk();
+            return _stagedFiles;
+        }
+
+        public void IngestStagedFiles()
+        {
+            _columnDb.IngestStagedFiles(_stagedFiles);
+            _stagedFiles.Clear();
+        }
+
+        public void DeleteStagedFiles()
+        {
+            foreach (string file in _stagedFiles)
+            {
+                try
+                {
+                    if (File.Exists(file)) File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete staged SST file '{file}' during cleanup; it will be swept on next startup. {e}");
+                }
+            }
+            _stagedFiles.Clear();
+        }
+
+        public void Dispose()
+        {
+            foreach (byte[] slab in _slabs)
+            {
+                if (slab.Length == SlabSize) _slabPool.Return(slab);
+            }
+            _slabs.Clear();
+            _entryPool.Return(_index);
+            _index = [];
+            _stagedFiles.Dispose();
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key) => Set(key, null);

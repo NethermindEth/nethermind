@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -35,6 +37,7 @@ public static class BasePersistence
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+    private static readonly byte[] IngestMarkerKey = Keccak.Compute("SstIngestMarker").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -60,6 +63,60 @@ public static class BasePersistence
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }
+
+    /// <summary>
+    /// Durable redo marker for an SST-ingest persist: target state plus the staged file names. Written (WAL-synced)
+    /// before the first ingest; cleared atomically with the <see cref="CurrentStateKey"/> advance. A marker found at
+    /// startup means the process died mid-commit and the persist must be rolled forward.
+    /// </summary>
+    internal static void SetIngestMarker(IWriteOnlyKeyValueStore kv, in StateId to, IReadOnlyList<string> files)
+    {
+        int size = 8 + 32;
+        foreach (string file in files) size += 2 + Encoding.UTF8.GetByteCount(Path.GetFileName(file));
+
+        byte[]? rented = size <= 4096 ? null : ArrayPool<byte>.Shared.Rent(size);
+        Span<byte> bytes = rented is null ? stackalloc byte[size] : rented.AsSpan(0, size);
+        try
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], to.BlockNumber);
+            to.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
+            int offset = 8 + 32;
+            foreach (string file in files)
+            {
+                int written = Encoding.UTF8.GetBytes(Path.GetFileName(file), bytes[(offset + 2)..]);
+                BinaryPrimitives.WriteUInt16BigEndian(bytes[offset..], (ushort)written);
+                offset += 2 + written;
+            }
+
+            kv.PutSpan(IngestMarkerKey, bytes);
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    internal static (StateId To, string[] Files)? ReadIngestMarker(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(IngestMarkerKey);
+        if (bytes is null || bytes.Length < 8 + 32) return null;
+
+        StateId to = new(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes.AsSpan(8, 32)));
+        List<string> files = [];
+        int offset = 8 + 32;
+        while (offset + 2 <= bytes.Length)
+        {
+            int length = BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(offset));
+            offset += 2;
+            if (offset + length > bytes.Length) throw new InvalidDataException("Flat DB SST ingest marker is truncated");
+            files.Add(Encoding.UTF8.GetString(bytes, offset, length));
+            offset += length;
+        }
+
+        return (to, files.ToArray());
+    }
+
+    internal static void ClearIngestMarker(IWriteOnlyKeyValueStore kv) => kv.Remove(IngestMarkerKey);
 
     internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
     {

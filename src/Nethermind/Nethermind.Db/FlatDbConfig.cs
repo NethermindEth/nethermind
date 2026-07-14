@@ -26,6 +26,7 @@ public class FlatDbConfig : IFlatDbConfig
     public long GcPaceGen2IntervalMs { get; set; } = 0;
     public long GcPaceWarmupSeconds { get; set; } = 0;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
+    public bool PersistViaSstIngestion { get; set; } = false;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
