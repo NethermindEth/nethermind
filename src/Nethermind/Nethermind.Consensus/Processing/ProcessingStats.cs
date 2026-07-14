@@ -300,6 +300,7 @@ namespace Nethermind.Consensus.Processing
 
         private readonly Lock _reportLock = new();
         private TimeSpan _lastGcPauseTotal;
+        private int _blocksSinceBackgroundSweep;
         void ExecuteFromThreadPool(BlockData data)
         {
             try
@@ -345,6 +346,14 @@ namespace Nethermind.Consensus.Processing
             _lastGcPauseTotal = gcPauseTotal;
             if (gcPauseDelta.TotalMilliseconds > 200 && _logger.IsWarn)
                 _logger.Warn($"[GCDIAG] {gcPauseDelta.TotalMilliseconds:F0}ms of GC pause during block {blockNumber} window (total {gcPauseTotal.TotalSeconds:F1}s)");
+
+            // [GCDIAG] Periodic background gen2 sweep during sustained processing: keeps gen2 small so
+            // the runtime never escalates to a multi-second blocking full collection.
+            if (++_blocksSinceBackgroundSweep >= 256)
+            {
+                _blocksSinceBackgroundSweep = 0;
+                GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+            }
 
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
