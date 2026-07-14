@@ -101,9 +101,11 @@ on:
       trace_blocks:
         description: >-
           Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
-          implies dottrace=true, passes the list to the client as NETHERMIND_PROFILE_BLOCKS (so its
-          BlockProfiler plugin brackets each block), and produces one .dtp + one parsed XML per block.
-          Leave empty for whole-run profiling.
+          implies dottrace=true and passes the list to the client as NETHERMIND_PROFILE_BLOCKS (so its
+          BlockProfiler plugin brackets each block). Produces one .dtp workspace containing one
+          snapshot per traced block (open in the dotTrace UI; the numbered .dtp.NNNN files are storage
+          segments, not per-block files); the parsed XML report aggregates all traced windows, so trace
+          a single block per run when isolated XML matters. Leave empty for whole-run profiling.
         required: false
         default: ""
       client_env:
