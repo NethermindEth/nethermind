@@ -27,7 +27,6 @@ public sealed class GCScheduler
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
-    // Timer sampling the sustained-sweep allocation budget once per second
     private readonly Timer _sustainedSweepTimer;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
@@ -210,11 +209,7 @@ public sealed class GCScheduler
 
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
 
-    /// <summary>
-    /// Excludes all forced collections for the scope's lifetime, so they cannot contend with
-    /// memory-churning work such as pruning. A deferred sustained sweep stays armed and retries
-    /// once the scope is disposed.
-    /// </summary>
+    /// <summary>Excludes forced collections for the scope's lifetime (e.g. while pruning).</summary>
     public ForcedGCExclusionScope ExcludeForcedGC()
     {
         Interlocked.Increment(ref _forcedGCExclusions);
@@ -226,14 +221,8 @@ public sealed class GCScheduler
         public void Dispose() => Interlocked.Decrement(ref scheduler._forcedGCExclusions);
     }
 
-    /// <summary>
-    /// Fires a concurrent background gen2 sweep once <see cref="SustainedSweepAllocationBytes"/>
-    /// have been allocated since the last scheduler-issued gen2 collection; sampled once per
-    /// second by <see cref="_sustainedSweepTimer"/>. Keeps gen2 small when blocks stream
-    /// back-to-back and the idle-window sweeps never engage, preventing the runtime's
-    /// multi-second blocking escalation; stays dormant on a synced node whose idle-window
-    /// sweeps already collect gen2 regularly.
-    /// </summary>
+    // Keeps gen2 small when blocks stream back-to-back and the idle-window sweeps never engage,
+    // preventing the runtime's multi-second blocking gen2 escalation.
     internal void SweepIfAllocationBudgetExceeded()
     {
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
