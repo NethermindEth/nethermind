@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -23,7 +24,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
-using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -101,7 +101,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
-            PrewarmMetrics.MempoolPrewarmHandoffs++;
             _nodeStorageCache.Enabled = true;
         }
         else
@@ -455,11 +454,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // Whole group already warmed speculatively — emit no jobs; leave the rest to the reactive pass.
                 if (AllSpeculativelyWarmed(group, speculativelyWarmed))
                 {
-                    Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersSkipped);
                     group.Dispose();
                     continue;
                 }
-                Interlocked.Increment(ref PrewarmMetrics.MempoolPrewarmSendersWarmed);
             }
 
             ulong groupGas = TotalGasLimit(group);
@@ -515,8 +512,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Declared gas limits are unvalidated at prewarm time; saturate so an extreme
             // payload cannot wrap the estimate and invert the split/hoist decision.
-            ulong sum = totalGasLimit + tx.GasLimit;
-            totalGasLimit = sum < totalGasLimit ? ulong.MaxValue : sum;
+            totalGasLimit = totalGasLimit.SaturatingAdd(tx.GasLimit);
         }
 
         return totalGasLimit;

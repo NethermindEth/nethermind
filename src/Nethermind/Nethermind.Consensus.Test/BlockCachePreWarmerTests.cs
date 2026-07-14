@@ -34,7 +34,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
-using PrewarmMetrics = Nethermind.Consensus.Processing.Prewarming.Metrics;
 
 namespace Nethermind.Consensus.Test;
 
@@ -740,11 +739,8 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    // Asserts deltas on process-wide static counters; keep serialized in case assembly-level
-    // parallelism is ever enabled.
     [Test]
-    [NonParallelizable]
-    public void GroupTransactionsBySender_CountsSendersOncePerOriginalGroupAndPrunesWarmedJobs()
+    public void GroupTransactionsBySender_PrunesWarmedGroupsAndSplitChildren()
     {
         Transaction[] heavyChain =
         [
@@ -760,21 +756,11 @@ public class BlockCachePreWarmerTests
         HashSet<Nethermind.Core.Crypto.Hash256> warmed =
             [heavyChain[0].Hash!, heavyChain[1].Hash!, heavyChain[2].Hash!, warmedLight.Hash!];
 
-        long skippedBefore = PrewarmMetrics.MempoolPrewarmSendersSkipped;
-        long warmedBefore = PrewarmMetrics.MempoolPrewarmSendersWarmed;
-
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups =
             BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, warmed);
         try
         {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(PrewarmMetrics.MempoolPrewarmSendersSkipped - skippedBefore, Is.EqualTo(1),
-                    "the fully warmed sender counts once");
-                Assert.That(PrewarmMetrics.MempoolPrewarmSendersWarmed - warmedBefore, Is.EqualTo(1),
-                    "the partially warmed sender counts once despite splitting into several jobs");
-                Assert.That(groups.Count, Is.EqualTo(2), "already-warmed split children are pruned");
-            }
+            Assert.That(groups.Count, Is.EqualTo(2), "already-warmed split children are pruned");
             foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
             {
                 Assert.That(job.FirstIndex, Is.InRange(3, 4), "only the unwarmed tail of the chain remains");
