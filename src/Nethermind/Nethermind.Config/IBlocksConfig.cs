@@ -49,6 +49,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Experimental: cancel exceptional in-flight warm executions overtaken by canonical execution. `None` (default), `Passed` (cancel once execution passed the warm's transaction), or `Reached` (cancel when execution starts it).", DefaultValue = "None", HiddenFromDocs = true)]
+    PreWarmCancellationMode PreWarmCancellation { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

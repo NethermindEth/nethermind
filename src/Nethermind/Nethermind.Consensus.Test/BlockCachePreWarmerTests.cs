@@ -69,6 +69,11 @@ public class BlockCachePreWarmerTests
         {
             worldState.CreateAccount(TestItem.AddressA, 1_000_000.Ether);
             worldState.CreateAccount(TestItem.AddressB, 1_000_000.Ether);
+            // Spin contract for mid-EVM cancellation tests: JUMPDEST PUSH0 JUMP burns gas
+            // until cancelled or out of gas, guaranteeing bounded but poll-visible execution.
+            byte[] spinCode = [0x5b, 0x5f, 0x56];
+            worldState.CreateAccount(TestItem.AddressE, UInt256.Zero);
+            worldState.InsertCode(TestItem.AddressE, Nethermind.Core.Crypto.ValueKeccak.Compute(spinCode), spinCode, Osaka.Instance);
             // Seed storage for BAL-based prewarming tests
             worldState.Set(new StorageCell(TestItem.AddressA, 1), new byte[] { 0x42 });
             worldState.Set(new StorageCell(TestItem.AddressA, 2), new byte[] { 0x43 });
@@ -973,8 +978,221 @@ public class BlockCachePreWarmerTests
             "each worker returns its env once; per-job rental would return four");
     }
 
-    private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
-        Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
+    /// <summary>
+    /// Verifies the cancellation predicate semantics: `Passed` cancels only after canonical
+    /// execution moves beyond the warm's transaction, `Reached` cancels as soon as it starts it,
+    /// and the block token cancels regardless of progress. Also pins that the tracer implements
+    /// the interface's cancellation members (they are interface defaults, not base virtuals).
+    /// </summary>
+    [Test]
+    public void PrewarmCancelTracer_HonoursProgressBoundariesAndBlockToken()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 2);
+        using CancellationTokenSource cts = new();
+        BlockCachePreWarmer.PrewarmCancelTracer passed = new(preWarmer, cts.Token, cancelWhenReached: false) { WarmTxIndex = 0 };
+        BlockCachePreWarmer.PrewarmCancelTracer reached = new(preWarmer, cts.Token, cancelWhenReached: true) { WarmTxIndex = 0 };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ITxTracer)passed).IsCancelable, Is.True, "the interface mapping must expose the cancelable override");
+            Assert.That(((ITxTracer)passed).IsCancelled, Is.False, "no canonical progress yet");
+            Assert.That(((ITxTracer)reached).IsCancelled, Is.False);
+        }
+
+        preWarmer.OnBeforeTxExecution(); // canonical execution starts tx 0
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ITxTracer)passed).IsCancelled, Is.False, "passed waits until execution moves beyond the tx");
+            Assert.That(((ITxTracer)reached).IsCancelled, Is.True, "reached cancels when execution starts the tx");
+        }
+
+        preWarmer.OnBeforeTxExecution(); // canonical execution starts tx 1
+        Assert.That(((ITxTracer)passed).IsCancelled, Is.True);
+
+        passed.WarmTxIndex = 5;
+        Assert.That(((ITxTracer)passed).IsCancelled, Is.False, "warming ahead of execution continues");
+
+        cts.Cancel();
+        Assert.That(((ITxTracer)passed).IsCancelled, Is.True, "the block token cancels regardless of progress");
+
+        preWarmer.Dispose();
+    }
+
+    /// <summary>
+    /// Pins the non-cancelable baseline and the eligible-only routing: with the experiment off
+    /// every warm runs the non-cancelable VM path, and with it on only exceptional jobs pay the
+    /// cancelable path (which also enables the stream interpreter).
+    /// </summary>
+    [TestCase(PreWarmCancellationMode.None, false, false)]
+    [TestCase(PreWarmCancellationMode.Reached, true, false)]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_RoutesOnlyEligibleJobsToCancelableExecution(
+        PreWarmCancellationMode mode, bool expectHeavyCancelable, bool expectLightCancelable)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        Transaction heavy = GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000);
+        Transaction light = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions(heavy, light).WithGasLimit(30_000_000).TestObject;
+
+        ConcurrentDictionary<Nethermind.Core.Crypto.Hash256, bool> cancelableByTx = new();
+        WarmTracerProbePolicy policy = new(envFactory, preBlockCaches,
+            onWarmupStarted: (tx, isCancelable) => cancelableByTx[tx.Hash!] = isCancelable,
+            onWarmupCompleted: static _ => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance,
+            cancellationMode: mode);
+
+        RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance).GetAwaiter().GetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelableByTx[heavy.Hash!], Is.EqualTo(expectHeavyCancelable));
+            Assert.That(cancelableByTx[light.Hash!], Is.EqualTo(expectLightCancelable), "ordinary light jobs never pay the cancelable path");
+        }
+    }
+
+    /// <summary>
+    /// Verifies main-progress cancellation end to end through the real EVM: a hoisted warm
+    /// spinning inside the interpreter is cancelled at a poll once canonical execution reaches
+    /// its transaction, the job is abandoned without faulting the loop, and the freed worker's
+    /// pass still completes the remaining light jobs.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_MainProgressCancellationAbandonsSpinningWarmAndCompletesLaterJobs(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        Transaction heavy = GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000, to: TestItem.AddressE);
+        Transaction lightB = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Transaction lightC = GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions(heavy, lightB, lightC).WithGasLimit(30_000_000).TestObject;
+
+        using ManualResetEventSlim heavyStarted = new(initialState: false);
+        using ManualResetEventSlim warmupGate = new(initialState: false);
+        int heavyCompleted = 0;
+        int lightsCompleted = 0;
+        WarmTracerProbePolicy policy = new(envFactory, preBlockCaches,
+            onWarmupStarted: (tx, _) => { if (ReferenceEquals(tx, heavy)) heavyStarted.Set(); },
+            onWarmupCompleted: tx =>
+            {
+                if (ReferenceEquals(tx, heavy)) Interlocked.Increment(ref heavyCompleted);
+                else Interlocked.Increment(ref lightsCompleted);
+            },
+            warmupGate);
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance,
+            cancellationMode: PreWarmCancellationMode.Reached);
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(heavyStarted.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: the spinning warm must be parked at the execution gate");
+                // Canonical execution reaches tx 0 while the warm is parked, so the cancellation
+                // condition is already true when the EVM starts: the first poll aborts the spin
+                // long before its 5M gas budget can run out.
+                preWarmer.OnBeforeTxExecution();
+            }
+            finally
+            {
+                warmupGate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heavyCompleted, Is.Zero, "the spinning warm must be aborted mid-EVM, not run to out-of-gas");
+            Assert.That(lightsCompleted, Is.EqualTo(2), "the abandoned job must not fault the loop or the other worker");
+        }
+    }
+
+    /// <summary>
+    /// Verifies block-token cancellation ends a spinning warm mid-EVM: the job is abandoned
+    /// quietly (job-level handling, not the per-tx error catch) and the warm pass returns.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_BlockTokenCancellationEndsSpinningWarm(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        Transaction heavy = GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000, to: TestItem.AddressE);
+        Transaction light = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions(heavy, light).WithGasLimit(30_000_000).TestObject;
+
+        using ManualResetEventSlim heavyStarted = new(initialState: false);
+        using ManualResetEventSlim warmupGate = new(initialState: false);
+        int heavyCompleted = 0;
+        WarmTracerProbePolicy policy = new(envFactory, preBlockCaches,
+            onWarmupStarted: (tx, _) => { if (ReferenceEquals(tx, heavy)) heavyStarted.Set(); },
+            onWarmupCompleted: tx => { if (ReferenceEquals(tx, heavy)) Interlocked.Increment(ref heavyCompleted); },
+            warmupGate);
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance,
+            cancellationMode: PreWarmCancellationMode.Reached);
+
+        using CancellationTokenSource blockCts = new();
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance, blockCts.Token);
+            try
+            {
+                Assert.That(heavyStarted.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: the spinning warm must be parked at the execution gate");
+                // Cancel while the warm is parked, so the condition is already true when the
+                // EVM starts: the first poll aborts the spin before out-of-gas can race it.
+                blockCts.Cancel();
+            }
+            finally
+            {
+                warmupGate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(heavyCompleted, Is.Zero, "the spinning warm must be aborted mid-EVM, not run to out-of-gas");
+    }
+
+    private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit, Address? to = null) =>
+        Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(to ?? TestItem.AddressD).SignedAndResolved(sender).TestObject;
 
     private static ArrayPoolList<(int Index, Transaction Tx)> FindGroup(
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups, Address sender)
@@ -1290,6 +1508,64 @@ public class BlockCachePreWarmerTests
             {
                 if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) onWarmup();
                 return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+    }
+
+    /// <summary>
+    /// Observes each warm execution's tracer and completion through the pooled env: the started
+    /// callback fires before the transaction processor runs (with the tracer's cancelability),
+    /// the completed callback only when it returns normally — a cancelled warm never completes.
+    /// An optional gate parks each warm between the started callback and execution, letting a
+    /// test make cancellation conditions true before the EVM runs a single opcode.
+    /// </summary>
+    private sealed class WarmTracerProbePolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        Action<Transaction, bool> onWarmupStarted,
+        Action<Transaction> onWarmupCompleted,
+        ManualResetEventSlim? warmupGate = null)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly Action<Transaction, bool> _onWarmupStarted = onWarmupStarted;
+        private readonly Action<Transaction> _onWarmupCompleted = onWarmupCompleted;
+        private readonly ManualResetEventSlim? _warmupGate = warmupGate;
+
+        public IReadOnlyTxProcessorSource Create() => new ProbeEnv(factory.Create(caches), this);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class ProbeEnv(IReadOnlyTxProcessorSource inner, WarmTracerProbePolicy owner) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new ProbeScope(inner.Build(baseBlock), owner);
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class ProbeScope(IReadOnlyTxProcessingScope inner, WarmTracerProbePolicy owner) : IReadOnlyTxProcessingScope
+        {
+            private readonly ProbeTxProcessor _processor = new(inner.TransactionProcessor, owner);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class ProbeTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, WarmTracerProbePolicy owner)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                bool isWarmup = (options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0;
+                if (isWarmup)
+                {
+                    owner._onWarmupStarted(transaction, txTracer.IsCancelable);
+                    owner._warmupGate?.Wait();
+                }
+                Nethermind.Evm.TransactionProcessing.TransactionResult result = inner.Process(transaction, txTracer, options);
+                if (isWarmup) owner._onWarmupCompleted(transaction);
+                return result;
             }
 
             public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);

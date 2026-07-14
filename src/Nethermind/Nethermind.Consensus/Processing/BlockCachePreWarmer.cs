@@ -33,6 +33,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
+    private readonly PreWarmCancellationMode _cancellationMode;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
@@ -70,7 +71,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
-        systemAccessLists) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        systemAccessLists,
+        blocksConfig.PreWarmCancellation) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -81,12 +83,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
-        IHasAccessList[]? systemAccessLists = null)
+        IHasAccessList[]? systemAccessLists = null,
+        PreWarmCancellationMode cancellationMode = PreWarmCancellationMode.None)
     {
         _systemAccessLists = systemAccessLists ?? [];
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
+        _cancellationMode = cancellationMode;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
@@ -395,14 +399,37 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         // before building a scope.
                         if (blockState.PreWarmer.MainThreadTxIndex >= job.LastIndex) return worker;
 
-                        using IReadOnlyTxProcessingScope scope = worker.Env.Build(blockState.Parent);
-                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                        scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                        foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
+                        // Expected cancellation abandons the whole job: an interrupted sender chain
+                        // cannot safely continue from partial speculative state. The loop helper's
+                        // own token check stops further claims on block-token cancellation, while a
+                        // main-progress cancel lets this worker claim a later job.
+                        try
                         {
-                            if (worker.Token.IsCancellationRequested) return worker;
-                            WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token);
+                            using IReadOnlyTxProcessingScope scope = worker.Env!.Build(blockState.Parent);
+                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                            scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                            PrewarmCancelTracer? cancelTracer = job.CancellationEligible ? worker.CancelTracer : null;
+                            foreach ((int txIndex, Transaction? tx) in job.Transactions.AsSpan())
+                            {
+                                if (worker.Token.IsCancellationRequested) return worker;
+                                if (cancelTracer is not null) cancelTracer.WarmTxIndex = txIndex;
+                                WarmupSingleTransaction(scope, tx, txIndex, blockState, worker.Token, cancelTracer);
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Expected cancellation; the job is abandoned by design. The unwind can
+                            // strand undisposed frames in the env's long-lived VM, so the env must
+                            // be retired rather than pooled.
+                            if (worker.Token.IsCancellationRequested)
+                            {
+                                worker.EnvCancelled = true; // the loop stops claiming; ReturnEnv disposes
+                            }
+                            else
+                            {
+                                worker.RetireCancelledEnv(); // main-progress: continue on a fresh env
+                            }
                         }
 
                         return worker;
@@ -568,7 +595,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Transaction tx,
         int txIndex,
         BlockState blockState,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PrewarmCancelTracer? cancelTracer = null)
     {
         try
         {
@@ -590,9 +618,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, cancelTracer ?? NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected mid-EVM or access-list cancellation; the caller abandons the whole job.
+            throw;
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
@@ -794,9 +827,73 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly BlockState BlockState = blockState;
         public readonly ArrayPoolList<WarmupJob> Jobs = jobs;
         public readonly CancellationToken Token = token;
-        public readonly IReadOnlyTxProcessorSource Env = blockState.PreWarmer._envPool.Get();
+        /// <summary>Null only transiently while a poisoned env is replaced; a failed replacement
+        /// faults the worker, so the job action never observes null.</summary>
+        public IReadOnlyTxProcessorSource? Env = blockState.PreWarmer._envPool.Get();
+        /// <summary>Set when a cancelled warm unwound inside this env; it must not return to the pool.</summary>
+        public bool EnvCancelled;
+        /// <summary>One reusable tracer per worker; null when the cancellation experiment is off.</summary>
+        public readonly PrewarmCancelTracer? CancelTracer =
+            blockState.PreWarmer._cancellationMode is PreWarmCancellationMode.None
+                ? null
+                : new PrewarmCancelTracer(blockState.PreWarmer, token,
+                    cancelWhenReached: blockState.PreWarmer._cancellationMode is PreWarmCancellationMode.Reached);
 
-        public void ReturnEnv() => BlockState.PreWarmer._envPool.Return(Env);
+        /// <summary>
+        /// A mid-EVM cancellation unwinds without popping the VM's call-frame stack, stranding
+        /// undisposed pooled frames in the env's long-lived VM. Dispose the poisoned env and
+        /// continue on a fresh rental.
+        /// </summary>
+        public void RetireCancelledEnv()
+        {
+            // Drop ownership first: if disposal or the fresh rental throws, the finalizer must
+            // neither pool nor re-dispose the poisoned instance.
+            IReadOnlyTxProcessorSource poisoned = Env!;
+            Env = null;
+            poisoned.Dispose();
+            Env = BlockState.PreWarmer._envPool.Get();
+        }
+
+        public void ReturnEnv()
+        {
+            if (Env is null) return; // a failed retirement already disposed the env
+            if (EnvCancelled)
+            {
+                Env.Dispose();
+            }
+            else
+            {
+                BlockState.PreWarmer._envPool.Return(Env);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Non-tracing cancelable tracer for the mid-EVM warm-cancellation experiment: selecting the
+    /// cancelable VM specialization makes the interpreter poll <see cref="IsCancelled"/> every
+    /// 1,024 opcodes, observing the block token plus published canonical progress against the
+    /// worker's current warm transaction.
+    /// </summary>
+    /// <remarks>Confined to one warm worker: <see cref="WarmTxIndex"/> is written and read on
+    /// that worker's thread only. Re-lists <see cref="ITxTracer"/> so these members implement
+    /// the interface's default-false cancellation properties.</remarks>
+    internal sealed class PrewarmCancelTracer(BlockCachePreWarmer preWarmer, CancellationToken token, bool cancelWhenReached)
+        : TxTracer, ITxTracer
+    {
+        /// <summary>Block position of the transaction currently being warmed.</summary>
+        public int WarmTxIndex = int.MaxValue;
+
+        public bool IsCancelable => true;
+
+        public bool IsCancelled
+        {
+            get
+            {
+                if (token.IsCancellationRequested) return true;
+                int mainThreadTxIndex = preWarmer.MainThreadTxIndex;
+                return cancelWhenReached ? mainThreadTxIndex >= WarmTxIndex : mainThreadTxIndex > WarmTxIndex;
+            }
+        }
     }
 
     private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
