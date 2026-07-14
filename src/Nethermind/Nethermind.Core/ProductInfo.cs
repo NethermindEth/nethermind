@@ -87,7 +87,7 @@ public static class ProductInfo
     public static string Version { get; }
 
     /// <summary>
-    /// Suffix appended to the version segment of the public client ID (e.g. <c>-halfpath</c>, <c>-flat</c>) to
+    /// Suffix appended to the version segment of the public client ID (e.g. <c>-hp</c>, <c>-f</c>) to
     /// advertise the state DB layout.
     /// </summary>
     /// <remarks>

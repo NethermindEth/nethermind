@@ -203,15 +203,15 @@ public class InitializeNetwork : IStep
         flatDbConfig.Enabled
             ? flatDbConfig.Layout switch
             {
-                FlatLayout.Flat => "-flat",
-                FlatLayout.FlatInTrie => "-flatInTrie",
-                FlatLayout.PreimageFlat => "-preimageFlat",
+                FlatLayout.Flat => "-f",
+                FlatLayout.FlatInTrie => "-fit",
+                FlatLayout.PreimageFlat => "-pf",
                 _ => ""
             }
             : initConfig.StateDbKeyScheme switch
             {
-                INodeStorage.KeyScheme.Hash => pruningConfig.Mode == PruningMode.None ? "-hashArchive" : "-hash",
-                INodeStorage.KeyScheme.HalfPath => pruningConfig.Mode == PruningMode.None ? "-halfpathArchive" : "-halfpath",
+                INodeStorage.KeyScheme.Hash => pruningConfig.Mode == PruningMode.None ? "-hA" : "-h",
+                INodeStorage.KeyScheme.HalfPath => pruningConfig.Mode == PruningMode.None ? "-hpA" : "-hp",
                 _ => ""
             };
 

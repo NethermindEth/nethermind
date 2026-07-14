@@ -40,8 +40,8 @@ public class ProductInfoTest
             Is.EqualTo($"{ProductInfo.Name}/v{ProductInfo.Version}"));
     }
 
-    [TestCase("-halfpath")]
-    [TestCase("-flat")]
+    [TestCase("-hp")]
+    [TestCase("-f")]
     [TestCase("")]
     public void Public_client_id_includes_version_postfix(string postfix)
     {
