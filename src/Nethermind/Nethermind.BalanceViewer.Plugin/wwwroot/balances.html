@@ -248,13 +248,24 @@
             margin: 0 6px 6px 0;
         }
 
-        .chip .number { color: var(--tcol, var(--c-ticker)); cursor: pointer; }
+        .chip .number { color: var(--tcol, var(--c-ticker)); cursor: pointer; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
         .chip .number:hover { color: var(--accent); }
         .chip.nft { border-style: dashed; }
         .chip.auto { border-style: dotted; opacity: 0.85; }
         .chip .kind { color: var(--muted); font-size: 10px; }
+        .chip .restore { cursor: pointer; color: var(--muted); padding: 0 2px; }
+        .chip .restore:hover { color: var(--accent); }
+        .hidden-tokens { margin-top: 6px; }
         @keyframes bvspin { to { transform: rotate(360deg); } }
-        button.zero-toggle.scanning { animation: bvspin 1s linear infinite; }
+        button.zero-toggle.scanning { position: relative; }
+        button.zero-toggle.scanning::after {
+            content: '';
+            position: absolute; top: -3px; right: -3px;
+            width: 7px; height: 7px; box-sizing: border-box;
+            border: 1.5px solid var(--border-soft); border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: bvspin 0.8s linear infinite;
+        }
 
         .thumbs {
             display: flex;
@@ -369,9 +380,9 @@
 
         .card table { width: 100%; border-collapse: collapse; }
         .card td { padding: 4px 0; }
-        .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); }
+        .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
         .card td.bal.spin { color: var(--muted); }
-        .card td.tick { color: var(--tcol, var(--c-ticker)); width: 72px; }
+        .card td.tick { color: var(--tcol, var(--c-ticker)); width: 72px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .card td.tick.copyable { cursor: pointer; }
         .card td.tick.copyable:hover { color: var(--accent); }
         .card td.fiat { text-align: right; color: var(--c-fiat); width: 110px; font-size: 12px; padding-left: 16px; }
@@ -855,6 +866,14 @@
             const base = 10n ** BigInt(decimals);
             const whole = value / base;
             const frac = value % base;
+            // spam tokens often carry astronomically large balances; render those compactly
+            // (e.g. 1.23T) so the amount can't blow out the table width
+            if (whole >= 1000000000000n) {
+                const n = Number(whole);
+                return Number.isFinite(n)
+                    ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(n)
+                    : '>10^308';
+            }
             let out = whole.toLocaleString('en-US');
             if (decimals > 0 && frac > 0n) {
                 let fracStr = frac.toString().padStart(decimals, '0').slice(0, 5).replace(/0+$/, '');
@@ -1408,6 +1427,10 @@
         let detectEnabled = true;           // top-bar toggle, default on
         let detecting = false;              // node historical scan still in progress (drives the spinner)
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
+        let tokensExpanded = false;         // detected-chip list expanded past the collapse limit
+        let hiddenExpanded = false;         // hidden-tokens section expanded
+        const TOKEN_COLLAPSE = 20;          // detected chips shown before "＋N more…"
+        const HIDDEN_COLLAPSE = 30;         // hidden chips shown when the section is expanded
 
         // ERC-20 Transfer logs carry exactly 3 topics (ERC-721's are fully indexed → 4); the emitting
         // contract is a token the account moved. Returns lowercased contract addresses not already
@@ -1428,6 +1451,20 @@
             return new Set(stateOf(chainId).ignored.map((t) => (typeof t === 'string' ? t : t.address).toLowerCase()));
         }
 
+        // heuristic spam filter (node data only): blank/absurdly long symbols, non-ASCII, URL- or
+        // promo-like tickers, bogus decimals, and dust-airdrop-style astronomically large balances.
+        // Suspected spam is hidden by default but recorded, so it can be restored one-by-one.
+        function looksLikeSpam(ticker, decimals, balanceRaw) {
+            const t = (ticker || '').trim();
+            if (t.length === 0 || t.length > 20) return true;
+            if (/[^\x20-\x7E]/.test(t)) return true;
+            if (/https?:|www\.|\.(com|xyz|io|net|org|app|fi|click|top|vip|site|live|gift|cash|finance)\b/i.test(t)) return true;
+            if (/claim|reward|voucher|airdrop|visit|redeem|bonus|giveaway|\.eth\b|→|\$\s?\d/i.test(t)) return true;
+            if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) return true;
+            try { if (balanceRaw && BigInt(balanceRaw) / (10n ** BigInt(decimals)) >= 1000000000000000n) return true; } catch { }
+            return false;
+        }
+
         // confirms a positive balance for candidate contracts and adds genuine holdings (held by any of
         // addrList) to the chain's detected list, skipping manually-tracked and hidden ones
         async function vetAndAdd(node, addrList, candidates) {
@@ -1445,15 +1482,21 @@
             for (let ci = 0; ci < fresh.length; ci++) {
                 const meta = tokenMetaCache.get(node.chainId + '|' + fresh[ci]);
                 if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
-                let has = false;
+                let has = false, heldRaw = null;
                 for (let ai = 0; ai < addrList.length; ai++) {
                     const raw = bals[ci * addrList.length + ai];
-                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { has = true; break; } } catch { }
+                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { has = true; heldRaw = raw; break; } } catch { }
                 }
                 if (!has) continue;
-                // re-check synchronously (no await before the push) so concurrent vet passes can't double-add
+                // re-check synchronously (no await before the push/hide) so concurrent passes can't double-add
                 if (state.detected.some((t) => t.address.toLowerCase() === fresh[ci])) continue;
-                state.detected.push({ address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
+                if (state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === fresh[ci])) continue;
+                const token = { address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true };
+                if (looksLikeSpam(meta.ticker, meta.decimals, heldRaw)) {
+                    state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name, spam: true });
+                } else {
+                    state.detected.push(token);
+                }
                 added = true;
             }
             if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
@@ -1512,6 +1555,20 @@
         function updateDetectIndicator() {
             const btn = $('detectToggle');
             if (btn) btn.classList.toggle('scanning', detectEnabled && detecting);
+        }
+
+        // restores a single hidden token: remove it from the ignore list and show it again
+        function restoreOne(node, token) {
+            const key = token.address.toLowerCase();
+            const state = stateOf(node.chainId);
+            state.ignored = state.ignored.filter((t) => (typeof t === 'string' ? t : t.address).toLowerCase() !== key);
+            if (token.ticker && !tokensOf(node.chainId).some((x) => x.address.toLowerCase() === key)) {
+                state.detected.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker, auto: true });
+            }
+            store.save(node.chainId);
+            renderTokens();
+            renderCards();
+            refreshBalances();
         }
 
         // restores hidden tokens by moving the stored objects back to the detected list — works
@@ -1638,21 +1695,56 @@
                 chip.append(x);
                 box.append(chip);
             };
+            // manual (tracked) tokens first — always shown
             for (const node of enabledNodes()) {
                 for (const token of stateOf(node.chainId).tokens) addChip(node, token, 'tokens', false);
-                for (const token of stateOf(node.chainId).detected) addChip(node, token, 'detected', false);
+            }
+            // detected tokens — collapse the list past a limit so a long tail can't fill the panel
+            const detected = enabledNodes().flatMap((node) => stateOf(node.chainId).detected.map((token) => [node, token]));
+            const shownDetected = tokensExpanded ? detected : detected.slice(0, TOKEN_COLLAPSE);
+            for (const [node, token] of shownDetected) addChip(node, token, 'detected', false);
+            if (detected.length > TOKEN_COLLAPSE) {
+                const more = el('button', 'link chip-add', tokensExpanded ? 'show less' : `＋${detected.length - TOKEN_COLLAPSE} more…`);
+                more.onclick = () => { tokensExpanded = !tokensExpanded; renderTokens(); };
+                box.append(more);
+            }
+            for (const node of enabledNodes()) {
                 for (const collection of stateOf(node.chainId).nfts) addChip(node, collection, 'nfts', true);
             }
             const add = el('button', 'link chip-add', '+');
             add.title = 'Track token or NFT collection';
             add.onclick = () => $('tokenForm').classList.toggle('open');
             box.append(add);
-            const hidden = enabledNodes().reduce((n, node) => n + stateOf(node.chainId).ignored.length, 0);
-            if (hidden) {
-                const restore = el('button', 'link chip-add', '⊘ ' + hidden);
-                restore.title = 'Restore ' + hidden + ' hidden auto-detected token' + (hidden > 1 ? 's' : '');
-                restore.onclick = restoreHidden;
-                box.append(restore);
+
+            // hidden tokens (suspected spam + manually hidden) — collapsed; restore one-by-one
+            const hidden = enabledNodes().flatMap((node) => stateOf(node.chainId).ignored
+                .filter((t) => typeof t !== 'string' && t.ticker).map((token) => [node, token]));
+            if (hidden.length) {
+                const toggle = el('button', 'link chip-add', `⊘ ${hidden.length} hidden${hiddenExpanded ? '' : ' ▸'}`);
+                toggle.title = 'Suspected-spam and hidden tokens — click to review and restore individually';
+                toggle.onclick = () => { hiddenExpanded = !hiddenExpanded; renderTokens(); };
+                box.append(toggle);
+                if (hiddenExpanded) {
+                    const wrap = el('div', 'hidden-tokens');
+                    for (const [node, token] of hidden.slice(0, HIDDEN_COLLAPSE)) {
+                        const chip = el('span', 'chip auto');
+                        const ticker = tickerLabel(token.ticker, node);
+                        ticker.style.setProperty('--tcol', tokenColor(token.ticker));
+                        ticker.onclick = () => copyAddress(token.address);
+                        chip.append(ticker);
+                        chip.title = `${token.name || token.ticker} · ${node.meta.name} · ${token.address} (click to copy address)`;
+                        const restore = el('span', 'restore', '＋');
+                        restore.title = 'Restore this token';
+                        restore.onclick = () => restoreOne(node, token);
+                        chip.append(restore);
+                        wrap.append(chip);
+                    }
+                    if (hidden.length > HIDDEN_COLLAPSE) wrap.append(el('span', 'kind', `and ${hidden.length - HIDDEN_COLLAPSE} more…`));
+                    const all = el('button', 'link chip-add', 'restore all');
+                    all.onclick = restoreHidden;
+                    wrap.append(all);
+                    box.append(wrap);
+                }
             }
         }
 

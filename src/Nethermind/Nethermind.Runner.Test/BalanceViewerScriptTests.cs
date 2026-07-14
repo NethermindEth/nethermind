@@ -145,6 +145,27 @@ public class BalanceViewerScriptTests
         Assert.That(result, Is.EqualTo(fresh));
     }
 
+    [TestCase("0xe8d4a51000", 0, "1T")]       // 1e12 tokens -> compact, can't blow out the layout
+    public void FormatUnits_CompactsAstronomicalAmounts(string hexValue, int decimals, string expected)
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.That(engine.Evaluate($"formatUnits('{hexValue}', {decimals})"), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void LooksLikeSpam_FlagsPromoUrlAndAbsurdTokens()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Evaluate("looksLikeSpam('claim at reward.xyz', 18, null)"), Is.True, "url-ish");
+            Assert.That(engine.Evaluate("looksLikeSpam('AIRDROP $50', 18, null)"), Is.True, "promo words");
+            Assert.That(engine.Evaluate("looksLikeSpam('OK', 0, '0x' + (9n*10n**33n).toString(16))"), Is.True, "airdrop-scale balance");
+            Assert.That(engine.Evaluate("looksLikeSpam('USDC', 6, '0x64')"), Is.False, "legit stablecoin");
+            Assert.That(engine.Evaluate("looksLikeSpam('PEPE', 18, '0x' + (4200n*10n**18n).toString(16))"), Is.False, "legit token");
+        });
+    }
+
     [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
