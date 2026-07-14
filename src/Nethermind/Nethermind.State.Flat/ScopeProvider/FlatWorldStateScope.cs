@@ -338,6 +338,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
+                // Pin the transient once for the whole traversal so the per-node warmer reads avoid lease atomics.
+                using SnapshotBundle.WarmerTransientLease _ = _snapshotBundle.EnterWarmerTransientScope();
+
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
                 _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
