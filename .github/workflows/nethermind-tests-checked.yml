@@ -19,12 +19,20 @@ defaults:
     shell: bash
 
 jobs:
+  build:
+    uses: ./.github/workflows/build-test-artifacts.yml
+    with:
+      matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-x64","os":"ubuntu-latest","variant":"checked","build_args":"-p:DefineConstants=TRACE%3BDEBUG"}]}'
+
   tests:
     name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       DOTNET_GCConserveMemory: 9
+      # Only these fixture tests read the src/tests submodule at runtime.
+      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       matrix:
@@ -32,10 +40,12 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
+            artifact: checked
           - &no_intrinsics
             label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -107,10 +117,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+          submodules: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.project }}
         id: test
@@ -118,14 +136,14 @@ jobs:
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet build ${{ matrix.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet restore ${{ matrix.project }}.csproj
           test_args=(--no-build --no-restore)
 
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -137,9 +155,11 @@ jobs:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
+            artifact: checked
           - label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
+            artifact: release
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -157,6 +177,14 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: ${{ matrix.variant.artifact }}
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
@@ -166,11 +194,10 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet build ${{ matrix.test.project }}.csproj -c release ${{ matrix.variant.dotnet-args }}
-          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
+          dotnet restore ${{ matrix.test.project }}.csproj
           test_args=(--no-build --no-restore)
 
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
 
   # The pyspec fixtures under the build variants now run through the reusable nethtest
   # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the
