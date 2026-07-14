@@ -10,9 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
@@ -113,20 +111,12 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
-        BlockHeader header = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.GasBeneficiary ?? Address.Zero,
-            UInt256.Zero,
-            number,
-            parent.GasLimit,
-            timestamp,
-            [])
-        {
-            MixHash = parent.MixHash,
-            BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec),
-            ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot,
-        };
+        // CreateSimulatedChild dispatches virtually, so chain-specific header subtypes (e.g. XdcBlockHeader)
+        // are preserved instead of degrading to a plain BlockHeader that chain-specific processors don't expect.
+        BlockHeader header = parent.CreateSimulatedChild(timestamp);
+        header.MixHash = parent.MixHash;
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
 
         return new NextBlockContext(header, spec);
     }
