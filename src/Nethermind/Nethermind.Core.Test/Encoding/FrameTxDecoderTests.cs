@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
