@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -13,8 +14,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -116,7 +117,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(UInt256.One));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - frame.GasLimit));
+        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)frame.GasLimit));
     }
 
     [Test]
@@ -186,7 +187,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - verify.GasLimit - transfer.GasLimit - 12345));
+        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)));
     }
 
     [Test]
