@@ -92,6 +92,10 @@ namespace Nethermind.Consensus.Processing
         private long _startAccountCacheMisses;
         private long _startStorageCacheHits;
         private long _startStorageCacheMisses;
+        private long _startPreBlockAccountHits;
+        private long _startPreBlockAccountMisses;
+        private long _startPreBlockStorageHits;
+        private long _startPreBlockStorageMisses;
         private long _startCodeCacheHits;
         private long _startCodeCacheMisses;
         private long _startEip7702DelegationsSet;
@@ -199,6 +203,10 @@ namespace Nethermind.Consensus.Processing
             _startAccountCacheMisses = DbMetrics.MainThreadStateTreeReads;
             _startStorageCacheHits = DbMetrics.MainThreadStorageTreeCache;
             _startStorageCacheMisses = DbMetrics.MainThreadStorageTreeReads;
+            _startPreBlockAccountHits = DbMetrics.MainThreadPreBlockAccountHits;
+            _startPreBlockAccountMisses = DbMetrics.MainThreadPreBlockAccountMisses;
+            _startPreBlockStorageHits = DbMetrics.MainThreadPreBlockStorageHits;
+            _startPreBlockStorageMisses = DbMetrics.MainThreadPreBlockStorageMisses;
             _startCodeCacheHits = Evm.Metrics.MainThreadCodeDbCache;
             _startCodeCacheMisses = Evm.Metrics.MainThreadCodeReads;
             _startEip7702DelegationsSet = Evm.Metrics.MainThreadEip7702DelegationsSet;
@@ -275,6 +283,10 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaAccountCacheMisses = DbMetrics.MainThreadStateTreeReads - _startAccountCacheMisses;
                 blockData.DeltaStorageCacheHits = DbMetrics.MainThreadStorageTreeCache - _startStorageCacheHits;
                 blockData.DeltaStorageCacheMisses = DbMetrics.MainThreadStorageTreeReads - _startStorageCacheMisses;
+                blockData.DeltaPreBlockAccountHits = DbMetrics.MainThreadPreBlockAccountHits - _startPreBlockAccountHits;
+                blockData.DeltaPreBlockAccountMisses = DbMetrics.MainThreadPreBlockAccountMisses - _startPreBlockAccountMisses;
+                blockData.DeltaPreBlockStorageHits = DbMetrics.MainThreadPreBlockStorageHits - _startPreBlockStorageHits;
+                blockData.DeltaPreBlockStorageMisses = DbMetrics.MainThreadPreBlockStorageMisses - _startPreBlockStorageMisses;
                 blockData.DeltaCodeCacheHits = Evm.Metrics.MainThreadCodeDbCache - _startCodeCacheHits;
                 blockData.DeltaCodeCacheMisses = Evm.Metrics.MainThreadCodeReads - _startCodeCacheMisses;
                 blockData.DeltaAccountReads = blockData.DeltaAccountCacheMisses;
@@ -663,8 +675,18 @@ namespace Nethermind.Consensus.Processing
                     evmMs = executionMs;
                 }
 
-                double accountHitRate = CalculateHitRate(data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses);
-                double storageHitRate = CalculateHitRate(data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses);
+                // Pre-block counters cover first-in-block touches only, so their rate = prewarm coverage.
+                // The legacy counters blend the per-block change-dict layer (repeat reads) into hits — kept
+                // as repeat_hits so the aggregate stays derivable. Fall back to legacy when the prewarmer
+                // scope is absent (counters zero, e.g. PreWarmStateOnBlockProcessing=false).
+                bool hasPreBlockStats = data.DeltaPreBlockAccountHits + data.DeltaPreBlockAccountMisses
+                    + data.DeltaPreBlockStorageHits + data.DeltaPreBlockStorageMisses > 0;
+                double accountHitRate = hasPreBlockStats
+                    ? CalculateHitRate(data.DeltaPreBlockAccountHits, data.DeltaPreBlockAccountMisses)
+                    : CalculateHitRate(data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses);
+                double storageHitRate = hasPreBlockStats
+                    ? CalculateHitRate(data.DeltaPreBlockStorageHits, data.DeltaPreBlockStorageMisses)
+                    : CalculateHitRate(data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses);
                 double codeHitRate = CalculateHitRate(data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses);
 
                 // Blob count was already summed in UpdateStats on the block-processing thread
@@ -725,8 +747,19 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteEndObject();
 
                     writer.WriteStartObject("cache");
-                    WriteCacheEntry(writer, "account", data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses, accountHitRate);
-                    WriteCacheEntry(writer, "storage", data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses, storageHitRate);
+                    if (hasPreBlockStats)
+                    {
+                        WriteCacheEntry(writer, "account", data.DeltaPreBlockAccountHits, data.DeltaPreBlockAccountMisses, accountHitRate,
+                            repeatHits: data.DeltaAccountCacheHits - data.DeltaPreBlockAccountHits);
+                        WriteCacheEntry(writer, "storage", data.DeltaPreBlockStorageHits, data.DeltaPreBlockStorageMisses, storageHitRate,
+                            repeatHits: data.DeltaStorageCacheHits - data.DeltaPreBlockStorageHits);
+                    }
+                    else
+                    {
+                        WriteCacheEntry(writer, "account", data.DeltaAccountCacheHits, data.DeltaAccountCacheMisses, accountHitRate);
+                        WriteCacheEntry(writer, "storage", data.DeltaStorageCacheHits, data.DeltaStorageCacheMisses, storageHitRate);
+                    }
+
                     WriteCacheEntry(writer, "code", data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses, codeHitRate);
                     writer.WriteEndObject();
 
@@ -785,12 +818,13 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsError) _logger.Error($"Error logging slow block {block.Number}", ex);
             }
 
-            static void WriteCacheEntry(Utf8JsonWriter writer, string name, long hits, long misses, double hitRate)
+            static void WriteCacheEntry(Utf8JsonWriter writer, string name, long hits, long misses, double hitRate, long? repeatHits = null)
             {
                 writer.WriteStartObject(name);
                 writer.WriteNumber("hits", hits);
                 writer.WriteNumber("misses", misses);
                 writer.WriteNumber("hit_rate", hitRate);
+                if (repeatHits is not null) writer.WriteNumber("repeat_hits", repeatHits.Value);
                 writer.WriteEndObject();
             }
         }
@@ -856,6 +890,10 @@ namespace Nethermind.Consensus.Processing
                 data.DeltaAccountCacheMisses = 0;
                 data.DeltaStorageCacheHits = 0;
                 data.DeltaStorageCacheMisses = 0;
+                data.DeltaPreBlockAccountHits = 0;
+                data.DeltaPreBlockAccountMisses = 0;
+                data.DeltaPreBlockStorageHits = 0;
+                data.DeltaPreBlockStorageMisses = 0;
                 data.DeltaCodeCacheHits = 0;
                 data.DeltaCodeCacheMisses = 0;
                 data.DeltaEip7702DelegationsSet = 0;
@@ -916,6 +954,10 @@ namespace Nethermind.Consensus.Processing
             public long DeltaAccountCacheMisses;
             public long DeltaStorageCacheHits;
             public long DeltaStorageCacheMisses;
+            public long DeltaPreBlockAccountHits;
+            public long DeltaPreBlockAccountMisses;
+            public long DeltaPreBlockStorageHits;
+            public long DeltaPreBlockStorageMisses;
             public long DeltaCodeCacheHits;
             public long DeltaCodeCacheMisses;
             public long DeltaEip7702DelegationsSet;
