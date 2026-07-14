@@ -32,8 +32,8 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
         Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(decoded.Logs, Is.EqualTo(receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray()),
-            "decoded Logs must be the in-order union of frame logs");
+        // Decoded Logs must be the in-order union of frame logs.
+        AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
     private static IEnumerable<TestCaseData> RoundtripCases()
@@ -60,7 +60,19 @@ public class FrameTxReceiptDecoderTests
         {
             Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
             Assert.That(actual[i].GasUsed, Is.EqualTo(expected[i].GasUsed), $"frame receipt {i} gas used");
-            Assert.That(actual[i].Logs, Is.EqualTo(expected[i].Logs), $"frame receipt {i} logs");
+            AssertLogsEqual(actual[i].Logs, expected[i].Logs);
+        }
+    }
+
+    // LogEntry has no value equality, so logs are compared field by field.
+    private static void AssertLogsEqual(LogEntry[] actual, LogEntry[] expected)
+    {
+        Assert.That(actual.Length, Is.EqualTo(expected.Length));
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
+            Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"log {i} data");
+            Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics), $"log {i} topics");
         }
     }
 
