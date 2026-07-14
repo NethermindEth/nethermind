@@ -149,23 +149,11 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
-          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
-      - name: Free up disk space
-        if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+          submodules: recursive
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -184,9 +172,32 @@ jobs:
 
           dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" ${{ matrix.variant.dotnet-args }}
 
+  # The pyspec fixtures under the build variants now run through the reusable nethtest
+  # workflow instead of the Ethereum.Blockchain.Pyspec.Test NUnit shards. Matches the
+  # NUnit TEST_SKIP_HEAVY=1 scope those variant jobs used: the heavy engine / sync /
+  # Amsterdam-BAL fixtures are skipped (build-config bugs live in the EVM + crypto, which
+  # blockTest exercises as well as engineTest), leaving block + state + tx. Sequential
+  # (patricia) config, coarsely chunked, once per variant. checked builds the runner with
+  # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
+  pyspec-checked:
+    name: EEST nethtest (checked)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: checked
+
+  pyspec-no-intrinsics:
+    name: EEST nethtest (no-intrinsics)
+    uses: ./.github/workflows/run-nethtest.yml
+    with:
+      test_types: blockTest,stateTest,txTest
+      setup_group: sequential
+      variant: no-intrinsics
+
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-chunked]
+    needs: [tests, tests-chunked, pyspec-checked, pyspec-no-intrinsics]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -194,5 +205,7 @@ jobs:
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
+            "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.pyspec-checked.result }}" == "success" && \
+            "${{ needs.pyspec-no-intrinsics.result }}" == "success" \
           ]]
