@@ -135,7 +135,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Intrinsic_gas_uses_fixed_state_costs()
+    public void Intrinsic_gas_excludes_top_frame_state_costs()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved()
             .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
@@ -143,8 +143,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance, 30_000_000);
 
-        Assert.That(intrinsicGas.Standard.StateReservoir,
-            Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+        Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
     }
 
     [Test]
@@ -169,7 +168,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         ulong accessListFloorTokens = (20ul + 3ul * 32ul) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
         ulong accessListFloorCost = accessListFloorTokens * Amsterdam.Instance.GasCosts.TotalCostFloorPerToken;
         ulong expectedRegular = GasCostOf.TransactionEip2780 + recipientRegular + accessListBaseCost + accessListFloorCost;
-        ulong expectedFloorGas = GasCostOf.TransactionEip2780 + accessListFloorCost;
+        ulong expectedFloorGas = GasCostOf.TransactionEip2780 + recipientRegular + accessListFloorCost;
 
         Assert.That(splitIntrinsicGas.Standard.Value, Is.EqualTo(expectedRegular));
         Assert.That(splitIntrinsicGas.Standard.StateReservoir, Is.Zero);
@@ -293,10 +292,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Code_insert_refund_credits_regular_gas_not_state_under_eip8038()
+    public void Code_insert_refund_is_not_applied_under_eip8037()
     {
-        // The existing-authority refund returns the worst-case ACCOUNT_WRITE to the regular refund
-        // counter and leaves the state dimension untouched (state refunds apply pre-execution).
         EthereumGasPolicy gas = new()
         {
             Value = 0,
@@ -306,7 +303,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         ulong regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, stateGasFloor: 0);
 
-        Assert.That(regularRefund, Is.EqualTo(Eip8038Constants.AccountWrite));
+        Assert.That(regularRefund, Is.Zero);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
     }

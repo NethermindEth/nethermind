@@ -33,6 +33,7 @@ public class ExecutionPayloadV4Tests
 
         Assert.That(result.Data, Is.Null);
         Assert.That(result.Error, Does.StartWith("Error decoding block access list:"));
+        Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
     [Test]
