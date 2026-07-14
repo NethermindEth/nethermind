@@ -1658,6 +1658,19 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_block_by_number_returns_null_when_block_for_rpc_factory_returns_null()
+    {
+        IBlockForRpcFactory blockForRpcFactory = Substitute.For<IBlockForRpcFactory>();
+        blockForRpcFactory
+            .Create(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<ISpecProvider>(), Arg.Any<bool>())
+            .Returns((BlockForRpc)null!);
+
+        using Context ctx = await Context.Create(configurer: builder => builder.AddSingleton(blockForRpcFactory));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "latest", "true");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_account_notfound()
     {
         using Context ctx = await Context.Create();

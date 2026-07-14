@@ -36,7 +36,7 @@ public class BlockAccessListManagerTests
             LimboLogs.Instance,
             new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
             Substitute.For<IWithdrawalProcessorFactory>(),
-            CodeInfoRepositoryFactories.Caching,
+            static worldState => new EthereumCodeInfoRepository(worldState),
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 

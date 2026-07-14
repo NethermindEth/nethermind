@@ -688,7 +688,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Restored state gas paid by an ancestor frame stays spendable here; the
             // state-gas-used reduction must propagate upward separately.
             TGasPolicy.AddStateGasRefundToReservoir(ref gas, pendingRefund, trackSpillRefund);
-            vmState.StateGasRefundPending += pendingRefund;
             vmState.StateGasRefundAdvanced += pendingRefund;
         }
     }
@@ -696,22 +695,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void IncorporateChildStateGasRefunds(VmState<TGasPolicy> childState)
     {
-        if (childState.StateGasRefundPending > 0)
+        if (childState.StateGasRefundAdvanced > 0)
         {
-            long pendingRefund = childState.StateGasRefundPending;
             long unappliedRefund = TGasPolicy.DiscardStateGas(
                 ref _currentState.Gas,
-                pendingRefund,
-                _currentState.InitialStateGasUsed,
-                trackSpillRefund: true);
+                childState.StateGasRefundAdvanced,
+                _currentState.InitialStateGasUsed);
 
             if (unappliedRefund > 0)
             {
-                _currentState.StateGasRefundPending += unappliedRefund;
                 _currentState.StateGasRefundAdvanced += unappliedRefund;
             }
 
-            childState.StateGasRefundPending = 0;
             childState.StateGasRefundAdvanced = 0;
         }
     }
@@ -724,8 +719,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             TGasPolicy.RemoveStateGasRefundFromReservoir(ref gas, vmState.StateGasRefundAdvanced);
             vmState.StateGasRefundAdvanced = 0;
         }
-
-        vmState.StateGasRefundPending = 0;
     }
 
     /// <summary>

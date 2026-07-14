@@ -173,7 +173,13 @@ public class EraImporterTest
         while (sut.CurrentPacer is null) await Task.Yield();
         await sut.CurrentPacer.WaitForPausedAsync(token);
 
-        Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
+        Block expectedFinalizedBlock = outputCtx.Resolve<IBlockTree>().FindBlock(expectedStopBlock)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
+            Assert.That(inTree.FinalizedHash, Is.EqualTo(expectedFinalizedBlock.Hash));
+            Assert.That(inTree.LastFinalizedBlockLevel, Is.EqualTo(expectedStopBlock));
+        }
         shouldAdvanceMainChain = true;
         inTree.TryUpdateMainChain(inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!.Header, true, preloadedBlocks: new[] { inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)! });
 
