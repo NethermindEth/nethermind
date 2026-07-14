@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -18,6 +19,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -57,6 +59,8 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    private readonly IFlatDbConfig _flatDbConfig;
+    private readonly IPruningConfig _pruningConfig;
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
@@ -79,6 +83,8 @@ public class InitializeNetwork : IStep
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
+        IFlatDbConfig flatDbConfig,
+        IPruningConfig pruningConfig,
         ILogManager logManager
     )
     {
@@ -98,6 +104,8 @@ public class InitializeNetwork : IStep
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
+        _flatDbConfig = flatDbConfig;
+        _pruningConfig = pruningConfig;
         _logManager = logManager;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
@@ -181,6 +189,7 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
+        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatDbConfig, _initConfig, _pruningConfig);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
@@ -189,6 +198,22 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
         ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
     }
+
+    private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig) =>
+        flatDbConfig.Enabled
+            ? flatDbConfig.Layout switch
+            {
+                FlatLayout.Flat => "-flat",
+                FlatLayout.FlatInTrie => "-flatInTrie",
+                FlatLayout.PreimageFlat => "-preimageFlat",
+                _ => ""
+            }
+            : initConfig.StateDbKeyScheme switch
+            {
+                INodeStorage.KeyScheme.Hash => pruningConfig.Mode == PruningMode.None ? "-hashArchive" : "-hash",
+                INodeStorage.KeyScheme.HalfPath => pruningConfig.Mode == PruningMode.None ? "-halfpathArchive" : "-halfpath",
+                _ => ""
+            };
 
     private Task StartDiscovery()
     {
