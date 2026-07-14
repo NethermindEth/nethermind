@@ -264,9 +264,21 @@ public class RocksDbPersistence : IPersistence
         if (Directory.Exists(stagingDir))
         {
             string[] orphans = Directory.GetFiles(stagingDir);
-            foreach (string orphan in orphans) File.Delete(orphan);
-            if (orphans.Length > 0 && logger.IsInfo)
-                logger.Info($"Deleted {orphans.Length} orphaned SST staging file(s) from {stagingDir}");
+            int deleted = 0;
+            foreach (string orphan in orphans)
+            {
+                try
+                {
+                    File.Delete(orphan);
+                    deleted++;
+                }
+                catch (Exception e)
+                {
+                    if (logger.IsDebug) logger.Debug($"Failed to delete orphaned SST staging file '{orphan}'; it will be retried on the next startup sweep. {e}");
+                }
+            }
+            if (deleted > 0 && logger.IsInfo)
+                logger.Info($"Deleted {deleted} orphaned SST staging file(s) from {stagingDir}");
         }
 
         return true;
