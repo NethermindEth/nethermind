@@ -92,6 +92,60 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // directDispatch folds at compile time, so this specializes into two loop bodies with no runtime branch.
                 if (directDispatch)
                 {
+#if ZK_EVM
+                    // Narrow, frequency-ordered switch (measured on real Glamsterdam blocks; these
+                    // cover ~78% of executed opcodes). The wide CPU switch below exhausts the
+                    // compiler's inline budget, so every case degrades into an out-of-line handler
+                    // call; keeping the method small lets the hot handlers actually inline.
+                    switch (instruction)
+                    {
+                        case Instruction.PUSH1:
+                            exceptionType = EvmInstructions.InstructionPush<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.PUSH2:
+                            exceptionType = EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.ADD:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpAdd, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SWAP1:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP2:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.MSTORE:
+                            exceptionType = EvmInstructions.InstructionMStore<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.MLOAD:
+                            exceptionType = EvmInstructions.InstructionMLoad<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP1:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op1, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.POP:
+                            exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP3:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op3, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SWAP2:
+                            exceptionType = EvmInstructions.InstructionSwap<TGasPolicy, EvmInstructions.Op2, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.ISZERO:
+                            exceptionType = EvmInstructions.InstructionMath1Param<TGasPolicy, EvmInstructions.OpIsZero>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.DUP5:
+                            exceptionType = EvmInstructions.InstructionDup<TGasPolicy, EvmInstructions.Op5, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.JUMPDEST:
+                            exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref pc);
+                            break;
+                        default:
+                            exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
+                            break;
+                    }
+#else
                     // Direct dispatch for the measured-hot opcodes; the rest take the table. MUST stay inline:
                     // extracted, the JIT stops inlining the handlers and direct dispatch loses to the table's calli.
                     switch (instruction)
@@ -208,6 +262,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                             break;
                     }
+#endif
                 }
                 else
                 {
