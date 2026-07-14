@@ -283,31 +283,13 @@ namespace Nethermind.Network
             {
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
-                while (!node.IsStatic &&
-                       !node.IsTrusted &&
-                       !Peers.ContainsKey(node.Id) &&
-                       (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
+                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);
                 }
 
-                Peer peer = GetOrAdd(node);
-                lock (peer.SessionLock)
-                {
-                    Node currentNode = peer.Node;
-                    bool hasConfiguredEndpoint = currentNode.IsStatic || currentNode.IsTrusted || currentNode.IsBootnode;
-                    if (!ReferenceEquals(currentNode, node) &&
-                        node.Port > 0 &&
-                        !hasConfiguredEndpoint)
-                    {
-                        currentNode.UpdateEndpoint(node);
-                    }
-
-                    currentNode.IsStatic |= node.IsStatic;
-                    currentNode.IsTrusted |= node.IsTrusted;
-                    currentNode.IsBootnode |= node.IsBootnode;
-                }
+                GetOrAdd(node);
             }
         }
 
