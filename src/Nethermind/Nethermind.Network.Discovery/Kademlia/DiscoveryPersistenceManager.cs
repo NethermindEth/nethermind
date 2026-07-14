@@ -157,6 +157,7 @@ public sealed class DiscoveryPersistenceManager(
             return true;
         }
 
+        // An enode cannot preserve different TCP and UDP addresses, so only a matching ENR can persist this endpoint.
         persistedNode = null;
         return false;
     }
