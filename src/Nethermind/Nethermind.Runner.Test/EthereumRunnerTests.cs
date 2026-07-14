@@ -329,6 +329,9 @@ public class EthereumRunnerTests
     {
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
+        // The flat backend's persisted-snapshot catalog is rocksdb-backed and unavailable under the MemDb
+        // diagnostic mode, so this smoke test runs the patricia baseline (matching the default test suite).
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         TempPath tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
 
