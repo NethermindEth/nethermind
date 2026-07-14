@@ -11,6 +11,10 @@
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
+  <Folder Name="/Plugins/CensorshipDetector/">
+    <Project Path="Nethermind.CensorshipDetector.Plugin.Test/Nethermind.CensorshipDetector.Plugin.Test.csproj" />
+    <Project Path="Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/OpcodeTracing/">
     <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   </Folder>
