@@ -49,6 +49,29 @@ public class DetectionCacheTests
     }
 
     [Test]
+    public void Evicts_least_recently_updated_when_over_capacity()
+    {
+        DetectionCache cache = new(_dir, LimboLogs.Instance, maxEntries: 2);
+        cache.Put(1, "0xa", new DetectionEntry([], 0, 1, true, UpdatedMs: 1)); // oldest
+        cache.Put(1, "0xb", new DetectionEntry([], 0, 1, true, UpdatedMs: 2));
+        cache.Put(1, "0xc", new DetectionEntry([], 0, 1, true, UpdatedMs: 3)); // pushes out 0xa
+
+        Assert.That(cache.Get(1, "0xa"), Is.Null, "least-recently-updated entry evicted");
+        Assert.That(cache.Get(1, "0xb"), Is.Not.Null);
+        Assert.That(cache.Get(1, "0xc"), Is.Not.Null);
+    }
+
+    [Test]
+    public void Caps_tokens_per_entry()
+    {
+        DetectionCache cache = new(_dir, LimboLogs.Instance, maxTokensPerEntry: 2);
+        DetectedToken[] many = [new("0x1", "A", 18), new("0x2", "B", 18), new("0x3", "C", 18)];
+        cache.Put(1, "0xa", new DetectionEntry(many, 0, 1, true, UpdatedMs: 1));
+
+        Assert.That(cache.Get(1, "0xa")!.Tokens, Has.Count.EqualTo(2));
+    }
+
+    [Test]
     public void Entries_persist_across_instances()
     {
         DetectionEntry entry = new([new DetectedToken("0xtoken", "GNO", 18)], ScannedFrom: 5, Head: 200, Complete: false, UpdatedMs: 2);

@@ -227,8 +227,8 @@
 
         body.hideZero tr.zero { display: none; }
 
+        header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: baseline; }
         button.zero-toggle {
-            margin-left: auto;
             border: 1px solid var(--border);
             padding: 4px 9px;
             color: var(--muted);
@@ -253,8 +253,6 @@
         .chip.nft { border-style: dashed; }
         .chip.auto { border-style: dotted; opacity: 0.85; }
         .chip .kind { color: var(--muted); font-size: 10px; }
-        sup.suptag.auto { color: var(--muted); font-style: italic; cursor: pointer; }
-        sup.suptag.auto:hover { color: var(--danger); }
         @keyframes bvspin { to { transform: rotate(360deg); } }
         button.zero-toggle.scanning { animation: bvspin 1s linear infinite; }
 
@@ -434,8 +432,10 @@
             <div class="net">head <span id="headBlock" class="number">…</span></div>
         </div>
         <div id="chainToggles"></div>
-        <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens">🔍</button>
-        <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
+        <div class="toggles">
+            <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens">🔍</button>
+            <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
+        </div>
         <div class="total" id="totalBox">
             <span class="net">total ≈</span>
             <span id="totalFiat" class="number">…</span>
@@ -1802,12 +1802,6 @@
                             tick.classList.add('copyable');
                             tick.title = row.contract + ' (click to copy)';
                             tick.onclick = () => copyAddress(row.contract);
-                        }
-                        if (row.auto) {
-                            const mark = el('sup', 'suptag auto', 'auto');
-                            mark.title = 'Auto-detected — click to hide';
-                            mark.onclick = (e) => { e.stopPropagation(); hideDetected(node, row.contract); };
-                            tick.append(mark);
                         }
                         tr.append(tick);
                         const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Logging;
@@ -43,15 +44,27 @@ public sealed class DetectionCache : IDetectionCache
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    // Bounds the on-disk cache. A per-address entry is tiny, so 10k addresses is generous for a
+    // node while capping the file at a few MB; the token list is capped so a pathologically active
+    // address can't bloat one entry. Eviction is LRU by last update — the actively-viewed working
+    // set stays cached, so it does not thrash (and an evicted entry only re-scans if a *new* client
+    // session revisits that address; the client tracks completion within a session, so no loop).
+    private const int DefaultMaxEntries = 10_000;
+    private const int DefaultMaxTokensPerEntry = 500;
+
     private readonly ConcurrentDictionary<string, DetectionEntry> _entries = new();
     private readonly string _path;
     private readonly ILogger _logger;
     private readonly Lock _fileLock = new();
+    private readonly int _maxEntries;
+    private readonly int _maxTokensPerEntry;
 
-    public DetectionCache(string dbPath, ILogManager logManager)
+    public DetectionCache(string dbPath, ILogManager logManager, int maxEntries = DefaultMaxEntries, int maxTokensPerEntry = DefaultMaxTokensPerEntry)
     {
         _logger = logManager.GetClassLogger<DetectionCache>();
         _path = Path.Combine(dbPath, "balance-viewer-detection.json");
+        _maxEntries = maxEntries;
+        _maxTokensPerEntry = maxTokensPerEntry;
         Load();
     }
 
@@ -62,8 +75,28 @@ public sealed class DetectionCache : IDetectionCache
 
     public void Put(long chainId, string address, DetectionEntry entry)
     {
+        if (entry.Tokens.Count > _maxTokensPerEntry)
+        {
+            entry = entry with { Tokens = entry.Tokens.Take(_maxTokensPerEntry).ToArray() };
+        }
         _entries[Key(chainId, address)] = entry;
+        EvictIfNeeded();
         Save();
+    }
+
+    // LRU eviction: while over the entry cap, drop the least-recently-updated entry
+    private void EvictIfNeeded()
+    {
+        while (_entries.Count > _maxEntries)
+        {
+            string? oldest = null;
+            long oldestMs = long.MaxValue;
+            foreach ((string key, DetectionEntry value) in _entries)
+            {
+                if (value.UpdatedMs < oldestMs) { oldestMs = value.UpdatedMs; oldest = key; }
+            }
+            if (oldest is null || !_entries.TryRemove(oldest, out _)) break;
+        }
     }
 
     private void Load()
