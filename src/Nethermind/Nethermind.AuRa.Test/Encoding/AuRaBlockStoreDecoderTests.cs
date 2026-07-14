@@ -11,14 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Encoding;
 
-/// <summary>
-/// Regression tests for a Gnosis/AuRa startup crash: <see cref="BlockStore"/> must decode blocks with the
-/// chain's <see cref="IHeaderDecoder"/> (the <see cref="AuRaHeaderDecoder"/>), not the base
-/// <see cref="HeaderDecoder"/>. The DI factory used to omit the decoder, so <see cref="BlockStore"/> fell back
-/// to the base decoder. On an AuRa header whose <c>step</c> is empty (e.g. the Gnosis genesis, step 0), the base
-/// decoder reads that empty item as a null mixHash and then reads the 65-byte AuRa signature as the 8-byte nonce
-/// via a 32-byte-limited <c>DecodeUInt256</c>, throwing <see cref="RlpLimitException"/> during block-tree init.
-/// </summary>
 public class AuRaBlockStoreDecoderTests
 {
     // Gnosis genesis shape: empty step + 65-byte (r|s|v) AuRa signature.
