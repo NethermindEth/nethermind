@@ -75,6 +75,23 @@ public static partial class EvmInstructions
     [SkipLocalsInit]
     public static EvmExceptionType InstructionJump<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJump<TGasPolicy, OffFlag>(vm, ref stack, ref gas, ref programCounter);
+
+    /// <summary>
+    /// <see cref="InstructionJump{TGasPolicy}"/> for non-traced tables: a valid taken jump also
+    /// counts and charges the target <c>JUMPDEST</c> and leaves PC on the instruction after it,
+    /// eliminating the marker's dispatch.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionJumpAndSkipJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJump<TGasPolicy, OnFlag>(vm, ref stack, ref gas, ref programCounter);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType InstructionJump<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
     {
         // Deduct the gas cost for performing a jump.
         TGasPolicy.Consume<JumpGasCost>(ref gas);
@@ -82,6 +99,13 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+        if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
+        {
+            // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
+            vm.OpCodeCount++;
+            TGasPolicy.Consume<JumpDestGasCost>(ref gas);
+            programCounter++;
+        }
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
 
@@ -110,6 +134,24 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionJumpIf<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJumpIf<TGasPolicy, OffFlag>(vm, ref stack, ref gas, ref programCounter);
+
+    /// <summary>
+    /// <see cref="InstructionJumpIf{TGasPolicy}"/> for non-traced tables: a valid taken jump also
+    /// counts and charges the target <c>JUMPDEST</c> and leaves PC on the instruction after it,
+    /// eliminating the marker's dispatch. Untaken jumps are unchanged.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static EvmExceptionType InstructionJumpIfAndSkipJumpDest<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJumpIf<TGasPolicy, OnFlag>(vm, ref stack, ref gas, ref programCounter);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType InstructionJumpIf<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
     {
         // Deduct the high gas cost for a conditional jump.
         TGasPolicy.Consume<JumpIGasCost>(ref gas);
@@ -121,6 +163,13 @@ public static partial class EvmInstructions
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
+            if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
+            {
+                // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
+                vm.OpCodeCount++;
+                TGasPolicy.Consume<JumpDestGasCost>(ref gas);
+                programCounter++;
+            }
             // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
