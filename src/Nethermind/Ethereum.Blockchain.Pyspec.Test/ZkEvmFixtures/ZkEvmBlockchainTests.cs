@@ -7,8 +7,16 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 using Nethermind.Stateless.Execution;
+using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
@@ -68,4 +76,64 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             }
         }
     }
+}
+
+[TestFixture]
+public class StatelessSchemaTests
+{
+    [TestCase(10UL, 20UL, true)]
+    [TestCase(9UL, 20UL, false)]
+    [TestCase(10UL, 19UL, false)]
+    public void Every_fork_activation_bound_must_be_active(ulong blockNumber, ulong timestamp, bool expected)
+    {
+        SszForkActivation activation = new() { BlockNumber = [10], Timestamp = [20] };
+
+        Assert.That(activation.IsActive(CreateHeader(blockNumber, timestamp)), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Fork_activation_requires_at_least_one_bound()
+    {
+        SszForkActivation activation = new() { BlockNumber = [], Timestamp = [] };
+
+        Assert.That(() => activation.IsActive(CreateHeader(10, 20)), Throws.TypeOf<InvalidDataException>());
+    }
+
+    [TestCase(BlockchainIds.Sepolia, false)]
+    [TestCase(BlockchainIds.Gnosis, true)]
+    [TestCase(BlockchainIds.Chiado, true)]
+    public void Amsterdam_schema_uses_chain_appropriate_fork_catalog(ulong chainId, bool usesGnosisRules)
+    {
+        IForkAwareSpecProvider baseProvider = chainId switch
+        {
+            BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
+            BlockchainIds.Gnosis => GnosisSpecProvider.Instance,
+            BlockchainIds.Chiado => ChiadoSpecProvider.Instance,
+            _ => throw new AssertionException($"Unsupported test chain: {chainId}")
+        };
+        ForkConfig forkConfig = new()
+        {
+            Activation = new SszForkActivation { BlockNumber = [], Timestamp = [20] }
+        };
+
+        ISpecProvider provider = StatelessSpecProvider.Create(baseProvider, chainId, forkConfig, ProtocolFork.Amsterdam);
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, 20));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.ChainId, Is.EqualTo(chainId));
+            Assert.That(spec.Name, Is.EqualTo(Amsterdam.Instance.Name));
+            Assert.That(spec, usesGnosisRules ? Is.SameAs(AmsterdamGnosis.Instance) : Is.SameAs(Amsterdam.Instance));
+        }
+    }
+
+    private static BlockHeader CreateHeader(ulong blockNumber, ulong timestamp) => new(
+        Hash256.Zero,
+        Hash256.Zero,
+        Address.Zero,
+        UInt256.Zero,
+        blockNumber,
+        0,
+        timestamp,
+        []);
 }
