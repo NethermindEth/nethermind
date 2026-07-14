@@ -179,18 +179,21 @@ public class RocksDbPersistence : IPersistence
                     columnsIngested++;
                 }
 
-                using (IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch())
-                {
-                    IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
-                    BasePersistence.SetCurrentState(metadata, to);
-                    BasePersistence.ClearIngestMarker(metadata);
-                }
-                _db.Flush(onlyWal: true);
+                using IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch();
+                IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
+                BasePersistence.SetCurrentState(metadata, to);
+                BasePersistence.ClearIngestMarker(metadata);
             }
             finally
             {
                 _ingestGate.ExitWriteLock();
             }
+
+            // The committed pointer/marker WriteBatch is already visible to new snapshots; fsyncing the WAL only
+            // adds durability, so it runs after releasing the gate to keep reader snapshot creation off the
+            // exclusive section. A crash before this fsync leaves the redo marker on disk (its clear was not yet
+            // durable) and reopen rolls the commit forward to the same `to`.
+            _db.Flush(onlyWal: true);
         }
         catch (Exception e)
         {
