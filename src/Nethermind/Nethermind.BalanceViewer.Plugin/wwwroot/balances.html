@@ -670,6 +670,20 @@
                     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': PSEUDO_ETH, // WETH
                     '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': PSEUDO_BTC, // WBTC
                 },
+                // standalone aggregators for popular tokens the Feed Registry doesn't list
+                feeds: {
+                    '0x68749665ff8d2d112fa859aa293f07a622782f38': '0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6', // XAUt → XAU/USD
+                },
+                // derived prices: base registry feed × an on-chain wrap/exchange rate
+                derived: {
+                    // wstETH = stETH/USD × wstETH.stEthPerToken() (18-dec ratio); registry lists stETH, not wstETH
+                    '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0': {
+                        base: '0xae7ab96520de3a18e5e111b5eaab095312d7fe84', // stETH
+                        rateTo: '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0', // wstETH
+                        rateData: '0x035faf82', // stEthPerToken()
+                        rateDecimals: 18,
+                    },
+                },
                 // beyond the registry, some fiats only have standalone mainnet aggregators
                 fx: {
                     MXN: '0xdb4881Ab0ad6b8423f76dd8C9d65542749a1dB77',
@@ -937,12 +951,58 @@
 
         // assetKey: 'native' or a lowercase token address
         function priceCall(meta, assetKey) {
+            // standalone aggregator wins (tokens the registry lacks, e.g. XAUt→XAU/USD; and the only
+            // source on feed-only chains like Gnosis)
+            const standalone = assetKey === 'native' ? meta.feeds?.native : meta.feeds?.[assetKey];
+            if (standalone) return ['eth_call', [{ to: standalone, data: SEL_LATEST_ROUND }, 'latest']];
             if (meta.registry) {
                 const base = assetKey === 'native' ? PSEUDO_ETH : (meta.alias?.[assetKey] ?? assetKey);
                 return ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']];
             }
-            const feed = assetKey === 'native' ? meta.feeds?.native : meta.feeds?.[assetKey];
-            return feed ? ['eth_call', [{ to: feed, data: SEL_LATEST_ROUND }, 'latest']] : null;
+            return null;
+        }
+
+        // Unified price probe for one asset: the calls needed and how to combine their results into a
+        // USD price (PRICE_DECIMALS scale), or null if the asset has no discoverable price. Handles a
+        // single feed/registry lookup, and "derived" assets priced as (base feed × an on-chain rate) —
+        // e.g. wstETH = stETH/USD × wstETH.stEthPerToken(), which the Feed Registry doesn't list directly.
+        function priceProbe(meta, assetKey) {
+            const d = meta.derived?.[assetKey];
+            if (d && meta.registry) {
+                return {
+                    calls: [
+                        ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(d.base) + pad32(DENOM.USD) }, 'latest']],
+                        ['eth_call', [{ to: d.rateTo, data: d.rateData }, 'latest']],
+                    ],
+                    combine: (r) => {
+                        const base = parseRoundAnswer(r[0]);
+                        let rate = null;
+                        try { if (r[1] && r[1] !== '0x') rate = BigInt(r[1]); } catch { }
+                        return base !== null && rate !== null && rate > 0n ? base * rate / 10n ** BigInt(d.rateDecimals) : null;
+                    },
+                };
+            }
+            const call = priceCall(meta, assetKey);
+            return call ? { calls: [call], combine: (r) => parseRoundAnswer(r[0]) } : null;
+        }
+
+        // the set of addresses (lowercase) among `addrs` that currently have a discoverable price
+        async function priceableAddrs(node, addrs) {
+            const calls = [];
+            const probes = addrs.map((addr) => {
+                const probe = priceProbe(node.meta, addr);
+                if (!probe) return null;
+                const start = calls.length;
+                for (const c of probe.calls) calls.push(c);
+                return { start, n: probe.calls.length, combine: probe.combine };
+            });
+            const res = calls.length ? await rpcBatch(calls, node.rpcPath) : [];
+            const priced = new Set();
+            addrs.forEach((addr, i) => {
+                const p = probes[i];
+                if (p && p.combine(res.slice(p.start, p.start + p.n)) !== null) priced.add(addr);
+            });
+            return priced;
         }
 
         // FX feeds mostly use 8 decimals, but not all (e.g. PHP/USD is 18),
@@ -1478,8 +1538,8 @@
             const t = (ticker || '').trim();
             if (t.length === 0 || t.length > 20) return true;
             if (/[^\x20-\x7E]/.test(t)) return true;
-            if (/https?:|www\.|\.(com|xyz|io|net|org|app|fi|click|top|vip|site|live|gift|cash|finance)\b/i.test(t)) return true;
-            if (/claim|reward|voucher|airdrop|visit|redeem|bonus|giveaway|\.eth\b|→|\$\s?\d/i.test(t)) return true;
+            if (/https?:|www\.|t\.me|\.(com|xyz|io|net|org|app|fi|click|top|vip|site|live|gift|cash|finance|pro|link|online|world|store|life|gg)\b/i.test(t)) return true;
+            if (/claim|reward|voucher|airdrop|visit|redeem|bonus|giveaway|presale|whitelist|telegram|discord|\.eth\b|→|\$\s?\d/i.test(t)) return true;
             if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) return true;
             try { if (balanceRaw && BigInt(balanceRaw) / (10n ** BigInt(decimals)) >= 1000000000000000n) return true; } catch { }
             return false;
@@ -1498,21 +1558,35 @@
             const calls = [];
             for (const c of fresh) for (const a of addrList) calls.push(['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]);
             const bals = await rpcBatch(calls, node.rpcPath);
-            let added = false;
+
+            // collect confirmed holdings first, so unpriceable ones can be filtered in a single price batch
+            const held = [];
             for (let ci = 0; ci < fresh.length; ci++) {
                 const meta = tokenMetaCache.get(node.chainId + '|' + fresh[ci]);
                 if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
-                let has = false, heldRaw = null;
+                let heldRaw = null;
                 for (let ai = 0; ai < addrList.length; ai++) {
                     const raw = bals[ci * addrList.length + ai];
-                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { has = true; heldRaw = raw; break; } } catch { }
+                    try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { heldRaw = raw; break; } } catch { }
                 }
-                if (!has) continue;
+                if (heldRaw !== null) held.push({ addr: fresh[ci], meta, heldRaw });
+            }
+            if (held.length === 0) return;
+
+            // A genuine token has a discoverable price; unpriceable auto-detected tokens are almost always
+            // airdrop spam, so hide them by default (restorable one-by-one). Only gate on chains that
+            // actually have price feeds — otherwise fall back to the name/amount heuristic alone.
+            const priceGate = fiatEnabled(node.meta);
+            const priced = priceGate ? await priceableAddrs(node, held.map((h) => h.addr)) : null;
+
+            let added = false;
+            for (let k = 0; k < held.length; k++) {
+                const { addr, meta, heldRaw } = held[k];
                 // re-check synchronously (no await before the push/hide) so concurrent passes can't double-add
-                if (state.detected.some((t) => t.address.toLowerCase() === fresh[ci])) continue;
-                if (state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === fresh[ci])) continue;
-                const token = { address: checksum(fresh[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true };
-                if (looksLikeSpam(meta.ticker, meta.decimals, heldRaw)) {
+                if (state.detected.some((t) => t.address.toLowerCase() === addr)) continue;
+                if (state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === addr)) continue;
+                const token = { address: checksum(addr), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true };
+                if (looksLikeSpam(meta.ticker, meta.decimals, heldRaw) || (priceGate && !priced.has(addr))) {
                     state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name, spam: true });
                 } else {
                     state.detected.push(token);
@@ -2080,12 +2154,12 @@
 
             // one batched request per node: sync state, then prices, then all balances
             const calls = [['eth_syncing', []], ['eth_getBlockByNumber', ['latest', false]]];
-            const priceIndex = new Map();
+            const priceProbes = new Map();
             if (fiat) {
                 for (const asset of assets) {
                     if (asset.isNft) continue;
-                    const call = priceCall(meta, asset.key);
-                    if (call) { priceIndex.set(asset.key, calls.length); calls.push(call); }
+                    const probe = priceProbe(meta, asset.key);
+                    if (probe) { priceProbes.set(asset.key, { start: calls.length, n: probe.calls.length, combine: probe.combine }); for (const c of probe.calls) calls.push(c); }
                 }
             }
             const balanceStart = calls.length;
@@ -2107,7 +2181,7 @@
             updateChainButton(node);
 
             const prices = new Map();
-            for (const [key, index] of priceIndex) prices.set(key, parseRoundAnswer(results[index]));
+            for (const [key, p] of priceProbes) prices.set(key, p.combine(results.slice(p.start, p.start + p.n)));
 
             let i = balanceStart;
             for (const entry of addresses) {
