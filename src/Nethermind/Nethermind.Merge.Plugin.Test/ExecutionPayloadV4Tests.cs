@@ -60,7 +60,6 @@ public class ExecutionPayloadV4Tests
         Assert.That(result.Data, Is.Not.Null);
         Block block = result.Data!;
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
-        // Hash must equal keccak of the encoded bytes, and must be the value cached during decode.
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(expected));
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));
     }
