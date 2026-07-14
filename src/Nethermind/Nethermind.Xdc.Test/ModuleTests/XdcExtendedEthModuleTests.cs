@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
@@ -94,10 +95,10 @@ public class XdcExtendedEthModuleTests
     {
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
         TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakB).TestObject;
-        Block block = Build.A.Block.WithTransactions(tx).TestObject;
-        Hash256 blockHash = block.Hash!;
-
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(releaseSpec, [receipt], Rlp.GetDecoder<TxReceipt>()!);
+        Block block = Build.A.Block.WithTransactions(tx).WithReceiptsRoot(receiptsRoot).TestObject;
+        Hash256 blockHash = block.Hash!;
 
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.FindBlockHash(TestItem.KeccakB).Returns(blockHash);
@@ -121,7 +122,8 @@ public class XdcExtendedEthModuleTests
         Assert.That(result.Data, Is.Not.Null);
         XdcTransactionAndReceiptProof proof = result.Data!;
         Assert.That(proof.BlockHash, Is.EqualTo(blockHash));
-        Assert.That(proof.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(block.Transactions)));
+        Assert.That(proof.TxRoot, Is.EqualTo(block.Header.TxRoot));
+        Assert.That(proof.ReceiptRoot, Is.EqualTo(receiptsRoot));
         Assert.That(proof.TxProofKeys, Has.Length.GreaterThan(0));
         Assert.That(proof.TxProofValues, Has.Length.EqualTo(proof.TxProofKeys.Length));
         Assert.That(proof.ReceiptProofKeys, Has.Length.GreaterThan(0));
