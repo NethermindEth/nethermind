@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -54,6 +55,12 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        // DI-based tests default to the patricia baseline (matching the main test suite, which sets
+        // TEST_USE_TRIE=1); opt into the flat backend via TEST_USE_FLAT=1, mirroring the EEST test bases.
+        // Without this, the production flat default (FlatDbConfig.Enabled = true) would leak into tests that
+        // build a node from a default ConfigProvider and assert patricia-specific behaviour.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
 
         LongDisposeTracker.Configure(builder);
 

@@ -16,6 +16,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -87,6 +88,11 @@ public class MergePluginTests
 
     private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
     {
+        IConfigProvider effectiveConfigProvider = configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig);
+        // These plugin-wiring tests run the patricia baseline: the flat backend's persisted-snapshot catalog
+        // needs a DB that isn't wired here, and the production flat default would otherwise fail resolution.
+        effectiveConfigProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
         // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
         ContainerBuilder builder = new ContainerBuilder()
@@ -94,7 +100,7 @@ public class MergePluginTests
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
-                configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
+                effectiveConfigProvider,
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
