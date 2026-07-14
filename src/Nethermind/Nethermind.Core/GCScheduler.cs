@@ -19,8 +19,8 @@ public sealed class GCScheduler
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
-    // Blocks between concurrent background gen2 sweeps while blocks stream back-to-back.
-    internal const int SustainedSweepBlockInterval = 256;
+    // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
+    internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -36,7 +36,7 @@ public sealed class GCScheduler
     private long _countToGC = 0L;
 
     private bool _skipNextGC = false;
-    private int _blocksSinceSustainedSweep;
+    private long _sweepBaselineAllocatedBytes;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -183,13 +183,10 @@ public sealed class GCScheduler
 
         // Reset the block counter after GC
         _countToGC = MaxBlocksWithoutGC;
-        // Any gen2-level forced collection (an idle-window sweep or the sustained sweep itself)
-        // restarts the sustained-sweep interval: gen2 is being collected by this scheduler, so the
-        // sustained sweep has nothing to add. Runtime-initiated collections deliberately do NOT
-        // reset it — they are the escalation the sweep exists to prevent, not a substitute.
+        // Scheduler-issued gen2 restarts the sustained-sweep budget; runtime-initiated ones don't.
         if (generation >= GC.MaxGeneration)
         {
-            Interlocked.Exchange(ref _blocksSinceSustainedSweep, 0);
+            Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
         }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
@@ -203,32 +200,23 @@ public sealed class GCScheduler
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
 
     /// <summary>
-    /// Per-processed-block notification driving a concurrent background gen2 sweep after
-    /// <see cref="SustainedSweepBlockInterval"/> consecutive blocks without a scheduler-issued
-    /// gen2 collection.
+    /// Per-processed-block notification driving a concurrent background gen2 sweep once
+    /// <see cref="SustainedSweepAllocationBytes"/> have been allocated since the last
+    /// scheduler-issued gen2 collection. Keeps gen2 small when blocks stream back-to-back and the
+    /// idle-window sweeps never engage, preventing the runtime's multi-second blocking escalation;
+    /// stays dormant on a synced node whose idle-window sweeps already collect gen2 regularly.
     /// </summary>
-    /// <remarks>
-    /// When blocks stream back-to-back (sync, benchmark replay, short-slot chains) the idle-window
-    /// sweeps never engage, so gen2 garbage accumulates for minutes until the runtime escalates to a
-    /// multi-second blocking full collection that freezes block processing. A periodic concurrent
-    /// sweep keeps gen2 small enough that the escalation never happens. Any gen2 collection issued
-    /// through <see cref="GCCollect"/> — an idle-window sweep or this sweep itself — restarts the
-    /// interval, so on a synced node whose post-payload sweeps already collect gen2 regularly this
-    /// never fires. Runtime-initiated collections do not restart it: they are the losing race this
-    /// sweep exists to prevent. Call from a background (non-processing) thread: the initiating
-    /// thread absorbs the collection's start-up pause. The GC guard may be held (the NoGCRegion
-    /// bracket around a payload), in which case the counter stays armed and the sweep retries on the
-    /// next block rather than skipping a whole interval.
-    /// </remarks>
     public void NotifyBlockProcessed()
     {
-        if (Interlocked.Increment(ref _blocksSinceSustainedSweep) < SustainedSweepBlockInterval) return;
+        long allocated = GC.GetTotalAllocatedBytes(precise: false);
+        if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        // A successful gen2 GCCollect resets the counter; on failure (GC guard held) the counter
-        // stays armed so the sweep retries on the next block.
         GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
     }
 
-    // Test-only visibility into the sustained-sweep counter.
-    internal int BlocksSinceSustainedSweep => Volatile.Read(ref _blocksSinceSustainedSweep);
+    internal long SweepBaselineAllocatedBytes
+    {
+        get => Volatile.Read(ref _sweepBaselineAllocatedBytes);
+        set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
+    }
 }
