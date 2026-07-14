@@ -10,6 +10,7 @@ using Microsoft.Extensions.FileProviders;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc;
@@ -26,7 +27,8 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
 public sealed class BalanceViewerConfigurer(
-    IBalanceViewerConfig config, IInitConfig initConfig, ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
+    IBalanceViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
+    ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
@@ -35,7 +37,7 @@ public sealed class BalanceViewerConfigurer(
         services.AddSingleton(logManager);
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
         services.AddSingleton<IDetectionCache>(cache);
-        services.AddSingleton<IDetectionScanner>(new DetectionScanner(logFinder, blockFinder, cache, logManager));
+        services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager));
         services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
     }
 }

@@ -591,6 +591,7 @@
           "Microsoft.Extensions.FileProviders.Embedded": "[10.0.9, )",
           "Nethermind.Api": "[1.40.0-unstable, )",
           "Nethermind.Blockchain": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[1.40.0-unstable, )",
           "Nethermind.Facade": "[1.40.0-unstable, )",
           "Nethermind.JsonRpc": "[1.40.0-unstable, )"
         }
