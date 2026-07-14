@@ -348,11 +348,13 @@ namespace Nethermind.Consensus.Processing
                 _logger.Warn($"[GCDIAG] {gcPauseDelta.TotalMilliseconds:F0}ms of GC pause during block {blockNumber} window (total {gcPauseTotal.TotalSeconds:F1}s)");
 
             // [GCDIAG] Periodic background gen2 sweep during sustained processing: keeps gen2 small so
-            // the runtime never escalates to a multi-second blocking full collection.
-            if (++_blocksSinceBackgroundSweep >= 256)
+            // the runtime never escalates to a multi-second blocking full collection. GCCollect returns
+            // false while the GC-guard flag is held (NoGCRegion bracket) — keep retrying each block
+            // until the sweep actually fires.
+            if (++_blocksSinceBackgroundSweep >= 256
+                && GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
             {
                 _blocksSinceBackgroundSweep = 0;
-                GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
             }
 
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
