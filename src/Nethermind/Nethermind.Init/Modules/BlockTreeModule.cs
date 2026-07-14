@@ -35,7 +35,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
-            .AddSingleton<IBadBlockStore, IDb, IInitConfig>(CreateBadBlockStore)
+            .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
@@ -92,8 +92,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockStore(blocksDb, headerDecoder, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
-        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig, IHeaderDecoder headerDecoder) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100, headerDecoder);
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
