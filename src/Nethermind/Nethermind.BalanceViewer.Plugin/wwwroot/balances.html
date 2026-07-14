@@ -624,6 +624,10 @@
             { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', ticker: 'DAI', decimals: 18, name: 'Dai Stablecoin' },
             { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', ticker: 'WETH', decimals: 18, name: 'Wrapped Ether' },
             { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', ticker: 'WBTC', decimals: 8, name: 'Wrapped BTC' },
+            { address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', ticker: 'stETH', decimals: 18, name: 'Lido Staked Ether' },
+            { address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0', ticker: 'wstETH', decimals: 18, name: 'Wrapped liquid staked Ether' },
+            { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', ticker: 'LINK', decimals: 18, name: 'Chainlink' },
+            { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', ticker: 'UNI', decimals: 18, name: 'Uniswap' },
         ];
         const GNOSIS_DEFAULT_TOKENS = [
             { address: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', ticker: 'USDC', decimals: 6, name: 'USD Coin on Gnosis' },
@@ -737,8 +741,10 @@
                 try {
                     const raw = localStorage.getItem(this.key(node.chainId));
                     if (raw === null) {
-                        // first visit on this chain — seed the popular tokens (still removable)
-                        return { addresses: [], tokens: (node.meta.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [], detected: [], ignored: [] };
+                        // first visit on this chain — seed popular tokens as detected (dotted,
+                        // hideable/restorable), symmetric to auto-detected ones; only tokens the
+                        // user adds by hand are fully removable
+                        return { addresses: [], tokens: [], nfts: [], watched: [], detected: (node.meta.defaults || []).map((t) => ({ ...t, auto: true })), ignored: [] };
                     }
                     const data = JSON.parse(raw);
                     return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [], watched: data.watched || [], detected: data.detected || [], ignored: data.ignored || [] };
@@ -1722,8 +1728,7 @@
                 ticker.onclick = () => copyAddress(item.address);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
-                else if (isAuto) chip.append(el('span', 'kind', 'auto'));
-                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + (isAuto ? ' · auto-detected' : '') + ' (click to copy address)';
+                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
                     if (isAuto) { hideDetected(node, item); return; }
