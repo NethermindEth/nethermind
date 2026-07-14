@@ -184,6 +184,77 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task PersistJob_WithoutPersistedStateAdvance_KeepsReadBundleCache()
+    {
+        StateId gatherStateId = CreateStateId(10);
+        SetUpGather(gatherStateId);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
+
+        ResourcePool realResourcePool = new(_config);
+        using SemaphoreSlim persistJobDone = new(0);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.ReorgBoundaryReached += (_, _) => persistJobDone.Release();
+
+        AddSnapshotAt(manager, realResourcePool, 11);
+        Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+
+        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
+
+        AddSnapshotAt(manager, realResourcePool, 12);
+        Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+
+        _persistenceManager.ClearReceivedCalls();
+        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
+        _persistenceManager.DidNotReceive().LeaseReader();
+    }
+
+    [Test]
+    public async Task PersistJob_WithPersistedStateAdvance_ClearsReadBundleCache()
+    {
+        StateId gatherStateId = CreateStateId(10);
+        SetUpGather(gatherStateId);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
+
+        ResourcePool realResourcePool = new(_config);
+        using SemaphoreSlim persistJobDone = new(0);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.ReorgBoundaryReached += (_, _) => persistJobDone.Release();
+
+        AddSnapshotAt(manager, realResourcePool, 11);
+        Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+
+        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
+
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(12));
+        AddSnapshotAt(manager, realResourcePool, 13);
+        Assert.That(await persistJobDone.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+
+        _persistenceManager.ClearReceivedCalls();
+        using (manager.GatherReadOnlySnapshotBundle(gatherStateId)) { }
+        _persistenceManager.Received(1).LeaseReader();
+    }
+
+    private void SetUpGather(StateId stateId)
+    {
+        IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
+        mockReader.CurrentState.Returns(stateId);
+        _persistenceManager.LeaseReader().Returns(mockReader);
+        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+    }
+
+    private void AddSnapshotAt(FlatDbManager manager, ResourcePool resourcePool, ulong blockNumber)
+    {
+        Snapshot snapshot = resourcePool.CreateSnapshot(CreateStateId(blockNumber - 1), CreateStateId(blockNumber), ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        manager.AddSnapshot(snapshot, transientResource);
+    }
+
+    [Test]
     public async Task AddSnapshot_DuplicateSnapshot_DisposesSnapshotAndReturnsResource()
     {
         StateId persistedStateId = CreateStateId(5);

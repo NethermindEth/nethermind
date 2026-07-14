@@ -189,6 +189,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
+        private readonly int _maxTrackedWrites = parent._maxEntriesPerKind * 2;
+
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
@@ -201,13 +203,31 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            if (!_clearAll)
+            {
+                (_writtenAccounts ??= []).Add(addr);
+                if (_writtenAccounts.Count > _maxTrackedWrites)
+                {
+                    _clearAll = true;
+                    _writtenAccounts = null;
+                    _writtenSlots = null;
+                }
+            }
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
+            if (!_clearAll)
+            {
+                (_writtenSlots ??= []).Add((addr, slot));
+                if (_writtenSlots.Count > _maxTrackedWrites)
+                {
+                    _clearAll = true;
+                    _writtenAccounts = null;
+                    _writtenSlots = null;
+                }
+            }
             inner.SetStorage(addr, slot, value);
         }
 

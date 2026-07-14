@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -15,9 +16,13 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ) : IStateReader
 {
+    // Content-addressed (node hash -> RLP): entries are immutable, so no invalidation is needed.
+    private readonly ClockCache<ValueHash256, byte[]> _trieNodeRlpCache = new(flatDbConfig.TrieNodeRlpCacheCapacity);
+
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
         using ReadOnlySnapshotBundle? reader = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock));
@@ -59,7 +64,7 @@ public class FlatStateReader(
         using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
             ?? throw new InvalidOperationException($"State at {baseBlock} not found");
 
-        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, _trieNodeRlpCache);
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);

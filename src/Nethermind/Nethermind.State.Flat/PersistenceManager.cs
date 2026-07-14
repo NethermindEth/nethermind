@@ -55,6 +55,7 @@ public class PersistenceManager(
         configuration.EnableLongFinality ? configuration.LongFinalityMaxReorgDepth : configuration.MaxReorgDepth,
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
+    private readonly long _maxInMemorySnapshotBytes = (long)configuration.MaxInMemorySnapshotBytes;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
@@ -106,6 +107,9 @@ public class PersistenceManager(
     ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
+    /// A positive <c>MaxInMemorySnapshotBytes</c> adds byte-pressure relief: the finalized trigger
+    /// engages below <c>MinReorgDepth</c>, then a reorg-safe conversion is attempted (long finality
+    /// on), then a forced persist that keeps a <c>MinReorgDepth</c> floor.
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
     /// <c>SnapshotCount &gt; MaxInMemoryBaseSnapshotCount</c>.
     /// </remarks>
@@ -128,12 +132,15 @@ public class PersistenceManager(
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         ulong nextBoundary = schedule.NextFullCompactionAfter(in currentPersistedState);
 
+        bool overByteBudget = _maxInMemorySnapshotBytes > 0
+            && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes;
+
         // Normal finalized-driven persistence. Anchor at the next boundary block, not at the
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
         // the provider's own range check passes; the boundary is below chain head by construction, so
         // the canonical header is in the block tree and FindHeader resolves.
         if (finalizedBlockNumber >= nextBoundary
-            && snapshotsDepth + _compactSize > _minReorgDepth)
+            && (snapshotsDepth + _compactSize > _minReorgDepth || overByteBudget))
         {
             Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
             if (canonicalRoot is not null)
@@ -164,6 +171,31 @@ public class PersistenceManager(
                     $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}; " +
                     $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
                 return (persisted, inMemory, null);
+            }
+        }
+
+        // The MinReorgDepth floor is load-bearing: without it a repeated byte-pressure drain could
+        // persist unfinalized state up to the head, and a shallow reorg would orphan the flat base.
+        if (overByteBudget)
+        {
+            if (_enableLongFinality)
+            {
+                ConversionCandidate? byteCandidate = TryFindSnapshotToConvert(currentPersistedState);
+                if (byteCandidate is not null) return (null, null, byteCandidate);
+            }
+
+            if (snapshotsDepth > _minReorgDepth)
+            {
+                StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+                (PersistedSnapshot? persisted, Snapshot? inMemory) =
+                    snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
+                if (persisted is not null || inMemory is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn(
+                        $"In-memory snapshot bytes {snapshotRepository.InMemoryBytes} exceeded the byte budget {_maxInMemorySnapshotBytes}; " +
+                        $"forcing persistence to bound memory (depth {snapshotsDepth}, finalized block {finalizedBlockNumber}).");
+                    return (persisted, inMemory, null);
+                }
             }
         }
 
