@@ -47,7 +47,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         block.EncodedBlockAccessList = BlockAccessList;
-        // Reuse the wire hash cached during decode above instead of re-hashing the same bytes.
         block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : block.BlockAccessList!.WireHash;
         block.Header.SlotNumber = SlotNumber;
 
