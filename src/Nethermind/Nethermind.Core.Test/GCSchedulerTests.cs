@@ -46,6 +46,34 @@ public class GCSchedulerTests
     }
 
     [Test]
+    public void Sustained_sweep_stays_armed_and_retries_while_forced_gc_is_excluded()
+    {
+        long armed = GC.GetTotalAllocatedBytes(precise: false) - GCScheduler.SustainedSweepAllocationBytes - 1;
+        GCScheduler.Instance.SweepBaselineAllocatedBytes = armed;
+
+        using (GCScheduler.Instance.ExcludeForcedGC())
+        {
+            GCScheduler.Instance.NotifyBlockProcessed();
+            Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
+            Assert.That(GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.False);
+        }
+
+        GCScheduler.Instance.NotifyBlockProcessed();
+        Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+    }
+
+    [Test]
+    public void Forced_gc_exclusion_scopes_nest()
+    {
+        using (GCScheduler.Instance.ExcludeForcedGC())
+        using (GCScheduler.Instance.ExcludeForcedGC())
+        {
+        }
+
+        Assert.That(GCScheduler.Instance.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
+    }
+
+    [Test]
     public void Sustained_sweep_stays_armed_and_retries_while_gc_guard_is_held()
     {
         long armed = GC.GetTotalAllocatedBytes(precise: false) - GCScheduler.SustainedSweepAllocationBytes - 1;

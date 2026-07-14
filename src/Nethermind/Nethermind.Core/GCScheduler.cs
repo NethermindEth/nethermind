@@ -37,6 +37,7 @@ public sealed class GCScheduler
 
     private bool _skipNextGC = false;
     private long _sweepBaselineAllocatedBytes;
+    private int _forcedGCExclusions;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -172,9 +173,14 @@ public sealed class GCScheduler
     /// <param name="mode">The garbage collection mode.</param>
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
-    /// <returns>True if GC was performed; false if another GC was in progress.</returns>
+    /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
     {
+        if (Volatile.Read(ref _forcedGCExclusions) > 0)
+        {
+            return false;
+        }
+
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
@@ -198,6 +204,22 @@ public sealed class GCScheduler
     }
 
     public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
+
+    /// <summary>
+    /// Excludes all forced collections for the scope's lifetime, so they cannot contend with
+    /// memory-churning work such as pruning. A deferred sustained sweep stays armed and retries
+    /// once the scope is disposed.
+    /// </summary>
+    public ForcedGCExclusionScope ExcludeForcedGC()
+    {
+        Interlocked.Increment(ref _forcedGCExclusions);
+        return new ForcedGCExclusionScope(this);
+    }
+
+    public readonly struct ForcedGCExclusionScope(GCScheduler scheduler) : IDisposable
+    {
+        public void Dispose() => Interlocked.Decrement(ref scheduler._forcedGCExclusions);
+    }
 
     /// <summary>
     /// Per-processed-block notification driving a concurrent background gen2 sweep once
