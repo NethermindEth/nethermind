@@ -65,8 +65,6 @@ namespace Nethermind.Config
 
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
-        public PreWarmCancellationMode PreWarmCancellation { get; set; } = PreWarmCancellationMode.None;
-
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
