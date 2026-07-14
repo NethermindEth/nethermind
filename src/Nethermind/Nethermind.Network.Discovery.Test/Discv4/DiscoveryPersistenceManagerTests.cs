@@ -284,7 +284,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 tcpPort: 30303,
                 udpPort: 30304);
             Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
-            node!.UpdateEndpoint(new Node(TestItem.PublicKeyA, address.ToString(), 30305, 30304));
+            node!.Port = 30305;
 
             NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node!, cancellationToken);
 

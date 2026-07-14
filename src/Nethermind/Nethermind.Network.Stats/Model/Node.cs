@@ -303,7 +303,12 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Updates this node's network endpoint from another instance with the same identity.
         /// </summary>
-        /// <remarks>Endpoint readers observe either the complete old endpoint or the complete replacement.</remarks>
+        /// <remarks>
+        /// Signed ENRs take precedence over endpoint-only candidates, and higher sequence numbers take precedence over
+        /// lower ones. Configuration flags do not override signed-record ordering; without a signed candidate, a
+        /// configured endpoint remains unchanged. Endpoint readers observe either the complete old endpoint or the
+        /// complete replacement.
+        /// </remarks>
         /// <param name="node">The node containing the updated endpoint.</param>
         public void UpdateEndpoint(Node node)
         {
@@ -315,32 +320,26 @@ namespace Nethermind.Stats.Model
 
             lock (_endpointUpdateLock)
             {
-                if (IsStatic || IsTrusted || IsBootnode)
-                {
-                    return;
-                }
+                NodeRecord currentRecord = Enr is { Signature: not null } signedCurrentRecord ? signedCurrentRecord : null;
+                NodeRecord candidateRecord = node.Enr is { Signature: not null } signedCandidateRecord ? signedCandidateRecord : null;
 
-                bool candidateIsConfigured = node.IsStatic || node.IsTrusted || node.IsBootnode;
-                if (Enr is { } currentRecord &&
-                    node.Enr is { } candidateRecord &&
-                    !candidateIsConfigured &&
-                    candidateRecord.EnrSequence < currentRecord.EnrSequence)
+                if (candidateRecord is null)
+                {
+                    if (currentRecord is not null || IsStatic || IsTrusted || IsBootnode)
+                    {
+                        return;
+                    }
+                }
+                else if (currentRecord is not null && candidateRecord.EnrSequence < currentRecord.EnrSequence)
                 {
                     return;
                 }
 
                 SetEndpoint(Volatile.Read(ref node._endpoint));
 
-                if (candidateIsConfigured)
+                if (candidateRecord is not null)
                 {
-                    Enr = node.Enr;
-                    IsStatic |= node.IsStatic;
-                    IsTrusted |= node.IsTrusted;
-                    IsBootnode |= node.IsBootnode;
-                }
-                else if (node.Enr is { } record && (Enr is null || record.EnrSequence >= Enr.EnrSequence))
-                {
-                    Enr = record;
+                    Enr = candidateRecord;
                 }
             }
         }
