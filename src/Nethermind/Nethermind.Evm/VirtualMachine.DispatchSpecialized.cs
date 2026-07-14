@@ -5,6 +5,9 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+#if ZK_EVM
+using Nethermind.Evm.GasPolicy;
+#endif
 using Nethermind.Evm.Tracing;
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -217,6 +220,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 programCounter = pc;
 
+#if ZK_EVM
+                // Inside this huge method the compiler's inline budget is exhausted, so even the
+                // trivial policy calls below compile to out-of-line calls executed once per opcode
+                // (~5% of guest execution). The typeof checks fold at compile time per
+                // instantiation, so the common EthereumGasPolicy loop reads the flag directly and
+                // skips its empty OnAfterInstructionTrace without a call.
+                bool outOfGas = typeof(TGasPolicy) == typeof(EthereumGasPolicy)
+                    ? Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas).OutOfGas
+                    : TGasPolicy.IsOutOfGas(in gas);
+                if (outOfGas)
+                {
+                    OpCodeCount += opCodeCount;
+                    goto OutOfGas;
+                }
+
+                if (typeof(TGasPolicy) != typeof(EthereumGasPolicy))
+                    TGasPolicy.OnAfterInstructionTrace(in gas);
+#else
                 if (TGasPolicy.IsOutOfGas(in gas))
                 {
                     OpCodeCount += opCodeCount;
@@ -224,6 +245,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 TGasPolicy.OnAfterInstructionTrace(in gas);
+#endif
 
                 if (exceptionType != EvmExceptionType.None)
                     break;
