@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
 
@@ -12,6 +13,10 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public static class GcPacer
 {
+    // Bootstrap-time console logger: the pacer is a process-wide static utility started before/independent
+    // of the DI log pipeline, so it uses the same fallback sink as Runner startup.
+    private static readonly ILogger Logger = new(SimpleConsoleLogger.Instance);
+
     private static int s_started;
 
     /// <summary>Starts the process-wide pacer threads; only the first call wins.</summary>
@@ -46,14 +51,22 @@ public static class GcPacer
         int lastGen0Count = GC.CollectionCount(0);
         while (true)
         {
-            Thread.Sleep(TimeSpan.FromMilliseconds(gen0IntervalMs));
-
-            if (GC.CollectionCount(0) == lastGen0Count)
+            try
             {
-                GC.Collect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
-            }
+                Thread.Sleep(TimeSpan.FromMilliseconds(gen0IntervalMs));
 
-            lastGen0Count = GC.CollectionCount(0);
+                if (GC.CollectionCount(0) == lastGen0Count)
+                {
+                    GC.Collect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
+                }
+
+                lastGen0Count = GC.CollectionCount(0);
+            }
+            catch (Exception e)
+            {
+                // Never let an unhandled throw silently kill this daemon thread; keep pacing.
+                if (Logger.IsError) Logger.Error("GC pacer gen0 loop threw; continuing.", e);
+            }
         }
     }
 
@@ -68,45 +81,53 @@ public static class GcPacer
 
         while (true)
         {
-            bool warmup = uptime.ElapsedMilliseconds < warmupMs;
-            Thread.Sleep(TimeSpan.FromMilliseconds(warmup ? Math.Max(1000, intervalMs / 2) : intervalMs));
-
-            if (GC.CollectionCount(1) == lastGen1Count)
+            try
             {
-                // Must stay blocking:false: a blocking induced collection waits behind an
-                // in-flight background gen2 and wedges this thread.
-                GC.Collect(1, GCCollectionMode.Forced, blocking: false, compacting: false);
+                bool warmup = uptime.ElapsedMilliseconds < warmupMs;
+                Thread.Sleep(TimeSpan.FromMilliseconds(warmup ? Math.Max(1000, intervalMs / 2) : intervalMs));
+
+                if (GC.CollectionCount(1) == lastGen1Count)
+                {
+                    // Must stay blocking:false: a blocking induced collection waits behind an
+                    // in-flight background gen2 and wedges this thread.
+                    GC.Collect(1, GCCollectionMode.Forced, blocking: false, compacting: false);
+                }
+
+                lastGen1Count = GC.CollectionCount(1);
+
+                if (gen2IntervalMs > 0)
+                {
+                    // GC.Collect(2) waits behind an in-flight background collection even with
+                    // blocking:false; GCKind.Background's Index counts COMPLETED collections, so fire
+                    // only once the previously fired one has completed (or the request went stale).
+                    GCMemoryInfo background = GC.GetGCMemoryInfo(GCKind.Background);
+                    if (pendingBgcSinceIndex >= 0 &&
+                        (background.Index > pendingBgcSinceIndex || uptime.ElapsedMilliseconds - pendingBgcAtMs >= 180_000))
+                    {
+                        pendingBgcSinceIndex = -1;
+                    }
+
+                    int gen2Count = GC.CollectionCount(2);
+                    if (gen2Count != lastGen2Count)
+                    {
+                        lastGen2Count = gen2Count;
+                        lastGen2AtMs = uptime.ElapsedMilliseconds;
+                    }
+                    else if (pendingBgcSinceIndex < 0 &&
+                             uptime.ElapsedMilliseconds - lastGen2AtMs >= (warmup ? Math.Max(gen2IntervalMs / 4, 5000) : gen2IntervalMs))
+                    {
+                        pendingBgcSinceIndex = background.Index;
+                        pendingBgcAtMs = uptime.ElapsedMilliseconds;
+                        GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
+                        lastGen2Count = GC.CollectionCount(2);
+                        lastGen2AtMs = uptime.ElapsedMilliseconds;
+                    }
+                }
             }
-
-            lastGen1Count = GC.CollectionCount(1);
-
-            if (gen2IntervalMs > 0)
+            catch (Exception e)
             {
-                // GC.Collect(2) waits behind an in-flight background collection even with
-                // blocking:false; GCKind.Background's Index counts COMPLETED collections, so fire
-                // only once the previously fired one has completed (or the request went stale).
-                GCMemoryInfo background = GC.GetGCMemoryInfo(GCKind.Background);
-                if (pendingBgcSinceIndex >= 0 &&
-                    (background.Index > pendingBgcSinceIndex || uptime.ElapsedMilliseconds - pendingBgcAtMs >= 180_000))
-                {
-                    pendingBgcSinceIndex = -1;
-                }
-
-                int gen2Count = GC.CollectionCount(2);
-                if (gen2Count != lastGen2Count)
-                {
-                    lastGen2Count = gen2Count;
-                    lastGen2AtMs = uptime.ElapsedMilliseconds;
-                }
-                else if (pendingBgcSinceIndex < 0 &&
-                         uptime.ElapsedMilliseconds - lastGen2AtMs >= (warmup ? Math.Max(gen2IntervalMs / 4, 5000) : gen2IntervalMs))
-                {
-                    pendingBgcSinceIndex = background.Index;
-                    pendingBgcAtMs = uptime.ElapsedMilliseconds;
-                    GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
-                    lastGen2Count = GC.CollectionCount(2);
-                    lastGen2AtMs = uptime.ElapsedMilliseconds;
-                }
+                // Never let an unhandled throw silently kill this daemon thread; keep pacing.
+                if (Logger.IsError) Logger.Error("GC pacer loop threw; continuing.", e);
             }
         }
     }
