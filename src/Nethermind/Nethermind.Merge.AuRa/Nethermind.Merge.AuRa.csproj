@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />

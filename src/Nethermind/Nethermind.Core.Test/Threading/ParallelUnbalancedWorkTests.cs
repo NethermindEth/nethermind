@@ -158,6 +158,49 @@ public class ParallelUnbalancedWorkTests
     }
 
     [Test]
+    public void For_WithEmptyRange_DoesNotRunActionOrInitializeThreadLocalState()
+    {
+        int actionCalls = 0;
+        int initCalls = 0;
+        int finallyCalls = 0;
+
+        ParallelUnbalancedWork.For<int>(
+            1, 1, FourThreads,
+            init: () => Interlocked.Increment(ref initCalls),
+            action: (_, local) => { Interlocked.Increment(ref actionCalls); return local; },
+            @finally: _ => Interlocked.Increment(ref finallyCalls));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actionCalls, Is.EqualTo(0));
+            Assert.That(initCalls, Is.EqualTo(0));
+            Assert.That(finallyCalls, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void For_WithThreadLocal_DoesNotInitializeWorkersWithoutWork()
+    {
+        int initCalls = 0;
+        int emptyLocals = 0;
+
+        ParallelUnbalancedWork.For<int>(
+            0, 2, FourThreads,
+            init: () => { Interlocked.Increment(ref initCalls); return 0; },
+            action: (_, local) => local + 1,
+            @finally: local =>
+            {
+                if (local == 0) Interlocked.Increment(ref emptyLocals);
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initCalls, Is.InRange(1, 2));
+            Assert.That(emptyLocals, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
     public void For_DoesNotLeakWorkerExceptionToThreadPool()
     {
         // If a worker exception escaped onto a thread-pool thread it would surface via
