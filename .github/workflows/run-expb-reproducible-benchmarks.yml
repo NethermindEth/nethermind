@@ -193,6 +193,11 @@ jobs:
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            # "off" disables the floor injection entirely (an empty dispatch input falls back to the default,
+            # so it cannot express "no floor"; needed to benchmark images predating the config key).
+            if [[ "${flat_write_buffer_floor}" == "off" ]]; then
+              flat_write_buffer_floor=""
+            fi
             expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
@@ -218,7 +223,7 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -233,7 +238,7 @@ jobs:
             branch="${PUSH_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -1083,6 +1088,16 @@ jobs:
           restore-keys: |
             expb-master-metrics-v3-realblocks-
 
+      - name: Restore master metrics (fusaka)
+        id: restore-master-fusaka
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka
+          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v3-fusaka-
+
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
@@ -1090,6 +1105,7 @@ jobs:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
           MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
+          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
@@ -1225,11 +1241,11 @@ jobs:
             current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
 
             # Master metrics from cache
-            if [[ "${ps}" == "superblocks" ]]; then
-              master_metrics="${MASTER_SUPERBLOCKS}"
-            else
-              master_metrics="${MASTER_REALBLOCKS}"
-            fi
+            case "${ps}" in
+              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
+              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
+              *) master_metrics="${MASTER_REALBLOCKS}" ;;
+            esac
 
             build_table "${ps}" "${current_metrics}" "${master_metrics}"
           done
@@ -1530,13 +1546,11 @@ jobs:
             page_size=100
             remaining="${LAST}"
 
+            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
+            # page_size on the last page shifts the window (duplicating mid-range tags and
+            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
-              fetch_size="${page_size}"
-              if [[ "${remaining}" -lt "${page_size}" ]]; then
-                fetch_size="${remaining}"
-              fi
-
-              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
 
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
@@ -1556,6 +1570,12 @@ jobs:
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
+
+            if [[ "${#all_tags[@]}" -gt "${LAST}" ]]; then
+              all_tags=("${all_tags[@]:0:LAST}")
+              all_images=("${all_images[@]:0:LAST}")
+              all_dates=("${all_dates[@]:0:LAST}")
+            fi
 
             echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
