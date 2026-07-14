@@ -39,8 +39,11 @@ public sealed class DetectionScanner(
     IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager)
     : IDetectionScanner
 {
-    // Transfer(address indexed from, address indexed to, uint256 value)
+    // Transfer(address indexed from, address indexed to, uint256 value) — ERC-20 (3 topics) and ERC-721 (4 topics)
     private static readonly Hash256 TransferTopic = new("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
+    // ERC-1155 TransferSingle(operator, from indexed, to indexed, id, value) and TransferBatch (same indexed args)
+    private static readonly Hash256 TransferSingleTopic = new("0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62");
+    private static readonly Hash256 TransferBatchTopic = new("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb");
 
     private const int ChunkBlocks = 5_000;   // small chunks so each scheduled task finishes within an inter-block gap
     private const int MaxContracts = 2_000;  // safety cap on distinct contracts discovered per account
@@ -83,21 +86,26 @@ public sealed class DetectionScanner(
 
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
-            if (hi <= 0) { Persist(chainId, account, existing?.Contracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
+            if (hi <= 0) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
             long lo = Math.Max(0, hi - ChunkBlocks + 1);
 
-            HashSet<string> contracts = existing is null ? [] : [.. existing.Contracts];
+            HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
+            HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];
             Hash256 accountTopic = ToTopic(account);
             try
             {
-                CollectChunk(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), new SpecificTopic(accountTopic)), contracts, token);
-                CollectChunk(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), AnyTopic.Instance, new SpecificTopic(accountTopic)), contracts, token);
+                // ERC-20 (3-topic) and ERC-721 (4-topic) share the Transfer event; from = topic1, to = topic2
+                Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), new SpecificTopic(accountTopic)), erc20, nfts, token);
+                Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferTopic), AnyTopic.Instance, new SpecificTopic(accountTopic)), erc20, nfts, token);
+                // ERC-1155 received: TransferSingle/TransferBatch with to = topic3 (operator = topic1, from = topic2)
+                Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferSingleTopic), AnyTopic.Instance, AnyTopic.Instance, new SpecificTopic(accountTopic)), null, nfts, token);
+                Collect(lo, hi, new SequenceTopicsFilter(new SpecificTopic(TransferBatchTopic), AnyTopic.Instance, AnyTopic.Instance, new SpecificTopic(accountTopic)), null, nfts, token);
             }
             catch (OperationCanceledException)
             {
                 // pre-empted by block processing (or deadline) — keep any contracts found, don't advance the
                 // cursor, and retry this range on a later scheduling slot
-                Persist(chainId, account, contracts, priorScannedFrom, head, complete: false);
+                Persist(chainId, account, erc20, nfts, priorScannedFrom, head, complete: false);
                 Schedule(req);
                 return Task.CompletedTask;
             }
@@ -105,13 +113,13 @@ public sealed class DetectionScanner(
             {
                 // reached the bottom of retained history (pruned/unavailable receipts)
                 if (_logger.IsDebug) _logger.Debug($"Token detection reached retained-history floor for {account} at block {lo}: {e.Message}");
-                Persist(chainId, account, contracts, 0, head, complete: true);
+                Persist(chainId, account, erc20, nfts, 0, head, complete: true);
                 _active.TryRemove(key, out _);
                 return Task.CompletedTask;
             }
 
-            bool complete = lo <= 0 || contracts.Count >= MaxContracts;
-            Persist(chainId, account, contracts, complete ? 0 : lo, head, complete);
+            bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContracts;
+            Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
             else Schedule(req);
         }
@@ -123,7 +131,9 @@ public sealed class DetectionScanner(
         return Task.CompletedTask;
     }
 
-    private void CollectChunk(long lo, long hi, TopicsFilter topics, HashSet<string> contracts, CancellationToken token)
+    // Collects emitting-contract addresses. When erc20 is provided (Transfer scans), 3-topic logs are
+    // ERC-20 and 4-topic logs are ERC-721; when erc20 is null (ERC-1155 event scans), everything is an NFT.
+    private void Collect(long lo, long hi, TopicsFilter topics, HashSet<string>? erc20, HashSet<string> nfts, CancellationToken token)
     {
         LogFilter filter = new(0, new BlockParameter((ulong)lo), new BlockParameter((ulong)hi), AddressFilter.AnyAddress, topics)
         {
@@ -131,14 +141,15 @@ public sealed class DetectionScanner(
         };
         foreach (FilterLog log in logFinder.FindLogs(filter, token))
         {
-            // ERC-20 Transfer carries exactly 3 topics (ERC-721's are fully indexed -> 4)
-            if (log.Topics.Length == 3) contracts.Add(log.Address.ToString());
+            if (erc20 is not null && log.Topics.Length == 3) erc20.Add(log.Address.ToString());
+            else nfts.Add(log.Address.ToString());
         }
     }
 
-    private void Persist(long chainId, Address account, IEnumerable<string>? contracts, long scannedFrom, long head, bool complete) =>
+    private void Persist(long chainId, Address account, IEnumerable<string>? contracts, IEnumerable<string>? nftContracts, long scannedFrom, long head, bool complete) =>
         cache.Put(chainId, account.ToString(), new DetectionEntry(
-            contracts is null ? [] : [.. contracts], scannedFrom, head, complete, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            contracts is null ? [] : [.. contracts], nftContracts is null ? [] : [.. nftContracts],
+            scannedFrom, head, complete, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 
     private static Hash256 ToTopic(Address account)
     {

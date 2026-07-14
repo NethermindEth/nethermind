@@ -60,7 +60,7 @@ public class DetectionScannerTests
 
     // seed an incomplete entry carrying the head, so the scan resumes from it without needing IBlockFinder
     private void SeedHead(long head) =>
-        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([], head + 1, head, false, 0));
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([], [], head + 1, head, false, 0));
 
     [Test]
     public async Task Discovers_erc20_contracts_completes_and_skips_nfts()
@@ -80,9 +80,26 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Discovers_nft_collections()
+    {
+        SeedHead(5);
+        // a 4-topic Transfer (ERC-721) log — should land in NftContracts, not Contracts
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns([Log(Nft, Transfer, Keccak.Zero, Keccak.Zero, Keccak.Zero)]);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry!.Complete, Is.True);
+        Assert.That(entry.NftContracts, Does.Contain(Nft.ToString()));
+        Assert.That(entry.Contracts, Is.Empty);
+    }
+
+    [Test]
     public void No_op_when_already_complete()
     {
-        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], 0, 5, true, 0));
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 5, true, 0));
 
         _scanner.RequestScan(ChainId, Account);
 

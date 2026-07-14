@@ -1502,6 +1502,45 @@
             if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
         }
 
+        // confirms candidate NFT collections (ERC-721 / ERC-1155) the account owns and adds them to the
+        // chain's nfts list; suspected-spam collections are hidden by default (restorable)
+        async function vetAndAddNfts(node, addrList, candidates) {
+            const state = stateOf(node.chainId);
+            const known = new Set(state.nfts.map((t) => t.address.toLowerCase()));
+            const ignored = ignoredAddrs(node.chainId);
+            const fresh = candidates.map((c) => c.toLowerCase()).filter((c) => !known.has(c) && !ignored.has(c));
+            let added = false;
+            for (const c of fresh) {
+                if (state.nfts.some((t) => t.address.toLowerCase() === c) || ignoredAddrs(node.chainId).has(c)) continue;
+                let kind;
+                try { kind = await detectKind(node, { address: c }); } catch { continue; }
+                if (kind === 'none') continue;
+                let meta;
+                try { meta = await rpcBatch([['eth_call', [{ to: c, data: SEL_SYMBOL }, 'latest']], ['eth_call', [{ to: c, data: SEL_NAME }, 'latest']]], node.rpcPath); } catch { continue; }
+                const ticker = decodeAbiString(meta[0]) || decodeAbiString(meta[1]) || 'NFT';
+                const name = decodeAbiString(meta[1]) || ticker;
+                // ERC-721 exposes balanceOf(owner); ERC-1155 does not (holdings are per-id, resolved by the NFT view)
+                if (kind !== 'erc1155') {
+                    let held = false;
+                    try {
+                        const bals = await rpcBatch(addrList.map((a) => ['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]), node.rpcPath);
+                        held = bals.some((r) => { try { return r && r !== '0x' && BigInt(r) > 0n; } catch { return false; } });
+                    } catch { }
+                    if (!held) continue;
+                }
+                // re-check synchronously (no await before the push) so concurrent passes can't double-add
+                if (state.nfts.some((t) => t.address.toLowerCase() === c) || ignoredAddrs(node.chainId).has(c)) continue;
+                const entry = { address: checksum(c), ticker, name };
+                if (looksLikeSpam(ticker, 0, null) || looksLikeSpam(name, 0, null)) {
+                    state.ignored.push({ ...entry, nft: true, spam: true });
+                } else {
+                    state.nfts.push({ ...entry, auto: true });
+                }
+                added = true;
+            }
+            if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); refreshNftThumbs(); }
+        }
+
         // real-time: scan blocks arrived since the last poll for Transfer logs touching a pinned address
         async function realtimeDetect(node) {
             const addresses = mergedAddresses();
@@ -1545,6 +1584,7 @@
                     } catch { continue; }
                     if (!data) { scanning = true; continue; } // scan just started; nothing cached yet
                     if (data.contracts?.length) await vetAndAdd(node, [entry.address], data.contracts);
+                    if (data.nftContracts?.length) await vetAndAddNfts(node, [entry.address], data.nftContracts);
                     if (!data.complete) scanning = true;
                 }
                 detecting = scanning;
@@ -1562,8 +1602,12 @@
             const key = token.address.toLowerCase();
             const state = stateOf(node.chainId);
             state.ignored = state.ignored.filter((t) => (typeof t === 'string' ? t : t.address).toLowerCase() !== key);
-            if (token.ticker && !tokensOf(node.chainId).some((x) => x.address.toLowerCase() === key)) {
-                state.detected.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker, auto: true });
+            if (token.ticker) {
+                if (token.nft) {
+                    if (!state.nfts.some((x) => x.address.toLowerCase() === key)) state.nfts.push({ address: token.address, ticker: token.ticker, name: token.name ?? token.ticker, auto: true });
+                } else if (!tokensOf(node.chainId).some((x) => x.address.toLowerCase() === key)) {
+                    state.detected.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker, auto: true });
+                }
             }
             store.save(node.chainId);
             renderTokens();
@@ -1577,10 +1621,14 @@
             for (const node of nodes) {
                 const state = stateOf(node.chainId);
                 if (!state.ignored.length) continue;
-                const have = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
                 for (const t of state.ignored) {
-                    if (typeof t === 'string' || !t.ticker || have.has(t.address.toLowerCase())) continue;
-                    state.detected.push({ address: t.address, ticker: t.ticker, decimals: t.decimals, name: t.name ?? t.ticker, auto: true });
+                    if (typeof t === 'string' || !t.ticker) continue;
+                    const key = t.address.toLowerCase();
+                    if (t.nft) {
+                        if (!state.nfts.some((x) => x.address.toLowerCase() === key)) state.nfts.push({ address: t.address, ticker: t.ticker, name: t.name ?? t.ticker, auto: true });
+                    } else if (!tokensOf(node.chainId).some((x) => x.address.toLowerCase() === key)) {
+                        state.detected.push({ address: t.address, ticker: t.ticker, decimals: t.decimals, name: t.name ?? t.ticker, auto: true });
+                    }
                 }
                 state.ignored = [];
                 store.save(node.chainId);
@@ -1657,12 +1705,13 @@
         // ---------- rendering ----------
         // hides an auto-detected token from the display and stores it so it can be restored; the
         // node cache still records it (ignore is a client-side preference only)
-        function hideDetected(node, token) {
+        function hideDetected(node, token, isNft) {
             const key = token.address.toLowerCase();
             const state = stateOf(node.chainId);
-            state.detected = state.detected.filter((t) => t.address.toLowerCase() !== key);
+            if (isNft) state.nfts = state.nfts.filter((t) => t.address.toLowerCase() !== key);
+            else state.detected = state.detected.filter((t) => t.address.toLowerCase() !== key);
             if (!state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === key)) {
-                state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker });
+                state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name ?? token.ticker, nft: !!isNft });
             }
             store.save(node.chainId);
             renderTokens();
@@ -1674,7 +1723,7 @@
             const box = $('tokens');
             box.replaceChildren();
             const addChip = (node, item, list, isNft) => {
-                const isAuto = list === 'detected';
+                const isAuto = list === 'detected' || (isNft && item.auto);
                 const chip = el('span', (isNft ? 'chip nft' : 'chip') + (isAuto ? ' auto' : ''));
                 const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
@@ -1684,7 +1733,7 @@
                 chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
-                    if (isAuto) { hideDetected(node, item); return; }
+                    if (isAuto) { hideDetected(node, item, isNft); return; }
                     const state = stateOf(node.chainId);
                     state[list] = state[list].filter((t) => t !== item);
                     store.save(node.chainId);

@@ -12,12 +12,14 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// <summary>Result and progress of one account's node-side token-detection scan on one chain.</summary>
 /// <param name="Contracts">ERC-20 contract addresses the account has transferred to/from (candidates
 /// the client confirms with a live balance check). Discovered in-process via the node's log index.</param>
+/// <param name="NftContracts">ERC-721 / ERC-1155 contract addresses the account has transferred/received
+/// (candidates the client confirms via interface + ownership checks).</param>
 /// <param name="ScannedFrom">Lowest block scanned so far (inclusive) — a resumable cursor.</param>
 /// <param name="Head">Head block when the scan started, so the covered range is known.</param>
 /// <param name="Complete">True once the sweep reached the bottom of the node's retained history.</param>
 /// <param name="UpdatedMs">Unix-milliseconds timestamp of the last update.</param>
 public sealed record DetectionEntry(
-    IReadOnlyList<string> Contracts, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
+    IReadOnlyList<string> Contracts, IReadOnlyList<string> NftContracts, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
 
 /// <summary>
 /// Node-side cache of per-account token-detection results and scan progress.
@@ -75,6 +77,10 @@ public sealed class DetectionCache : IDetectionCache
         {
             entry = entry with { Contracts = entry.Contracts.Take(_maxContractsPerEntry).ToArray() };
         }
+        if (entry.NftContracts.Count > _maxContractsPerEntry)
+        {
+            entry = entry with { NftContracts = entry.NftContracts.Take(_maxContractsPerEntry).ToArray() };
+        }
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();
         Save();
@@ -106,7 +112,8 @@ public sealed class DetectionCache : IDetectionCache
             {
                 foreach ((string key, DetectionEntry value) in data)
                 {
-                    _entries[key] = value;
+                    // tolerate entries written by an older schema (missing lists deserialize to null)
+                    _entries[key] = value with { Contracts = value.Contracts ?? [], NftContracts = value.NftContracts ?? [] };
                 }
             }
         }
