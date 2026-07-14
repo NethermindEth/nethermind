@@ -11,7 +11,6 @@ using JetBrains.Profiler.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
