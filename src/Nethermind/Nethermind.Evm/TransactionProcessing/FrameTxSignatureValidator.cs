@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -19,6 +20,7 @@ public static class FrameTxSignatureValidator
 {
     public const string InvalidSignature = "frame transaction has an invalid signature";
     public const string InvalidSignatureLength = "frame transaction signature has the wrong length";
+    public const string NonCanonicalSignature = "frame transaction signature must use a 0/1 recovery id and a canonical low s value";
     public const string InvalidP256Signer = "frame transaction P256 signer does not match the public key";
     public const string P256NotSupported = "frame transaction P256 signatures are not yet supported by the prototype pre-flight";
 
@@ -58,12 +60,22 @@ public static class FrameTxSignatureValidator
         ReadOnlySpan<byte> raw = signature.Signature.Span;
         if (raw.Length != TxFrameSignature.Secp256k1SignatureLength) return Fail(InvalidSignatureLength, out error);
 
-        // EIP8141-GAP: the spec does not pin the v encoding of the 1-byte recovery id; normalized to
-        // the EIP-2 27/28 range so both raw-recovery-id (0/1) and yParity+27 forms recover.
+        // EIP8141-GAP: the spec passes v straight to ecrecover without pinning its encoding or the
+        // signature's canonicality. Enforced strictly — a 0/1 recovery id and a low s — so every
+        // signature has exactly one valid byte encoding (no mempool/tx-shape malleability through
+        // the explicit-digest entries, whose bytes stay in the sig-hash preimage). Upstream issue:
+        // pin the ecrecover semantics in the spec.
         ulong v = raw[0];
-        if (v < Signature.VOffset) v += Signature.VOffset;
+        if (v > 1) return Fail(NonCanonicalSignature, out error);
 
-        Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v);
+        UInt256 r = new(raw.Slice(1, 32), isBigEndian: true);
+        UInt256 s = new(raw.Slice(33, 32), isBigEndian: true);
+        if (r.IsZero || r >= SecP256k1Curve.N || s.IsZero || s > SecP256k1Curve.HalfN)
+        {
+            return Fail(NonCanonicalSignature, out error);
+        }
+
+        Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v + Signature.VOffset);
         Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
         return recovered is not null && recovered == resolvedSigner || Fail(InvalidSignature, out error);
     }

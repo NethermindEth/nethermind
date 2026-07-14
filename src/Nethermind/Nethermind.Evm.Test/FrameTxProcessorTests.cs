@@ -376,6 +376,27 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_TransientStorage_DiscardedBetweenFrames()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Copies transient slot 0 into persistent slot 0, then leaves 42 in transient slot 0.
+        // Without the between-frames reset the second run would persist the leaked 42.
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0).Op(Instruction.TLOAD).PushData(0).Op(Instruction.SSTORE)
+            .PushData(42).PushData(0).Op(Instruction.TSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Observer),
+            Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, UInt256.Zero);
+    }
+
+    [Test]
     public void Execute_CodelessSenderSelfVerify_TransactionInvalid()
     {
         // EIP8141: the spec "default code" gives a codeless sender an implicit APPROVE when a

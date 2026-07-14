@@ -85,6 +85,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             TxFrame frame = frames[i];
             frameContext.CurrentFrameIndex = i;
 
+            // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
+            // interactions); resetting at frame entry also covers the first frame.
+            WorldState.ResetTransient();
+
             bool isSender = frame.Mode == TxFrame.ModeSender;
             if (isSender && !frameContext.SenderApproved)
             {

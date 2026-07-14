@@ -76,18 +76,35 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
-    public void Validate_Secp256k1WithRawRecoveryIdV_ReturnsTrue()
+    public void Validate_Secp256k1WithLegacy27RecoveryId_RejectedAsNonCanonical()
     {
-        // EIP8141-GAP: the spec does not pin the v encoding of the 1-byte recovery id; the
-        // validator normalizes to the EIP-2 27/28 range, so a raw 0/1 recovery id also verifies.
+        // EIP8141-GAP: the v encoding is enforced strictly as a 0/1 recovery id so every
+        // signature has exactly one valid byte encoding; the legacy 27/28 form is rejected.
         Transaction tx = CreateFrameTx();
         TxFrameSignature canonical = Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address);
-        byte[] rawIdBytes = canonical.Signature.ToArray();
-        rawIdBytes[0] -= 27;
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, rawIdBytes)];
+        byte[] legacyIdBytes = canonical.Signature.ToArray();
+        legacyIdBytes[0] += 27;
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, legacyIdBytes)];
 
-        Assert.That(Validate(tx, out string? error), Is.True);
-        Assert.That(error, Is.Null);
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
+    }
+
+    [Test]
+    public void Validate_Secp256k1WithHighS_RejectedAsNonCanonical()
+    {
+        // The flipped (v ^ 1, r, N - s) form recovers the same address but is non-canonical.
+        Transaction tx = CreateFrameTx();
+        TxFrameSignature canonical = Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address);
+        byte[] highSBytes = canonical.Signature.ToArray();
+        highSBytes[0] ^= 1;
+        UInt256 s = new(highSBytes.AsSpan(33, 32), isBigEndian: true);
+        UInt256 highS = SecP256k1Curve.N - s;
+        highS.ToBigEndian(highSBytes.AsSpan(33, 32));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, highSBytes)];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.NonCanonicalSignature));
     }
 
     [Test]
@@ -197,7 +214,7 @@ public class FrameTxSignatureValidatorTests
     private static byte[] ToVrs(Signature signature)
     {
         byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
-        bytes[0] = (byte)signature.V;
+        bytes[0] = signature.RecoveryId; // strict yParity encoding (0/1)
         signature.Bytes.CopyTo(bytes.AsSpan(1));
         return bytes;
     }
