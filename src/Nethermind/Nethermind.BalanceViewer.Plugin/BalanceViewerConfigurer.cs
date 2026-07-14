@@ -85,7 +85,8 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         bool isProxy = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(ProxyPathPrefix);
         bool isDetectGet = HttpMethods.IsGet(context.Request.Method) && path == DetectPath;
         bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
-        if (!isStaticFile && !isNodesList && !isProxy && !isDetectGet && !isDetectPost)
+        bool isDetectDelete = HttpMethods.IsDelete(context.Request.Method) && path == DetectPath;
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectGet && !isDetectPost && !isDetectDelete)
         {
             return next(context);
         }
@@ -101,6 +102,12 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         if (isProxy) return ProxyAsync(context);
         if (isDetectGet) return ServeDetectGetAsync(context);
         if (isDetectPost) return ServeDetectPostAsync(context);
+        if (isDetectDelete)
+        {
+            detection.Clear();
+            context.Response.StatusCode = StatusCodes.Status204NoContent;
+            return Task.CompletedTask;
+        }
 
         (IFileInfo file, string contentType) = Routes[path];
         if (!file.Exists)

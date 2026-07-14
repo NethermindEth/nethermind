@@ -258,10 +258,11 @@
         .hidden-tokens { margin-top: 6px; }
         @keyframes bvspin { to { transform: rotate(360deg); } }
         button.zero-toggle.scanning { position: relative; }
+        button.zero-toggle.scanning { color: transparent; } /* hide the glyph so the centred spinner reads cleanly */
         button.zero-toggle.scanning::after {
             content: '';
-            position: absolute; top: -3px; right: -3px;
-            width: 7px; height: 7px; box-sizing: border-box;
+            position: absolute; top: 50%; left: 50%;
+            width: 12px; height: 12px; margin: -6px 0 0 -6px; box-sizing: border-box;
             border: 1.5px solid var(--border-soft); border-top-color: var(--accent);
             border-radius: 50%;
             animation: bvspin 0.8s linear infinite;
@@ -574,8 +575,18 @@
             return json.result;
         }
 
+        // JSON-RPC servers cap batch size (Nethermind's JsonRpc.MaxBatchSize defaults to 1024); split into
+        // sub-batches so large detection sweeps (up to 2000 contracts) don't get rejected wholesale.
+        const RPC_BATCH_MAX = 500;
         async function rpcBatch(calls, rpcPath = '/') {
             if (calls.length === 0) return [];
+            if (calls.length > RPC_BATCH_MAX) {
+                const results = [];
+                for (let i = 0; i < calls.length; i += RPC_BATCH_MAX) {
+                    results.push(...await rpcBatch(calls.slice(i, i + RPC_BATCH_MAX), rpcPath));
+                }
+                return results;
+            }
             const body = calls.map(([method, params]) => ({ jsonrpc: '2.0', id: rpcId++, method, params }));
             const res = await fetch(rpcPath, {
                 method: 'POST',
@@ -583,6 +594,7 @@
                 body: JSON.stringify(body)
             });
             const json = await res.json();
+            if (!Array.isArray(json)) return body.map(() => null); // server rejected the batch (e.g. size/body limit)
             const byId = new Map(json.map((r) => [r.id, r]));
             return body.map((req) => {
                 const r = byId.get(req.id);
@@ -963,11 +975,18 @@
             USD: '$', ARS: 'AR$', AUD: 'A$', BRL: 'R$', CAD: 'C$', CHF: 'CHF ', CNY: 'CN¥', EUR: '€',
             GBP: '£', IDR: 'Rp ', JPY: '¥', KRW: '₩', MXN: 'MX$', NZD: 'NZ$', PHP: '₱', SGD: 'S$', TRY: '₺',
         };
+        // per-row symbol: drop the country-disambiguating prefix (MX$, A$, CN¥ …) so individual amounts
+        // stay compact; the fully-qualified symbol appears only in the top grand total.
+        const CURRENCY_SYMBOLS_SHORT = {
+            ARS: '$', AUD: '$', CAD: '$', CNY: '¥', MXN: '$', NZD: '$', SGD: '$',
+        };
+        const currencySymbol = (full) => (full ? CURRENCY_SYMBOLS[currency] : CURRENCY_SYMBOLS_SHORT[currency] ?? CURRENCY_SYMBOLS[currency]);
 
-        // value scaled by PRICE_SCALE (1e8) in the selected currency, prefixed with its symbol
-        function formatFiat(value8) {
+        // value scaled by PRICE_SCALE (1e8) in the selected currency, prefixed with its symbol.
+        // `full` uses the disambiguated symbol (top total); otherwise the short per-row symbol.
+        function formatFiat(value8, full = false) {
             const cents = value8 / 10n ** (PRICE_DECIMALS - 2n);
-            return CURRENCY_SYMBOLS[currency] + (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
+            return currencySymbol(full) + (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
         }
 
         function setTotal(text) {
@@ -998,7 +1017,7 @@
                 if (cell) cell.textContent = cardAny ? formatFiat(cardTotal) : '—';
                 if (cardAny) { grand += cardTotal; any = true; }
             }
-            setTotal(any ? formatFiat(grand) : (mergedAddresses().length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
+            setTotal(any ? formatFiat(grand, true) : (mergedAddresses().length === 0 ? CURRENCY_SYMBOLS[currency] + '0.00' : '—'));
         }
 
         // ---------- NFTs (ERC-721 / ERC-1155, node-data only) ----------
@@ -1638,6 +1657,27 @@
             refreshBalances();
         }
 
+        // Developer-only: wipe the connected node's detection cache and this browser's auto-detected
+        // state, then let the next poll re-scan from scratch. Deliberately not surfaced in the UI —
+        // invoke from the web console:  await bvClearDetectionCache()
+        globalThis.bvClearDetectionCache = async function () {
+            let nodeCleared = false;
+            try { nodeCleared = (await fetch('balances-detect', { method: 'DELETE' })).ok; }
+            catch (e) { console.warn('[balances] node cache clear failed:', e); }
+            for (const node of nodes) {
+                const state = stateOf(node.chainId);
+                if (!state) continue;
+                state.detected = (node.meta.defaults || []).map((t) => ({ ...t, auto: true }));
+                state.nfts = state.nfts.filter((n) => !n.auto);
+                state.ignored = [];
+                node.detectHead = null; // let realtime re-seed
+                store.save(node.chainId);
+            }
+            renderTokens(); renderCards(); refreshBalances();
+            console.log('[balances] detection cache cleared (connected node: ' + (nodeCleared ? 'ok' : 'unreachable') + '); re-scanning…');
+            return nodeCleared;
+        };
+
         // ---------- ENS (simple forward + reverse resolution) ----------
         function ensNode() {
             return enabledNodes().find((n) => n.chainId === 1 && n.ens) ?? enabledNodes().find((n) => n.ens) ?? null;
@@ -1815,7 +1855,8 @@
                 const shownName = labelFor(entry);
                 if (shownName) {
                     const name = el('span', 'name', shownName);
-                    name.style.color = color;
+                    // colour only a user-given label; an ENS-derived name keeps the neutral default
+                    if (entry.label) name.style.color = color;
                     head.append(name);
                 }
                 const addr = el('span', 'addr number', shortAddr(entry.address));

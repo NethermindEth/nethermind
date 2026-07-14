@@ -55,7 +55,7 @@ public class BalanceViewerScriptTests
         Assert.That(start, Is.GreaterThanOrEqualTo(0).And.LessThan(end), "could not locate the page script");
         string script = html.Substring(start + open.Length, end - start - open.Length);
 
-        V8ScriptEngine engine = new();
+        V8ScriptEngine engine = new(V8ScriptEngineFlags.EnableTaskPromiseConversion);
         engine.Execute(Shims);
         engine.Execute(script);
         return engine;
@@ -163,6 +163,61 @@ public class BalanceViewerScriptTests
             Assert.That(engine.Evaluate("looksLikeSpam('OK', 0, '0x' + (9n*10n**33n).toString(16))"), Is.True, "airdrop-scale balance");
             Assert.That(engine.Evaluate("looksLikeSpam('USDC', 6, '0x64')"), Is.False, "legit stablecoin");
             Assert.That(engine.Evaluate("looksLikeSpam('PEPE', 18, '0x' + (4200n*10n**18n).toString(16))"), Is.False, "legit token");
+        });
+    }
+
+    [Test]
+    public void CurrencySymbol_ShortensDisambiguatedSymbolsExceptInTheFullForm()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.Multiple(() =>
+        {
+            // dollar-family: full symbol carries the country prefix, per-row collapses to '$'
+            engine.Execute("currency='MXN'");
+            Assert.That(engine.Evaluate("currencySymbol(true)"), Is.EqualTo("MX$"), "full");
+            Assert.That(engine.Evaluate("currencySymbol(false)"), Is.EqualTo("$"), "short");
+            engine.Execute("currency='CNY'");
+            Assert.That(engine.Evaluate("currencySymbol(true)"), Is.EqualTo("CN¥"), "full");
+            Assert.That(engine.Evaluate("currencySymbol(false)"), Is.EqualTo("¥"), "short");
+            // currencies without a prefix are identical in both forms
+            engine.Execute("currency='EUR'");
+            Assert.That(engine.Evaluate("currencySymbol(false)"), Is.EqualTo("€"));
+            Assert.That(engine.Evaluate("currencySymbol(true)"), Is.EqualTo("€"));
+        });
+    }
+
+    [Test]
+    public void RpcBatch_SplitsOversizedBatchesToRespectServerLimit()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // capture each sub-batch size and echo {id, result} so results map back 1:1 in input order
+        engine.Execute("""
+            globalThis.__chunks = [];
+            globalThis.fetch = function (path, opts) {
+                const body = JSON.parse(opts.body);
+                __chunks.push(body.length);
+                const arr = body.map((r) => ({ jsonrpc: '2.0', id: r.id, result: r.params[0].to }));
+                return Promise.resolve({ json: () => Promise.resolve(arr) });
+            };
+            """);
+        // 1200 calls exceed Nethermind's 1024 batch cap: must split (500,500,200) and preserve order
+        System.Threading.Tasks.Task<object> task = (System.Threading.Tasks.Task<object>)engine.Evaluate("""
+            (async () => {
+                const calls = Array.from({ length: 1200 }, (_, i) => ['eth_call', [{ to: '0x' + i }]]);
+                const out = await rpcBatch(calls, '/');
+                return JSON.stringify({
+                    chunks: __chunks,
+                    len: out.length,
+                    ordered: out.every((v, i) => v === '0x' + i),
+                });
+            })()
+            """);
+        string json = (string)task.Result;
+        Assert.Multiple(() =>
+        {
+            Assert.That(json, Does.Contain("\"chunks\":[500,500,200]"), "split into server-safe sub-batches");
+            Assert.That(json, Does.Contain("\"len\":1200"), "every call answered");
+            Assert.That(json, Does.Contain("\"ordered\":true"), "results stay in input order");
         });
     }
 

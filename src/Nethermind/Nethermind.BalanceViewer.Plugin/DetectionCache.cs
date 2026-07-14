@@ -36,6 +36,9 @@ public interface IDetectionCache
 
     /// <summary>Stores (overwrites) the entry for the account on the chain and persists it.</summary>
     void Put(long chainId, string address, DetectionEntry entry);
+
+    /// <summary>Drops every cached entry and the backing file. Intended for developer/diagnostic use.</summary>
+    void Clear();
 }
 
 /// <inheritdoc cref="IDetectionCache"/>
@@ -84,6 +87,22 @@ public sealed class DetectionCache : IDetectionCache
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();
         Save();
+    }
+
+    public void Clear()
+    {
+        _entries.Clear();
+        try
+        {
+            lock (_fileLock)
+            {
+                File.Delete(_path);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not delete balance-viewer detection cache: {e.Message}");
+        }
     }
 
     // LRU eviction: while over the entry cap, drop the least-recently-updated entry
