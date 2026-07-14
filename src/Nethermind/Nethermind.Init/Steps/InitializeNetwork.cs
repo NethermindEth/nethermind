@@ -19,6 +19,7 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
@@ -60,6 +61,7 @@ public class InitializeNetwork : IStep
     private readonly IInitConfig _initConfig;
     private readonly IFlatDbConfig _flatDbConfig;
     private readonly IPruningConfig _pruningConfig;
+    private readonly INodeStorageFactory _nodeStorageFactory;
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
@@ -84,6 +86,7 @@ public class InitializeNetwork : IStep
         IInitConfig initConfig,
         IFlatDbConfig flatDbConfig,
         IPruningConfig pruningConfig,
+        INodeStorageFactory nodeStorageFactory,
         ILogManager logManager
     )
     {
@@ -105,6 +108,7 @@ public class InitializeNetwork : IStep
         _initConfig = initConfig;
         _flatDbConfig = flatDbConfig;
         _pruningConfig = pruningConfig;
+        _nodeStorageFactory = nodeStorageFactory;
         _logManager = logManager;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
@@ -188,7 +192,7 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
-        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatDbConfig, _initConfig, _pruningConfig);
+        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
@@ -198,21 +202,34 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
     }
 
-    private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig) =>
-        flatDbConfig.Enabled
-            ? flatDbConfig.Layout switch
+    private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)
+    {
+        if (flatDbConfig.Enabled)
+        {
+            return flatDbConfig.Layout switch
             {
                 FlatLayout.Flat => "-f",
                 FlatLayout.FlatInTrie => "-fit",
                 FlatLayout.PreimageFlat => "-pf",
                 _ => ""
-            }
-            : initConfig.StateDbKeyScheme switch
-            {
-                INodeStorage.KeyScheme.Hash => pruningConfig.Mode == PruningMode.None ? "-hA" : "-h",
-                INodeStorage.KeyScheme.HalfPath => pruningConfig.Mode == PruningMode.None ? "-hpA" : "-hp",
-                _ => ""
             };
+        }
+
+        // Prefer the scheme actually detected from the state DB over the configured preference, which
+        // defaults to Current. Mirrors NodeStorageFactory.WrapKeyValueStore: Current resolves to HalfPath.
+        INodeStorage.KeyScheme scheme = nodeStorageFactory.CurrentKeyScheme
+            ?? (initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Current
+                ? initConfig.StateDbKeyScheme
+                : INodeStorage.KeyScheme.HalfPath);
+
+        bool isArchive = pruningConfig.Mode == PruningMode.None;
+        return scheme switch
+        {
+            INodeStorage.KeyScheme.Hash => isArchive ? "-hA" : "-h",
+            INodeStorage.KeyScheme.HalfPath => isArchive ? "-hpA" : "-hp",
+            _ => ""
+        };
+    }
 
     private Task StartDiscovery()
     {
