@@ -904,6 +904,35 @@ public class BlockCachePreWarmerTests
             "each worker returns its env once; per-job rental would return four");
     }
 
+    [Test]
+    public async Task PreWarmCaches_ReturnsAddressWarmEnvWhenScopeBuildThrows()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        ThrowingBuildPolicy policy = new();
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            maxPoolSize: 1,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithTransactions(transaction).WithGasLimit(30_000_000).TestObject;
+        block.Header.Beneficiary = null;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.Created, Is.EqualTo(1), "the address worker must rent one env");
+            Assert.That(policy.Returned, Is.EqualTo(1), "the env must be returned when scope construction fails");
+        }
+    }
+
     private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
         Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
 
@@ -1104,6 +1133,35 @@ public class BlockCachePreWarmerTests
                 disposed.Add(this);
                 inner.Dispose();
             }
+        }
+    }
+
+    private sealed class ThrowingBuildPolicy : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private int _created;
+        private int _returned;
+
+        public int Created => Volatile.Read(ref _created);
+        public int Returned => Volatile.Read(ref _returned);
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            Interlocked.Increment(ref _created);
+            return new ThrowingBuildEnv();
+        }
+
+        public bool Return(IReadOnlyTxProcessorSource obj)
+        {
+            Interlocked.Increment(ref _returned);
+            return true;
+        }
+
+        private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+                throw new InvalidOperationException("scope build failure");
+
+            public void Dispose() { }
         }
     }
 

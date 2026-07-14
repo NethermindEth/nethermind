@@ -737,7 +737,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public WarmingState<TPayload> InitThreadState()
         {
             IReadOnlyTxProcessorSource env = EnvPool.Get();
-            return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
+            try
+            {
+                return new(EnvPool, Payload, parent, env, scope: env.Build(parent));
+            }
+            catch
+            {
+                EnvPool.Return(env);
+                throw;
+            }
         }
 
         public void Dispose()
