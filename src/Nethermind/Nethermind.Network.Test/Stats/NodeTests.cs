@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
@@ -128,108 +127,6 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
-        [Test]
-        public void TryFromEnr_keeps_independent_tcp_and_discovery_addresses()
-        {
-            NodeRecord enr = CreateSplitEndpointEnr(TestItem.PrivateKeyA);
-
-            bool result = Node.TryFromEnr(enr, out Node? node);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.True);
-                Assert.That(node!.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("8.8.8.8"), 30303)));
-                Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:4860:4860::8888"), 30304)));
-            }
-        }
-
-        [Test]
-        public void UpdateEndpoint_publishes_consistent_endpoint_snapshots()
-        {
-            Node node = CreateNode("192.0.2.1", 30303, "198.51.100.1", 30304);
-            Node first = CreateNode("192.0.2.1", 30303, "198.51.100.1", 30304);
-            Node second = CreateNode("192.0.2.2", 30305, "198.51.100.2", 30306);
-            HashSet<string> expectedAddresses = [first.Address.ToString(), second.Address.ToString()];
-            HashSet<string> expectedDiscoveryAddresses = [first.DiscoveryAddress.ToString(), second.DiscoveryAddress.ToString()];
-            HashSet<string> expectedFormats = [first.ToString("s"), second.ToString("s")];
-
-            Task writer = Task.Run(() =>
-            {
-                for (int i = 0; i < 100_000; i++)
-                {
-                    node.UpdateEndpoint((i & 1) == 0 ? second : first);
-                }
-            });
-
-            while (!writer.IsCompleted)
-            {
-                Assert.That(expectedAddresses, Does.Contain(node.Address.ToString()));
-                Assert.That(expectedDiscoveryAddresses, Does.Contain(node.DiscoveryAddress.ToString()));
-                Assert.That(expectedFormats, Does.Contain(node.ToString("s")));
-            }
-
-            writer.GetAwaiter().GetResult();
-
-            static Node CreateNode(string tcpHost, int tcpPort, string discoveryHost, int discoveryPort)
-            {
-                Node result = new(TestItem.PublicKeyA, tcpHost, tcpPort);
-                result.SetDiscoveryEndpoint(new IPEndPoint(IPAddress.Parse(discoveryHost), discoveryPort));
-                return result;
-            }
-        }
-
-        [TestCase(null)]
-        [TestCase(1UL)]
-        public void UpdateEndpoint_keeps_higher_signed_enr_over_configured_candidate(ulong? candidateSequence)
-        {
-            Node current = CreateEnrNode("192.0.2.1", 30303, 30304, sequence: 2);
-            Node candidate = candidateSequence is { } sequence
-                ? CreateEnrNode("192.0.2.2", 30305, 30306, sequence)
-                : new Node(TestItem.PublicKeyA, "192.0.2.2", 30305, 30306);
-            NodeRecord currentRecord = current.Enr;
-            candidate.IsStatic = true;
-            candidate.IsTrusted = true;
-            candidate.IsBootnode = true;
-
-            current.UpdateEndpoint(candidate);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(current.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30303)));
-                Assert.That(current.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)));
-                Assert.That(current.Enr, Is.SameAs(currentRecord));
-                Assert.That(current.IsStatic, Is.False);
-                Assert.That(current.IsTrusted, Is.False);
-                Assert.That(current.IsBootnode, Is.False);
-            }
-        }
-
-        [TestCase(null)]
-        [TestCase(1UL)]
-        public void UpdateEndpoint_accepts_signed_enr_over_configured_endpoint(ulong? currentSequence)
-        {
-            Node current = currentSequence is { } sequence
-                ? CreateEnrNode("192.0.2.1", 30303, 30304, sequence)
-                : new Node(TestItem.PublicKeyA, "192.0.2.1", 30303, 30304);
-            Node candidate = CreateEnrNode("192.0.2.2", 30305, 30306, sequence: 2);
-            NodeRecord candidateRecord = candidate.Enr;
-            current.IsStatic = true;
-            current.IsTrusted = true;
-            current.IsBootnode = true;
-
-            current.UpdateEndpoint(candidate);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(current.Address, Is.EqualTo(candidate.Address));
-                Assert.That(current.DiscoveryAddress, Is.EqualTo(candidate.DiscoveryAddress));
-                Assert.That(current.Enr, Is.SameAs(candidateRecord));
-                Assert.That(current.IsStatic, Is.True);
-                Assert.That(current.IsTrusted, Is.True);
-                Assert.That(current.IsBootnode, Is.True);
-            }
-        }
-
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
         public void TryRequestEnrSequence_tracks_active_request(
             ulong initialSequence,
@@ -314,19 +211,7 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(Node.Format.AlignedShort), Is.EqualTo("      127.0.0.1:30303"));
         }
 
-        private static Node CreateEnrNode(string host, int tcpPort, int udpPort, ulong sequence)
-        {
-            NodeRecord enr = CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse(host), tcpPort, udpPort, sequence);
-            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
-            return node!;
-        }
-
-        private static NodeRecord CreateEnr(
-            PrivateKey privateKey,
-            IPAddress ipAddress,
-            int? tcpPort,
-            int? udpPort,
-            ulong sequence = 1)
+        private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, int? tcpPort, int? udpPort)
         {
             NodeRecord enr = new();
             enr.SetEntry(IdEntry.Instance);
@@ -340,7 +225,7 @@ namespace Nethermind.Network.Test.Stats
             {
                 enr.SetEntry(new UdpEntry(udpPort.Value));
             }
-            enr.EnrSequence = sequence;
+            enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
             return enr;
         }
@@ -353,20 +238,6 @@ namespace Nethermind.Network.Test.Stats
             enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
             enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
             enr.SetEntry(new Tcp6Entry(30303));
-            enr.SetEntry(new Udp6Entry(30304));
-            enr.EnrSequence = 1;
-            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-            return enr;
-        }
-
-        private static NodeRecord CreateSplitEndpointEnr(PrivateKey privateKey)
-        {
-            NodeRecord enr = new();
-            enr.SetEntry(IdEntry.Instance);
-            enr.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.8")));
-            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
-            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            enr.SetEntry(new TcpEntry(30303));
             enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);

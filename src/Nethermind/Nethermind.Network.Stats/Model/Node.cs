@@ -20,10 +20,12 @@ namespace Nethermind.Stats.Model
     public sealed class Node : IFormattable, IEquatable<Node>
     {
         private string _clientId;
+        private string _paddedHost;
+        private string _paddedPort;
         private ulong _requestingEnrSequence;
         private NodeRecord _enr;
-        private EndpointState _endpoint;
-        private readonly object _endpointUpdateLock = new();
+        private int? _discoveryPort;
+        private IPEndPoint _discoveryAddress;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -38,60 +40,48 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => Volatile.Read(ref _endpoint).Host;
+        public string Host => _host ??= FormatHost(Address?.Address);
+        private string _host;
 
         /// <summary>
         /// TCP port part of the network node.
         /// </summary>
         public int Port
         {
-            get => Volatile.Read(ref _endpoint).Address.Port;
-            set
-            {
-                lock (_endpointUpdateLock)
-                {
-                    EndpointState endpoint = _endpoint;
-                    SetEndpoint(new EndpointState(
-                        new IPEndPoint(endpoint.Address.Address, value),
-                        endpoint.ExplicitDiscoveryAddress,
-                        endpoint.HasDiscoveryEndpoint));
-                }
-            }
+            get => Address.Port;
+            set => SetIPEndPoint(new IPEndPoint(Address.Address, value));
         }
 
         /// <summary>
         /// TCP network address of the node.
         /// </summary>
-        public IPEndPoint Address => Volatile.Read(ref _endpoint).Address;
+        public IPEndPoint Address { get; private set; }
 
         /// <summary>
         /// UDP discovery port part of the network node.
         /// </summary>
         public int DiscoveryPort
         {
-            get => Volatile.Read(ref _endpoint).DiscoveryAddress.Port;
+            get => _discoveryPort ?? Port;
             set
             {
-                lock (_endpointUpdateLock)
-                {
-                    EndpointState endpoint = _endpoint;
-                    SetEndpoint(new EndpointState(
-                        endpoint.Address,
-                        new IPEndPoint(endpoint.Address.Address, value),
-                        hasDiscoveryEndpoint: true));
-                }
+                _discoveryPort = value;
+                _discoveryAddress = null;
+                HasDiscoveryEndpoint = true;
             }
         }
 
         /// <summary>
         /// UDP discovery address of the node.
         /// </summary>
-        public IPEndPoint DiscoveryAddress => Volatile.Read(ref _endpoint).DiscoveryAddress;
+        public IPEndPoint DiscoveryAddress => DiscoveryPort == Port
+            ? Address
+            : _discoveryAddress ??= new IPEndPoint(Address.Address, DiscoveryPort);
 
         /// <summary>
         /// Indicates whether the node can be used as a UDP discovery endpoint.
         /// </summary>
-        public bool HasDiscoveryEndpoint => Volatile.Read(ref _endpoint).HasDiscoveryEndpoint;
+        public bool HasDiscoveryEndpoint { get; private set; }
 
         /// <summary>
         /// We use bootnodes to bootstrap the discovery process.
@@ -196,9 +186,10 @@ namespace Nethermind.Stats.Model
             if (networkNode.IsEnr)
             {
                 Enr = networkNode.Enr;
-                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                    discoveryEndpoint.Address.Equals(Address.Address))
                 {
-                    SetDiscoveryEndpoint(discoveryEndpoint);
+                    DiscoveryPort = discoveryEndpoint.Port;
                 }
                 else
                 {
@@ -231,7 +222,7 @@ namespace Nethermind.Stats.Model
                 Enr = enr
             };
 
-            SetEnrDiscoveryEndpoint(node, enr);
+            SetMatchingDiscoveryEndpoint(node, enr);
             return true;
         }
 
@@ -280,69 +271,13 @@ namespace Nethermind.Stats.Model
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
             IsStatic = isStatic;
-            _endpoint = new EndpointState(address, explicitDiscoveryAddress: null, hasDiscoveryEndpoint: true);
+            SetIPEndPoint(address);
+            UseDefaultDiscoveryEndpoint();
         }
 
         public Node(PublicKey id, IPEndPoint address, int discoveryPort, bool isStatic = false)
             : this(id, address, isStatic)
             => DiscoveryPort = discoveryPort;
-
-        /// <summary>
-        /// Sets the UDP discovery endpoint independently from the TCP endpoint.
-        /// </summary>
-        /// <param name="endpoint">The discovery endpoint.</param>
-        public void SetDiscoveryEndpoint(IPEndPoint endpoint)
-        {
-            ArgumentNullException.ThrowIfNull(endpoint);
-            lock (_endpointUpdateLock)
-            {
-                SetEndpoint(new EndpointState(_endpoint.Address, endpoint, hasDiscoveryEndpoint: true));
-            }
-        }
-
-        /// <summary>
-        /// Updates this node's network endpoint from another instance with the same identity.
-        /// </summary>
-        /// <remarks>
-        /// Signed ENRs take precedence over endpoint-only candidates, and higher sequence numbers take precedence over
-        /// lower ones. Configuration flags do not override signed-record ordering; without a signed candidate, a
-        /// configured endpoint remains unchanged. Endpoint readers observe either the complete old endpoint or the
-        /// complete replacement.
-        /// </remarks>
-        /// <param name="node">The node containing the updated endpoint.</param>
-        public void UpdateEndpoint(Node node)
-        {
-            ArgumentNullException.ThrowIfNull(node);
-            if (!Id.Equals(node.Id))
-            {
-                throw new ArgumentException("A node endpoint update must keep the node identity.", nameof(node));
-            }
-
-            lock (_endpointUpdateLock)
-            {
-                NodeRecord currentRecord = Enr is { Signature: not null } signedCurrentRecord ? signedCurrentRecord : null;
-                NodeRecord candidateRecord = node.Enr is { Signature: not null } signedCandidateRecord ? signedCandidateRecord : null;
-
-                if (candidateRecord is null)
-                {
-                    if (currentRecord is not null || IsStatic || IsTrusted || IsBootnode)
-                    {
-                        return;
-                    }
-                }
-                else if (currentRecord is not null && candidateRecord.EnrSequence < currentRecord.EnrSequence)
-                {
-                    return;
-                }
-
-                SetEndpoint(Volatile.Read(ref node._endpoint));
-
-                if (candidateRecord is not null)
-                {
-                    Enr = candidateRecord;
-                }
-            }
-        }
 
         private static readonly string[] _ports = CreateCommonPortStrings();
 
@@ -357,15 +292,28 @@ namespace Nethermind.Stats.Model
             return ports;
         }
 
-        private void ClearDiscoveryEndpoint()
+        private void SetIPEndPoint(IPEndPoint address)
         {
-            lock (_endpointUpdateLock)
-            {
-                SetEndpoint(new EndpointState(_endpoint.Address, explicitDiscoveryAddress: null, hasDiscoveryEndpoint: false));
-            }
+            Address = address;
+            _host = null;
+            _paddedHost = null;
+            _paddedPort = null;
+            _discoveryAddress = null;
         }
 
-        private void SetEndpoint(EndpointState endpoint) => Volatile.Write(ref _endpoint, endpoint);
+        private void ClearDiscoveryEndpoint()
+        {
+            _discoveryPort = null;
+            _discoveryAddress = null;
+            HasDiscoveryEndpoint = false;
+        }
+
+        private void UseDefaultDiscoveryEndpoint()
+        {
+            _discoveryPort = null;
+            _discoveryAddress = null;
+            HasDiscoveryEndpoint = true;
+        }
 
         private static IPEndPoint GetTcpEndpoint(NetworkNode networkNode)
         {
@@ -387,11 +335,12 @@ namespace Nethermind.Stats.Model
             throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
         }
 
-        private static void SetEnrDiscoveryEndpoint(Node node, NodeRecord enr)
+        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
         {
-            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                discoveryEndpoint.Address.Equals(node.Address.Address))
             {
-                node.SetDiscoveryEndpoint(discoveryEndpoint);
+                node.DiscoveryPort = discoveryEndpoint.Port;
             }
             else
             {
@@ -401,6 +350,17 @@ namespace Nethermind.Stats.Model
 
         private static string FormatHost(IPAddress address)
             => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
+
+        // xxx.xxx.xxx.xxx = 15
+        private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');
+        private string PaddedPort
+        {
+            get
+            {
+                // Port are up to 65535 => 5 chars
+                return _paddedPort ??= (Port >= 30300 && Port <= 30399) ? _ports[Port - 30300] : Port.ToString().PadLeft(5, ' ');
+            }
+        }
 
         public bool? ValidatedProtocol { get; set; }
 
@@ -427,44 +387,16 @@ namespace Nethermind.Stats.Model
 
         public string ToString(string format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider)
+        public string ToString(string format, IFormatProvider formatProvider) => format switch
         {
-            EndpointState endpoint = Volatile.Read(ref _endpoint);
-            return format switch
-            {
-                Format.Short => $"{endpoint.Host}:{endpoint.Address.Port}",
-                Format.AlignedShort => $"{endpoint.PaddedHost}:{endpoint.PaddedPort}",
-                Format.Console => $"[Node|{endpoint.Host}:{endpoint.Address.Port}|{EthDetails}|{ClientId}]",
-                Format.WithId => $"enode://{Id.ToString(false)}@{endpoint.Host}:{endpoint.Address.Port}|{ClientId}",
-                Format.ENode => $"enode://{Id.ToString(false)}@{endpoint.Host}:{endpoint.Address.Port}",
-                Format.WithPublicKey => $"enode://{Id.ToString(false)}@{endpoint.Host}:{endpoint.Address.Port}|{Id.Address}",
-                _ => $"enode://{Id.ToString(false)}@{endpoint.Host}:{endpoint.Address.Port}"
-            };
-        }
-
-        private sealed class EndpointState
-        {
-            public EndpointState(IPEndPoint address, IPEndPoint explicitDiscoveryAddress, bool hasDiscoveryEndpoint)
-            {
-                Address = address;
-                ExplicitDiscoveryAddress = explicitDiscoveryAddress;
-                HasDiscoveryEndpoint = hasDiscoveryEndpoint;
-                Host = FormatHost(address.Address);
-                PaddedHost = Host.PadLeft(15, ' ');
-                int port = address.Port;
-                PaddedPort = port >= 30300 && port <= 30399
-                    ? _ports[port - 30300]
-                    : port.ToString().PadLeft(5, ' ');
-            }
-
-            public IPEndPoint Address { get; }
-            public IPEndPoint ExplicitDiscoveryAddress { get; }
-            public IPEndPoint DiscoveryAddress => ExplicitDiscoveryAddress ?? Address;
-            public bool HasDiscoveryEndpoint { get; }
-            public string Host { get; }
-            public string PaddedHost { get; }
-            public string PaddedPort { get; }
-        }
+            Format.Short => $"{Host}:{Port}",
+            Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
+            Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
+            Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+            Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
+            _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+        };
 
         public bool Equals(Node other)
         {

@@ -31,10 +31,10 @@ public sealed class NodeSource(
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken discoveryToken = disposeCts.Token;
 
-        Task discoverTask = DiscoverAsync();
+        Task randomWalkTask = RunRandomWalkAsync();
         try
         {
-            await foreach (Node node in discv4Adapter.ReadDiscoveredNodes(token))
+            await foreach (Node node in discv4Adapter.ReadPeerCandidates(token))
             {
                 if (!IsExcluded(node))
                 {
@@ -45,16 +45,10 @@ public sealed class NodeSource(
         finally
         {
             await disposeCts.CancelAsync();
-            try
-            {
-                await discoverTask;
-            }
-            catch (OperationCanceledException) when (discoveryToken.IsCancellationRequested)
-            {
-            }
+            await randomWalkTask;
         }
 
-        async Task DiscoverAsync()
+        async Task RunRandomWalkAsync()
         {
             try
             {

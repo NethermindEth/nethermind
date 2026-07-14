@@ -22,8 +22,6 @@ public abstract class KademliaAdapterBase(
 
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
 
-    protected virtual bool CanCacheRemoteRecordWithoutDiscoveryEndpoint(Node node, NodeRecord record) => false;
-
     protected async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
     {
         if (advertisedSequence == 0)
@@ -91,10 +89,9 @@ public abstract class KademliaAdapterBase(
                     continue;
                 }
 
-                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode) &&
-                    !CanCacheRemoteRecordWithoutDiscoveryEndpoint(node, record))
+                if (!Node.TryFromDiscoveryEnr(record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record has no usable endpoint.");
+                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record has no usable discovery endpoint.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -105,17 +102,13 @@ public abstract class KademliaAdapterBase(
 
                 node.Enr = record;
                 ulong requestingSequence = node.RequestingEnrSequence;
-                if (refreshedNode is not null)
+                if (requestingSequence > record.EnrSequence)
                 {
-                    if (requestingSequence > record.EnrSequence)
-                    {
-                        refreshedNode.TryRequestEnrSequence(requestingSequence);
-                    }
-
-                    node = refreshedNode;
-                    AddOrRefreshRemoteNode(refreshedNode);
+                    refreshedNode.TryRequestEnrSequence(requestingSequence);
                 }
 
+                node = refreshedNode;
+                AddOrRefreshRemoteNode(refreshedNode);
                 if (requestingSequence == 0)
                 {
                     return;

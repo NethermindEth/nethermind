@@ -30,7 +30,7 @@ public interface IKademliaAdapter : IKademliaMessageSender<PublicKey, Node>, IDi
     /// </summary>
     /// <param name="token">Cancellation token.</param>
     /// <returns>A stream of nodes with a usable TCP endpoint.</returns>
-    IAsyncEnumerable<Node> ReadDiscoveredNodes(CancellationToken token);
+    IAsyncEnumerable<Node> ReadPeerCandidates(CancellationToken token);
 
     /// <summary>
     /// Sends an ENR request to a node and returns the response.

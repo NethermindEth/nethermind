@@ -292,12 +292,6 @@ public class ProtocolsManagerTests
             return this;
         }
 
-        public Context SetDiscoveryEndpoint(IPEndPoint endpoint)
-        {
-            _currentSession.Node.SetDiscoveryEndpoint(endpoint);
-            return this;
-        }
-
         public Context VerifyPingSenderSet()
         {
             Assert.That(_currentSession.PingSender, Is.Not.Null);
@@ -388,15 +382,6 @@ public class ProtocolsManagerTests
             return this;
         }
 
-        public Context VerifyDiscoveryEndpoint(IPEndPoint expectedEndpoint)
-        {
-            Assert.That(_currentSession.Node.DiscoveryAddress, Is.EqualTo(expectedEndpoint));
-            _discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(node =>
-                ReferenceEquals(node, _currentSession.Node) &&
-                node.DiscoveryAddress.Equals(expectedEndpoint)));
-            return this;
-        }
-
         private Context ReceiveHello(HelloMessage msg)
         {
             using DisposableByteBuffer helloPacket = _serializer.ZeroSerialize(msg).AsDisposable();
@@ -478,33 +463,6 @@ public class ProtocolsManagerTests
             .Init()
             .ReceiveHello()
             .VerifyPingSenderSet();
-
-    [Test]
-    public void Listen_port_update_preserves_independent_discovery_endpoint()
-    {
-        IPEndPoint discoveryEndpoint = new(IPAddress.Parse("2001:4860:4860::8888"), 30303);
-
-        When.CreateOutgoingSession()
-            .SetDiscoveryEndpoint(discoveryEndpoint)
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .ReceiveHello()
-            .VerifyDiscoveryEndpoint(discoveryEndpoint);
-    }
-
-    [Test]
-    public void Listen_port_update_moves_default_discovery_endpoint()
-    {
-        IPEndPoint discoveryEndpoint = new(IPAddress.Parse("35.0.0.1"), 30314);
-
-        When.CreateOutgoingSession()
-            .ActivateChannel()
-            .Handshake()
-            .Init()
-            .ReceiveHello()
-            .VerifyDiscoveryEndpoint(discoveryEndpoint);
-    }
 
     [Test]
     public void Disconnects_on_p2p_before_version_4() => When
