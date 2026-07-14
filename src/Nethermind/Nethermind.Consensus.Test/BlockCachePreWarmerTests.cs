@@ -14,14 +14,19 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -457,17 +462,14 @@ public class BlockCachePreWarmerTests
         using IReadOnlyTxProcessorSource source = validationPolicy.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
-        IPreBlockCaches scopedCaches = (IPreBlockCaches)scope.WorldState.ScopeProvider;
-        Assert.That(scopedCaches.Caches, Is.SameAs(preBlockCaches));
-        Assert.That(scopedCaches.IsWarmWorldState, Is.False, "parallel validation parent readers must populate cache misses");
-
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
         Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
 
         Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
         Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
 
-        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True);
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
+            "parallel validation parent readers must populate cache misses");
         Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
         Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
@@ -553,6 +555,97 @@ public class BlockCachePreWarmerTests
 
         Assert.That(speculativeWarmups, Is.GreaterThan(0), "precondition: the speculative pass warmed the transactions");
         Assert.That(Volatile.Read(ref warmups), Is.EqualTo(0), "the reactive pass must skip senders already fully warmed speculatively");
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SameSenderStaysGroupedInOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2));
+            ArrayPoolList<(int Index, Transaction Tx)> senderA = FindGroup(groups, TestItem.AddressA);
+            Assert.That(senderA.Count, Is.EqualTo(2));
+            Assert.That(senderA[0].Index, Is.EqualTo(0));
+            Assert.That(senderA[1].Index, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SplitsHeavySameSenderGroup()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2), "a same-sender group above the split threshold must warm per-tx");
+            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+            {
+                Assert.That(group.Count, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_HoistsHeavyGroupsAndKeepsRestInBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 1, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
+            Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
+        Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
+
+    private static ArrayPoolList<(int Index, Transaction Tx)> FindGroup(
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, Address sender)
+    {
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        {
+            if (group[0].Tx.SenderAddress == sender) return group;
+        }
+
+        throw new InvalidOperationException($"No group for {sender}");
+    }
+
+    private static void DisposeGroups(ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups)
+    {
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        {
+            group.Dispose();
+        }
+        groups.Dispose();
     }
 
     private Block BuildChildBlock(BlockHeader head) =>
@@ -779,6 +872,36 @@ public class BlockCachePreWarmerTests
         }
         Assert.That(warmedWhenAllStarted, Is.EqualTo(0),
             "transactions the main thread has already started must not be speculatively warmed");
+    }
+
+    /// <summary>
+    /// Only the main execution reports per-tx progress to the prewarmer; the prewarmer's own speculative envs
+    /// must stay silent, otherwise they would advance its view of main-thread progress and suppress warming.
+    /// The two are told apart by the injected <see cref="IPrewarmerState"/>.
+    /// </summary>
+    [TestCase(false, 0, TestName = "PrewarmerTxAdapter_MainExecution_ReportsTxProgress")]
+    [TestCase(true, -1, TestName = "PrewarmerTxAdapter_PrewarmerEnv_DoesNotReportTxProgress")]
+    public void PrewarmerTxAdapter_ReportsTxProgress_OnlyWhenNotPrewarmer(bool isPrewarmer, int expectedTxIndex)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
+        using (preWarmer)
+        {
+            PrewarmerTxAdapter adapter = new(
+                new NoopTxProcessorAdapter(),
+                preWarmer,
+                new PrewarmerState(preBlockCaches, isPrewarmer));
+
+            adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
+
+            Assert.That(preWarmer.MainThreadTxIndex, Is.EqualTo(expectedTxIndex));
+        }
+    }
+
+    private sealed class NoopTxProcessorAdapter : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) => TransactionResult.Ok;
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 
     /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>

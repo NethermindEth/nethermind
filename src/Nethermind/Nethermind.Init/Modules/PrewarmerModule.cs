@@ -49,24 +49,22 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
                 .AddSingleton<PreBlockCaches>()
+                .AddSingleton<IPrewarmerState, PreBlockCaches>(static caches => new PrewarmerState(caches, isPrewarmer: false))
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
                 // System-contract access-list hints the prewarmer warms alongside tx addresses.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
                 // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
 
-                // This class create the block processing env with worldstate that populate the cache
                 .Add<PrewarmerEnvFactory>()
 
-                // These are the actual decorated component that provide cached result
                 .AddDecorator<IWorldStateScopeProvider>((ctx, worldStateScopeProvider) =>
                 {
                     if (worldStateScopeProvider is PrewarmerScopeProvider) return worldStateScopeProvider; // Inner world state
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
-                        ctx.Resolve<PreBlockCaches>(),
-                        ctx.Resolve<ILogManager>(),
-                        isPrewarmer: false
+                        ctx.Resolve<IPrewarmerState>(),
+                        ctx.Resolve<ILogManager>()
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
@@ -77,7 +75,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     IWorldState worldState = ctx.Resolve<IWorldState>();
                     // Note: The use of FrozenDictionary means that this cannot be used for other processing env also due to risk of memory leak.
                     return new PrecompileCachedCodeInfoRepository(worldState, precompileProvider, originalCodeInfoRepository,
-                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches?.PrecompileCache : null);
+                        blocksConfig.CachePrecompilesOnBlockProcessing ? preBlockCaches : null);
                 })
 
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();

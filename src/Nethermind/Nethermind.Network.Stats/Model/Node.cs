@@ -26,6 +26,7 @@ namespace Nethermind.Stats.Model
         private NodeRecord _enr;
         private int? _discoveryPort;
         private IPEndPoint _discoveryAddress;
+        private readonly object _endpointUpdateLock = new();
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -49,7 +50,15 @@ namespace Nethermind.Stats.Model
         public int Port
         {
             get => Address.Port;
-            set => SetIPEndPoint(new IPEndPoint(Address.Address, value));
+            set
+            {
+                IPEndPoint discoveryAddress = _discoveryPort is not null ? DiscoveryAddress : null;
+                SetIPEndPoint(new IPEndPoint(Address.Address, value));
+                if (discoveryAddress is not null)
+                {
+                    SetDiscoveryEndpoint(discoveryAddress);
+                }
+            }
         }
 
         /// <summary>
@@ -74,9 +83,9 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// UDP discovery address of the node.
         /// </summary>
-        public IPEndPoint DiscoveryAddress => DiscoveryPort == Port
+        public IPEndPoint DiscoveryAddress => _discoveryAddress ??= DiscoveryPort == Port
             ? Address
-            : _discoveryAddress ??= new IPEndPoint(Address.Address, DiscoveryPort);
+            : new IPEndPoint(Address.Address, DiscoveryPort);
 
         /// <summary>
         /// Indicates whether the node can be used as a UDP discovery endpoint.
@@ -186,10 +195,9 @@ namespace Nethermind.Stats.Model
             if (networkNode.IsEnr)
             {
                 Enr = networkNode.Enr;
-                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
-                    discoveryEndpoint.Address.Equals(Address.Address))
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
                 {
-                    DiscoveryPort = discoveryEndpoint.Port;
+                    SetDiscoveryEndpoint(discoveryEndpoint);
                 }
                 else
                 {
@@ -222,7 +230,7 @@ namespace Nethermind.Stats.Model
                 Enr = enr
             };
 
-            SetMatchingDiscoveryEndpoint(node, enr);
+            SetEnrDiscoveryEndpoint(node, enr);
             return true;
         }
 
@@ -278,6 +286,70 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, IPEndPoint address, int discoveryPort, bool isStatic = false)
             : this(id, address, isStatic)
             => DiscoveryPort = discoveryPort;
+
+        /// <summary>
+        /// Sets the UDP discovery endpoint independently from the TCP endpoint.
+        /// </summary>
+        /// <param name="endpoint">The discovery endpoint.</param>
+        public void SetDiscoveryEndpoint(IPEndPoint endpoint)
+        {
+            ArgumentNullException.ThrowIfNull(endpoint);
+            _discoveryPort = endpoint.Port;
+            _discoveryAddress = endpoint;
+            HasDiscoveryEndpoint = true;
+        }
+
+        /// <summary>
+        /// Updates this node's network endpoint from another instance with the same identity.
+        /// </summary>
+        /// <param name="node">The node containing the updated endpoint.</param>
+        public void UpdateEndpoint(Node node)
+        {
+            ArgumentNullException.ThrowIfNull(node);
+            if (!Id.Equals(node.Id))
+            {
+                throw new ArgumentException("A node endpoint update must keep the node identity.", nameof(node));
+            }
+
+            lock (_endpointUpdateLock)
+            {
+                if (IsStatic || IsTrusted || IsBootnode)
+                {
+                    return;
+                }
+
+                bool candidateIsConfigured = node.IsStatic || node.IsTrusted || node.IsBootnode;
+                if (Enr is { } currentRecord &&
+                    node.Enr is { } candidateRecord &&
+                    !candidateIsConfigured &&
+                    candidateRecord.EnrSequence < currentRecord.EnrSequence)
+                {
+                    return;
+                }
+
+                SetIPEndPoint(node.Address);
+                if (node.HasDiscoveryEndpoint)
+                {
+                    SetDiscoveryEndpoint(node.DiscoveryAddress);
+                }
+                else
+                {
+                    ClearDiscoveryEndpoint();
+                }
+
+                if (candidateIsConfigured)
+                {
+                    Enr = node.Enr;
+                    IsStatic |= node.IsStatic;
+                    IsTrusted |= node.IsTrusted;
+                    IsBootnode |= node.IsBootnode;
+                }
+                else if (node.Enr is { } record && (Enr is null || record.EnrSequence >= Enr.EnrSequence))
+                {
+                    Enr = record;
+                }
+            }
+        }
 
         private static readonly string[] _ports = CreateCommonPortStrings();
 
@@ -335,12 +407,11 @@ namespace Nethermind.Stats.Model
             throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
         }
 
-        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
+        private static void SetEnrDiscoveryEndpoint(Node node, NodeRecord enr)
         {
-            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
-                discoveryEndpoint.Address.Equals(node.Address.Address))
+            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
             {
-                node.DiscoveryPort = discoveryEndpoint.Port;
+                node.SetDiscoveryEndpoint(discoveryEndpoint);
             }
             else
             {
