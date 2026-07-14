@@ -251,10 +251,7 @@
         .chip .number { color: var(--tcol, var(--c-ticker)); cursor: pointer; }
         .chip .number:hover { color: var(--accent); }
         .chip.nft { border-style: dashed; }
-        .chip.auto { border-style: dotted; opacity: 0.85; }
         .chip .kind { color: var(--muted); font-size: 10px; }
-        sup.suptag.auto { color: var(--muted); font-style: italic; cursor: pointer; }
-        sup.suptag.auto:hover { color: var(--danger); }
 
         .thumbs {
             display: flex;
@@ -715,7 +712,7 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, detectCursor: null, detecting: false, button: null };
+            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, button: null };
         }
 
         // ENS availability is detected per node rather than assumed per chain: many
@@ -735,11 +732,11 @@
                     const raw = localStorage.getItem(this.key(node.chainId));
                     if (raw === null) {
                         // first visit on this chain — seed the popular tokens (still removable)
-                        return { addresses: [], tokens: (node.meta.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [], detected: [], ignored: [] };
+                        return { addresses: [], tokens: (node.meta.defaults || []).map((t) => ({ ...t })), nfts: [], watched: [] };
                     }
                     const data = JSON.parse(raw);
-                    return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [], watched: data.watched || [], detected: data.detected || [], ignored: data.ignored || [] };
-                } catch { return { addresses: [], tokens: [], nfts: [], watched: [], detected: [], ignored: [] }; }
+                    return { addresses: data.addresses || [], tokens: data.tokens || [], nfts: data.nfts || [], watched: data.watched || [] };
+                } catch { return { addresses: [], tokens: [], nfts: [], watched: [] }; }
             },
             save(chainId) { localStorage.setItem(this.key(chainId), JSON.stringify(states.get(chainId))); }
         };
@@ -747,7 +744,7 @@
         const CURRENCY_KEY = 'nethermind.balances.currency';
         // disabled ids are stored (not enabled ones) so newly discovered chains default to visible
         const DISABLED_KEY = 'nethermind.balances.disabledChains';
-        const states = new Map(); // chainId -> { addresses, tokens, nfts, watched, detected, ignored }
+        const states = new Map(); // chainId -> { addresses, tokens, nfts, watched }
         const stateOf = (chainId) => states.get(chainId);
         let currency = 'USD';
 
@@ -949,9 +946,7 @@
         // last fetched values per `${address}|${chainId}:${assetKey}`, so re-rendering
         // (e.g. after unpinning) never blanks cells while waiting for a refetch
         const cache = new Map();
-        // manual tokens plus auto-detected ones (t.auto === true); both render and price identically
-        const tokensOf = (chainId) => stateOf(chainId).tokens.concat(stateOf(chainId).detected);
-        const assetKeysFor = (chainId) => ['native'].concat(tokensOf(chainId).map((t) => t.address.toLowerCase()));
+        const assetKeysFor = (chainId) => ['native'].concat(stateOf(chainId).tokens.map((t) => t.address.toLowerCase()));
 
         function recomputeTotals() {
             if (!anyFiat()) return;
@@ -1168,16 +1163,6 @@
         const APPROVAL_TOPIC = '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925';
         const MAX_BLOCKS_PER_POLL = 4;
 
-        // ---------- auto token detection (incremental history sweep) ----------
-        // Each poll sweeps one bounded block range per node for Transfer logs touching a
-        // pinned address, walking backward from head. ERC-20 contracts seen there with a
-        // positive current balance surface as removable "auto" token rows. The work per
-        // poll is bounded (one getLogs pair + one balanceOf batch) so node load stays
-        // modest, and it stops after DETECT_MAX_DEPTH blocks. Node data only.
-        const DETECT_CHUNK = 5000n;          // blocks scanned per poll (bounds getLogs cost)
-        const DETECT_MAX_DEPTH = 250000n;    // deepest history swept (~5 weeks at 12s blocks)
-        const DETECT_MAX_CANDIDATES = 60;    // most new contracts vetted per chunk
-
         // symbol/decimals of tokens seen in activity logs, resolved on demand so
         // notifications can say "sent 250 USDC" even for untracked tokens
         const tokenMetaCache = new Map(); // `${chainId}|${address}` -> { ticker, decimals } | null
@@ -1303,7 +1288,7 @@
         // first, then the on-demand meta cache), ERC-721 transfers by token id
         function describeTransfer(log, node) {
             const address = log.address.toLowerCase();
-            const tracked = tokensOf(node.chainId).find((t) => t.address.toLowerCase() === address);
+            const tracked = stateOf(node.chainId).tokens.find((t) => t.address.toLowerCase() === address);
             const meta = tracked ?? tokenMetaCache.get(node.chainId + '|' + address);
             const name = meta?.ticker ?? shortAddr(checksum(log.address));
             if (log.topics.length === 4) {
@@ -1393,74 +1378,6 @@
             finally { node.scanning = false; }
         }
 
-        // ERC-20 Transfer logs carry exactly 3 topics (ERC-721's are fully indexed → 4);
-        // the emitting contract is a token the account moved. Returns lowercased contract
-        // addresses not already tracked (known) or hidden (ignored).
-        function erc20ContractsFromLogs(logs, known, ignored) {
-            const found = new Set();
-            for (const log of logs) {
-                if (!log || (log.topics?.length ?? 0) !== 3) continue;
-                const address = log.address.toLowerCase();
-                if (known.has(address) || ignored.has(address)) continue;
-                found.add(address);
-            }
-            return [...found];
-        }
-
-        async function detectTokens(node, headHex) {
-            const addresses = mergedAddresses();
-            if (node.detecting || addresses.length === 0) return;
-            const head = BigInt(headHex);
-            if (node.detectCursor === null || node.detectCursor > head) node.detectCursor = head;
-            const floor = head > DETECT_MAX_DEPTH ? head - DETECT_MAX_DEPTH : 0n;
-            if (node.detectCursor <= floor) return; // swept back as far as configured
-            node.detecting = true;
-            try {
-                const to = node.detectCursor;
-                const from = to - DETECT_CHUNK + 1n > floor ? to - DETECT_CHUNK + 1n : floor;
-                const range = { fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16) };
-                const addrTopics = addresses.map((a) => '0x' + pad32(a.address));
-                const [outLogs, inLogs] = await rpcBatch([
-                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, addrTopics] }]],
-                    ['eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, addrTopics] }]],
-                ], node.rpcPath);
-                node.detectCursor = from - 1n; // next poll continues below this range
-
-                const state = stateOf(node.chainId);
-                const known = new Set(tokensOf(node.chainId).map((t) => t.address.toLowerCase()));
-                const ignored = new Set(state.ignored);
-                const candidates = erc20ContractsFromLogs((outLogs ?? []).concat(inLogs ?? []), known, ignored)
-                    .slice(0, DETECT_MAX_CANDIDATES);
-                if (candidates.length === 0) return;
-
-                await resolveTokenMetas(node, candidates);
-
-                // confirm a positive current balance before surfacing, so fully-sent tokens
-                // and dust airdrops the account no longer holds don't clutter the view
-                const balCalls = [];
-                for (const contract of candidates)
-                    for (const entry of addresses)
-                        balCalls.push(['eth_call', [{ to: contract, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
-                const bals = await rpcBatch(balCalls, node.rpcPath);
-
-                let added = false;
-                for (let ci = 0; ci < candidates.length; ci++) {
-                    const meta = tokenMetaCache.get(node.chainId + '|' + candidates[ci]);
-                    if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
-                    let held = false;
-                    for (let ai = 0; ai < addresses.length; ai++) {
-                        const raw = bals[ci * addresses.length + ai];
-                        try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { held = true; break; } } catch { }
-                    }
-                    if (!held) continue;
-                    state.detected.push({ address: checksum(candidates[ci]), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true });
-                    added = true;
-                }
-                if (added) { store.save(node.chainId); renderTokens(); renderCards(); refreshBalances(); }
-            } catch { /* detection is best-effort; the next poll resumes from the cursor */ }
-            finally { node.detecting = false; }
-        }
-
         // ---------- ENS (simple forward + reverse resolution) ----------
         function ensNode() {
             return enabledNodes().find((n) => n.chainId === 1 && n.ens) ?? enabledNodes().find((n) => n.ens) ?? null;
@@ -1526,34 +1443,19 @@
         }
 
         // ---------- rendering ----------
-        // hides an auto-detected token and remembers it so a later scan won't re-add it
-        function hideDetected(node, address) {
-            const key = address.toLowerCase();
-            const state = stateOf(node.chainId);
-            state.detected = state.detected.filter((t) => t.address.toLowerCase() !== key);
-            if (!state.ignored.includes(key)) state.ignored.push(key);
-            store.save(node.chainId);
-            renderTokens();
-            renderCards();
-            recomputeTotals();
-        }
-
         function renderTokens() {
             const box = $('tokens');
             box.replaceChildren();
             const addChip = (node, item, list, isNft) => {
-                const isAuto = list === 'detected';
-                const chip = el('span', (isNft ? 'chip nft' : 'chip') + (isAuto ? ' auto' : ''));
+                const chip = el('span', isNft ? 'chip nft' : 'chip');
                 const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
                 ticker.onclick = () => copyAddress(item.address);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
-                else if (isAuto) chip.append(el('span', 'kind', 'auto'));
-                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + (isAuto ? ' · auto-detected' : '') + ' (click to copy address)';
+                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
-                    if (isAuto) { hideDetected(node, item.address); return; }
                     const state = stateOf(node.chainId);
                     state[list] = state[list].filter((t) => t !== item);
                     store.save(node.chainId);
@@ -1566,7 +1468,6 @@
             };
             for (const node of enabledNodes()) {
                 for (const token of stateOf(node.chainId).tokens) addChip(node, token, 'tokens', false);
-                for (const token of stateOf(node.chainId).detected) addChip(node, token, 'detected', false);
                 for (const collection of stateOf(node.chainId).nfts) addChip(node, collection, 'nfts', true);
             }
             const add = el('button', 'link chip-add', '+');
@@ -1636,7 +1537,7 @@
                 for (const node of enabledNodes()) {
                     const chainState = stateOf(node.chainId);
                     const rows = [{ ticker: node.meta.ticker, key: node.chainId + ':native' }].concat(
-                        tokensOf(node.chainId).map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address, auto: t.auto })));
+                        chainState.tokens.map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address })));
                     for (const row of rows) {
                         const cached = cache.get(entry.address + '|' + row.key);
                         const tr = el('tr');
@@ -1648,12 +1549,6 @@
                             tick.classList.add('copyable');
                             tick.title = row.contract + ' (click to copy)';
                             tick.onclick = () => copyAddress(row.contract);
-                        }
-                        if (row.auto) {
-                            const mark = el('sup', 'suptag auto', 'auto');
-                            mark.title = 'Auto-detected — click to hide';
-                            mark.onclick = (e) => { e.stopPropagation(); hideDetected(node, row.contract); };
-                            tick.append(mark);
                         }
                         tr.append(tick);
                         const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
@@ -1817,7 +1712,7 @@
             const chainState = stateOf(node.chainId);
             const fiat = fiatEnabled(meta);
             const assets = [{ key: 'native', decimals: 18 }]
-                .concat(tokensOf(node.chainId).map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
+                .concat(chainState.tokens.map((t) => ({ key: t.address.toLowerCase(), decimals: t.decimals })))
                 .concat(chainState.nfts.map((c) => ({ key: 'nft:' + c.address.toLowerCase(), decimals: 0, isNft: true })));
 
             // one batched request per node: sync state, then prices, then all balances
@@ -1833,7 +1728,7 @@
             const balanceStart = calls.length;
             for (const entry of addresses) {
                 calls.push(['eth_getBalance', [entry.address, 'latest']]);
-                for (const token of tokensOf(node.chainId)) {
+                for (const token of chainState.tokens) {
                     calls.push(['eth_call', [{ to: token.address, data: SEL_BALANCE_OF + pad32(entry.address) }, 'latest']]);
                 }
                 for (const collection of chainState.nfts) {
@@ -1972,8 +1867,6 @@
                 } else {
                     const decimals = parseInt($('tokDecimals').value, 10);
                     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 77) throw new Error('Decimals must be 0–77');
-                    // promoting an auto-detected token to a tracked one: drop the auto entry so it isn't shown twice
-                    state.detected = state.detected.filter((t) => t.address.toLowerCase() !== address.toLowerCase());
                     state.tokens.push({ address: checksummed, ticker, decimals, name });
                 }
                 store.save(target.chainId);
@@ -2067,9 +1960,6 @@
                             scanForActivity(node, head);
                         }
                     }
-                    // token detection walks history in bounded chunks, so it runs every
-                    // poll (not only on a new head) until the sweep depth is reached
-                    if (node.enabled && node.head) detectTokens(node, node.head);
                     if (node === own() && !multi() && head !== null) {
                         $('headBlock').textContent = BigInt(head).toLocaleString('en-US') + (node.syncing ? ' · syncing' : '');
                     }
