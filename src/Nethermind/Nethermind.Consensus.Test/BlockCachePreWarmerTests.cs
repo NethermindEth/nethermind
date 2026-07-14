@@ -14,11 +14,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -553,6 +555,97 @@ public class BlockCachePreWarmerTests
 
         Assert.That(speculativeWarmups, Is.GreaterThan(0), "precondition: the speculative pass warmed the transactions");
         Assert.That(Volatile.Read(ref warmups), Is.EqualTo(0), "the reactive pass must skip senders already fully warmed speculatively");
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SameSenderStaysGroupedInOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2));
+            ArrayPoolList<(int Index, Transaction Tx)> senderA = FindGroup(groups, TestItem.AddressA);
+            Assert.That(senderA.Count, Is.EqualTo(2));
+            Assert.That(senderA[0].Index, Is.EqualTo(0));
+            Assert.That(senderA[1].Index, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SplitsHeavySameSenderGroup()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2), "a same-sender group above the split threshold must warm per-tx");
+            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+            {
+                Assert.That(group.Count, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_HoistsHeavyGroupsAndKeepsRestInBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 1, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups = BlockCachePreWarmer.GroupTransactionsBySender(block);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            Assert.That(groups[0][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
+            Assert.That(groups[1][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[2][0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
+        Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
+
+    private static ArrayPoolList<(int Index, Transaction Tx)> FindGroup(
+        ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, Address sender)
+    {
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        {
+            if (group[0].Tx.SenderAddress == sender) return group;
+        }
+
+        throw new InvalidOperationException($"No group for {sender}");
+    }
+
+    private static void DisposeGroups(ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups)
+    {
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> group in groups.AsSpan())
+        {
+            group.Dispose();
+        }
+        groups.Dispose();
     }
 
     private Block BuildChildBlock(BlockHeader head) =>
