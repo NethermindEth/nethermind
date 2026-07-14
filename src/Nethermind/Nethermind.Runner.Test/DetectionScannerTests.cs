@@ -108,6 +108,38 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Forward_gap_is_rescanned_when_head_advances()
+    {
+        // previously scanned fully (down to genesis) up to block 5
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 5, true, 0));
+        // the chain has since advanced and a new ERC-20 transfer arrived in the gap
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        Address newToken = new("0x3333333333333333333333333333333333333333");
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns([Log(newToken, Transfer, Keccak.Zero, Keccak.Zero)]);
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunAll();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry!.Head, Is.EqualTo(100), "covered range extended to the new head");
+        Assert.That(entry.Complete, Is.True, "still complete downward");
+        Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "token received since the last scan is detected");
+        Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
+    }
+
+    [Test]
+    public void No_op_when_complete_and_head_unchanged()
+    {
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([Token.ToString()], [], 0, 100, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+
+        _scanner.RequestScan(ChainId, Account);
+
+        Assert.That(_scheduler.Count, Is.Zero, "nothing scheduled when fully covered and no new blocks");
+    }
+
+    [Test]
     public async Task Cancelled_chunk_is_retried_without_advancing()
     {
         SeedHead(20_000); // more than one chunk, so a cancel leaves work outstanding
