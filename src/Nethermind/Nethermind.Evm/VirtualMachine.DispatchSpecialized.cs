@@ -250,8 +250,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (exceptionType != EvmExceptionType.None)
                     break;
 
+#if ZK_EVM
+                // typeof folds at compile time even where the inliner gives up on the static
+                // abstract IsActive getter (see the gas-policy note above), which otherwise
+                // compiles to an out-of-line call returning false once per executed opcode.
+                if (typeof(TTracingInst) != typeof(OffFlag))
+                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+#else
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+#endif
 
                 // Only the 0xF0+ family sets ReturnData (RETURN returns None and signals completion solely
                 // through it), so the field load is skipped for the cheap majority below CREATE.
