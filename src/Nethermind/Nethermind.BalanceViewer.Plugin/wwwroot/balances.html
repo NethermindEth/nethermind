@@ -694,6 +694,15 @@
                 // ordered by global currency popularity (forex turnover)
                 currencies: ['USD', 'EUR', 'JPY', 'GBP', 'CNY', 'AUD', 'CAD', 'CHF', 'KRW', 'SGD', 'NZD', 'MXN', 'TRY', 'BRL', 'PHP', 'IDR', 'ARS'],
                 defaults: MAINNET_DEFAULT_TOKENS,
+                // Uniswap-V2 factory + quote tokens for on-chain price discovery of tokens the Chainlink
+                // registry doesn't list (quote USD prices come from Chainlink, so only the pool ratio is trusted)
+                dex: {
+                    factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
+                    quotes: [
+                        { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 }, // WETH
+                        { addr: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC
+                    ],
+                },
             },
             11155111: { name: 'Sepolia', ticker: 'ETH', ens: true, tag: 'SEP', logo: 'logos/ethereum-logo.svg' },
             17000: { name: 'Holesky', ticker: 'ETH', ens: true, tag: 'HOL', logo: 'logos/ethereum-logo.svg' },
@@ -704,6 +713,14 @@
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
+                // Honeyswap (Uniswap-V2 fork) factory + quote tokens
+                dex: {
+                    factory: '0xA818b4F111Ccac7AA31D0BCc0806d64F2E0737D7',
+                    quotes: [
+                        { addr: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1', decimals: 18 }, // WETH
+                        { addr: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d', decimals: 18 }, // WXDAI
+                    ],
+                },
             },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false, tag: 'CHI', logo: 'logos/gnosis.png' },
         };
@@ -724,6 +741,14 @@
         const SEL_OWNER_OF = '0x6352211e';         // ownerOf(uint256)
         const SEL_ERC1155_BALANCE = '0x00fdd58e';  // balanceOf(address,uint256)
         const SEL_ERC1155_URI = '0x0e89341c';      // uri(uint256)
+        const SEL_GET_PAIR = '0xe6a43905';         // getPair(address,address) — Uniswap-V2 factory
+        const SEL_GET_RESERVES = '0x0902f1ac';     // getReserves() — Uniswap-V2 pair
+        const SEL_TOKEN0 = '0x0dfe1681';           // token0() — Uniswap-V2 pair
+        // DEX price discovery: reject pools with less than this much quote-side liquidity (USD), so a
+        // spammer can't fabricate a price with a tiny pool; and hide auto-detected holdings worth less
+        // than this (dust/spam) — both restorable.
+        const DEX_MIN_LIQUIDITY_USD = 25000n;
+        const DETECT_MIN_VALUE_USD = 1n;
         const IFACE_ERC721 = '80ac58cd';
         const IFACE_ERC721_ENUMERABLE = '780e9d63';
         const IFACE_ERC1155 = 'd9b67a26';
@@ -986,23 +1011,86 @@
             return call ? { calls: [call], combine: (r) => parseRoundAnswer(r[0]) } : null;
         }
 
-        // the set of addresses (lowercase) among `addrs` that currently have a discoverable price
-        async function priceableAddrs(node, addrs) {
-            const calls = [];
-            const probes = addrs.map((addr) => {
-                const probe = priceProbe(node.meta, addr);
+        // Uniswap-V2 spot price of a token in USD (PRICE_DECIMALS scale) from a pair's reserves, or null
+        // if the pool holds too little quote-side liquidity to be trusted (anti-spoofing).
+        function computeV2Price8(reservesHex, token0Hex, tokenAddr, tokenDecimals, quote, quoteUsd8) {
+            if (!reservesHex || reservesHex.length < 2 + 64 * 2 || !token0Hex || token0Hex.length < 66) return null;
+            if (!Number.isInteger(tokenDecimals) || quoteUsd8 === null || quoteUsd8 <= 0n) return null;
+            let r0, r1;
+            try { r0 = BigInt('0x' + reservesHex.slice(2, 66)); r1 = BigInt('0x' + reservesHex.slice(66, 130)); } catch { return null; }
+            const token0 = '0x' + token0Hex.slice(-40);
+            const tokenIsToken0 = token0.toLowerCase() === tokenAddr.toLowerCase();
+            const reserveToken = tokenIsToken0 ? r0 : r1;
+            const reserveQuote = tokenIsToken0 ? r1 : r0;
+            if (reserveToken <= 0n || reserveQuote <= 0n) return null;
+            const quoteScale = 10n ** BigInt(quote.decimals);
+            // reject thin pools: reserveQuote (USD) = reserveQuote * quoteUsd8 / quoteScale / PRICE_SCALE
+            if (reserveQuote * quoteUsd8 < DEX_MIN_LIQUIDITY_USD * quoteScale * PRICE_SCALE) return null;
+            return reserveQuote * 10n ** BigInt(tokenDecimals) * quoteUsd8 / (reserveToken * quoteScale);
+        }
+
+        const pairFromResult = (raw) => (raw && raw.length >= 66 && !/^0x0*$/.test(raw)) ? '0x' + raw.slice(-40) : null;
+
+        // Resolve USD prices (PRICE_DECIMALS scale) for token addresses: Chainlink first, then a Uniswap-V2
+        // pool fallback (quote prices come from Chainlink, so only the pool ratio is taken on-chain).
+        // `items` is [{ addr, decimals }]. Returns Map(addr -> price8 | null).
+        async function resolvePrices8(node, items) {
+            const meta = node.meta;
+            const prices = new Map();
+            // 1) Chainlink registry / standalone / derived
+            const clCalls = [];
+            const clProbes = items.map(({ addr }) => {
+                const probe = priceProbe(meta, addr);
                 if (!probe) return null;
-                const start = calls.length;
-                for (const c of probe.calls) calls.push(c);
+                const start = clCalls.length;
+                for (const c of probe.calls) clCalls.push(c);
                 return { start, n: probe.calls.length, combine: probe.combine };
             });
-            const res = calls.length ? await rpcBatch(calls, node.rpcPath) : [];
-            const priced = new Set();
-            addrs.forEach((addr, i) => {
-                const p = probes[i];
-                if (p && p.combine(res.slice(p.start, p.start + p.n)) !== null) priced.add(addr);
+            const clRes = clCalls.length ? await rpcBatch(clCalls, node.rpcPath) : [];
+            items.forEach(({ addr }, i) => {
+                const p = clProbes[i];
+                prices.set(addr, p ? p.combine(clRes.slice(p.start, p.start + p.n)) : null);
             });
-            return priced;
+
+            // 2) DEX fallback for the still-unpriced
+            const unpriced = items.filter((it) => prices.get(it.addr) === null || prices.get(it.addr) === undefined);
+            if (!meta.dex || unpriced.length === 0) return prices;
+
+            // quote-token USD prices via Chainlink
+            const qCalls = [];
+            const qProbes = meta.dex.quotes.map((q) => {
+                const probe = priceProbe(meta, q.addr);
+                if (!probe) return null;
+                const start = qCalls.length;
+                for (const c of probe.calls) qCalls.push(c);
+                return { start, n: probe.calls.length, combine: probe.combine };
+            });
+            const qRes = qCalls.length ? await rpcBatch(qCalls, node.rpcPath) : [];
+            const quoteUsd = meta.dex.quotes.map((q, i) => (qProbes[i] ? qProbes[i].combine(qRes.slice(qProbes[i].start, qProbes[i].start + qProbes[i].n)) : null));
+
+            // getPair(token, quote) for every unpriced token against every quote
+            const pairCalls = [];
+            for (const it of unpriced) for (const q of meta.dex.quotes) pairCalls.push(['eth_call', [{ to: meta.dex.factory, data: SEL_GET_PAIR + pad32(it.addr) + pad32(q.addr) }, 'latest']]);
+            const pairRes = await rpcBatch(pairCalls, node.rpcPath);
+            const found = [];
+            let k = 0;
+            for (const it of unpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
+                const pair = pairFromResult(pairRes[k++]);
+                if (pair && quoteUsd[qi] !== null) found.push({ it, qi, pair });
+            }
+            if (found.length === 0) return prices;
+
+            // getReserves + token0 for each candidate pair
+            const rCalls = [];
+            for (const f of found) { rCalls.push(['eth_call', [{ to: f.pair, data: SEL_GET_RESERVES }, 'latest']]); rCalls.push(['eth_call', [{ to: f.pair, data: SEL_TOKEN0 }, 'latest']]); }
+            const rRes = await rpcBatch(rCalls, node.rpcPath);
+            for (let i = 0; i < found.length; i++) {
+                const { it, qi } = found[i];
+                if (prices.get(it.addr)) continue; // priced by an earlier quote
+                const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi]);
+                if (price !== null && price > 0n) prices.set(it.addr, price);
+            }
+            return prices;
         }
 
         // FX feeds mostly use 8 decimals, but not all (e.g. PHP/USD is 18),
@@ -1573,11 +1661,12 @@
             }
             if (held.length === 0) return;
 
-            // A genuine token has a discoverable price; unpriceable auto-detected tokens are almost always
-            // airdrop spam, so hide them by default (restorable one-by-one). Only gate on chains that
-            // actually have price feeds — otherwise fall back to the name/amount heuristic alone.
+            // Value gate: a genuine holding has a discoverable price (Chainlink or a liquid DEX pool) and is
+            // worth more than a dust threshold. Auto-detected tokens that can't be priced, or whose holding
+            // is worth under the threshold, are hidden by default (restorable one-by-one) — this filters the
+            // airdrop spam that floods active accounts. Only gate on chains that have price sources.
             const priceGate = fiatEnabled(node.meta);
-            const priced = priceGate ? await priceableAddrs(node, held.map((h) => h.addr)) : null;
+            const prices = priceGate ? await resolvePrices8(node, held.map((h) => ({ addr: h.addr, decimals: h.meta.decimals }))) : null;
 
             let added = false;
             for (let k = 0; k < held.length; k++) {
@@ -1586,7 +1675,13 @@
                 if (state.detected.some((t) => t.address.toLowerCase() === addr)) continue;
                 if (state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === addr)) continue;
                 const token = { address: checksum(addr), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true };
-                if (looksLikeSpam(meta.ticker, meta.decimals, heldRaw) || (priceGate && !priced.has(addr))) {
+                let hide = looksLikeSpam(meta.ticker, meta.decimals, heldRaw);
+                if (!hide && priceGate) {
+                    const price = prices.get(addr);
+                    if (price === null || price === undefined) hide = true; // no discoverable price
+                    else if (BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals) < DETECT_MIN_VALUE_USD * PRICE_SCALE) hide = true; // dust
+                }
+                if (hide) {
                     state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name, spam: true });
                 } else {
                     state.detected.push(token);
@@ -2182,6 +2277,19 @@
 
             const prices = new Map();
             for (const [key, p] of priceProbes) prices.set(key, p.combine(results.slice(p.start, p.start + p.n)));
+
+            // DEX fallback so tokens the Chainlink pass couldn't price (but a liquid pool can) still show a value
+            if (fiat && meta.dex && !syncing) {
+                const dexItems = assets
+                    .filter((a) => !a.isNft && a.key !== 'native' && (prices.get(a.key) === null || prices.get(a.key) === undefined))
+                    .map((a) => ({ addr: a.key, decimals: a.decimals }));
+                if (dexItems.length) {
+                    try {
+                        const dexPrices = await resolvePrices8(node, dexItems);
+                        for (const it of dexItems) { const p = dexPrices.get(it.addr); if (p) prices.set(it.addr, p); }
+                    } catch { /* pricing is best-effort; rows without a price just show no fiat */ }
+                }
+            }
 
             let i = balanceStart;
             for (const entry of addresses) {

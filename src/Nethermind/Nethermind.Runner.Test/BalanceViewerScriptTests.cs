@@ -257,6 +257,36 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void ComputeV2Price8_PricesFromReservesAndRejectsThinPools()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // pool: 1,000,000 TOKEN vs 500 WETH -> 0.0005 WETH/token; ETH=$2000 -> $1.00 (deep enough: $1M liq)
+        object priced = engine.Evaluate("""
+            (function () {
+                const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
+                const T = '0x000000000000000000000000000000000000000a';
+                const reserves = '0x' + w((1000000n * 10n ** 18n).toString(16)) + w((500n * 10n ** 18n).toString(16)) + w('0');
+                const quote = { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 };
+                const p = computeV2Price8(reserves, '0x' + w(T), T, 18, quote, 2000n * 10n ** 8n);
+                return p === null ? 'null' : p.toString();
+            })()
+            """);
+        Assert.That(priced, Is.EqualTo("100000000"), "0.0005 WETH x $2000 = $1.00 (8-dec)");
+
+        // same ratio but only 1 WETH (~$2000) of liquidity -> below the anti-spoofing floor -> rejected
+        object thin = engine.Evaluate("""
+            (function () {
+                const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
+                const T = '0x000000000000000000000000000000000000000a';
+                const reserves = '0x' + w((2000n * 10n ** 18n).toString(16)) + w((1n * 10n ** 18n).toString(16)) + w('0');
+                const quote = { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 };
+                return computeV2Price8(reserves, '0x' + w(T), T, 18, quote, 2000n * 10n ** 8n) === null ? 'null' : 'priced';
+            })()
+            """);
+        Assert.That(thin, Is.EqualTo("null"), "thin pool below the liquidity floor is rejected");
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
