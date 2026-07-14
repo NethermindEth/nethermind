@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
-using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -22,480 +21,261 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class PrecompileCachedCodeInfoRepositoryTests
 {
-    private static IReleaseSpec CreateSpecWithPrecompile(Address precompileAddress)
+    private static readonly Address PrecompileAddress = Address.FromNumber(100);
+
+    private static PreBlockCaches CreateCaches(int survivingMaxEntries = 1024) =>
+        new(new PreBlockCachesConfig { SurvivingPrecompileCacheMaxEntries = survivingMaxEntries });
+
+    private static IReleaseSpec CreateSpecWithPrecompiles(params Address[] precompileAddresses)
     {
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.Precompiles.Returns(new HashSet<AddressAsKey> { precompileAddress }.ToFrozenSet());
+        spec.Precompiles.Returns(precompileAddresses.Select(a => (AddressAsKey)a).ToFrozenSet());
         return spec;
     }
 
-    [Test]
-    public void Precompile_WithCachingEnabled_IsWrappedInCachedPrecompile()
+    private static PrecompileCachedCodeInfoRepository BuildRepository(PreBlockCaches? caches, params (Address Address, IPrecompile Precompile)[] precompiles)
     {
-        // Arrange
-        TestPrecompile cachingPrecompile = new(supportsCaching: true);
-        Address precompileAddress = Address.FromNumber(100);
+        FrozenDictionary<AddressAsKey, CodeInfo> map = precompiles
+            .ToDictionary(p => (AddressAsKey)p.Address, p => new CodeInfo(p.Precompile))
+            .ToFrozenDictionary();
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(map);
+        return new PrecompileCachedCodeInfoRepository(Substitute.For<IWorldState>(), provider, Substitute.For<ICodeInfoRepository>(), caches);
+    }
 
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(cachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        // Act
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        // Assert
-        Assert.That(codeInfo, Is.Not.Null);
-        Assert.That(codeInfo.Precompile, Is.Not.SameAs(cachingPrecompile));
-        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
+    private static IPrecompile ResolvePrecompile(PreBlockCaches? caches, IPrecompile precompile, Address? address = null)
+    {
+        address ??= PrecompileAddress;
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(caches, (address, precompile));
+        return repository.GetCachedCodeInfo(address, false, CreateSpecWithPrecompiles(address), out _).Precompile!;
     }
 
     [Test]
-    public void Precompile_WithCachingDisabled_IsNotWrapped()
+    public void IsCodeOverridable_WhenBaseIsOverridable_PropagatesIt()
     {
-        // Arrange
-        TestPrecompile nonCachingPrecompile = new(supportsCaching: false);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(nonCachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(FrozenDictionary<AddressAsKey, CodeInfo>.Empty);
         ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
+        baseRepository.IsCodeOverridable.Returns(true);
 
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), provider, baseRepository, null);
 
-        // Act
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        // Assert
-        Assert.That(codeInfo, Is.Not.Null);
-        Assert.That(codeInfo.Precompile, Is.SameAs(nonCachingPrecompile));
+        Assert.That(repository.IsCodeOverridable, Is.True, "the wrapper must not hide the base repository's capability");
     }
 
-    [Test]
-    public void IdentityPrecompile_IsNotWrapped_WhenCacheEnabled()
+    [TestCase(true, true, true, TestName = "GetCachedCodeInfo_CachingPrecompileWithCaches_IsWrapped")]
+    [TestCase(false, true, false, TestName = "GetCachedCodeInfo_NonCachingPrecompileWithCaches_IsNotWrapped")]
+    [TestCase(true, false, false, TestName = "GetCachedCodeInfo_CachingPrecompileWithoutCaches_IsNotWrapped")]
+    public void GetCachedCodeInfo_AtGivenCachingSupport_WrapsOnlyCacheablePrecompiles(bool supportsCaching, bool withCaches, bool expectWrapped)
     {
-        // Arrange
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+        TestPrecompile precompile = new(supportsCaching);
+
+        IPrecompile resolved = ResolvePrecompile(withCaches ? CreateCaches() : null, precompile);
+
+        if (expectWrapped)
         {
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
-
-        // Act
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
-
-        // Assert
-        Assert.That(codeInfo, Is.Not.Null);
-        Assert.That(codeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
-    }
-
-    [Test]
-    public void CachedPrecompile_CachesResults_ForCachingEnabledPrecompile()
-    {
-        // Arrange
-        int runCount = 0;
-        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
+            Assert.That(resolved, Is.Not.SameAs(precompile), "a cacheable precompile must be wrapped when caches are supplied");
+            Assert.That(resolved.GetType().Name, Does.Contain("CachedPrecompile"));
+        }
+        else
         {
-            [precompileAddress] = new(cachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        byte[] input = [1, 2, 3];
-
-        // Act - run twice with same input
-        codeInfo.Precompile!.Run(input, Prague.Instance);
-        codeInfo.Precompile!.Run(input, Prague.Instance);
-
-        // Assert - should only run once due to caching
-        Assert.That(runCount, Is.EqualTo(1));
-        Assert.That(cache.Count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void NonCachingPrecompile_DoesNotCacheResults()
-    {
-        // Arrange
-        int runCount = 0;
-        TestPrecompile nonCachingPrecompile = new(supportsCaching: false, onRun: () => runCount++);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(nonCachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        byte[] input = [1, 2, 3];
-
-        // Act - run twice with same input
-        codeInfo.Precompile!.Run(input, Prague.Instance);
-        codeInfo.Precompile!.Run(input, Prague.Instance);
-
-        // Assert - should run twice since caching is disabled
-        Assert.That(runCount, Is.EqualTo(2));
-        Assert.That(cache.Count, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void NullCache_DoesNotWrapAnyPrecompiles()
-    {
-        // Arrange
-        TestPrecompile cachingPrecompile = new(supportsCaching: true);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(cachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        // Act - pass null cache
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, null);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        // Assert - precompile should not be wrapped
-        Assert.That(codeInfo, Is.Not.Null);
-        Assert.That(codeInfo.Precompile, Is.SameAs(cachingPrecompile));
-    }
-
-    [Test]
-    public void Sha256Precompile_IsWrapped_WhenCacheEnabled()
-    {
-        // Arrange - Sha256Precompile has SupportsCaching = true (default)
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
-
-        // Act
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
-
-        // Assert - Sha256Precompile should be wrapped (unlike IdentityPrecompile)
-        Assert.That(codeInfo, Is.Not.Null);
-        Assert.That(codeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
-        Assert.That(codeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
-    }
-
-    [Test]
-    public void MixedPrecompiles_OnlyCachingEnabledAreWrapped()
-    {
-        // Arrange - mix of caching and non-caching precompiles
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),      // SupportsCaching = true
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)   // SupportsCaching = false
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.Precompiles.Returns(new HashSet<AddressAsKey>
-        {
-            Sha256Precompile.Address,
-            IdentityPrecompile.Address
-        }.ToFrozenSet());
-
-        // Act
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo sha256CodeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
-        CodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
-
-        // Assert - Sha256 wrapped, Identity not wrapped
-        Assert.That(sha256CodeInfo.Precompile, Is.Not.SameAs(Sha256Precompile.Instance));
-        Assert.That(sha256CodeInfo.Precompile!.GetType().Name, Does.Contain("CachedPrecompile"));
-
-        Assert.That(identityCodeInfo.Precompile, Is.SameAs(IdentityPrecompile.Instance));
-    }
-
-    [Test]
-    public void CachedPrecompile_DifferentInputs_CreateSeparateCacheEntries()
-    {
-        // Arrange
-        int runCount = 0;
-        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(cachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        byte[] input1 = [1, 2, 3];
-        byte[] input2 = [4, 5, 6];
-
-        // Act - run with different inputs
-        codeInfo.Precompile!.Run(input1, Prague.Instance);
-        codeInfo.Precompile!.Run(input2, Prague.Instance);
-        codeInfo.Precompile!.Run(input1, Prague.Instance); // should hit cache
-        codeInfo.Precompile!.Run(input2, Prague.Instance); // should hit cache
-
-        // Assert - should run twice (once per unique input), cache should have 2 entries
-        Assert.That(runCount, Is.EqualTo(2));
-        Assert.That(cache.Count, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void CachedPrecompile_ReturnsCachedResult_OnCacheHit()
-    {
-        // Arrange
-        int runCount = 0;
-        byte[] expectedOutput = [10, 20, 30];
-        TestPrecompile cachingPrecompile = new(supportsCaching: true, onRun: () => runCount++, fixedOutput: expectedOutput);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(cachingPrecompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        byte[] input = [1, 2, 3];
-
-        // Act - run twice with same input
-        Result<byte[]> result1 = codeInfo.Precompile!.Run(input, Prague.Instance);
-        Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
-
-        // Assert - both results should be the same cached value
-        Assert.That(runCount, Is.EqualTo(1));
-        Assert.That(((bool)result1), Is.True);
-        Assert.That(((bool)result2), Is.True);
-        Assert.That(result1.Data, Is.EqualTo(expectedOutput));
-        Assert.That(result2.Data, Is.EqualTo(expectedOutput));
-    }
-
-    [Test]
-    public void Sha256Precompile_CachesResults_WithRealComputation()
-    {
-        // Arrange
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
-
-        byte[] input = [1, 2, 3, 4, 5];
-
-        // Act - run twice with same input
-        Result<byte[]> result1 = codeInfo.Precompile!.Run(input, Prague.Instance);
-        Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
-
-        // Assert - results should match and cache should have entry
-        Assert.That(((bool)result1), Is.True);
-        Assert.That(((bool)result2), Is.True);
-        Assert.That(result1.Data, Is.EqualTo(result2.Data));
-        Assert.That(cache.Count, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void IdentityPrecompile_DoesNotCache_WithRealComputation()
-    {
-        // Arrange
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
-
-        byte[] input = [1, 2, 3, 4, 5];
-
-        // Act - run twice with same input
-        Result<byte[]> result1 = codeInfo.Precompile!.Run(input, Prague.Instance);
-        Result<byte[]> result2 = codeInfo.Precompile!.Run(input, Prague.Instance);
-
-        // Assert - results should match but cache should be empty (no caching for Identity)
-        Assert.That(((bool)result1), Is.True);
-        Assert.That(((bool)result2), Is.True);
-        Assert.That(result1.Data, Is.EqualTo(result2.Data));
-        Assert.That(cache.Count, Is.EqualTo(0)); // Key difference from Sha256 test
-    }
-
-    [Test]
-    public void CachedPrecompile_WithNormalizeInputOverride_DeduplicatesOversizedInputs()
-    {
-        // Precompile that only uses the first 4 bytes of input.
-        int runCount = 0;
-        TruncatingTestPrecompile precompile = new(effectiveLength: 4, onRun: () => runCount++);
-        Address precompileAddress = Address.FromNumber(100);
-
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(precompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        // Same first 4 bytes, different suffixes — both calls should map to the same cache key.
-        byte[] input1 = [1, 2, 3, 4, 0xAA, 0xBB];
-        byte[] input2 = [1, 2, 3, 4, 0xCC, 0xDD, 0xEE];
-
-        Result<byte[]> result1 = codeInfo.Precompile!.Run(input1, Prague.Instance);
-        Result<byte[]> result2 = codeInfo.Precompile!.Run(input2, Prague.Instance);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runCount, Is.EqualTo(1), "precompile should run only once; second call must hit cache");
-            Assert.That(cache.Count, Is.EqualTo(1));
-            Assert.That(result1.Data, Is.EqualTo(result2.Data));
+            Assert.That(resolved, Is.SameAs(precompile), "the original precompile must be served unwrapped");
         }
     }
 
     [Test]
-    public void CachedPrecompile_DoesNotCache_InvalidLengthResults()
+    public void GetCachedCodeInfo_WithMixedRealPrecompiles_WrapsOnlyCachingOnes()
     {
-        int runCount = 0;
-        FixedLengthTestPrecompile precompile = new(validLength: 4, onRun: () => runCount++);
-        Address precompileAddress = Address.FromNumber(100);
+        PrecompileCachedCodeInfoRepository repository = BuildRepository(CreateCaches(),
+            (Sha256Precompile.Address, Sha256Precompile.Instance),
+            (IdentityPrecompile.Address, IdentityPrecompile.Instance));
+        IReleaseSpec spec = CreateSpecWithPrecompiles(Sha256Precompile.Address, IdentityPrecompile.Address);
 
-        FrozenDictionary<AddressAsKey, CodeInfo> precompiles = new Dictionary<AddressAsKey, CodeInfo>
-        {
-            [precompileAddress] = new(precompile)
-        }.ToFrozenDictionary();
-
-        IPrecompileProvider precompileProvider = Substitute.For<IPrecompileProvider>();
-        precompileProvider.GetPrecompiles().Returns(precompiles);
-
-        ICodeInfoRepository baseRepository = Substitute.For<ICodeInfoRepository>();
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> cache = new();
-
-        IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
-
-        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
-        CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
-
-        byte[] input1 = [1, 2, 3];          // length 3, not 4
-        byte[] input2 = [1, 2, 3, 4, 5];    // length 5, not 4
-        byte[] input3 = [1, 2, 3, 4, 5, 6]; // length 6, not 4
-
-        Result<byte[]> result1 = codeInfo.Precompile!.Run(input1, Prague.Instance);
-        Result<byte[]> result2 = codeInfo.Precompile.Run(input2, Prague.Instance);
-        Result<byte[]> result3 = codeInfo.Precompile.Run(input3, Prague.Instance);
-        Result<byte[]> result1Again = codeInfo.Precompile.Run(input1, Prague.Instance);
+        IPrecompile sha256 = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _).Precompile!;
+        IPrecompile identity = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _).Precompile!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)result1, Is.False, "invalid-length input must fail");
-            Assert.That((bool)result2, Is.False);
-            Assert.That((bool)result3, Is.False);
-            Assert.That((bool)result1Again, Is.False);
-            Assert.That(runCount, Is.EqualTo(4), "each call must re-run; invalid-length results must not be cached");
-            Assert.That(cache, Is.Empty, "cache must remain empty for invalid-length results");
+            Assert.That(sha256, Is.Not.SameAs(Sha256Precompile.Instance), "sha256 supports caching and must be wrapped");
+            Assert.That(identity, Is.SameAs(IdentityPrecompile.Instance), "identity does not support caching and must stay unwrapped");
+        }
+    }
+
+    [TestCase(true, 1, 1, TestName = "Run_ForRepeatedInputWhenCaching_ComputesOnce")]
+    [TestCase(false, 2, 0, TestName = "Run_ForRepeatedInputWhenNotCaching_ComputesEveryTime")]
+    public void Run_AtGivenCachingSupport_ComputesOncePerUniqueInput(bool supportsCaching, int expectedRuns, int expectedEntries)
+    {
+        int runCount = 0;
+        byte[] fixedOutput = [10, 20, 30];
+        TestPrecompile precompile = new(supportsCaching, onRun: () => runCount++, fixedOutput: fixedOutput);
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, precompile);
+
+        byte[] input = [1, 2, 3];
+        Result<byte[]> first = resolved.Run(input, Prague.Instance);
+        Result<byte[]> second = resolved.Run(input, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(expectedRuns), "a cacheable repeated input must compute exactly once");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(expectedEntries), "only cacheable results may enter the per-block tier");
+            Assert.That(first.Data, Is.EqualTo(fixedOutput), "the computed result must be served");
+            Assert.That(second.Data, Is.EqualTo(fixedOutput), "a hit must be indistinguishable from a computation");
+        }
+    }
+
+    [Test]
+    public void Run_ForDifferentInputs_CreatesSeparateEntries()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance);
+        resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
+        resolved.Run(new byte[] { 4, 5, 6 }, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2), "each unique input must compute exactly once");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(2), "each unique input must have its own entry");
+        }
+    }
+
+    [Test]
+    public void Run_WithRealSha256_ServesTheComputedDigestFromTheCache()
+    {
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, Sha256Precompile.Instance, Sha256Precompile.Address);
+
+        byte[] input = [1, 2, 3, 4, 5];
+        Result<byte[]> first = resolved.Run(input, Prague.Instance);
+        Result<byte[]> second = resolved.Run(input, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)first, Is.True, "precondition: the real digest computation succeeds");
+            Assert.That(second.Data, Is.EqualTo(first.Data), "the cached digest must match the computed one");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(1), "the digest must be cached");
+        }
+    }
+
+    [Test]
+    public void Run_WithNormalizedOversizedInputs_DeduplicatesToOneEntry()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new TruncatingTestPrecompile(effectiveLength: 4, onRun: () => runCount++));
+
+        Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3, 4, 0xAA, 0xBB }, Prague.Instance);
+        Result<byte[]> second = resolved.Run(new byte[] { 1, 2, 3, 4, 0xCC, 0xDD, 0xEE }, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(1), "inputs equal after normalization must map to the same cache key");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(1));
+            Assert.That(second.Data, Is.EqualTo(first.Data));
+        }
+    }
+
+    [Test]
+    public void Run_ForInvalidLengthResults_DoesNotCache()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new FixedLengthTestPrecompile(validLength: 4, onRun: () => runCount++));
+
+        Result<byte[]> first = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
+        Result<byte[]> repeat = resolved.Run(new byte[] { 1, 2, 3 }, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)first, Is.False, "precondition: an invalid-length input must fail");
+            Assert.That((bool)repeat, Is.False);
+            Assert.That(runCount, Is.EqualTo(2), "invalid-length results must re-run instead of being cached");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "the block tier must remain empty for invalid-length results");
+        }
+    }
+
+    [Test]
+    public void Run_ForDifferentSpecs_CreatesSeparateCacheEntries()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+
+        byte[] input = [1, 2, 3];
+        resolved.Run(input, Prague.Instance);
+        resolved.Run(input, Osaka.Instance);
+        resolved.Run(input, Prague.Instance);
+        resolved.Run(input, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2), "an entry cached under one spec must not be served under another");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(2), "each spec must have its own entry for the same input");
+        }
+    }
+
+    [Test]
+    public void Run_AfterPerBlockClear_ServesFromSurvivingTierWithoutRepopulating()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+
+        byte[] input = [1, 2, 3];
+        resolved.Run(input, Prague.Instance);
+        caches.ClearCaches();
+        Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "precondition: the per-block tier is cleared");
+
+        resolved.Run(input, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(1), "the surviving tier must serve the result across the per-block clear");
+            Assert.That(caches.PrecompileCache.Count, Is.EqualTo(0), "a surviving-tier hit serves directly and does not repopulate the per-block tier");
+        }
+    }
+
+    [Test]
+    public void Run_AtSurvivingTierCapacity_EvictsInsteadOfGrowing()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches(survivingMaxEntries: 2);
+        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+
+        resolved.Run(new byte[] { 1 }, Prague.Instance);
+        resolved.Run(new byte[] { 2 }, Prague.Instance);
+        resolved.Run(new byte[] { 3 }, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(3), "precondition: three distinct inputs must each compute");
+            Assert.That(caches.SurvivingPrecompileCache.Count, Is.EqualTo(2), "the surviving tier must evict at capacity instead of growing");
+        }
+    }
+
+    [Test]
+    public void Run_WithOversizedEntry_DoesNotSurviveTheBlock()
+    {
+        int runCount = 0;
+        PreBlockCaches caches = CreateCaches();
+        IPrecompile resolved = ResolvePrecompile(caches, new TestPrecompile(supportsCaching: true, onRun: () => runCount++));
+
+        byte[] oversizedInput = new byte[4096];
+        resolved.Run(oversizedInput, Prague.Instance);
+        resolved.Run(oversizedInput, Prague.Instance);
+        Assert.That(runCount, Is.EqualTo(1), "precondition: within the block the oversized entry is served by the per-block tier");
+
+        caches.ClearCaches();
+        resolved.Run(oversizedInput, Prague.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runCount, Is.EqualTo(2), "oversized entries must recompute after the per-block clear");
+            Assert.That(caches.SurvivingPrecompileCache.Count, Is.EqualTo(0), "entries above the byte cap must not enter the surviving tier");
         }
     }
 
@@ -503,9 +283,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => supportsCaching;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -521,9 +301,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
             inputData.Length > effectiveLength ? inputData[..effectiveLength] : inputData;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
@@ -538,9 +318,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
     {
         public bool SupportsCaching => true;
 
-        public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+        public ulong BaseGasCost(IReleaseSpec releaseSpec) => 0UL;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+        public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0UL;
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {

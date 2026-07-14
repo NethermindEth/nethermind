@@ -40,7 +40,7 @@ public class TraceStreamingAllocsBenchmarks
         for (int d = 0; d <= CallDepthPerTx; d++)
         {
             _envByDepth[d] = ExecutionEnvironment.Rent(
-                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default, default);
+                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default);
         }
         _value32 = new byte[32];
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
@@ -111,10 +111,10 @@ public class TraceStreamingAllocsBenchmarks
             int opsAtDepth = OpcodesPerTx / CallDepthPerTx;
             for (int op = 0; op < opsAtDepth; op++)
             {
-                tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _envByDepth[depth]);
+                tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _envByDepth[depth]);
                 tracer.ReportStackPush(value);
                 tracer.ReportStorageChange(value, value);
-                tracer.ReportOperationRemainingGas(900_000 - op);
+                tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
             }
         }
         for (int depth = 1; depth <= CallDepthPerTx; depth++)

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -20,7 +19,6 @@ public class BranchProcessor(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
     IWorldState stateProvider,
-    IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
@@ -35,6 +33,8 @@ public class BranchProcessor(
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
@@ -72,6 +72,9 @@ public class BranchProcessor(
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+        BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
+        int processedBlocksCount = 0;
+        Exception? processingException = null;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -87,7 +90,8 @@ public class BranchProcessor(
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
-            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
@@ -137,9 +141,13 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
+                QueueClearCaches(preWarmTask);
+                // Hint producers touch the active snapshot bundle, which CommitTree rotates.
+                WaitAndClear(ref preWarmTask);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask);
+                processedBlocksCount = i + 1;
 
                 if (notReadOnly)
                 {
@@ -161,8 +169,6 @@ public class BranchProcessor(
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
@@ -170,13 +176,18 @@ public class BranchProcessor(
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
                 // Though we still want to release the memory even if syncing rather than processing live
-                TxHashCalculator.CalculateInBackground(suggestedBlock);
+                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
+                if (suggestedBlock.Transactions.Length > 0)
+                {
+                    TxHashCalculator.CalculateInBackground(suggestedBlock);
+                }
             }
 
             return processedBlocks;
         }
         catch (Exception ex) // try to restore at all cost
         {
+            processingException = ex;
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             QueueClearCaches(preWarmTask);
@@ -185,8 +196,20 @@ public class BranchProcessor(
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
-            worldStateCloser?.Dispose();
+            try
+            {
+                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                worldStateCloser?.Dispose();
+            }
+            finally
+            {
+                if (blocksProcessingEventArgs is not null)
+                {
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(blocksProcessingEventArgs.Blocks, processedBlocksCount, processingException));
+                }
+            }
         }
 
         static void WaitAndClear(ref Task? task)
@@ -202,8 +225,7 @@ public class BranchProcessor(
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,
                 spec,
-                token,
-                beaconBlockRootHandler);
+                token);
 
     // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
     // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
@@ -219,12 +241,13 @@ public class BranchProcessor(
     {
         if (preWarmTask is not null)
         {
-            // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
         }
         else if (preWarmer is not null)
         {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
+            preWarmer.ClearCaches();
+            _clearTask = Task.CompletedTask;
         }
     }
 
@@ -237,7 +260,7 @@ public class BranchProcessor(
 
         void IThreadPoolWorkItem.Execute()
         {
-            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
             foreach (Transaction tx in suggestedBlock.Transactions)

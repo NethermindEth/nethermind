@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Xdc.RLP;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
@@ -28,8 +29,8 @@ internal class XdcBlockAndHeaderStoreTests
         blockNumDb = new MemDb();
         blockDb = new MemDb();
 
-        _headerStore = new XdcHeaderStore(headerDb, blockNumDb);
-        _blockStore = new XdcBlockStore(blockDb);
+        _headerStore = new XdcHeaderStore(headerDb, blockNumDb, new XdcHeaderDecoder());
+        _blockStore = new XdcBlockStore(blockDb, new XdcHeaderDecoder());
     }
 
     [Test]
@@ -47,7 +48,7 @@ internal class XdcBlockAndHeaderStoreTests
         _headerStore.Insert(header);
         XdcBlockHeader? retrievedHeader = _headerStore.Get(header.Hash!, false);
         // Assert
-        XdcTestAssertions.AssertXdcHeader(retrievedHeader, header);
+        Assert.That(retrievedHeader, Is.EqualTo(header).UsingXdcComparer());
     }
 
     [Test]
@@ -62,7 +63,7 @@ internal class XdcBlockAndHeaderStoreTests
         _blockStore.Insert(block);
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
-        XdcTestAssertions.AssertBlock(retrievedBlock, block);
+        Assert.That(retrievedBlock, Is.EqualTo(block).UsingXdcComparer());
     }
 
     [Test]

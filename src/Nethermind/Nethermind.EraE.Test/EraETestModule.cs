@@ -4,6 +4,7 @@
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -42,7 +43,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
     // The Merge was ~15 Sep 2022 (1663224162s). We use a round timestamp well past both.
     private const ulong PostMergeGenesisTimestamp = 1_663_000_000;
 
-    public static ContainerBuilder BuildContainerBuilderWithPostMergeBlockTreeOfLength(int length)
+    public static ContainerBuilder BuildContainerBuilderWithPostMergeBlockTreeOfLength(ulong length)
     {
         // Set genesis timestamp past beacon-chain genesis so SlotTime.GetSlot succeeds on all blocks.
         Block genesis = Build.A.Block.Genesis.WithTimestamp(PostMergeGenesisTimestamp).WithPostMergeRules().TestObject;
@@ -50,6 +51,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
 
         return new ContainerBuilder()
             .AddModule(new EraETestModule())
+            .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<ITimestamper>(PostMerge)
             .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
             .OnBuild(ctx =>
@@ -63,7 +65,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
                 // so the exporter can resolve blockTree.Head correctly.
                 Block? lastBlock = blockTreeBuilder.BlockTree.FindBlock(length - 1, BlockTreeLookupOptions.None);
                 if (lastBlock is not null)
-                    blockTreeBuilder.BlockTree.UpdateMainChain(new[] { lastBlock }, true, forceUpdateHeadBlock: true);
+                    blockTreeBuilder.BlockTree.TryUpdateMainChain(lastBlock.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { lastBlock });
             });
     }
 
@@ -71,18 +73,18 @@ public class EraETestModule(bool useRealValidator = false) : Module
     public static ManualTimestamper PostMerge =>
         new(DateTimeOffset.FromUnixTimeSeconds((long)PostMergeGenesisTimestamp).UtcDateTime);
 
-    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, long from = 0, long to = 0)
+    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, ulong from = 0, ulong to = 0)
     {
         IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
         await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from, to);
         return testCtx;
     }
 
-    public static async Task<IContainer> CreateExportedPostMergeEraEnv(int chainLength = 16)
+    public static async Task<IContainer> CreateExportedPostMergeEraEnv(ulong chainLength = 16)
     {
         IContainer testCtx = BuildContainerBuilderWithPostMergeBlockTreeOfLength(chainLength).Build();
         // Start from block 1: genesis is pre-merge in all block trees.
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from: 1, to: 0);
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), from: 1UL, to: 0UL);
         return testCtx;
     }
 
@@ -93,6 +95,7 @@ public class EraETestModule(bool useRealValidator = false) : Module
             .AddModule(TestNethermindModule.CreateWithRealChainSpec())
             .AddModule(new EraEModule())
             .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
             .AddSingleton<IEraEConfig>(new EraEConfig()
             {
                 MaxEraSize = 16,

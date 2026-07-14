@@ -14,13 +14,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public readonly struct GeneratedAccountChangesView : IEnumerable<GeneratedAccountChanges>
 {
-    private readonly Dictionary<Address, GeneratedAccountChanges> _accounts;
+    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accounts;
 
-    internal GeneratedAccountChangesView(Dictionary<Address, GeneratedAccountChanges> accounts) => _accounts = accounts;
+    internal GeneratedAccountChangesView(Dictionary<AddressAsKey, GeneratedAccountChanges> accounts) => _accounts = accounts;
 
     public int Count => _accounts.Count;
 
-    public Dictionary<Address, GeneratedAccountChanges>.ValueCollection.Enumerator GetEnumerator()
+    public Dictionary<AddressAsKey, GeneratedAccountChanges>.ValueCollection.Enumerator GetEnumerator()
         => _accounts.Values.GetEnumerator();
 
     IEnumerator<GeneratedAccountChanges> IEnumerable<GeneratedAccountChanges>.GetEnumerator()

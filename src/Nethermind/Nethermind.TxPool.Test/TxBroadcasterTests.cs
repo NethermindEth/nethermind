@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -152,7 +153,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -167,10 +168,10 @@ public class TxBroadcasterTests
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        TransactionAssertions.AssertEquivalent(_broadcaster.GetSnapshot().FirstOrDefault(), isBlob ? new LightTransaction(tx) : tx);
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(isBlob ? new LightTransaction(tx) : tx).UsingTransactionComparer());
 
         Assert.That(_broadcaster.TryGetPersistentTx(tx.Hash, out Transaction returnedTx), Is.EqualTo(!isBlob));
-        TransactionAssertions.AssertEquivalent(returnedTx, isBlob ? null : tx);
+        Assert.That(returnedTx, Is.EqualTo(isBlob ? null : tx).UsingTransactionComparer());
     }
 
     [Test]
@@ -190,7 +191,7 @@ public class TxBroadcasterTests
 
         _broadcaster.Broadcast(tx, true);
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
-        TransactionAssertions.AssertEquivalent(_broadcaster.GetSnapshot().FirstOrDefault(), lightTx);
+        Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
 
         ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
         peer.Id.Returns(TestItem.PublicKeyA);
@@ -254,7 +255,7 @@ public class TxBroadcasterTests
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
-        TransactionAssertions.AssertEquivalent(pickedFullTxs, expectedFullTxs);
+        Assert.That(pickedFullTxs, Is.EquivalentTo(expectedFullTxs).UsingTransactionComparer());
         Assert.That(expectedHashes, Is.EquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray()));
     }
 
@@ -299,7 +300,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [TestCase(0, false)]
@@ -374,7 +375,7 @@ public class TxBroadcasterTests
             expectedTxs.Add(transactions[addedTxsCount - i]);
         }
 
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs, nameof(Transaction.MaxFeePerGas));
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer(nameof(Transaction.MaxFeePerGas)));
     }
 
     [Test]
@@ -439,7 +440,7 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
@@ -452,7 +453,7 @@ public class TxBroadcasterTests
         Assert.That(pickedTxs.Count, Is.EqualTo(1));
 
         List<Transaction> expectedTxs = [transactions[0]];
-        TransactionAssertions.AssertEquivalent(pickedTxs, expectedTxs);
+        Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
     [Test]
@@ -652,7 +653,7 @@ public class TxBroadcasterTests
         Parallel.For(0, _txPoolConfig.Size, i =>
         {
             Transaction tx = Build.A.Transaction
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             _broadcaster.Broadcast(tx, true);
         });
@@ -662,7 +663,7 @@ public class TxBroadcasterTests
 
         for (int i = 0; i < pickedTxs.Length; i++)
         {
-            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((UInt256)i));
+            Assert.That(pickedTxs[i].Nonce, Is.EqualTo((ulong)i));
         }
     }
 
@@ -721,6 +722,72 @@ public class TxBroadcasterTests
 
         // Assert
         Assert.That(result, Is.EqualTo(versionMatches), "LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
+    [Test]
+    public async Task Should_not_send_null_tx_when_adding_concurrently_with_timer_swap()
+    {
+        // Regression for the gossip NRE seen on gnosis+Flat: BroadcastOnce used to lock on the
+        // _accumulatedTemporaryTxs instance while the timer swapped that field by reference without taking the same
+        // lock. A concurrent Add could then mutate the swapped-out List<T> and leave a null hole, later dereferenced
+        // while gossiping (NullReferenceException in CompositeTxGossipPolicy.ShouldGossipTransaction).
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager);
+
+        RecordingPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        const int txCount = 30_000;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        }
+
+        using System.Threading.CancellationTokenSource cts = new();
+
+        // Keep firing the timer so NotifyPeers repeatedly swaps and flushes the accumulator while transactions are
+        // still being added from other threads - this is the window the old lock failed to guard.
+        Task ticker = Task.Run(() =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+                System.Threading.Thread.Yield();
+            }
+        });
+
+        Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
+
+        cts.Cancel();
+        await ticker;
+        // Final flush of whatever was still accumulated after the adders finished.
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        Assert.That(peer.SawNull, Is.False, "A null transaction reached the peer - the accumulated tx list was corrupted by a data race.");
+        Assert.That(peer.Sent.Count, Is.EqualTo(txCount), "Every broadcast transaction should be sent exactly once.");
+        Assert.That(peer.Sent.Distinct().Count(), Is.EqualTo(txCount), "No transaction should be sent more than once.");
+    }
+
+    private sealed class RecordingPeer(PublicKey id) : ITxPoolPeer
+    {
+        private readonly ConcurrentBag<Transaction> _sent = [];
+        public PublicKey Id => id;
+        public ulong HeadNumber { get; set; }
+        public bool SawNull { get; private set; }
+        public IReadOnlyCollection<Transaction> Sent => _sent;
+
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (tx is null) SawNull = true;
+                else _sent.Add(tx);
+            }
+        }
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)

@@ -33,6 +33,7 @@ internal static class InputDecoder
             Block: input.NewPayloadRequest.ToBlock()!,
             Witness: input.Witness,
             ChainConfig: input.ChainConfig,
+            PublicKeys: input.PublicKeys,
             NewPayloadRequestRoot: new Hash256(root.ToLittleEndian())
         );
     }

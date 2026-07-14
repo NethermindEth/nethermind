@@ -19,7 +19,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     // Cannot be called until blocktree is ready.
     public void ResetMainChain() =>
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
+        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -39,15 +39,32 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         set => _overlayTree.LowestInsertedBeaconHeader = value;
     }
 
-    public long BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
-    public long BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
+    public ulong BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
+    public ulong BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
     public Hash256 HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
     public Hash256 GenesisHash => _baseTree.GenesisHash;
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
     public Hash256? FinalizedHash => _overlayTree.FinalizedHash ?? _baseTree.FinalizedHash;
     public Hash256? SafeHash => _overlayTree.SafeHash ?? _baseTree.SafeHash;
+
+    public ulong LastFinalizedBlockLevel =>
+        _overlayTree.LastFinalizedBlockLevel != 0UL ? _overlayTree.LastFinalizedBlockLevel : _baseTree.LastFinalizedBlockLevel;
+
+    public event EventHandler<FinalizeEventArgs> BlocksFinalized
+    {
+        add
+        {
+            _baseTree.BlocksFinalized += value;
+            _overlayTree.BlocksFinalized += value;
+        }
+
+        remove
+        {
+            _baseTree.BlocksFinalized -= value;
+            _overlayTree.BlocksFinalized -= value;
+        }
+    }
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
-    public long? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
     public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
         _overlayTree.Insert(header, headerOptions);
@@ -75,14 +92,14 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public AddBlockResult SuggestHeader(BlockHeader header) => _overlayTree.SuggestHeader(header);
 
-    public bool IsKnownBlock(long number, Hash256 blockHash) => _overlayTree.IsKnownBlock(number, blockHash) || _baseTree.IsKnownBlock(number, blockHash);
+    public bool IsKnownBlock(ulong number, Hash256 blockHash) => _overlayTree.IsKnownBlock(number, blockHash) || _baseTree.IsKnownBlock(number, blockHash);
 
-    public bool IsKnownBeaconBlock(long number, Hash256 blockHash) => _overlayTree.IsKnownBeaconBlock(number, blockHash) || _baseTree.IsKnownBeaconBlock(number, blockHash);
+    public bool IsKnownBeaconBlock(ulong number, Hash256 blockHash) => _overlayTree.IsKnownBeaconBlock(number, blockHash) || _baseTree.IsKnownBeaconBlock(number, blockHash);
 
-    public bool WasProcessed(long number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
+    public bool WasProcessed(ulong number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
 
-    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) =>
-        _overlayTree.UpdateMainChain(blocks, wereProcessed, forceHeadBlock);
+    public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) =>
+        _overlayTree.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloadedBlocks);
 
     public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => _overlayTree.MarkChainAsProcessed(blocks);
 
@@ -90,17 +107,17 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => _overlayTree.Accept(blockTreeVisitor, cancellationToken);
 
-    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash)
+    public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash)
     {
         (BlockInfo Info, ChainLevelInfo Level) overlayInfo = _overlayTree.GetInfo(number, blockHash);
         return overlayInfo.Info is not null || overlayInfo.Level is not null ? overlayInfo : _baseTree.GetInfo(number, blockHash);
     }
 
-    public ChainLevelInfo? FindLevel(long number) => _overlayTree.FindLevel(number) ?? _baseTree.FindLevel(number);
+    public ChainLevelInfo? FindLevel(ulong number) => _overlayTree.FindLevel(number) ?? _baseTree.FindLevel(number);
 
-    public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
+    public BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
 
-    public Hash256 FindHash(long blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
+    public Hash256 FindHash(ulong blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
 
     public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
     {
@@ -110,6 +127,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
+
+    public void ReportBadBlock(Block badBlock) =>
+        _overlayTree.ReportBadBlock(badBlock);
 
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
@@ -229,39 +249,39 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
 
-    public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
+    public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) =>
         _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 
     public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
 
-    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) =>
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint) =>
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
 
-    public (long BlockNumber, Hash256 BlockHash) SyncPivot
+    public (ulong BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
     }
     public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
-    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);
 
-    public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+    public Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) =>
         _overlayTree.FindBlock(blockNumber, options) ?? _baseTree.FindBlock(blockNumber, options);
 
-    public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+    public bool HasBlock(ulong blockNumber, Hash256 blockHash) =>
         _overlayTree.HasBlock(blockNumber, blockHash) || _baseTree.HasBlock(blockNumber, blockHash);
 
-    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         _overlayTree.FindHeader(blockHash, options, blockNumber) ?? _baseTree.FindHeader(blockHash, options, blockNumber);
 
-    public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
+    public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options) =>
         _overlayTree.FindHeader(blockNumber, options) ?? _baseTree.FindHeader(blockNumber, options);
 
-    public Hash256? FindBlockHash(long blockNumber) =>
+    public Hash256? FindBlockHash(ulong blockNumber) =>
         _overlayTree.FindBlockHash(blockNumber) ?? _baseTree.FindBlockHash(blockNumber);
 
     public bool IsMainChain(BlockHeader blockHeader) =>
@@ -274,10 +294,10 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
 
 
-    public long GetLowestBlock() => _baseTree.GetLowestBlock();
+    public ulong GetLowestBlock() => _baseTree.GetLowestBlock();
 
-    public void NewOldestBlock(long oldestBlock) => _baseTree.NewOldestBlock(oldestBlock);
+    public void NewOldestBlock(ulong oldestBlock) => _baseTree.NewOldestBlock(oldestBlock);
 
-    public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
+    public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
         => _baseTree.DeleteOldBlock(blockNumber, blockHash);
 }

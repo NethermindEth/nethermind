@@ -18,6 +18,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = [];
     private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
 
+    public bool IsCodeOverridable => true;
+
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;

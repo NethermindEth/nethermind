@@ -39,7 +39,7 @@ namespace Nethermind.Db
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
         public double TrackedPastKeyCountMemoryRatio { get; set; } = 0.1;
         public bool TrackPastKeys { get; set; } = true;
-        public int PruningBoundary { get; set; } = (int)Reorganization.MaxDepth;
+        public ulong PruningBoundary { get; set; } = Reorganization.MaxDepth;
 
         private int _dirtyNodeShardBit = 8;
 
@@ -51,7 +51,7 @@ namespace Nethermind.Db
                 // 30 because of the 1 << 31 become negative
                 if (value is <= 0 or > 30)
                 {
-                    throw new InvalidOperationException($"Shard bit count must be between 0 and 30.");
+                    throw new InvalidOperationException($"{nameof(DirtyNodeShardBit)} must be between 1 and 30 (the dirty node shard count is 2^{nameof(DirtyNodeShardBit)}).");
                 }
 
                 _dirtyNodeShardBit = value;
@@ -60,10 +60,10 @@ namespace Nethermind.Db
 
         public double PrunePersistedNodePortion { get; set; } = 0.05;
         public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB;
-        public long MaxUnpersistedBlockCount { get; set; } = 300; // About 1 hour on mainnet
-        public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
+        public ulong MaxUnpersistedBlockCount { get; set; } = 300; // About 1 hour on mainnet
+        public ulong MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
         public int MaxBufferedCommitCount { get; set; } = 128;
-        public int SimulateLongFinalizationDepth { get; set; } = 0;
+        public ulong SimulateLongFinalizationDepth { get; set; } = 0;
         public int PruneDelayMilliseconds { get; set; } = 75;
     }
 }

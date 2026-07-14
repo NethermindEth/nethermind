@@ -61,6 +61,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
     string IpcUnixDomainSocketPath { get; set; }
 
+    [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
+    bool RestrictIpcSocketPermissions { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
@@ -95,7 +98,7 @@ public interface IJsonRpcConfig : IConfig
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
-    long? GasCap { get; set; }
+    ulong? GasCap { get; set; }
 
     [ConfigItem(
         Description = "The interval, in seconds, between the JSON-RPC stats report log.",

@@ -15,219 +15,215 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Things_are_cold_to_start_with()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
+            using VmStateScope scope = CreateEvmStateScope();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            Assert.That(vmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
-            Assert.That(vmState.AccessTracker.IsCold(storageCell), Is.True);
+            Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+            Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.True);
         }
 
         [Test]
         public void Can_warm_address_up_twice()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
+            using VmStateScope scope = CreateEvmStateScope();
             Address address = TestItem.AddressA;
-            vmState.AccessTracker.WarmUp(address);
-            vmState.AccessTracker.WarmUp(address);
-            Assert.That(vmState.AccessTracker.IsCold(address), Is.False);
+            scope.VmState.AccessTracker.WarmUp(address);
+            scope.VmState.AccessTracker.WarmUp(address);
+            Assert.That(scope.VmState.AccessTracker.IsCold(address), Is.False);
         }
 
         [Test]
         public void Can_warm_up_many()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
+            using VmStateScope scope = CreateEvmStateScope();
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                vmState.AccessTracker.WarmUp(TestItem.Addresses[i]);
-                vmState.AccessTracker.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
+                scope.VmState.AccessTracker.WarmUp(TestItem.Addresses[i]);
+                scope.VmState.AccessTracker.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
             }
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                Assert.That(vmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
-                Assert.That(vmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
+                Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
+                Assert.That(scope.VmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
             }
         }
 
         [Test]
         public void Can_warm_storage_up_twice()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
+            using VmStateScope scope = CreateEvmStateScope();
             Address address = TestItem.AddressA;
             StorageCell storageCell = new(address, 1);
-            vmState.AccessTracker.WarmUp(storageCell);
-            vmState.AccessTracker.WarmUp(storageCell);
-            Assert.That(vmState.AccessTracker.IsCold(storageCell), Is.False);
+            scope.VmState.AccessTracker.WarmUp(storageCell);
+            scope.VmState.AccessTracker.WarmUp(storageCell);
+            Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.False);
         }
 
         [Test]
         public void Nothing_to_commit()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
-            {
-                vmState.CommitToParent(parentVmState);
-            }
+            using VmStateScope parent = CreateEvmStateScope();
+            using VmStateScope child = CreateEvmStateScope(parent.VmState);
+            child.VmState.CommitToParent(parent.VmState);
         }
 
         [Test]
         public void Nothing_to_restore()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState);
+            using VmStateScope parent = CreateEvmStateScope();
+            using VmStateScope _ = CreateEvmStateScope(parent.VmState);
         }
 
         [Test]
         public void Address_to_commit_keeps_it_warm()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.WarmUp(TestItem.AddressA);
-                vmState.CommitToParent(parentVmState);
+                child.VmState.AccessTracker.WarmUp(TestItem.AddressA);
+                child.VmState.CommitToParent(parent.VmState);
             }
 
-            Assert.That(parentVmState.AccessTracker.IsCold(TestItem.AddressA), Is.False);
+            Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.False);
         }
 
         [Test]
         public void Address_to_restore_keeps_it_cold()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.WarmUp(TestItem.AddressA);
+                child.VmState.AccessTracker.WarmUp(TestItem.AddressA);
             }
 
-            Assert.That(parentVmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+            Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
         }
 
         [Test]
         public void Storage_to_commit_keeps_it_warm()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
+            using VmStateScope parent = CreateEvmStateScope();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.WarmUp(storageCell);
-                vmState.CommitToParent(parentVmState);
+                child.VmState.AccessTracker.WarmUp(storageCell);
+                child.VmState.CommitToParent(parent.VmState);
             }
 
-            Assert.That(parentVmState.AccessTracker.IsCold(storageCell), Is.False);
+            Assert.That(parent.VmState.AccessTracker.IsCold(storageCell), Is.False);
         }
 
         [Test]
         public void Storage_to_restore_keeps_it_cold()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
+            using VmStateScope parent = CreateEvmStateScope();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.WarmUp(storageCell);
+                child.VmState.AccessTracker.WarmUp(storageCell);
             }
 
-            Assert.That(parentVmState.AccessTracker.IsCold(storageCell), Is.True);
+            Assert.That(parent.VmState.AccessTracker.IsCold(storageCell), Is.True);
         }
 
         [Test]
         public void Logs_are_committed()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
+            using VmStateScope parent = CreateEvmStateScope();
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.Logs.Add(logEntry);
-                vmState.CommitToParent(parentVmState);
+                child.VmState.AccessTracker.Logs.Add(logEntry);
+                child.VmState.CommitToParent(parent.VmState);
             }
 
-            Assert.That(parentVmState.AccessTracker.Logs.Contains(logEntry), Is.True);
+            Assert.That(parent.VmState.AccessTracker.Logs.Contains(logEntry), Is.True);
         }
 
         [Test]
         public void Logs_are_restored()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
+            using VmStateScope parent = CreateEvmStateScope();
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, []);
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.Logs.Add(logEntry);
+                child.VmState.AccessTracker.Logs.Add(logEntry);
             }
 
-            Assert.That(parentVmState.AccessTracker.Logs.Contains(logEntry), Is.False);
+            Assert.That(parent.VmState.AccessTracker.Logs.Contains(logEntry), Is.False);
         }
 
         [Test]
         public void Destroy_list_is_committed()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.ToBeDestroyed(Address.Zero);
-                vmState.CommitToParent(parentVmState);
+                child.VmState.AccessTracker.ToBeDestroyed(Address.Zero);
+                child.VmState.CommitToParent(parent.VmState);
             }
 
-            Assert.That(parentVmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.True);
+            Assert.That(parent.VmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.True);
         }
 
         [Test]
         public void Destroy_list_is_restored()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.AccessTracker.ToBeDestroyed(Address.Zero);
+                child.VmState.AccessTracker.ToBeDestroyed(Address.Zero);
             }
 
-            Assert.That(parentVmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.False);
+            Assert.That(parent.VmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.False);
         }
 
         [Test]
         public void Commit_adds_refunds()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.Refund = 333;
-                vmState.CommitToParent(parentVmState);
+                child.VmState.Refund = 333;
+                child.VmState.CommitToParent(parent.VmState);
             }
 
-            Assert.That(parentVmState.Refund, Is.EqualTo(333));
+            Assert.That(parent.VmState.Refund, Is.EqualTo(333));
         }
 
         [Test]
         public void Restore_does_not_add_refunds()
         {
-            VmState<EthereumGasPolicy> parentVmState = CreateEvmState();
-            using (VmState<EthereumGasPolicy> vmState = CreateEvmState(parentVmState))
+            using VmStateScope parent = CreateEvmStateScope();
+            using (VmStateScope child = CreateEvmStateScope(parent.VmState))
             {
-                vmState.Refund = 333;
+                child.VmState.Refund = 333;
             }
 
-            Assert.That(parentVmState.Refund, Is.EqualTo(0));
+            Assert.That(parent.VmState.Refund, Is.EqualTo(0));
         }
 
         [Test]
         public void Can_dispose_without_init()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            vmState.Dispose();
+            using VmStateScope scope = CreateEvmStateScope();
         }
 
         [Test]
         public void Can_dispose_after_init()
         {
-            VmState<EthereumGasPolicy> vmState = CreateEvmState();
-            vmState.InitializeStacks(default, out EvmStack _);
-            vmState.Dispose();
+            using VmStateScope scope = CreateEvmStateScope();
+            scope.VmState.InitializeStacks(default, out EvmStack _);
         }
 
-        private static VmState<EthereumGasPolicy> CreateEvmState(VmState<EthereumGasPolicy> parentVmState = null, bool isContinuation = false) =>
-            parentVmState is null
-                ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromLong(10000),
+        private static VmStateScope CreateEvmStateScope(VmState<EthereumGasPolicy> parentVmState = null) =>
+            new(parentVmState is null
+                ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(10000),
                     ExecutionType.CALL,
                     RentExecutionEnvironment(),
                     new StackAccessTracker(),
                     Snapshot.Empty)
-                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromLong(10000),
+                : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromULong(10000),
                     0,
                     0,
                     ExecutionType.CALL,
@@ -235,9 +231,23 @@ namespace Nethermind.Evm.Test
                     false,
                     RentExecutionEnvironment(),
                     parentVmState.AccessTracker,
-                    Snapshot.Empty);
+                    Snapshot.Empty));
 
         private static ExecutionEnvironment RentExecutionEnvironment() =>
-            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default, default);
+            ExecutionEnvironment.Rent(null, null, null, null, 0, default, default);
+
+        // VmState.Dispose only releases its ExecutionEnvironment for non-top-level frames; the
+        // top-level Env is caller-owned and otherwise leaks. Bundle both so tests dispose cleanly.
+        private readonly struct VmStateScope(VmState<EthereumGasPolicy> vmState) : System.IDisposable
+        {
+            public VmState<EthereumGasPolicy> VmState { get; } = vmState;
+
+            public void Dispose()
+            {
+                ExecutionEnvironment env = VmState.Env;
+                VmState.Dispose();
+                env.Dispose();
+            }
+        }
     }
 }

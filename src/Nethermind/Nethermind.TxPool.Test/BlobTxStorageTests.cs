@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -61,7 +62,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);
@@ -74,7 +75,7 @@ public class BlobTxStorageTests
         Assert.That(found, Is.EqualTo(3));
         for (int i = 0; i < 3; i++)
         {
-            TransactionAssertions.AssertEquivalent(results[i], txs[i], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(results[i], Is.EqualTo(txs[i]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
     }
 
@@ -91,7 +92,7 @@ public class BlobTxStorageTests
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
 
             blobTxStorage.Add(txs[i]);

@@ -126,7 +126,7 @@ namespace Nethermind.State
                 return ZeroBytes;
             }
 
-            Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+            RlpReader rlp = new(value);
             return rlp.DecodeByteArray();
         }
 
@@ -141,8 +141,6 @@ namespace Nethermind.State
         public void HintSet(in UInt256 index, byte[]? value)
         {
         }
-
-        public byte[] Get(in ValueHash256 hash) => GetArray(in hash, null);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)

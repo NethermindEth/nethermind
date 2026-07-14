@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,7 +24,15 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+    /// <remarks>
+    /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
+    /// </remarks>
+    private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
+#if ZK_EVM
+    // Precompile CodeInfo indexed by precompile address number (0x01..0x100):
+    // replaces a FrozenDictionary hash+probe on every precompile CALL.
+    private readonly CodeInfo[] _localPrecompileArray = new CodeInfo[0x101];
+#endif
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
         : this(worldState, precompileProvider, codeInfoLoader: null)
@@ -34,10 +43,14 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
-
-        CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash);
+        _codeInfoLoader = codeInfoLoader;
+#if ZK_EVM
+        foreach (System.Collections.Generic.KeyValuePair<AddressAsKey, CodeInfo> kv in _localPrecompiles)
+        {
+            int idx = ((Address)kv.Key).PrecompileIndexOrNegative();
+            if ((uint)idx < (uint)_localPrecompileArray.Length) _localPrecompileArray[idx] = kv.Value;
+        }
+#endif
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -46,7 +59,12 @@ public class CodeInfoRepository : ICodeInfoRepository
         if (vmSpec.IsPrecompile(codeSource))
         {
             _worldState.AddAccountRead(codeSource);
+            _worldState.RecordAccountAccess(codeSource);
+#if ZK_EVM
+            return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
+#else
             return _localPrecompiles[codeSource];
+#endif
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
@@ -65,11 +83,20 @@ public class CodeInfoRepository : ICodeInfoRepository
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeSource, codeHash, vmSpec);
+        Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader = _codeInfoLoader;
+        return codeInfoLoader is not null
+            ? codeInfoLoader(codeSource, codeHash, vmSpec)
+            : LoadCodeInfoDefault(codeSource, in codeHash);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private CodeInfo LoadCodeInfoDefault(Address address, in ValueHash256 codeHash) =>
+        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
+        // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
+        worldState.RecordBytecodeAccess(address);
         // When executing in parallel must get by address
         byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)

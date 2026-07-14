@@ -6,6 +6,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -40,7 +41,7 @@ public sealed class StorageValuesRequest : IJsonRpcParam
             int index = 0;
             foreach (JsonElement slotElement in property.Value.EnumerateArray())
             {
-                slots[index++] = slotElement.Deserialize<UInt256>(options)!;
+                slots[index++] = slotElement.Deserialize<StorageIndex>(options).Value;
             }
 
             TotalSlots += arrayLength;

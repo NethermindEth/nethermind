@@ -6,7 +6,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -34,9 +33,13 @@ public class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new WorldState(
-        new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager),
-        logManager
+    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+        new WorldState(
+            new TrieStoreScopeProvider(
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+            ),
+            logManager
+        )
     );
 
     private BlockProcessor GetProcessor()
@@ -55,7 +58,9 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
             },
-            new WithdrawalProcessorFactory(logManager)
+            new WithdrawalProcessorFactory(logManager),
+            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -88,7 +93,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor),
+            new StatelessExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }
@@ -99,7 +104,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new EthereumCodeInfoRepository(state),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
             logManager
         );
 }

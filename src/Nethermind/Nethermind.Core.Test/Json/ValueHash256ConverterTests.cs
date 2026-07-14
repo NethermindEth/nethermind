@@ -45,6 +45,11 @@ public class ValueHash256ConverterTests
         Assert.That(act, Throws.TypeOf<JsonException>());
     }
 
+    [TestCase("\"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1\"", TestName = "Rejects_63_hex_odd_short")]
+    [TestCase("\"0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2\"", TestName = "Rejects_65_hex_odd_long")]
+    public void Rejects_odd_length_hex(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<ValueHash256>(json, _options), Throws.InstanceOf<FormatException>());
+
     [TestCase("null", null, TestName = "Null_JSON_yields_null_property_without_invoking_converter")]
     [TestCase("\"" + ValidHex + "\"", ValidHex, TestName = "Valid_hex_populates_nullable_property")]
     public void Nullable_property_accepts(string innerJson, string? expectedHex)

@@ -30,22 +30,23 @@ namespace Nethermind.Blockchain.Test;
 /// <summary>
 /// Covers the column-index fast path on the sequential execution path, reachable only because
 /// <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated validation index. Drives
-/// real execution to produce a BAL, then re-validates it: a matching BAL is accepted via the
-/// fast path, a tampered BAL is rejected.
+/// real execution to produce a BAL, then re-validates it: a matching BAL is accepted (and the
+/// generated index that gates the fast path is shown to be populated), a tampered BAL is rejected.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListSequentialValidationTests
 {
     [Test]
-    public void Sequential_validation_accepts_matching_bal_via_fast_path()
+    public void Sequential_validation_accepts_matching_bal_and_populates_generated_index()
     {
         ReadOnlyBlockAccessList generated = GenerateBlockAccessList();
 
         BlockAccessListManager balManager = null!;
         Assert.DoesNotThrow(() => balManager = RunSequentialValidation(generated));
 
-        // Index fed on the sequential path gates TryFastPath, so a matching BAL was accepted via
-        // the fast path rather than the slow-path fallback that would mask a wiring regression.
+        // The generated validation index is what gates TryFastPath, so confirm the sequential path
+        // actually populated it. Without this wiring the fast path is unreachable and validation
+        // silently falls back to the slow path, masking a regression that this assertion catches.
         Assert.That(balManager.HasGeneratedValidationIndexUpdates, Is.True);
     }
 
@@ -129,7 +130,8 @@ public class BlockAccessListSequentialValidationTests
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance));
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static worldState => new EthereumCodeInfoRepository(worldState));
         return (stateProvider, balManager);
     }
 

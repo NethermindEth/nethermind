@@ -68,12 +68,13 @@ public class SnapServer : ISnapServer
 
     private bool IsRootMissing(Hash256 stateRoot) => (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
 
-    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
+    public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return EmptyByteArrayList.Instance;
 
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
         int pathLength = pathSet.Count;
         using DeferredRlpItemList.Builder builder = new(pathLength);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -81,7 +82,7 @@ public class SnapServer : ISnapServer
         bool abort = false;
         long responseSize = 0;
 
-        for (int i = 0; i < pathLength && !abort && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; i++)
+        for (int i = 0; i < pathLength && !abort && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; i++)
         {
             byte[][]? requestedPath = pathSet[i].Group;
             switch (requestedPath.Length)
@@ -114,7 +115,7 @@ public class SnapServer : ISnapServer
                             Hash256? storageRoot = account.StorageRoot;
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
-                            for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < HardResponseByteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
+                            for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
                                 byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
                                 writer.WriteValue(sRlp);
@@ -294,8 +295,8 @@ public class SnapServer : ISnapServer
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            Rlp.ValueDecoderContext rlpContext = new(bytes);
-            return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref rlpContext);
+            RlpReader reader = new(bytes);
+            return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref reader);
         }
         catch (TrieNodeException)
         {

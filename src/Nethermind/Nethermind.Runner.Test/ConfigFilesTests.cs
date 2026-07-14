@@ -17,7 +17,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -92,17 +91,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000)]
-    [TestCase("mainnet ^archive", 1024000000)]
-    [TestCase("volta archive", 768000000)]
-    [TestCase("volta ^archive", 768000000)]
-    [TestCase("gnosis archive", 1024000000)]
-    [TestCase("gnosis ^archive", 768000000)]
-    [TestCase("poacore archive", 1024000000)]
-    [TestCase("poacore ^archive", 768000000)]
-    [TestCase("spaceneth.json", 64000000)]
-    [TestCase("spaceneth_persistent.json", 128000000)]
-    public void Memory_hint_values_are_correct(string configWildcard, long expectedValue) => Test<IInitConfig, long?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 4096000000UL)]
+    [TestCase("mainnet ^archive", 1024000000UL)]
+    [TestCase("volta archive", 768000000UL)]
+    [TestCase("volta ^archive", 768000000UL)]
+    [TestCase("gnosis archive", 1024000000UL)]
+    [TestCase("gnosis ^archive", 768000000UL)]
+    [TestCase("poacore archive", 1024000000UL)]
+    [TestCase("poacore ^archive", 768000000UL)]
+    [TestCase("spaceneth.json", 64000000UL)]
+    [TestCase("spaceneth_persistent.json", 128000000UL)]
+    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -111,6 +110,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IMetricsConfig, string>(configWildcard, static c => c.NodeName.ToUpperInvariant(), static (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, static c => c.IntervalSeconds, 5);
         Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUrl, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayUsername, (string)null);
+        Test<IMetricsConfig, string>(configWildcard, static c => c.PushGatewayPassword, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]
@@ -153,9 +154,16 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IJsonRpcConfig, string>(configWildcard, static c => c.Host, "127.0.0.1");
     }
 
-    [TestCase("sepolia", DiscoveryVersion.V4)]
-    [TestCase("hoodi", DiscoveryVersion.V4)]
-    [TestCase("mainnet", DiscoveryVersion.V4)]
+    [TestCase("taiko-alethia.json", false)]
+    [TestCase("taiko-hoodi.json", false)]
+    [TestCase("surge-hoodi.json", false)]
+    [TestCase("*", true)]
+    public void StrictHexFormat_is_lenient_only_for_taiko_and_surge(string configWildcard, bool strict) =>
+        Test<IJsonRpcConfig, bool>(configWildcard, static c => c.StrictHexFormat, strict);
+
+    [TestCase("sepolia", DiscoveryVersion.V5)]
+    [TestCase("hoodi", DiscoveryVersion.V5)]
+    [TestCase("mainnet", DiscoveryVersion.All)]
     public void Discovery_versions_are_correct(string configWildcard, DiscoveryVersion discoveryVersion) =>
         Test<IDiscoveryConfig, DiscoveryVersion>(configWildcard, static c => c.DiscoveryVersion, discoveryVersion);
 
@@ -196,22 +204,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
 
     [TestCase("*")]
-    public void Migrations_are_not_enabled_by_default(string configWildcard)
-    {
-        Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
-        Test<IBloomConfig, bool>(configWildcard, static c => c.Migration, false);
-        Test<IBloomConfig, bool>(configWildcard, static c => c.MigrationStatistics, false);
-    }
+    public void Migrations_are_not_enabled_by_default(string configWildcard) => Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
 
-    [TestCase("^mainnet ^gnosis ^sepolia", 0L)]
-    [TestCase("mainnet ^archive", 15537394L)]
-    [TestCase("gnosis ^archive", 25349537L)]
-    [TestCase("sepolia ^archive", 1450409L)]
-    [TestCase("archive", 0L)]
-    public void Barriers_defaults_are_correct(string configWildcard, long barrier)
+    [TestCase("^mainnet ^gnosis ^sepolia", 0UL)]
+    [TestCase("mainnet ^archive", 15537394UL)]
+    [TestCase("gnosis ^archive", 25349537UL)]
+    [TestCase("sepolia ^archive", 1450409UL)]
+    [TestCase("archive", 0UL)]
+    public void Barriers_defaults_are_correct(string configWildcard, ulong barrier)
     {
-        Test<ISyncConfig, long>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
-        Test<ISyncConfig, long>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
+        Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
+        Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientReceiptsBarrier, barrier);
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
@@ -258,20 +261,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode) => Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, static c => c.BlobsSupport, blobsSupportMode);
 
 
-    [TestCase("mainnet")]
-    [TestCase("poacore.json", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_archive.json", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_validator.json", new[] { 16, 16, 16, 16 }, false)]
-    [TestCase("gnosis.json", new[] { 16, 16, 16 })]
-    [TestCase("gnosis_archive.json", new[] { 16, 16, 16 })]
-    [TestCase("volta")]
-    public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
-    {
-        Test<IBloomConfig, bool>(configWildcard, c => c.Index, index);
-        Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
-        Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
-        Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => Assert.That(p, Is.EqualTo(levels ?? new BloomConfig().IndexLevelBucketSizes), cf));
-    }
 
     [Test]
     public void All_config_files_can_be_loaded_without_duplicate_modules()
@@ -334,18 +323,28 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
 
-    [TestCase("chiado", 17_000_000L, 5UL, 3000)]
-    [TestCase("gnosis", 17_000_000L, 5UL, 3000)]
-    [TestCase("mainnet", 60_000_000L)]
-    [TestCase("sepolia", 60_000_000L)]
-    [TestCase("hoodi", 60_000_000L)]
+    [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
+    [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
+    [TestCase("mainnet", 60_000_000UL)]
+    [TestCase("sepolia", 60_000_000UL)]
+    [TestCase("hoodi", 60_000_000UL)]
     [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^hoodi")]
-    public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
+    public void Blocks_defaults_are_correct(string configWildcard, ulong? targetBlockGasLimit = null, ulong secondsPerSlot = 12, int blockProductionTimeout = 4000)
     {
-        Test<IBlocksConfig, long?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
+        Test<IBlocksConfig, ulong?>(configWildcard, static c => c.TargetBlockGasLimit, targetBlockGasLimit);
         Test<IBlocksConfig, ulong>(configWildcard, static c => c.SecondsPerSlot, secondsPerSlot);
         Test<IBlocksConfig, int>(configWildcard, static c => c.BlockProductionTimeoutMs, blockProductionTimeout);
+    }
 
+    [Test]
+    public void TargetBlockGasLimit_does_not_exceed_DefaultMaxBlockGasLimit()
+    {
+        BlocksConfig defaultConfig = new();
+        Test<IBlocksConfig, ulong?>("*", static c => c.TargetBlockGasLimit, (configFile, value) =>
+        {
+            if (value is not null)
+                Assert.That(value.Value, Is.LessThanOrEqualTo(defaultConfig.MaxGasLimit), configFile);
+        });
     }
 
     [Test]

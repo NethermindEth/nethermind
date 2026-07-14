@@ -14,16 +14,17 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
+        PrewarmerState prewarmerState = new(preBlockCaches, isPrewarmer: true);
         PrewarmerScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
-            preBlockCaches,
-            logManager,
-            populatePreBlockCache: true
+            prewarmerState,
+            logManager
         );
 
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
+                .AddSingleton<IPrewarmerState>(prewarmerState)
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
         });

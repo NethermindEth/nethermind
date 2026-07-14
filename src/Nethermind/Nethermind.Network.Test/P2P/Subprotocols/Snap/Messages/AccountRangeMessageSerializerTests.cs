@@ -25,7 +25,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoAccountsNoProofs_HasCorrectLength()
         {
-            AccountRangeMessage msg = new()
+            using AccountRangeMessage msg = new()
             {
                 RequestId = 1,
                 PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -47,7 +47,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-
             SerializerTester.TestZero(serializer, msg);
         }
 
@@ -73,7 +72,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-
             SerializerTester.TestZero(serializer, msg);
         }
 
@@ -94,7 +92,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-
             SerializerTester.TestZero(serializer, msg);
         }
 
@@ -141,7 +138,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-
             SerializerTester.TestZero(serializer, msg);
         }
     }

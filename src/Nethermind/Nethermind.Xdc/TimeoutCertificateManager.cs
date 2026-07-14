@@ -5,7 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -13,6 +13,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.RLP;
+using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -72,7 +73,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
 
         _timeouts.Add(timeout);
-        IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItems(timeout);
+        IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItemsByKey(timeout);
 
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
@@ -122,6 +123,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (timeoutCertificate.Round >= _consensusContext.CurrentRound)
         {
+            _logger.Info($"Timeout certificate for round {timeoutCertificate.Round} received. Advancing round to {timeoutCertificate.Round + 1}.");
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
 
@@ -141,7 +143,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeoutCertificate.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeoutCertificate.GapNumber);
         if (snapshot is null)
         {
             errorMessage = $"Failed to get snapshot using gap number {timeoutCertificate.GapNumber}";
@@ -193,11 +195,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             if (!AllowedToSend())
                 return;
 
-            SendTimeout();
+            ulong currentRound = _consensusContext.CurrentRound;
+            if (_logger.IsDebug) _logger.Debug($"Internal timeout for round {currentRound}.");
+
+            SendTimeout(currentRound);
             _consensusContext.TimeoutCounter++;
 
             XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, currentRound);
 
             if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
             {
@@ -225,9 +230,14 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         Block currentBlock = _blockTree.Head ?? throw new InvalidOperationException("Failed to get current block");
         XdcBlockHeader currentHeader = currentBlock.Header as XdcBlockHeader;
-        long currentBlockNumber = currentBlock.Number;
-        int epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
-        if (Math.Abs((long)timeout.GapNumber - currentBlockNumber) > 3 * epochLength)
+        ulong currentBlockNumber = currentBlock.Number;
+        ulong epochLength = _specProvider.GetXdcSpec(currentHeader, timeout.Round).EpochLength;
+
+        ulong gapDiff = timeout.GapNumber > currentBlockNumber
+            ? timeout.GapNumber - currentBlockNumber
+            : currentBlockNumber - timeout.GapNumber;
+
+        if (gapDiff > 3 * epochLength)
         {
             // Discarded propagated timeout, too far away
             return Task.CompletedTask;
@@ -244,10 +254,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal bool FilterTimeout(Timeout timeout)
     {
         if (timeout.Round < _consensusContext.CurrentRound) return false;
-        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeout.GapNumber);
+        Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber(timeout.GapNumber);
         if (snapshot is null || snapshot.NextEpochCandidates.Length == 0) return false;
 
-        // Verify msg signature
+        if (timeout.Signature is null || !timeout.Signature.HasLowS())
+            return false;
+
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeout.Round, timeout.GapNumber);
         Address signer = _ethereumEcdsa.RecoverAddress(timeout.Signature, in timeoutMsgHash);
         timeout.Signer = signer;
@@ -257,34 +269,37 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
 
-    private void SendTimeout()
+    private void SendTimeout(ulong currentRound)
     {
-        long gapNumber = 0;
         XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header
             ?? throw new InvalidOperationException("Failed to retrieve current header");
-        ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
+
+        ulong gapNumber;
         if (_epochSwitchManager.IsEpochSwitchAtRound(currentRound, currentHeader))
         {
-            long currentNumber = currentHeader.Number + 1;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
+            ulong currentNumber = currentHeader.Number + 1;
+            ulong offset = currentNumber % spec.EpochLength + spec.Gap;
+            gapNumber = currentNumber.SaturatingSub(offset);
         }
         else
         {
             EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader)
                 ?? throw new DataExtractionException(nameof(EpochSwitchInfo));
-            long currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
-            gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
+            ulong currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            ulong offset = currentNumber % spec.EpochLength + spec.Gap;
+            gapNumber = currentNumber.SaturatingSub(offset);
         }
 
-        ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, gapNumber);
         if (!_signer.TrySign(in msgHash, out Signature signedHash))
         {
             if (_logger.IsWarn) _logger.Warn($"XDC signer {_signer.Address} could not sign timeout for round {currentRound} — skipping broadcast.");
             return;
         }
-        Timeout timeoutMsg = new(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
+        Timeout timeoutMsg = new(currentRound, signedHash, gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
+        if (_logger.IsDebug) _logger.Debug($"Sending my timeout vote round={timeoutMsg.Round} gap={timeoutMsg.GapNumber}.");
 
         HandleTimeoutVote(timeoutMsg);
     }
@@ -302,11 +317,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
         Timeout timeout = new(round, null, gap);
-        KeccakRlpStream stream = new();
-        _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
-        return stream.GetValueHash();
+        KeccakRlpWriter writer = new();
+        _timeoutDecoder.Encode(ref writer, timeout, RlpBehaviors.ForSealing);
+        return writer.GetValueHash();
     }
 
     public long GetTimeoutsCount(Timeout timeout) => _timeouts.GetCount(timeout);
-
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> GetReceivedTimeouts() => _timeouts.GetItems();
 }

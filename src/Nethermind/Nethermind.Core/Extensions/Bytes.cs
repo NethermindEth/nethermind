@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
         internal const string ErrMissingPrefix = "hex string without 0x prefix";
         internal const string ErrOddLength = "hex string of odd length";
         internal const string ErrSyntax = "invalid hex string";
+        private const int MaxPaddingLengthToClear = 256;
 
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
@@ -1007,10 +1008,28 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             int actualLength = (chars.Length >> 1) + oddMod;
-            byte[] result = GC.AllocateArray<byte>(length);
-            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+            int paddingLength = length - actualLength;
+            byte[] result = AllocateFixedLengthHexResult(length, paddingLength);
+            Span<byte> writeToSpan = result.AsSpan(paddingLength);
             FromHexString(chars, writeToSpan, oddMod);
             return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] AllocateFixedLengthHexResult(int length, int paddingLength)
+        {
+            if (paddingLength >= 0 && paddingLength <= MaxPaddingLengthToClear)
+            {
+                byte[] result = GC.AllocateUninitializedArray<byte>(length);
+                if (paddingLength > 0)
+                {
+                    result.AsSpan(0, paddingLength).Clear();
+                }
+
+                return result;
+            }
+
+            return GC.AllocateArray<byte>(length);
         }
 
         private static void FromHexString(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
@@ -1022,7 +1041,7 @@ namespace Nethermind.Core.Extensions
 
         private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            if (oddMod == 0 && BitConverter.IsLittleEndian)
+            if (oddMod == 0)
             {
                 if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
                 {

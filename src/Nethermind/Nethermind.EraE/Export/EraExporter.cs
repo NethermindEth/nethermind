@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,7 @@ public sealed class EraExporter(
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
     ILogManager logManager,
+    IPoSSwitcher poSSwitcher,
     IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
 {
@@ -35,7 +37,7 @@ public sealed class EraExporter(
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly int _eraSize = eraConfig.MaxEraSize is > 0 and <= EraWriter.MaxEraSize
+    private readonly ulong _eraSize = eraConfig.MaxEraSize is > 0UL and <= EraWriter.MaxEraSize
         ? eraConfig.MaxEraSize
         : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
 
@@ -43,16 +45,15 @@ public sealed class EraExporter(
     public const string ChecksumsSHA256FileName = "checksums_sha256.txt";
     public const string ChecksumsFileName = "checksums.txt";
 
-    private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
 
-    public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
+    public Task Export(string destinationPath, ulong from, ulong to, CancellationToken cancellation = default)
     {
         if (fileSystem.File.Exists(destinationPath))
             throw new ArgumentException("Destination already exists as a file.", nameof(destinationPath));
-        if (to == 0) to = blockTree.Head?.Number ?? 0;
-        if (to > (blockTree.Head?.Number ?? 0))
-            throw new ArgumentException($"Cannot export beyond head block {blockTree.Head?.Number ?? 0}.");
+        if (to == 0) to = blockTree.Head?.Number ?? 0UL;
+        if (to > (blockTree.Head?.Number ?? 0UL))
+            throw new ArgumentException($"Cannot export beyond head block {blockTree.Head?.Number ?? 0UL}.");
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
 
@@ -62,7 +63,7 @@ public sealed class EraExporter(
         return DoExport(destinationPath, from, to, cancellation);
     }
 
-    private async Task DoExport(string destinationPath, long from, long to, CancellationToken cancellation)
+    private async Task DoExport(string destinationPath, ulong from, ulong to, CancellationToken cancellation)
     {
         int concurrency = CalculateConcurrency(eraConfig.Concurrency);
         if (_logger.IsInfo) _logger.Info($"Exporting EraE blocks {from}–{to} to {destinationPath} (concurrency={concurrency})");
@@ -70,16 +71,15 @@ public sealed class EraExporter(
         if (!fileSystem.Directory.Exists(destinationPath))
             fileSystem.Directory.CreateDirectory(destinationPath);
 
-        ProgressLogger progress = new("EraE export", logManager);
-        progress.Reset(0, to - from + 1);
-        int totalProcessed = 0;
+        using ProgressReporter progress = new("EraE export", logManager, to - from + 1);
+        ulong totalProcessed = 0;
 
-        long startEpoch = from / _eraSize;
-        long endEpoch = to / _eraSize;
-        long epochCount = endEpoch - startEpoch + 1;
+        ulong startEpoch = from / _eraSize;
+        ulong endEpoch = to / _eraSize;
+        ulong epochCount = endEpoch - startEpoch + 1;
 
-        using ArrayPoolList<long> epochIdxs = new((int)epochCount);
-        for (long i = 0; i < epochCount; i++) epochIdxs.Add(i);
+        using ArrayPoolList<ulong> epochIdxs = new((int)epochCount);
+        for (ulong i = 0; i < epochCount; i++) epochIdxs.Add(i);
 
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
@@ -109,18 +109,17 @@ public sealed class EraExporter(
         fileSystem.File.Delete(checksumFilePath);
         await WriteChecksumFile(checksumFilePath, checksums, cancellation);
 
-        progress.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
 
-        async Task WriteEpoch(long epochIdx, CancellationToken cancel)
+        async Task WriteEpoch(ulong epochIdx, CancellationToken cancel)
         {
             int idx = (int)epochIdx;
-            long epoch = startEpoch + epochIdx;
+            ulong epoch = startEpoch + epochIdx;
             // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
-            long epochBlockStart = epoch * _eraSize;
-            long writeFrom = Math.Max(epochBlockStart, from);
-            long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
+            ulong epochBlockStart = epoch * _eraSize;
+            ulong writeFrom = Math.Max(epochBlockStart, from);
+            ulong writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
             if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
@@ -133,14 +132,12 @@ public sealed class EraExporter(
 
             using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
             {
-                for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
+                for (ulong blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
                     Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
 
-                    // IsPostMerge is not part of the RLP encoding and defaults to false when read from
-                    // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
-                    block.Header.IsPostMerge = block.Header.Difficulty == 0;
+                    block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
@@ -160,12 +157,7 @@ public sealed class EraExporter(
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
-
-                    if (Interlocked.Increment(ref totalProcessed) % ProgressLogInterval == 0)
-                    {
-                        progress.Update(totalProcessed);
-                        progress.LogProgress();
-                    }
+                    progress.Update(Interlocked.Increment(ref totalProcessed));
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
@@ -216,22 +208,27 @@ public sealed class EraExporter(
 
     private bool TrySkipExistingEpoch(
         string destinationPath,
-        long epoch,
+        ulong epoch,
         int idx,
-        long writeFrom,
-        long writeTo,
+        ulong writeFrom,
+        ulong writeTo,
         ArrayPoolList<ValueHash256> accumulators,
         ArrayPoolList<ValueHash256> checksums,
         ArrayPoolList<string> fileNames,
         Dictionary<string, ValueHash256> cachedChecksums,
         Dictionary<string, ValueHash256> cachedAccumulators,
-        ref int totalProcessed)
+        ref ulong totalProcessed)
     {
         string? existingFile = null;
-        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}"))
+        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*"))
         {
-            existingFile = f;
-            break;
+            if (!EraPathUtils.IsEraFile(f)) continue;
+            if (EraPathUtils.IsCanonicalEraFile(f))
+            {
+                existingFile = f;
+                break;
+            }
+            existingFile ??= f;
         }
 
         if (existingFile is null)
@@ -261,7 +258,7 @@ public sealed class EraExporter(
             checksums[idx] = reader.CalculateChecksum();
         }
 
-        Interlocked.Add(ref totalProcessed, (int)(writeTo - writeFrom + 1));
+        Interlocked.Add(ref totalProcessed, writeTo - writeFrom + 1);
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
     }

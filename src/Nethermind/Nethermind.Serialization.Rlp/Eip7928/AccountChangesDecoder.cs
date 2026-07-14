@@ -34,25 +34,18 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
-    protected override ReadOnlyAccountChanges DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
+    protected override ReadOnlyAccountChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         Address address = ctx.DecodeAddress();
 
-        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
+        ReadOnlySlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, limit: _slotsLimit);
         UInt256? lastSlot = null;
         foreach (ReadOnlySlotChanges slotChange in slotChanges)
         {
-            // EIP-7928 SlotChanges is a 2-field sequence (slot key + storage changes list);
-            // an empty inner list (RLP 0xc0) gets decoded as null by DecodeArray.
-            if (slotChange is null)
-            {
-                ThrowEmptySlotChanges();
-            }
-
-            UInt256 slot = slotChange.Key;
+            UInt256 slot = slotChange!.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
                 ThrowStorageChangesOutOfOrder();
@@ -100,52 +93,55 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     public int GetLength(GeneratedAccountChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public override void Encode(RlpStream stream, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
-        EncodePrepared(stream, item, in lengths, rlpBehaviors);
+        EncodePrepared(ref writer, item, in lengths, rlpBehaviors);
     }
 
-    public void Encode(RlpStream stream, GeneratedAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode<TWriter>(ref TWriter writer, GeneratedAccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
-        EncodePrepared(stream, item, in lengths, rlpBehaviors);
+        EncodePrepared(ref writer, item, in lengths, rlpBehaviors);
     }
 
-    internal void EncodePrepared(
-        RlpStream stream,
+    internal void EncodePrepared<TWriter>(
+        ref TWriter writer,
         ReadOnlyAccountChanges item,
         in EncodingLengths lengths,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        stream.StartSequence(lengths.ContentLength);
-        stream.Encode(item.Address);
-        EncodeSlotChanges(stream, item.StorageChanges, lengths.StorageChangesContentLength, rlpBehaviors);
-        EncodeStorageReads(stream, item.StorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
-        EncodeIndexed<BalanceChange>(stream, item.BalanceChanges, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<NonceChange>(stream, item.NonceChanges, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<CodeChange>(stream, item.CodeChanges, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+        writer.StartSequence(lengths.ContentLength);
+        writer.Encode(item.Address);
+        EncodeSlotChanges(ref writer, item.StorageChanges, lengths.StorageChangesContentLength, rlpBehaviors);
+        EncodeStorageReads(ref writer, item.StorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
+        EncodeIndexed<TWriter, BalanceChange>(ref writer, item.BalanceChanges, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, NonceChange>(ref writer, item.NonceChanges, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, CodeChange>(ref writer, item.CodeChanges, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
-    internal void EncodePrepared(
-        RlpStream stream,
+    internal void EncodePrepared<TWriter>(
+        ref TWriter writer,
         GeneratedAccountChanges item,
         in EncodingLengths lengths,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        stream.StartSequence(lengths.ContentLength);
-        stream.Encode(item.Address);
+        writer.StartSequence(lengths.ContentLength);
+        writer.Encode(item.Address);
         using (ArrayPoolListRef<GeneratedSlotChanges> sortedSlots = item.GetSortedStorageChanges())
         {
-            EncodeGeneratedSlotChanges(stream, sortedSlots.AsSpan(), lengths.StorageChangesContentLength, rlpBehaviors);
+            EncodeGeneratedSlotChanges(ref writer, sortedSlots.AsSpan(), lengths.StorageChangesContentLength, rlpBehaviors);
         }
         using (ArrayPoolListRef<UInt256> sortedReads = item.GetSortedStorageReads())
         {
-            EncodeStorageReads(stream, sortedReads.AsSpan(), lengths.StorageReadsContentLength, rlpBehaviors);
+            EncodeStorageReads(ref writer, sortedReads.AsSpan(), lengths.StorageReadsContentLength, rlpBehaviors);
         }
-        EncodeIndexed<BalanceChange>(stream, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<NonceChange>(stream, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
-        EncodeIndexed<CodeChange>(stream, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, BalanceChange>(ref writer, CollectionsMarshal.AsSpan(item.BalanceChanges), lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, NonceChange>(ref writer, CollectionsMarshal.AsSpan(item.NonceChanges), lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, CodeChange>(ref writer, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
     public static int GetContentLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
@@ -185,7 +181,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return new EncodingLengths(contentLength, storageChanges, storageReads, balance, nonce, code);
     }
 
-    private static int SlotChangesContentLength(ReadOnlySpan<ReadOnlySlotChanges> items, RlpBehaviors rlpBehaviors)
+    private static int SlotChangesContentLength(scoped ReadOnlySpan<ReadOnlySlotChanges> items, RlpBehaviors rlpBehaviors)
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
         int len = 0;
@@ -204,7 +200,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static int UInt256ContentLength(ReadOnlySpan<UInt256> items, RlpBehaviors rlpBehaviors)
+    private static int UInt256ContentLength(scoped ReadOnlySpan<UInt256> items, RlpBehaviors rlpBehaviors)
     {
         UInt256Decoder decoder = UInt256Decoder.Instance;
         int len = 0;
@@ -223,7 +219,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static int IndexedContentLength<T>(ReadOnlySpan<T> items, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static int IndexedContentLength<T>(scoped ReadOnlySpan<T> items, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
     {
         int len = 0;
         for (int i = 0; i < items.Length; i++)
@@ -233,42 +229,46 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         return len;
     }
 
-    private static void EncodeSlotChanges(RlpStream stream, ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeSlotChanges<TWriter>(ref TWriter writer, scoped ReadOnlySpan<ReadOnlySlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            decoder.Encode(stream, items[i], rlpBehaviors);
+            decoder.Encode(ref writer, items[i], rlpBehaviors);
         }
     }
 
-    private static void EncodeGeneratedSlotChanges(RlpStream stream, ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeGeneratedSlotChanges<TWriter>(ref TWriter writer, scoped ReadOnlySpan<GeneratedSlotChanges> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            decoder.Encode(stream, items[i], rlpBehaviors);
+            decoder.Encode(ref writer, items[i], rlpBehaviors);
         }
     }
 
-    private static void EncodeStorageReads(RlpStream stream, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageReads<TWriter>(ref TWriter writer, scoped ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        UInt256Decoder decoder = UInt256Decoder.Instance;
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            decoder.Encode(stream, items[i], rlpBehaviors);
+            writer.Encode(items[i]);
         }
     }
 
-    private static void EncodeIndexed<T>(RlpStream stream, ReadOnlySpan<T> items, int contentLength, RlpDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static void EncodeIndexed<TWriter, T>(ref TWriter writer, scoped ReadOnlySpan<T> items, int contentLength, IndexedChangeDecoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+        where T : struct, IIndexedChange
     {
-        stream.StartSequence(contentLength);
+        writer.StartSequence(contentLength);
         for (int i = 0; i < items.Length; i++)
         {
-            encoder.Encode(stream, items[i], rlpBehaviors);
+            encoder.Encode(ref writer, items[i], rlpBehaviors);
         }
     }
 
@@ -290,7 +290,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     /// <summary>Binary search over <paramref name="sortedSlotChanges"/> (sorted by key, verified
     /// during decode) for <paramref name="key"/>. O(log n) lookup with no allocation, matching
     /// master's behaviour for the storage-read-vs-change overlap check.</summary>
-    private static bool ContainsStorageChange(ReadOnlySlotChanges[] sortedSlotChanges, UInt256 key)
+    private static bool ContainsStorageChange(ReadOnlySlotChanges[] sortedSlotChanges, in UInt256 key)
     {
         int low = 0;
         int high = sortedSlotChanges.Length - 1;
@@ -314,10 +314,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         }
         return false;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowEmptySlotChanges() =>
-        throw new RlpException("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowStorageChangesOutOfOrder() =>

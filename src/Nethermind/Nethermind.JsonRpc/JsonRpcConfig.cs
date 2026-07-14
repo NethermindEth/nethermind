@@ -32,6 +32,8 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
+    public bool RestrictIpcSocketPermissions { get; set; } = true;
+
     public string[] EnabledModules
     {
         get => _enabledModules;
@@ -42,7 +44,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     }
 
     public string[] AdditionalRpcUrls { get; set; } = [];
-    public long? GasCap { get; set; } = 100000000;
+    public ulong? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
     public bool BufferResponses { get; set; }
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";

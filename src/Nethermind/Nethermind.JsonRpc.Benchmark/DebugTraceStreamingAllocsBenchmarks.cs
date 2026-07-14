@@ -41,7 +41,7 @@ public class DebugTraceStreamingAllocsBenchmarks
         for (int d = 0; d < 5; d++)
         {
             _envByDepth[d] = ExecutionEnvironment.Rent(
-                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default, default);
+                CodeInfo.Empty, Address.Zero, Address.Zero, null, d, default, default);
         }
         _valueBuffer = new byte[32];
     }
@@ -86,10 +86,11 @@ public class DebugTraceStreamingAllocsBenchmarks
         ReadOnlySpan<byte> valueSpan = _valueBuffer;
         for (int op = 0; op < OpcodesPerTx; op++)
         {
+            ulong opU = (ulong)op;
             int depth = (op % 4) + 1;
-            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - op, _envByDepth[depth - 1]);
-            tracer.SetOperationStorage(Address.Zero, new UInt256((ulong)op), valueSpan, valueSpan);
-            tracer.ReportOperationRemainingGas(900_000 - op);
+            tracer.StartOperation(op, Instruction.SSTORE, 1_000_000 - opU, _envByDepth[depth - 1]);
+            tracer.SetOperationStorage(Address.Zero, new UInt256(opU), valueSpan, valueSpan);
+            tracer.ReportOperationRemainingGas(900_000 - opU);
         }
         tracer.BuildResult();
     }

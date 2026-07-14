@@ -22,6 +22,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -39,6 +40,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Core.Container;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
@@ -90,12 +92,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
-    private const int HeadPivotDistance = 500;
+    private const ulong HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
-    private const int BalSyncChainLength = 15_000;
+    private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int PartialBalActivationBlock = 400;
-    private const int PartialBalSyncHeadPivotDistance = 500;
+    private const ulong PartialBalSyncHeadPivotDistance = 500;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
     private static readonly DateTime PostMergeStartTime = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -112,12 +114,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// whose value is the sum of all original values. This preserves the cumulative effect
     /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
     /// </summary>
-    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
+    private static void RekeyDictionaryToGenesis(IDictionary<ulong, ulong>? dict)
     {
         if (dict is null or { Count: 0 }) return;
-        long total = dict.Values.Sum();
+        ulong total = 0;
+        foreach (ulong val in dict.Values)
+        {
+            total += val;
+        }
         dict.Clear();
-        dict[0] = total;
+        dict[0UL] = total;
     }
 
     /// <summary>
@@ -125,12 +131,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// using the last (highest-block) reward value. This preserves the final block reward
     /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
     /// </summary>
-    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<ulong, UInt256>? dict)
     {
         if (dict is null or { Count: 0 }) return;
         UInt256 lastReward = dict.Values.Last();
         dict.Clear();
-        dict[0] = lastReward;
+        dict[0UL] = lastReward;
     }
 
     /// <summary>
@@ -303,9 +309,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             // Activate configured mainnet future EIP
             ManualTimestamper timestamper = new(PostMergeStartTime);
             builder
-                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
+                .AddModule(new TestMergeModule())
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
+                .AddLast<IP2PCapabilityResolver, PostMergeCapabilitiesResolver>()
                 ;
         }
         else
@@ -320,20 +327,19 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         IContainer container = builder.Build();
 
-        if (isPostMerge)
-        {
-            EnablePostMergeEthCapabilities(container.Resolve<IProtocolsManager>());
-        }
-
         return container;
     }
 
-    private static void EnablePostMergeEthCapabilities(IProtocolsManager protocolsManager)
+    private sealed class PostMergeCapabilitiesResolver : IP2PCapabilityResolver
     {
-        ArgumentNullException.ThrowIfNull(protocolsManager);
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth69));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth70));
-        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth71));
+        public event Action? Changed { add { } remove { } }
+
+        public void Resolve(ISet<Capability> capabilities)
+        {
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth69));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth70));
+            capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth71));
+        }
     }
 
     private static void EnableBlockAccessListsFromGenesis(ChainSpec spec)
@@ -371,7 +377,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             if (engineParameters is EthashChainSpecEngineParameters ethashParameters)
             {
                 ethashParameters.BlockReward = [];
-                ethashParameters.DifficultyBombDelays = new Dictionary<long, long>();
+                ethashParameters.DifficultyBombDelays = new Dictionary<ulong, ulong>();
             }
         }
     }
@@ -509,12 +515,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken) =>
         await SetPivot(_server, syncConfig, cancellationToken, HeadPivotDistance);
 
-    private static async Task SetPivot(IContainer server, SyncConfig syncConfig, CancellationToken cancellationToken, int headPivotDistance)
+    private static async Task SetPivot(IContainer server, SyncConfig syncConfig, CancellationToken cancellationToken, ulong headPivotDistance)
     {
         IBlockProcessingQueue blockProcessingQueue = server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
         IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
-        long serverHeadNumber = serverBlockTree.Head!.Number;
+        ulong serverHeadNumber = serverBlockTree.Head!.Number;
         BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - headPivotDistance)!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
@@ -594,7 +600,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.That(serverBal, Is.Not.Null);
         }
 
-        long syncPivotNumber = 0;
+        ulong syncPivotNumber = 0;
         PrivateKey clientKey = TestItem.PrivateKeyF;
         await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
@@ -681,7 +687,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.That(firstActivatedBal, Is.Not.Null);
         }
 
-        long syncPivotNumber = 0;
+        ulong syncPivotNumber = 0;
         PrivateKey clientKey = TestItem.PrivateKeyF;
         await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
@@ -707,7 +713,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private interface ITestEnv
     {
         Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation);
-        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead);
+        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead);
         Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken);
     }
 
@@ -742,7 +748,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         }
 
 
-        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
+        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead)
         {
             await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
 
@@ -773,6 +779,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IPayloadPreparationService payloadPreparationService,
         IBlockCacheService blockCacheService,
         IMergeSyncController mergeSyncController,
+        ISyncConfig syncConfig,
         ITestEnv preMergeTestEnv
     ) : ITestEnv
     {
@@ -806,18 +813,27 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await newBlockTask;
         }
 
-        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
+        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, ulong finalizedDistanceFromHead)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
-            long finalizedBlockNumber = Math.Max(0, otherBlockTree.Head!.Number - finalizedDistanceFromHead);
+            ulong finalizedBlockNumber = otherBlockTree.Head!.Number.SaturatingSub(finalizedDistanceFromHead);
             Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
-            blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
+            blockCacheService.TryAddBlock(finalizedBlock);
+            blockCacheService.TryAddBlock(headBlock);
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
-            await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            // In fast sync the starting pivot is resolved from the finalized block (before the sync mode
+            // selector starts); wait for that before kicking off beacon header sync. Full sync keeps the
+            // config pivot and never resolves a fresh one, so there is nothing to wait for.
+            if (syncConfig.FastSync)
+            {
+                while (blockTree.SyncPivot.BlockHash != finalizedBlock.Hash)
+                {
+                    await Task.Delay(50, cancellationToken);
+                }
+            }
+            mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
         }
@@ -889,15 +905,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        private readonly Dictionary<Address, UInt256> _nonces = [];
+        private readonly Dictionary<Address, ulong> _nonces = [];
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
-            long gasLimit = 1_000_000;
+            ulong gasLimit = 1_000_000;
 
-            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
-            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
+            _nonces.TryGetValue(nodeKey.Address, out ulong currentNonce);
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0UL) + 1UL, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
@@ -911,10 +927,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public async Task BuildBlockWithStorage(int blockNumber, CancellationToken cancellation)
         {
-            long gasLimit = 200_000;
+            ulong gasLimit = 200_000;
 
-            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
-            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
+            _nonces.TryGetValue(nodeKey.Address, out ulong currentNonce);
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0UL) + 1UL, null);
 
             Transaction tx;
 
@@ -971,7 +987,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
             IReceiptStorage otherReceiptStorage = server.Resolve<IReceiptStorage>();
 
-            for (int i = 0; i < otherBlockTree.Head?.Number; i++)
+            ulong headNumber = otherBlockTree.Head?.Number ?? 0UL;
+            for (ulong i = 0; i < headNumber; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
@@ -995,10 +1012,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         private void AssertBlockEqual(Block block1, Block block2)
         {
-            using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
-            using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
+            using ArrayPoolSpan<byte> stream1 = _blockDecoder.EncodeToArrayPoolSpan(block1);
+            using ArrayPoolSpan<byte> stream2 = _blockDecoder.EncodeToArrayPoolSpan(block2);
 
-            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
+            Assert.That(((ReadOnlySpan<byte>)stream1).ToArray(), Is.EqualTo(((ReadOnlySpan<byte>)stream2).ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
@@ -1029,7 +1046,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await VerifyAllBlocksAndReceipts(sourceServer, token);
             }, cancellationToken);
 
-        public async Task SyncFromServerAndVerifyAccessLists(IContainer server, long syncPivotNumber, CancellationToken cancellationToken) =>
+        public async Task SyncFromServerAndVerifyAccessLists(IContainer server, ulong syncPivotNumber, CancellationToken cancellationToken) =>
             await ExecuteSyncFromServer(server, async (sourceServer, token) =>
             {
                 await VerifyHeadWith(sourceServer, token);
@@ -1040,7 +1057,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IContainer server,
             Func<IContainer, CancellationToken, Task> verification,
             CancellationToken cancellationToken,
-            long finalizedDistanceFromHead = 250)
+            ulong finalizedDistanceFromHead = 250)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
@@ -1064,14 +1081,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Assert.That(stateVerified, Is.True);
         }
 
-        private Task VerifyBlockAccessListsWith(IContainer server, long syncPivotNumber, CancellationToken cancellationToken)
+        private Task VerifyBlockAccessListsWith(IContainer server, ulong syncPivotNumber, CancellationToken cancellationToken)
         {
             IBlockTree sourceBlockTree = server.Resolve<IBlockTree>();
             IBlockAccessListStore sourceBlockAccessListStore = server.Resolve<IBlockAccessListStore>();
-            long sourceHeadNumber = sourceBlockTree.Head!.Number;
+            ulong sourceHeadNumber = sourceBlockTree.Head!.Number;
 
             TestContext.Progress.WriteLine($"BAL sync verification: comparing BAL presence and exact BAL blobs for blocks 1-{sourceHeadNumber}. Pivot {syncPivotNumber}.");
-            for (long blockNumber = 1; blockNumber <= sourceHeadNumber; blockNumber++)
+            for (ulong blockNumber = 1; blockNumber <= sourceHeadNumber; blockNumber++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 CompareBlockAccessList(blockNumber);
@@ -1085,7 +1102,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"BAL sync verification: BALs matched through head {sourceHeadNumber}.");
             return Task.CompletedTask;
 
-            void CompareBlockAccessList(long blockNumber)
+            void CompareBlockAccessList(ulong blockNumber)
             {
                 Block sourceBlock = sourceBlockTree.FindBlock(blockNumber)!;
                 Block syncedBlock = blockTree.FindBlock(blockNumber)!;
@@ -1105,9 +1122,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                             $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
                     }
 
-                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
-                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                        Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    }
                     return;
                 }
 
@@ -1129,7 +1149,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, long blockNumber, Hash256 blockHash)
+        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, ulong blockNumber, Hash256 blockHash)
         {
             using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockNumber, blockHash);
             return rlp?.Memory.ToArray();

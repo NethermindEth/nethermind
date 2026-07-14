@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
@@ -39,7 +40,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             Transaction tx = Build.A.Transaction
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
@@ -87,6 +88,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobTx!.GetLength(), Is.GreaterThan((int)txPoolConfig.MaxBlobTxSize));
         }
 
+
         [Test]
         public void blob_pool_size_should_be_correct([Values(true, false)] bool persistentStorageEnabled)
         {
@@ -103,7 +105,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)i)
+                    .WithNonce(i)
                     .WithShardBlobTxTypeAndFields()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
                     .WithMaxPriorityFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -137,7 +139,7 @@ namespace Nethermind.TxPool.Test
             Parallel.For(0, txPoolConfig.Size, (nonce) =>
             {
                 txs[nonce] = Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
+                    .WithNonce(nonce)
                     .WithType(txType)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -172,7 +174,7 @@ namespace Nethermind.TxPool.Test
             for (int i = 0; i < poolSize; i++)
             {
                 Transaction tx = Build.A.Transaction
-                    .WithNonce((UInt256)i)
+                    .WithNonce(i)
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei + (UInt256)(100 - i))
@@ -185,7 +187,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(isBlob ? poolSize : 0));
 
             Transaction feeTooLowTx = Build.A.Transaction
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei + UInt256.One)
@@ -211,17 +213,17 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
+            Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
 
             Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
             if (isPersistentStorage)
             {
-                AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
             }
         }
 
@@ -232,11 +234,14 @@ namespace Nethermind.TxPool.Test
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
-            Assert.That(_txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned), Is.False);
-            Assert.That(blobTxReturned, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(TestItem.KeccakA, out Transaction blobTxReturned), Is.False);
+                Assert.That(blobTxReturned, Is.Null);
 
-            Assert.That(blobTxStorage.TryGet(TestItem.KeccakA, TestItem.AddressA, UInt256.One, out Transaction blobTxFromDb), Is.False);
-            Assert.That(blobTxFromDb, Is.Null);
+                Assert.That(blobTxStorage.TryGet(TestItem.KeccakA, TestItem.AddressA, UInt256.One, out Transaction blobTxFromDb), Is.False);
+                Assert.That(blobTxFromDb, Is.Null);
+            }
         }
 
         [TestCase(1, null, true)]
@@ -313,7 +318,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction nonceGapTx = Build.A.Transaction
@@ -321,7 +326,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce((UInt256)2)
+                .WithNonce(2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -331,7 +336,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_not_allow_to_have_pending_transactions_of_both_blob_type_and_other([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
+            Transaction GetTx(bool isBlob, ulong nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -342,8 +347,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
-            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, 0UL);
+            Transaction secondTx = GetTx(secondIsBlob, 1UL);
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(secondTx, TxHandlingOptions.None), Is.EqualTo(firstIsBlob ^ secondIsBlob ? AcceptTxResult.PendingTxsOfConflictingType : AcceptTxResult.Accepted));
@@ -363,14 +368,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction oldTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction newTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(oldTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(oldTx.MaxPriorityFeePerGas * 2)
                 .WithMaxFeePerBlobGas(oldTx.MaxFeePerBlobGas * 2)
@@ -380,17 +385,17 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(oldTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(oldTx.Hash!, out Transaction blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, oldTx);
+            Assert.That(blobTxReturned, Is.EqualTo(oldTx).UsingTransactionComparer());
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress!, oldTx.Timestamp, out Transaction blobTxFromDb), Is.True);
-            AssertTransactionsEquivalent(blobTxFromDb, oldTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(blobTxFromDb, Is.EqualTo(oldTx).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
 
             Assert.That(_txPool.SubmitTx(newTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             Assert.That(_txPool.TryGetPendingTransaction(newTx.Hash!, out blobTxReturned), Is.True);
-            AssertTransactionsEquivalent(blobTxReturned, newTx);
+            Assert.That(blobTxReturned, Is.EqualTo(newTx).UsingTransactionComparer());
             Assert.That(blobTxStorage.TryGet(oldTx.Hash, oldTx.SenderAddress, oldTx.Timestamp, out blobTxFromDb), Is.False);
             Assert.That(blobTxStorage.TryGet(newTx.Hash, newTx.SenderAddress!, newTx.Timestamp, out blobTxFromDb), Is.True);
-            AssertTransactionsEquivalent(blobTxFromDb, newTx, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(blobTxFromDb, Is.EqualTo(newTx).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
 
         [Test]
@@ -406,7 +411,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction tx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithMaxFeePerBlobGas(UInt256.One)
@@ -417,7 +422,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
 
             _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
-            AssertTransactionsEquivalent(returned, isPersistentStorage ? new LightTransaction(tx) : tx);
+            Assert.That(returned, Is.EqualTo(isPersistentStorage ? new LightTransaction(tx) : tx).UsingTransactionComparer());
         }
 
         [Test]
@@ -437,7 +442,7 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction
                 .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithMaxFeePerBlobGas(isBlob ? UInt256.One : null)
@@ -450,13 +455,13 @@ namespace Nethermind.TxPool.Test
             {
                 _txPool.TryGetBlobTxSortingEquivalent(tx.Hash!, out Transaction returned);
                 Assert.That(returned.GasBottleneck, Is.EqualTo(UInt256.Zero));
-                AssertTransactionsEquivalent(returned, isPersistentStorage ? new LightTransaction(tx) : tx, nameof(Transaction.GasBottleneck));
+                Assert.That(returned, Is.EqualTo(isPersistentStorage ? new LightTransaction(tx) : tx).UsingTransactionComparer(nameof(Transaction.GasBottleneck)));
                 Assert.That(returned, Is.Not.EqualTo(isPersistentStorage ? tx : new LightTransaction(tx)));
             }
             else
             {
                 Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out Transaction eip1559Tx), Is.True);
-                AssertTransactionsEquivalent(eip1559Tx, tx);
+                Assert.That(eip1559Tx, Is.EqualTo(tx).UsingTransactionComparer());
                 Assert.That(eip1559Tx.GasBottleneck, Is.EqualTo(1.GWei));
             }
         }
@@ -471,14 +476,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction firstTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobsInFirstTx)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction secondTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobsInSecondTx)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(firstTx.MaxFeePerGas * 2)
                 .WithMaxPriorityFeePerGas(firstTx.MaxPriorityFeePerGas * 2)
                 .WithMaxFeePerBlobGas(firstTx.MaxFeePerBlobGas * 2)
@@ -495,11 +500,11 @@ namespace Nethermind.TxPool.Test
             if (shouldReplace)
             {
                 Assert.That(returnedFirstTx, Is.Null);
-                AssertTransactionsEquivalent(returnedSecondTx, secondTx);
+                Assert.That(returnedSecondTx, Is.EqualTo(secondTx).UsingTransactionComparer());
             }
             else
             {
-                AssertTransactionsEquivalent(returnedFirstTx, firstTx);
+                Assert.That(returnedFirstTx, Is.EqualTo(firstTx).UsingTransactionComparer());
                 Assert.That(returnedSecondTx, Is.Null);
             }
         }
@@ -520,14 +525,14 @@ namespace Nethermind.TxPool.Test
 
             Transaction firstTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = false })
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction secondTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(2.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -544,7 +549,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingTransaction(firstTx.Hash!, out Transaction returnedFirstTx), Is.False);
             Assert.That(_txPool.TryGetPendingTransaction(secondTx.Hash!, out Transaction returnedSecondTx), Is.True);
             Assert.That(returnedFirstTx, Is.Null);
-            AssertTransactionsEquivalent(returnedSecondTx, secondTx);
+            Assert.That(returnedSecondTx, Is.EqualTo(secondTx).UsingTransactionComparer());
         }
 
         [Test]
@@ -559,7 +564,7 @@ namespace Nethermind.TxPool.Test
             Transaction firstTransaction = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerBlobGas(UInt256.Zero)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -570,7 +575,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerBlobGas(supportsBlobs
                     ? UInt256.One
                     : UInt256.Zero)
-                .WithNonce(UInt256.One)
+                .WithNonce(1)
                 .WithMaxFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .WithMaxPriorityFeePerGas(halfOfMaxGasPriceWithoutOverflow)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
@@ -581,7 +586,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_allow_to_have_pending_transaction_of_other_type_if_conflicting_one_was_included([Values(true, false)] bool firstIsBlob, [Values(true, false)] bool secondIsBlob)
         {
-            Transaction GetTx(bool isBlob, UInt256 nonce) => Build.A.Transaction
+            Transaction GetTx(bool isBlob, ulong nonce) => Build.A.Transaction
                     .WithType(isBlob ? TxType.Blob : TxType.EIP1559)
                     .WithShardBlobTxTypeAndFieldsIfBlobTx()
                     .WithMaxFeePerGas(1.GWei)
@@ -592,8 +597,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction firstTx = GetTx(firstIsBlob, UInt256.Zero);
-            Transaction secondTx = GetTx(secondIsBlob, UInt256.One);
+            Transaction firstTx = GetTx(firstIsBlob, 0UL);
+            Transaction secondTx = GetTx(secondIsBlob, 1UL);
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -636,7 +641,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_add_processed_txs_to_db()
         {
-            const long blockNumber = 358;
+            const ulong blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
             ITxPoolConfig txPoolConfig = new TxPoolConfig()
@@ -668,7 +673,7 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs), Is.True);
             Assert.That(returnedTxs.Length, Is.EqualTo(txs.Length));
-            AssertTransactionsEquivalent(returnedTxs, txs, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress));
+            Assert.That(returnedTxs, Is.EquivalentTo(txs).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress)));
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs), Is.False);
@@ -677,7 +682,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task should_bring_back_reorganized_blob_txs()
         {
-            const long blockNumber = 358;
+            const ulong blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
             ITxPoolConfig txPoolConfig = new TxPoolConfig()
@@ -717,16 +722,16 @@ namespace Nethermind.TxPool.Test
             // tx from block B should be removed from blob pool, but present in processed txs db
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _), Is.False);
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] blockBTxs), Is.True);
-            AssertTransactionsEquivalent(txsB, blockBTxs, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress));
+            Assert.That(txsB, Is.EquivalentTo(blockBTxs).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex), nameof(Transaction.SenderAddress)));
 
             // blob txs from reorganized blockA should be readded to blob pool
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(txsA.Length));
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out Transaction tx1), Is.True);
             Assert.That(_txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out Transaction tx2), Is.True);
 
-            AssertTransactionsEquivalent(tx1, txsA[0], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(tx1, Is.EqualTo(txsA[0]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
 
-            AssertTransactionsEquivalent(tx2, txsA[1], nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+            Assert.That(tx2, Is.EqualTo(txsA[1]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
         }
 
         [Test]
@@ -838,7 +843,7 @@ namespace Nethermind.TxPool.Test
                 for (int i = 0; i < txsPerSender; i++)
                 {
                     Transaction tx = Build.A.Transaction
-                        .WithNonce((UInt256)i)
+                        .WithNonce(i)
                         .WithShardBlobTxTypeAndFields()
                         .WithMaxFeePerGas(1.GWei)
                         .WithMaxPriorityFeePerGas(1.GWei)
@@ -890,7 +895,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = hasTxCellProofs })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
@@ -899,15 +904,18 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
-                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
-                Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
-
-                Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
-                if (isPersistentStorage)
+                using (Assert.EnterMultipleScope())
                 {
-                    AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                    Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
+
+                    Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
+                    if (isPersistentStorage)
+                    {
+                        Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    }
                 }
             }
             else
@@ -943,7 +951,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
@@ -952,21 +960,140 @@ namespace Nethermind.TxPool.Test
 
             if (isTxValid)
             {
-                AssertTransactionsEquivalent(blobTxReturned, blobTxAdded);
-                ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
-                Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
-
-                Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
-                if (isPersistentStorage)
+                using (Assert.EnterMultipleScope())
                 {
-                    AssertTransactionsEquivalent(blobTxFromDb, blobTxAdded, nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex));
+                    Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
+
+                    Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
+                    if (isPersistentStorage)
+                    {
+                        Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    }
                 }
             }
             else
             {
                 Assert.That(blobTxReturned, Is.Null);
             }
+        }
+
+        [Test]
+        public void should_convert_cell_proofs_to_blob_proofs_if_enabled([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool isConversionEnabled)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                Size = 10,
+                ProofsTranslationEnabled = isConversionEnabled
+            };
+            BlobTxStorage blobTxStorage = new();
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // update head and set correct current proof version
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(isConversionEnabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isConversionEnabled));
+
+            if (isConversionEnabled)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
+                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(1));
+                    Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V0));
+                    Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
+
+                    Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
+                    if (isPersistentStorage)
+                    {
+                        Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                    }
+                }
+            }
+            else
+            {
+                Assert.That(blobTxReturned, Is.Null);
+            }
+        }
+
+        [Test]
+        public void should_reject_malformed_blob_proofs_when_conversion_is_enabled()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.InMemory,
+                Size = 10,
+                ProofsTranslationEnabled = true
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxAdded.NetworkWrapper;
+            blobTxAdded.NetworkWrapper = wrapper with { Proofs = [] };
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.False);
+            Assert.That(blobTxReturned, Is.Null);
+        }
+
+        [Test]
+        public void should_reject_malformed_cell_proofs_when_conversion_is_enabled()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.InMemory,
+                Size = 10,
+                ProofsTranslationEnabled = true
+            };
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+
+            Transaction blobTxAdded = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxAdded.NetworkWrapper;
+            blobTxAdded.NetworkWrapper = wrapper with { Commitments = [] };
+
+            AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.False);
+            Assert.That(blobTxReturned, Is.Null);
         }
 
         [TestCaseSource(nameof(BlobScheduleActivationsTestCaseSource))]
@@ -985,7 +1112,7 @@ namespace Nethermind.TxPool.Test
                 }
             });
 
-            UInt256 nonce = 0;
+            ulong nonce = 0;
 
             TxPoolConfig txPoolConfig = new() { BlobsSupport = poolMode, Size = 10 };
             _txPool = CreatePool(txPoolConfig, provider);
@@ -1049,7 +1176,7 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
-        private Transaction CreateBlobTx(PrivateKey sender, UInt256 nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
+        private Transaction CreateBlobTx(PrivateKey sender, ulong nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: releaseSpec)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
@@ -1161,14 +1288,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1182,11 +1309,14 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(2));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Not.Null);
-            Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-            Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(2));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Not.Null);
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
         }
 
         [Test]
@@ -1206,7 +1336,7 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1219,9 +1349,12 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(1));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(1));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Null);
+            }
         }
 
         [Test]
@@ -1245,14 +1378,14 @@ namespace Nethermind.TxPool.Test
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .WithNonce(UInt256.Zero)
+                .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
 
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -1268,11 +1401,14 @@ namespace Nethermind.TxPool.Test
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
-            Assert.That(found, Is.EqualTo(2));
-            Assert.That(blobs[0], Is.Not.Null);
-            Assert.That(blobs[1], Is.Not.Null);
-            Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-            Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(2));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(blobs[1], Is.Not.Null);
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
         }
     }
 }

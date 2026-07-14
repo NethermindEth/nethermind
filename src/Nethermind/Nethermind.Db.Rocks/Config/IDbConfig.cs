@@ -33,7 +33,10 @@ public interface IDbConfig : IConfig
     bool? VerifyChecksum { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
-    bool FlushOnExit { get; set; }
+    [ConfigItem(
+        Description = "How RocksDB is flushed on shutdown. 'None' skips flushing; 'WalOnly' flushes only the write-ahead log (fast, recovered via WAL replay on restart); 'Full' also materializes memtables into SST files (slower).",
+        DefaultValue = "WalOnly")]
+    FlushOnExitMode FlushOnExit { get; set; }
 
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
@@ -79,9 +82,6 @@ public interface IDbConfig : IConfig
 
     string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
-
-    string BloomDbRocksDbOptions { get; set; }
-    string? BloomDbAdditionalRocksDbOptions { get; set; }
 
     ulong? CodeDbRowCacheSize { get; set; }
     string CodeDbRocksDbOptions { get; set; }

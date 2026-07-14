@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
-        public long? BlockNumber { get; }
+        public ulong? BlockNumber { get; }
 
         public Hash256? BlockHash { get; }
 
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockParameter(BlockParameterType type) => Type = type;
 
-        public BlockParameter(long number)
+        public BlockParameter(ulong number)
         {
             RequireCanonical = true;
             Type = BlockParameterType.BlockNumber;
@@ -151,7 +151,10 @@ namespace Nethermind.JsonRpc.Data
                                             ReadStringFormatValueSequence(ref reader, options),
                 JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
                 JsonTokenType.Null => BlockParameter.Latest,
-                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
+                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat =>
+                    reader.TryGetUInt64(out ulong parsed)
+                        ? new BlockParameter(parsed)
+                        : throw new JsonException("block number must be a non-negative integer"),
                 _ => throw new FormatException("unknown block parameter type")
             };
 
@@ -264,13 +267,27 @@ namespace Nethermind.JsonRpc.Data
                     return new BlockParameter(new Hash256(bytes));
                 }
 
+                if (EthereumJsonSerializer.StrictHexFormat)
+                {
+                    // EIP-1474 quantity: the empty "0x" is not a valid block number.
+                    if (span.Length == 0)
+                    {
+                        throw new BlockParameterParseException($"hex string \"{Bytes.EmptyHexValue}\"");
+                    }
+                    // EIP-1474 quantity: no leading-zero digits (only "0x0" represents zero).
+                    if (span.Length > 1 && span[0] == (byte)'0')
+                    {
+                        throw new BlockParameterParseException("hex number with leading zero digits");
+                    }
+                }
+
                 // Parse as block number
-                long value = ParseHexNumber(span);
+                ulong value = ParseHexNumber(span);
                 return new BlockParameter(value);
             }
 
             // Try decimal format (if not strict)
-            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out long decimalValue, out _))
+            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out ulong decimalValue, out _))
             {
                 return new BlockParameter(decimalValue);
             }
@@ -280,20 +297,16 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long ParseHexNumber(ReadOnlySpan<byte> span)
+        private static ulong ParseHexNumber(ReadOnlySpan<byte> span)
         {
             int oddMod = span.Length % 2;
             int length = (span.Length >> 1) + oddMod;
-            long value = 0;
+            ulong value = 0;
 
             Span<byte> output = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref value, 1));
-            Bytes.FromUtf8HexString(span, output[(sizeof(long) - length)..]);
+            Bytes.FromUtf8HexString(span, output[(sizeof(ulong) - length)..]);
 
-            return BitConverter.IsLittleEndian switch
-            {
-                true => BinaryPrimitives.ReverseEndianness(value),
-                _ => value
-            };
+            return BinaryPrimitives.ReverseEndianness(value);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -310,7 +323,7 @@ namespace Nethermind.JsonRpc.Data
             not null when value.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
             not null when value.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
             { Length: 66 } when value.StartsWith("0x") => new BlockParameter(new Hash256(value)),
-            _ => new BlockParameter(LongConverter.FromString(value))
+            _ => new BlockParameter(ULongConverter.FromString(value))
         };
     }
 }

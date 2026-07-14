@@ -41,7 +41,7 @@ public class SnapMessageLimitsTests
             accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
         }
 
-        AccountRangeMessage msg = new()
+        using AccountRangeMessage msg = new()
         {
             RequestId = 1,
             PathsWithAccounts = accounts,
@@ -49,7 +49,7 @@ public class SnapMessageLimitsTests
         };
 
         byte[] serialized = serializer.Serialize(msg);
-        AccountRangeMessage deserialized = serializer.Deserialize(serialized);
+        using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
         Assert.That(deserialized.PathsWithAccounts.Count, Is.EqualTo(count));
     }

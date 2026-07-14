@@ -16,7 +16,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
-    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -24,7 +23,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     ILogManager logManager)
-    : IWorldStateManager
+    : IWorldStateManager, IDisposable
 {
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
@@ -48,17 +47,6 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public long? RetentionWindowBlocks => null;
-
-    public long? OldestStateBlock
-    {
-        get
-        {
-            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-            return blockNumber >= 0 ? blockNumber : null;
-        }
-    }
-
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
             codeDb,
@@ -69,12 +57,6 @@ public class FlatWorldStateManager(
             logManager,
             isReadOnly: true);
 
-    event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
-
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() =>
@@ -84,4 +66,6 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void Dispose() => _mainWorldState.Dispose();
 }

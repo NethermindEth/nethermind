@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core;
 
 namespace Nethermind.State.Flat.Persistence.BloomFilter;
 
@@ -25,20 +26,20 @@ public sealed unsafe class BloomFilter : IDisposable
 
     // Linux THP constants
     private const int MADV_HUGEPAGE = 14;
-    private const nuint HugePageSize = 2 * 1024 * 1024; // 2MB
+    private const nuint HugePageSize = 2 * MemorySizes.MiB;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
 
     public long Capacity { get; }
     public double BitsPerKey { get; }
-    public int K { get; }
+    private int K { get; }
 
     public long Count => Volatile.Read(ref _count);
 
     // Total bloom data bytes (no header), always multiple of 64 bytes
     public long DataBytes { get; }
-    public long NumBlocks { get; } // number of 64B cache lines
+    private long NumBlocks { get; } // number of 64B cache lines
 
     private long _count;
 
@@ -101,7 +102,7 @@ public sealed unsafe class BloomFilter : IDisposable
             {
                 // chunk clear for huge allocations
                 long off = 0;
-                const int Chunk = 8 * 1024 * 1024;
+                const int Chunk = 8 * MemorySizes.MiB;
                 while (off < totalBytes)
                 {
                     int len = (int)Math.Min(Chunk, totalBytes - off);
@@ -118,6 +119,24 @@ public sealed unsafe class BloomFilter : IDisposable
             _dataSize = 0;
             throw;
         }
+    }
+
+    /// <summary>
+    /// Construct a sentinel bloom whose <see cref="MightContain"/> always returns <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// Used by the bloom-disabled config path (<c>PersistedSnapshotBloomBitsPerKey == 0</c> or
+    /// degenerate capacity-zero builds) to keep downstream APIs non-nullable: every snapshot
+    /// has a real <see cref="BloomFilter"/>, and the disabled mode just behaves as
+    /// "the bloom never filters anything out". One small native allocation (a single 64-byte
+    /// cache line — the minimum the constructor produces) per call; callers own disposal
+    /// the same as any other <see cref="BloomFilter"/>.
+    /// </remarks>
+    public static BloomFilter AlwaysTrue()
+    {
+        BloomFilter b = new(capacity: 1, bitsPerKey: 1.0);
+        new Span<byte>(b._data, checked((int)b._dataSize)).Fill(0xFF);
+        return b;
     }
 
     /// <summary>
@@ -188,7 +207,7 @@ public sealed unsafe class BloomFilter : IDisposable
 
         long totalBytes = DataBytes;
         long off = 0;
-        const int Chunk = 8 * 1024 * 1024;
+        const int Chunk = 8 * MemorySizes.MiB;
         while (off < totalBytes)
         {
             int len = (int)Math.Min(Chunk, totalBytes - off);
@@ -197,8 +216,6 @@ public sealed unsafe class BloomFilter : IDisposable
         }
         Volatile.Write(ref _count, 0);
     }
-
-    internal byte* DangerousGetDataPointer() => _data;
 
     public void Dispose()
     {

@@ -80,16 +80,16 @@ public class ChainSpecBasedSpecProviderTests
         return LoadGethGenesisFromString(genesisJson);
     }
 
-    [TestCase(0, null, false)]
-    [TestCase(0, 0ul, false)]
-    [TestCase(0, 4660ul, false)]
-    [TestCase(1, 4660ul, false)]
-    [TestCase(1, 4661ul, false)]
-    [TestCase(4, 4672ul, true)]
-    [TestCase(4, 4673ul, true)]
-    [TestCase(5, 4680ul, true)]
+    [TestCase(0ul, null, false)]
+    [TestCase(0ul, 0ul, false)]
+    [TestCase(0ul, 4660ul, false)]
+    [TestCase(1ul, 4660ul, false)]
+    [TestCase(1ul, 4661ul, false)]
+    [TestCase(4ul, 4672ul, true)]
+    [TestCase(4ul, 4673ul, true)]
+    [TestCase(5ul, 4680ul, true)]
     [NonParallelizable]
-    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
+    public void Timestamp_activation_equal_to_genesis_timestamp_loads_correctly(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
@@ -113,8 +113,11 @@ public class ChainSpecBasedSpecProviderTests
         testProvider.GenesisSpec = expectedSpec;
 
         CompareSpecs(testProvider, provider, (blockNumber, timestamp));
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
-        Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(testProvider.GenesisSpec.Eip1559TransitionBlock));
+            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(testProvider.GenesisSpec.DifficultyBombDelay));
+        }
     }
 
     [Test]
@@ -133,20 +136,20 @@ public class ChainSpecBasedSpecProviderTests
     }
 
 
-    [TestCase(0, null, false, false, false)]
-    [TestCase(0, 0ul, false, false, false)]
-    [TestCase(0, 4660ul, false, false, false)]
-    [TestCase(1, 4660ul, false, false, false)]
-    [TestCase(1, 4661ul, false, false, false)]
-    [TestCase(1, 4672ul, false, false, false)]
-    [TestCase(2, 4673ul, false, false, true)]
-    [TestCase(3, 4680ul, false, false, true)]
-    [TestCase(4, 4672ul, false, true, false)]
-    [TestCase(5, 4672ul, true, true, false)]
-    [TestCase(5, 4673ul, true, true, false)]
-    [TestCase(6, 4680ul, true, true, false)]
+    [TestCase(0ul, null, false, false, false)]
+    [TestCase(0ul, 0ul, false, false, false)]
+    [TestCase(0ul, 4660ul, false, false, false)]
+    [TestCase(1ul, 4660ul, false, false, false)]
+    [TestCase(1ul, 4661ul, false, false, false)]
+    [TestCase(1ul, 4672ul, false, false, false)]
+    [TestCase(2ul, 4673ul, false, false, true)]
+    [TestCase(3ul, 4680ul, false, false, true)]
+    [TestCase(4ul, 4672ul, false, true, false)]
+    [TestCase(5ul, 4672ul, true, true, false)]
+    [TestCase(5ul, 4673ul, true, true, false)]
+    [TestCase(6ul, 4680ul, true, true, false)]
     [NonParallelizable]
-    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
+    public void Logs_warning_when_timestampActivation_happens_before_blockActivation(ulong blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
@@ -249,7 +252,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(3338477UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
@@ -260,7 +263,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)5007716));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(5007716UL));
             Assert.That(spec.MaxBlobCount, Is.EqualTo(9));
             Assert.That(spec.TargetBlobCount, Is.EqualTo(6));
             Assert.That(spec.Eip2935ContractAddress, Is.EqualTo(Eip2935Constants.BlockHashHistoryAddress));
@@ -294,10 +297,10 @@ public class ChainSpecBasedSpecProviderTests
         VerifyPragueSpecificsForMainnetHoodiAndSepolia(chainId, postOsakaSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)8346193));
+            Assert.That(postBPO1Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(8346193UL));
             Assert.That(postBPO1Spec.MaxBlobCount, Is.EqualTo(15));
             Assert.That(postBPO1Spec.TargetBlobCount, Is.EqualTo(10));
-            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)11684671));
+            Assert.That(postBPO2Spec.BlobBaseFeeUpdateFraction, Is.EqualTo(11684671UL));
             Assert.That(postBPO2Spec.MaxBlobCount, Is.EqualTo(21));
             Assert.That(postBPO2Spec.TargetBlobCount, Is.EqualTo(14));
         }
@@ -522,7 +525,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(1112826UL));
             Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
             Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
@@ -673,7 +676,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         IReleaseSpec oldSpec = oldSpecProvider.GetSpec(activation);
         IReleaseSpec newSpec = newSpecProvider.GetSpec(activation);
-        long? daoBlockNumber = newSpecProvider.DaoBlockNumber;
+        ulong? daoBlockNumber = newSpecProvider.DaoBlockNumber;
 
         bool isMainnet = daoBlockNumber is not null;
         if (isMainnet)
@@ -1161,7 +1164,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GenesisSpec.TargetBlobCount, Is.EqualTo(expectedTargetBlobs));
             Assert.That(provider.GenesisSpec.MaxBlobCount, Is.EqualTo(expectedMaxBlobs));
-            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)expectedBlobBaseFeeUpdateFraction));
+            Assert.That(provider.GenesisSpec.BlobBaseFeeUpdateFraction, Is.EqualTo(expectedBlobBaseFeeUpdateFraction));
         }
     }
 
@@ -1255,11 +1258,11 @@ public class ChainSpecBasedSpecProviderTests
         {
             const int NoneAllowed = 0;
             const int Default = 6;
-            static TestCaseData MakeTestCase(string testName, int eip4844Timestamp, int eip7002Timestamp, (int timestamp, int max)[] settings, ulong[] expectedActivationSettings)
+            static TestCaseData MakeTestCase(string testName, ulong eip4844Timestamp, ulong eip7002Timestamp, (ulong timestamp, ulong max)[] settings, ulong[] expectedActivationSettings)
                 => new([
-                    (ulong)eip4844Timestamp,
-                    (ulong)eip7002Timestamp,
-                    settings.Select(s => new BlobScheduleSettings { Timestamp = (ulong)s.timestamp, Max = (ulong)s.max }).ToArray(),
+                    eip4844Timestamp,
+                    eip7002Timestamp,
+                    settings.Select(s => new BlobScheduleSettings { Timestamp = s.timestamp, Max = s.max }).ToArray(),
                     expectedActivationSettings])
                 { TestName = $"BlobScheduleActivations: {testName}" };
 

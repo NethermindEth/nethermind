@@ -16,16 +16,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            nettyRlpStream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
                 miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
-                nettyRlpStream.StartSequence(miniContentLength);
-                nettyRlpStream.Encode(message.BlockHashes[i].Item1);
-                nettyRlpStream.Encode(message.BlockHashes[i].Item2);
+                writer.StartSequence(miniContentLength);
+                writer.Encode(message.BlockHashes[i].Item1);
+                writer.Encode(message.BlockHashes[i].Item2);
             }
         }
 
@@ -45,14 +45,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static NewBlockHashesMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)
         {
-            (Hash256, long)[] blockHashes = ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) =>
+            (Hash256, ulong)[] blockHashes = ctx.DecodeArray(static (ref RlpReader c) =>
             {
                 int length = c.ReadSequenceLength();
                 int checkPosition = c.Position + length;
 
-                (Hash256, long) result = (c.DecodeKeccak(), (long)c.DecodeUInt256());
+                (Hash256, ulong) result = (c.DecodeKeccak(), c.DecodeULong());
 
                 c.Check(checkPosition);
                 return result;

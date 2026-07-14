@@ -43,8 +43,8 @@ public partial class DebugRpcModuleTests
         Transaction transaction = factory(context.Blockchain);
         await context.Blockchain.AddBlock(transaction);
 
-        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, 0, options);
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockNumber, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
@@ -59,7 +59,7 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         Hash256? blockHash = context.Blockchain.BlockTree.Head!.Hash;
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
@@ -89,7 +89,7 @@ public partial class DebugRpcModuleTests
         await context.Blockchain.AddBlock(transaction);
 
         string blockRlp = Rlp.Encode(context.Blockchain.BlockTree.Head!).ToString();
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, 0, options);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByIndex", blockRlp, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
@@ -202,9 +202,7 @@ public partial class DebugRpcModuleTests
                             "gas": 46928,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         },
                         {
                             "pc": 2,
@@ -212,11 +210,9 @@ public partial class DebugRpcModuleTests
                             "gas": 46925,
                             "gasCost": 3,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0"
-                            ],
-                            "storage": {}
+                            ]
                         },
                         {
                             "pc": 4,
@@ -224,12 +220,13 @@ public partial class DebugRpcModuleTests
                             "gas": 46922,
                             "gasCost": 2200,
                             "depth": 1,
-                            "error": null,
                             "stack": [
                                 "0x0",
                                 "0x20"
                             ],
-                            "storage": {}
+                            "storage": {
+                                "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                            }
                         },
                         {
                             "pc": 5,
@@ -237,9 +234,7 @@ public partial class DebugRpcModuleTests
                             "gas": 44722,
                             "gasCost": 0,
                             "depth": 1,
-                            "error": null,
-                            "stack": [],
-                            "storage": {}
+                            "stack": []
                         }
                     ]
                 },

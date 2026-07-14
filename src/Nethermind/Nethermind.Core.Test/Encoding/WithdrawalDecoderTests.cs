@@ -40,11 +40,11 @@ public class WithdrawalDecoderTests
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
 
-        Assert.That(decoded, Is.EqualTo(withdrawal).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
-    public void Should_decode_with_ValueDecoderContext()
+    public void Should_decode_with_RlpReader()
     {
         Withdrawal withdrawal = new()
         {
@@ -53,15 +53,16 @@ public class WithdrawalDecoderTests
             Address = new Address("0x773f86fb098bb19f228f441a7715daa13d10a751"),
             AmountInGwei = ulong.MaxValue
         };
-        RlpStream stream = new(1024);
         WithdrawalDecoder codec = new();
+        byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
 
-        codec.Encode(stream, withdrawal);
+        codec.Encode(ref writer, withdrawal);
 
-        Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+        RlpReader decoderContext = new(bytes);
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
-        Assert.That(decoded, Is.EqualTo(withdrawal).UsingPropertiesComparer());
+        Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
 
     [Test]
@@ -109,7 +110,7 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => rlp.AsRlpValueContext().DecodeArray(decoder!);
+        void Decode() => new RlpReader(rlp).DecodeArray(decoder!);
         Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 

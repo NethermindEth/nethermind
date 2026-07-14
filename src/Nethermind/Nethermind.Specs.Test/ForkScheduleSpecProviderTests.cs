@@ -19,17 +19,20 @@ public class ForkScheduleSpecProviderTests
     {
         ForkSpec[] schedule = provider.ForkSchedule;
 
-        long previousBlock = long.MinValue;
+        ulong previousBlock = 0UL;
         ulong? previousTimestamp = null;
 
         foreach (ForkSpec fork in schedule)
         {
-            if (fork.Block is long block)
+            if (fork.Block is ulong block)
             {
-                Assert.That(previousTimestamp, Is.Null,
-                    "block-keyed forks must come before any timestamp-keyed fork");
-                Assert.That(block, Is.GreaterThanOrEqualTo(previousBlock),
-                    "block-keyed forks must be declared in ascending block order");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(previousTimestamp, Is.Null,
+                        "block-keyed forks must come before any timestamp-keyed fork");
+                    Assert.That(block, Is.GreaterThanOrEqualTo(previousBlock),
+                        "block-keyed forks must be declared in ascending block order");
+                }
                 previousBlock = block;
             }
             else

@@ -9,5 +9,5 @@ namespace Nethermind.Xdc;
 
 public interface IMasternodesCalculator
 {
-    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
+    (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(ulong blockNumber, Hash256 parentHash, IXdcReleaseSpec spec);
 }

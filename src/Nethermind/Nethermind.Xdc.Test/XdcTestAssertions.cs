@@ -1,87 +1,269 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test;
-using NUnit.Framework;
+using Nethermind.Xdc.Types;
 using NUnit.Framework.Constraints;
 
 namespace Nethermind.Xdc.Test;
 
 internal static class XdcTestAssertions
 {
-    public static void AssertXdcHeader(XdcBlockHeader? actual, XdcBlockHeader expected, bool compareHash = true)
-    {
-        Assert.That(actual, Is.Not.Null);
-        if (actual is null)
-        {
-            return;
-        }
+    public static EqualConstraint UsingXdcComparer(this EqualConstraint constraint, bool compareHash = true, bool compareSigner = true) =>
+        constraint
+            .Using<Block>(new XdcBlockComparer(compareHash))
+            .Using<XdcBlockHeader>(new XdcBlockHeaderComparer(compareHash))
+            .Using<BlockRoundInfo>(BlockRoundInfoComparer.Instance)
+            .Using<EpochSwitchInfo>(EpochSwitchInfoComparer.Instance)
+            .Using<ExtraFieldsV2>(ExtraFieldsV2Comparer.Instance)
+            .Using<QuorumCertificate>(QuorumCertificateComparer.Instance)
+            .Using<Snapshot>(SnapshotComparer.Instance)
+            .Using<SubnetSnapshot>(SubnetSnapshotComparer.Instance)
+            .Using<SyncInfo>(SyncInfoComparer.Instance)
+            .Using<TimeoutCertificate>(TimeoutCertificateComparer.Instance)
+            .Using<Vote>(compareSigner ? VoteComparer.Instance : VoteComparer.WithoutSigner);
 
-        Assert.Multiple(() =>
+    private sealed class XdcBlockComparer(bool compareHash) : IEqualityComparer<Block>
+    {
+        private readonly IEqualityComparer<Block> _baseComparer = TestEqualityComparers.Block(compareHash);
+        private readonly XdcBlockHeaderComparer _headerComparer = new(compareHash);
+
+        public bool Equals(Block? actual, Block? expected)
         {
-            if (compareHash)
+            if (actual is null || expected is null)
             {
-                Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+                return actual is null && expected is null;
             }
 
-            Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
-            Assert.That(actual.UnclesHash, Is.EqualTo(expected.UnclesHash));
-            Assert.That(actual.Beneficiary, Is.EqualTo(expected.Beneficiary));
-            Assert.That(actual.Difficulty, Is.EqualTo(expected.Difficulty));
-            Assert.That(actual.Number, Is.EqualTo(expected.Number));
-            Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
-            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
-            Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
-            Assert.That(actual.ExtraData, Is.EqualTo(expected.ExtraData));
-            Assert.That(actual.Validators, Is.EqualTo(expected.Validators));
-            Assert.That(actual.Validator, Is.EqualTo(expected.Validator));
-            Assert.That(actual.Penalties, Is.EqualTo(expected.Penalties));
-            Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
-            Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
-            Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
-            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
-            Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
-            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
-        });
-    }
+            if (!_baseComparer.Equals(actual, expected) ||
+                actual.Header is not XdcBlockHeader actualHeader ||
+                expected.Header is not XdcBlockHeader expectedHeader ||
+                !_headerComparer.Equals(actualHeader, expectedHeader) ||
+                actual.Uncles.Length != expected.Uncles.Length)
+            {
+                return false;
+            }
 
-    public static void AssertBlock(Block? actual, Block expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        if (actual is null)
-        {
-            return;
+            for (int i = 0; i < expected.Uncles.Length; i++)
+            {
+                if (actual.Uncles[i] is not XdcBlockHeader actualUncle ||
+                    expected.Uncles[i] is not XdcBlockHeader expectedUncle ||
+                    !_headerComparer.Equals(actualUncle, expectedUncle))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        Assert.Multiple(() =>
-        {
-            AssertXdcHeader((XdcBlockHeader)actual.Header, (XdcBlockHeader)expected.Header);
-            Assert.That(actual.Transactions, Is.EqualTo(expected.Transactions).UsingTransactionComparer());
-            Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
-        });
-
-        for (int i = 0; i < expected.Uncles.Length; i++)
-        {
-            AssertXdcHeader((XdcBlockHeader)actual.Uncles[i], (XdcBlockHeader)expected.Uncles[i]);
-        }
+        public int GetHashCode(Block obj) => 0;
     }
 
-    public static EqualConstraint UsingXdcProperties(this EqualConstraint constraint, params string[] excludedProperties)
+    private sealed class XdcBlockHeaderComparer(bool compareHash) : IEqualityComparer<XdcBlockHeader>
     {
-        constraint = constraint.Using<Address[]>(AddressArraysEquivalent);
-        return excludedProperties.Length == 0
-            ? constraint.UsingPropertiesComparer()
-            : constraint.UsingPropertiesComparer(options => options.Excluding(excludedProperties));
-    }
+        private readonly IEqualityComparer<BlockHeader> _baseComparer = TestEqualityComparers.BlockHeader(compareHash);
 
-    private static bool AddressArraysEquivalent(Address[]? actual, Address[]? expected)
-    {
-        if (actual is null || expected is null)
+        public bool Equals(XdcBlockHeader? actual, XdcBlockHeader? expected)
         {
-            return actual is null && expected is null;
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            if (actual.GetType() != expected.GetType())
+            {
+                return false;
+            }
+
+            if (!_baseComparer.Equals(actual, expected) ||
+                !TestEqualityComparers.BytesEqual(actual.Validators, expected.Validators) ||
+                !TestEqualityComparers.BytesEqual(actual.Validator, expected.Validator) ||
+                !TestEqualityComparers.BytesEqual(actual.Penalties, expected.Penalties))
+            {
+                return false;
+            }
+
+            return actual is not XdcSubnetBlockHeader actualSubnet ||
+                expected is XdcSubnetBlockHeader expectedSubnet &&
+                TestEqualityComparers.BytesEqual(actualSubnet.NextValidators, expectedSubnet.NextValidators);
         }
 
-        return Is.EquivalentTo(expected).ApplyTo(actual).IsSuccess;
+        public int GetHashCode(XdcBlockHeader obj) => 0;
+    }
+
+    private sealed class BlockRoundInfoComparer : IEqualityComparer<BlockRoundInfo>
+    {
+        public static BlockRoundInfoComparer Instance { get; } = new();
+
+        public bool Equals(BlockRoundInfo? actual, BlockRoundInfo? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual.Hash == expected.Hash &&
+                actual.Round == expected.Round &&
+                actual.BlockNumber == expected.BlockNumber;
+        }
+
+        public int GetHashCode(BlockRoundInfo obj) => 0;
+    }
+
+    private sealed class EpochSwitchInfoComparer : IEqualityComparer<EpochSwitchInfo>
+    {
+        public static EpochSwitchInfoComparer Instance { get; } = new();
+
+        public bool Equals(EpochSwitchInfo? actual, EpochSwitchInfo? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return TestEqualityComparers.ArraysEqual(actual.Masternodes, expected.Masternodes) &&
+                TestEqualityComparers.ArraysEqual(actual.StandbyNodes, expected.StandbyNodes) &&
+                TestEqualityComparers.ArraysEqual(actual.Penalties, expected.Penalties) &&
+                BlockRoundInfoComparer.Instance.Equals(actual.EpochSwitchBlockInfo, expected.EpochSwitchBlockInfo) &&
+                BlockRoundInfoComparer.Instance.Equals(actual.EpochSwitchParentBlockInfo, expected.EpochSwitchParentBlockInfo);
+        }
+
+        public int GetHashCode(EpochSwitchInfo obj) => 0;
+    }
+
+    private sealed class ExtraFieldsV2Comparer : IEqualityComparer<ExtraFieldsV2>
+    {
+        public static ExtraFieldsV2Comparer Instance { get; } = new();
+
+        public bool Equals(ExtraFieldsV2? actual, ExtraFieldsV2? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual.BlockRound == expected.BlockRound &&
+                QuorumCertificateComparer.Instance.Equals(actual.QuorumCert, expected.QuorumCert);
+        }
+
+        public int GetHashCode(ExtraFieldsV2 obj) => 0;
+    }
+
+    private sealed class QuorumCertificateComparer : IEqualityComparer<QuorumCertificate>
+    {
+        public static QuorumCertificateComparer Instance { get; } = new();
+
+        public bool Equals(QuorumCertificate? actual, QuorumCertificate? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return BlockRoundInfoComparer.Instance.Equals(actual.ProposedBlockInfo, expected.ProposedBlockInfo) &&
+                TestEqualityComparers.ArraysEqual(actual.Signatures, expected.Signatures) &&
+                actual.GapNumber == expected.GapNumber;
+        }
+
+        public int GetHashCode(QuorumCertificate obj) => 0;
+    }
+
+    private sealed class SnapshotComparer : IEqualityComparer<Snapshot>
+    {
+        public static SnapshotComparer Instance { get; } = new();
+
+        public bool Equals(Snapshot? actual, Snapshot? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual.BlockNumber == expected.BlockNumber &&
+                actual.HeaderHash == expected.HeaderHash &&
+                TestEqualityComparers.ArraysEqual(actual.NextEpochCandidates, expected.NextEpochCandidates);
+        }
+
+        public int GetHashCode(Snapshot obj) => 0;
+    }
+
+    private sealed class SubnetSnapshotComparer : IEqualityComparer<SubnetSnapshot>
+    {
+        public static SubnetSnapshotComparer Instance { get; } = new();
+
+        public bool Equals(SubnetSnapshot? actual, SubnetSnapshot? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return SnapshotComparer.Instance.Equals(actual, expected) &&
+                TestEqualityComparers.ArraysEqual(actual.NextEpochPenalties, expected.NextEpochPenalties);
+        }
+
+        public int GetHashCode(SubnetSnapshot obj) => 0;
+    }
+
+    private sealed class SyncInfoComparer : IEqualityComparer<SyncInfo>
+    {
+        public static SyncInfoComparer Instance { get; } = new();
+
+        public bool Equals(SyncInfo? actual, SyncInfo? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return QuorumCertificateComparer.Instance.Equals(actual.HighestQuorumCert, expected.HighestQuorumCert) &&
+                TimeoutCertificateComparer.Instance.Equals(actual.HighestTimeoutCert, expected.HighestTimeoutCert);
+        }
+
+        public int GetHashCode(SyncInfo obj) => 0;
+    }
+
+    private sealed class TimeoutCertificateComparer : IEqualityComparer<TimeoutCertificate>
+    {
+        public static TimeoutCertificateComparer Instance { get; } = new();
+
+        public bool Equals(TimeoutCertificate? actual, TimeoutCertificate? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return actual.Round == expected.Round &&
+                TestEqualityComparers.ArraysEqual(actual.Signatures, expected.Signatures) &&
+                actual.GapNumber == expected.GapNumber;
+        }
+
+        public int GetHashCode(TimeoutCertificate obj) => 0;
+    }
+
+    private sealed class VoteComparer(bool compareSigner) : IEqualityComparer<Vote>
+    {
+        public static VoteComparer Instance { get; } = new(compareSigner: true);
+        public static VoteComparer WithoutSigner { get; } = new(compareSigner: false);
+
+        public bool Equals(Vote? actual, Vote? expected)
+        {
+            if (actual is null || expected is null)
+            {
+                return actual is null && expected is null;
+            }
+
+            return BlockRoundInfoComparer.Instance.Equals(actual.ProposedBlockInfo, expected.ProposedBlockInfo) &&
+                actual.GapNumber == expected.GapNumber &&
+                object.Equals(actual.Signature, expected.Signature) &&
+                (!compareSigner || actual.Signer == expected.Signer) &&
+                actual.IsMyVote == expected.IsMyVote;
+        }
+
+        public int GetHashCode(Vote obj) => 0;
     }
 }

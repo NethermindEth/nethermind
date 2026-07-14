@@ -7,17 +7,19 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
 using Nethermind.TxPool;
 
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
-public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null) : IBlockProcessor.IBlockTransactionsExecutor
+public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState, ITxPool txPool, ILogManager logManager, ZkGasMeterHolder? zkGasMeterHolder = null, ISpecProvider? specProvider = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockInvalidTxExecutor>();
 
@@ -40,9 +42,11 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         // ZK gas exclusion is only valid during block production. During validation the
         // block-level check in TaikoBlockProcessor is used instead, ensuring the validator
         // faithfully re-executes every transaction and produces the same GasUsed as the
-        // producer.
+        // producer. Gated on IsUnzenEnabled so the meter stays dormant pre-Unzen (matches
+        // the validator-side gate in TaikoBlockProcessor.ProcessBlock).
         bool enforceZkGas = (processingOptions & ProcessingOptions.ProducingBlock) != 0
-                            && zkGasMeterHolder is not null;
+                            && zkGasMeterHolder is not null
+                            && specProvider?.GetSpec(block.Header) is ITaikoReleaseSpec { IsUnzenEnabled: true };
 
         using ArrayPoolListRef<Transaction> correctTransactions = new(block.Transactions.Length);
 

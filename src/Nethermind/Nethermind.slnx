@@ -25,9 +25,10 @@
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
   </Folder>
-  <Folder Name="/Plugins/StateComposition/">
-    <Project Path="Nethermind.StateComposition.Test/Nethermind.StateComposition.Test.csproj" />
-    <Project Path="Nethermind.StateComposition/Nethermind.StateComposition.csproj" />
+  <Folder Name="/Plugins/StateDiffsWriter/">
+    <Project Path="Nethermind.StateDiff.Core/Nethermind.StateDiff.Core.csproj" />
+    <Project Path="Nethermind.StateDiffsWriter/Nethermind.StateDiffsWriter.csproj" />
+    <Project Path="Nethermind.StateDiffsWriter.Test/Nethermind.StateDiffsWriter.Test.csproj" />
   </Folder>
   <Folder Name="/Plugins/TraceStore/">
     <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
@@ -122,6 +123,7 @@
   <Project Path="Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
   <Project Path="Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />
   <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+  <Project Path="Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
   <Project Path="Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />

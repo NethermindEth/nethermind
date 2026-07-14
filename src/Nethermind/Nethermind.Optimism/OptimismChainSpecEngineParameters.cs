@@ -17,7 +17,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? RegolithTimestamp { get; set; }
 
-    public long? BedrockBlockNumber { get; set; }
+    public ulong? BedrockBlockNumber { get; set; }
 
     public ulong? CanyonTimestamp { get; set; }
 
@@ -35,6 +35,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? JovianTimestamp { get; set; }
 
+    public ulong? KarstTimestamp { get; set; }
+
     public Address? L1FeeRecipient { get; set; }
 
     public Address? L1BlockAddress { get; set; }
@@ -45,7 +47,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         if (CanyonTimestamp <= startTimestamp)
@@ -56,7 +58,18 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, JovianTimestamp, new DefaultBaseFeeCalculator());
     }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) => AddIfNotNull(timestamps, JovianTimestamp);
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+    }
+
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
+    {
+        AddIfNotNull(timestamps, GraniteTimestamp);
+        AddIfNotNull(timestamps, HoloceneTimestamp);
+        AddIfNotNull(timestamps, IsthmusTimestamp);
+        AddIfNotNull(timestamps, JovianTimestamp);
+        AddIfNotNull(timestamps, KarstTimestamp);
+    }
 
     private void AddIfNotNull(SortedSet<ulong> timestamps, ulong? timestamp)
     {
