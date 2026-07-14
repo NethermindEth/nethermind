@@ -52,7 +52,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Capacity, in entries, of the read-path trie-node RLP cache serving tree visitors (primarily eth_getProof). 0 disables.", DefaultValue = "262144")]
+    [ConfigItem(Description = "Capacity, in entries, of the read-path trie-node RLP cache serving tree visitors (primarily eth_getProof). Enabled by default, but only allocated when flat DB is active (FlatDb.Enabled, itself off by default), so a stock node pays nothing for it. Set 0 to disable the cache within a flat-DB node.", DefaultValue = "262144")]
     int TrieNodeRlpCacheCapacity { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
