@@ -311,9 +311,13 @@ public sealed class FlatAddressStorageNodeDictionary : IReadOnlyCollection<KeyVa
                     SlabHandle handle = new(entry.Value);
                     if (handle.IsNone || !_arena.TryReadCopy(handle, _generation, out Hash256? keccak, out byte[]? rlp))
                     {
-                        // Miss can only happen if the arena was released concurrently; under a lease that
-                        // never happens, so skipping is a no-op on the leased persist/compaction paths.
-                        continue;
+                        // A handle present in the map but unreadable means the arena was released or its
+                        // generation rolled mid-enumeration. Every consumer of this enumerator (compaction
+                        // merge, EnumerateStorageNodes) runs under an arena lease, so this cannot happen by
+                        // design; silently skipping would drop a live storage node from the merged snapshot,
+                        // so fail loud rather than emit a torn result.
+                        throw new InvalidOperationException(
+                            $"Flat storage node {entry.Key.Key} for {_address} unreadable from the slab arena during a lease-covered enumeration (handle={entry.Value}, generation={_generation}); the arena lease is not held.");
                     }
 
                     _currentKey = new HashedKey<(Hash256, TreePath)>((_address, entry.Key.Key));
