@@ -349,9 +349,6 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             ulong blockNumber = data.Block.Number;
-
-            GCScheduler.Instance.NotifyBlockProcessed();
-
             double chunkMGas = (_chunkMGas += data.GasUsed / 1_000_000.0);
 
             // We want the rate here

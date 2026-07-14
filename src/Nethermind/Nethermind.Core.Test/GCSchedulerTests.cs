@@ -16,7 +16,7 @@ public class GCSchedulerTests
         long before = GC.GetTotalAllocatedBytes(precise: false);
         GCScheduler.Instance.SweepBaselineAllocatedBytes = before - GCScheduler.SustainedSweepAllocationBytes - 1;
 
-        GCScheduler.Instance.NotifyBlockProcessed();
+        GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
 
         Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.GreaterThanOrEqualTo(before));
     }
@@ -27,7 +27,7 @@ public class GCSchedulerTests
         long baseline = GC.GetTotalAllocatedBytes(precise: false);
         GCScheduler.Instance.SweepBaselineAllocatedBytes = baseline;
 
-        GCScheduler.Instance.NotifyBlockProcessed();
+        GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
 
         Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.EqualTo(baseline));
     }
@@ -53,12 +53,12 @@ public class GCSchedulerTests
 
         using (GCScheduler.Instance.ExcludeForcedGC())
         {
-            GCScheduler.Instance.NotifyBlockProcessed();
+            GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
             Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
             Assert.That(GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.False);
         }
 
-        GCScheduler.Instance.NotifyBlockProcessed();
+        GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
         Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
     }
 
@@ -82,7 +82,7 @@ public class GCSchedulerTests
         Assert.That(GCScheduler.MarkGCPaused(), Is.True);
         try
         {
-            GCScheduler.Instance.NotifyBlockProcessed();
+            GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
             Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
         }
         finally
@@ -90,7 +90,7 @@ public class GCSchedulerTests
             GCScheduler.MarkGCResumed();
         }
 
-        GCScheduler.Instance.NotifyBlockProcessed();
+        GCScheduler.Instance.SweepIfAllocationBudgetExceeded();
         Assert.That(GCScheduler.Instance.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
     }
 }

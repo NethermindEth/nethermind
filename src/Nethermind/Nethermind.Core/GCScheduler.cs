@@ -27,6 +27,8 @@ public sealed class GCScheduler
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
+    // Timer sampling the sustained-sweep allocation budget once per second
+    private readonly Timer _sustainedSweepTimer;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
     private bool _isNextGcBlocking = false;
@@ -42,9 +44,12 @@ public sealed class GCScheduler
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    private GCScheduler() =>
+    private GCScheduler()
+    {
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
+        _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
 
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
@@ -222,13 +227,14 @@ public sealed class GCScheduler
     }
 
     /// <summary>
-    /// Per-processed-block notification driving a concurrent background gen2 sweep once
-    /// <see cref="SustainedSweepAllocationBytes"/> have been allocated since the last
-    /// scheduler-issued gen2 collection. Keeps gen2 small when blocks stream back-to-back and the
-    /// idle-window sweeps never engage, preventing the runtime's multi-second blocking escalation;
-    /// stays dormant on a synced node whose idle-window sweeps already collect gen2 regularly.
+    /// Fires a concurrent background gen2 sweep once <see cref="SustainedSweepAllocationBytes"/>
+    /// have been allocated since the last scheduler-issued gen2 collection; sampled once per
+    /// second by <see cref="_sustainedSweepTimer"/>. Keeps gen2 small when blocks stream
+    /// back-to-back and the idle-window sweeps never engage, preventing the runtime's
+    /// multi-second blocking escalation; stays dormant on a synced node whose idle-window
+    /// sweeps already collect gen2 regularly.
     /// </summary>
-    public void NotifyBlockProcessed()
+    internal void SweepIfAllocationBudgetExceeded()
     {
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
