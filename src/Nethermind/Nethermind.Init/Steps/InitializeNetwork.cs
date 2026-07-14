@@ -19,7 +19,6 @@ using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
