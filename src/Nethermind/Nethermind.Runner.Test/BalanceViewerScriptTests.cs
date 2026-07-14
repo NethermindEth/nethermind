@@ -126,6 +126,26 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void Erc20ContractsFromLogs_KeepsFreshErc20AndDropsNftsKnownAndIgnored()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        string fresh = "0x" + new string('a', 40);
+        string nft = "0x" + new string('b', 40);
+        string known = "0x" + new string('c', 40);
+        string ignored = "0x" + new string('d', 40);
+        // four Transfer logs: a fresh ERC-20 (3 topics, kept), an ERC-721 (4 topics, dropped),
+        // an already-tracked ERC-20 (in known), and one the user hid (in ignored)
+        string logs =
+            $"[{{ address: '{fresh}', topics: ['t','f','to'] }}," +
+            $" {{ address: '{nft}', topics: ['t','f','to','id'] }}," +
+            $" {{ address: '{known}', topics: ['t','f','to'] }}," +
+            $" {{ address: '{ignored}', topics: ['t','f','to'] }}]";
+        object result = engine.Evaluate(
+            $"erc20ContractsFromLogs({logs}, new Set(['{known}']), new Set(['{ignored}'])).join(',')");
+        Assert.That(result, Is.EqualTo(fresh));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
