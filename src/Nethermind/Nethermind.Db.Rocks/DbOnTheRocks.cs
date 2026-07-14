@@ -565,7 +565,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         // changes to the table options must be applied before setting to set.
         options.SetBlockBasedTableFactory(tableOptions);
 
-        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(dbConfig.RocksDbOptions));
+        string rocksDbOptions = dbConfig.RocksDbOptions;
+        if (dbConfig.CacheIndexAndFilterBlocks)
+        {
+            // Must go through the options string: the rocksdb_get_options_from_string merge below rewrites
+            // block_based_table_factory fields set via the C# table-options API.
+            // Deliberately self-contained: some keys duplicate RocksDbOptions defaults so the
+            // partitioned-index setup holds even when users override RocksDbOptions without them.
+            rocksDbOptions +=
+                "block_based_table_factory.cache_index_and_filter_blocks=true;" +
+                "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +
+                "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
+                "block_based_table_factory.partition_filters=true;" +
+                "block_based_table_factory.index_type=kTwoLevelIndexSearch;" +
+                "block_based_table_factory.pin_top_level_index_and_filter=true;" +
+                "block_based_table_factory.metadata_block_size=4096;";
+        }
+
+        IntPtr optsPtr = Marshal.StringToHGlobalAnsi(NormalizeRocksDbOptions(rocksDbOptions));
         try
         {
             _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);

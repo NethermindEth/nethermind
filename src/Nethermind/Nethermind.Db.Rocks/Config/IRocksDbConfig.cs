@@ -12,6 +12,7 @@ public interface IRocksDbConfig
     string RocksDbOptions { get; }
     string AdditionalRocksDbOptions { get; }
     int? MaxOpenFiles { get; }
+    bool CacheIndexAndFilterBlocks { get; }
     bool WriteAheadLogSync { get; }
     ulong? ReadAheadSize { get; }
     bool EnableDbStatistics { get; }

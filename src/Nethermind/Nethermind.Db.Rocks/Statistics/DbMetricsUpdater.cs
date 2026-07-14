@@ -33,6 +33,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             string compactionStatsString = "";
             compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
+            LogMemoryProfile();
 
             if (dbConfig.EnableDbStatistics)
             {
@@ -167,6 +168,34 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
 
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractSubStatsRegex();
+
+    private void LogMemoryProfile()
+    {
+        if (!logger.IsInfo) return;
+
+        long Prop(string name)
+        {
+            string? v = cf is not null ? db.GetProperty(name, cf) : db.GetProperty(name);
+            return long.TryParse(v, out long parsed) ? parsed : -1;
+        }
+
+        const double MB = 1024 * 1024, GB = MB * 1024;
+        long tableReaders = Prop("rocksdb.estimate-table-readers-mem");
+        long memtables = Prop("rocksdb.cur-size-all-mem-tables");
+        long blockCache = Prop("rocksdb.block-cache-usage");
+        long blockCachePinned = Prop("rocksdb.block-cache-pinned-usage");
+        long liveSst = Prop("rocksdb.live-sst-files-size");
+        long numKeys = Prop("rocksdb.estimate-num-keys");
+        long liveFiles = 0;
+        for (int level = 0; level <= 6; level++)
+        {
+            liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
+        }
+
+        logger.Info($"[RocksDbMem] {dbName}: table_readers={tableReaders / MB:F0}MB memtables={memtables / MB:F0}MB " +
+                    $"block_cache={blockCache / MB:F0}MB(pinned {blockCachePinned / MB:F0}MB) " +
+                    $"live_sst={liveSst / GB:F1}GB sst_files={liveFiles} keys={numKeys}");
+    }
 
     public void Dispose()
     {
