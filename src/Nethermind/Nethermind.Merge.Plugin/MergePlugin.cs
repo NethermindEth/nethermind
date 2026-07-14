@@ -168,6 +168,7 @@ public class BaseMergePluginModule : Module
             .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
             // Engine rpc related
+            .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
                     .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)

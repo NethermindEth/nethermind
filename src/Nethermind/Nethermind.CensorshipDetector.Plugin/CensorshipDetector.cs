@@ -1,36 +1,22 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.TxPool;
 
-namespace Nethermind.Consensus.Processing.CensorshipDetector;
+namespace Nethermind.CensorshipDetector.Plugin;
 
-public interface ICensorshipDetector
-{
-    IEnumerable<BlockNumberHash> GetCensoredBlocks();
-    bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash);
-}
-
-public class NoopCensorshipDetector : ICensorshipDetector
-{
-    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
-
-    public bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash) => false;
-}
-
-public class CensorshipDetector : IDisposable, ICensorshipDetector
+public class CensorshipDetector : IDisposable, IBuilderOverridePolicy
 {
     private readonly IBlockTree _blockTree;
     private readonly ITxPool _txPool;
@@ -47,15 +33,15 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     public CensorshipDetector(
         IBlockTree blockTree,
         ITxPool txPool,
-        IComparer<Transaction> betterTxComparer,
-        IBranchProcessor blockProcessor,
+        ITransactionComparerProvider transactionComparerProvider,
+        IMainProcessingContext mainProcessingContext,
         ILogManager logManager,
         ICensorshipDetectorConfig censorshipDetectorConfig)
     {
         _blockTree = blockTree;
         _txPool = txPool;
-        _betterTxComparer = betterTxComparer;
-        _blockProcessor = blockProcessor;
+        _betterTxComparer = transactionComparerProvider.GetDefaultComparer();
+        _blockProcessor = mainProcessingContext.BranchProcessor;
         _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
         _cacheSize = (int)(4 * _blockCensorshipThreshold);
         _logger = logManager?.GetClassLogger<CensorshipDetector>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -64,7 +50,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         {
             foreach (string hexString in censorshipDetectorConfig.AddressesForCensorshipDetection)
             {
-                if (Address.TryParse(hexString, out Address address))
+                if (Address.TryParse(hexString, out Address? address))
                 {
                     _bestTxPerObservedAddresses ??= [];
                     _bestTxPerObservedAddresses[address!] = null;
@@ -93,8 +79,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         // skip censorship detection if node is not synced yet
         if (IsSyncing()) return;
 
-        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
-        if (tracksPerAddressCensorship)
+        if (_bestTxPerObservedAddresses is { } observedAddresses)
         {
             UInt256 baseFee = e.Block.BaseFeePerGas;
             IEnumerable<Transaction> poolBestTransactions = _txPool.GetBestTxOfEachSender();
@@ -103,10 +88,10 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                 // checking tx.GasBottleneck > baseFee ensures only ready transactions are considered.
                 if (tx.To is not null
                     && tx.GasBottleneck > baseFee
-                    && _bestTxPerObservedAddresses.TryGetValue(tx.To, out Transaction? bestTx)
+                    && observedAddresses.TryGetValue(tx.To, out Transaction? bestTx)
                     && (bestTx is null || _betterTxComparer.Compare(bestTx, tx) > 0))
                 {
-                    _bestTxPerObservedAddresses[tx.To] = tx;
+                    observedAddresses[tx.To] = tx;
                 }
             }
         }
@@ -129,7 +114,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
     private void Cache(Block block)
     {
-        bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
+        Dictionary<AddressAsKey, Transaction?>? observedAddresses = _bestTxPerObservedAddresses;
 
         try
         {
@@ -162,7 +147,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                             bestTxInBlock = tx;
                         }
 
-                        if (tracksPerAddressCensorship)
+                        if (observedAddresses is not null)
                         {
                             // Finds worst tx in pool to compare with pool transactions of tracked addresses
                             if (_betterTxComparer.Compare(worstTxInBlock, tx) < 0)
@@ -170,7 +155,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                                 worstTxInBlock = tx;
                             }
 
-                            bool trackAddress = _bestTxPerObservedAddresses.ContainsKey(tx.To!);
+                            bool trackAddress = observedAddresses.ContainsKey(tx.To!);
                             if (trackAddress && trackedAddressesInBlock.Add(tx.To!))
                             {
                                 blockTxsOfTrackedAddresses++;
@@ -179,9 +164,9 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                     }
                 }
 
-                if (tracksPerAddressCensorship)
+                if (observedAddresses is not null)
                 {
-                    foreach (Transaction? bestTx in _bestTxPerObservedAddresses.Values)
+                    foreach (Transaction? bestTx in observedAddresses.Values)
                     {
                         // if there is no transaction in block or the best tx in the pool is better than the worst tx in the block
                         if (bestTx is null || _betterTxComparer.Compare(bestTx, worstTxInBlock) < 0)
@@ -212,11 +197,11 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         }
         finally
         {
-            if (tracksPerAddressCensorship)
+            if (observedAddresses is not null)
             {
-                foreach (AddressAsKey key in _bestTxPerObservedAddresses.Keys)
+                foreach (AddressAsKey key in observedAddresses.Keys)
                 {
-                    _bestTxPerObservedAddresses[key] = null;
+                    observedAddresses[key] = null;
                 }
             }
         }
@@ -262,6 +247,8 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
     public IEnumerable<BlockNumberHash> GetCensoredBlocks() => _censoredBlocks;
 
     public bool BlockPotentiallyCensored(ulong blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
+
+    public bool ShouldOverrideBuilder(Block block) => _censoredBlocks.Contains(new BlockNumberHash(block));
 
     public void Dispose() => _blockProcessor.BlockProcessing -= OnBlockProcessing;
 }
