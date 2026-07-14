@@ -116,7 +116,7 @@ public class FrameTxProcessorTests
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(UInt256.One));
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)frame.GasLimit));
     }
 
