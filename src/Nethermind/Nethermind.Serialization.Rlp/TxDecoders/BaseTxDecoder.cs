@@ -88,12 +88,29 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = decoderContext.DecodeULong();
+        transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
         transaction.GasLimit = decoderContext.DecodeULong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+    }
+
+    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    {
+        if (decoderContext.PeekPrefixAndContentLength().ContentLength <= sizeof(ulong))
+        {
+            return decoderContext.DecodeULong();
+        }
+
+        int position = decoderContext.Position;
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        if (nonceBytes[0] == 0)
+        {
+            RlpHelpers.ThrowNonCanonicalInteger(position);
+        }
+
+        return ulong.MaxValue;
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();

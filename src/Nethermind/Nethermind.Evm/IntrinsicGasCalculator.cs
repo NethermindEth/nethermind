@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -94,10 +95,7 @@ public static class IntrinsicGasCalculator
         ulong authCount = (ulong)authList.Length;
         ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
         return spec.IsEip8037Enabled
-            ? (
-                authCount * perAuthRegular,
-                authList.Length * (GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
-            )
+            ? (authCount * perAuthRegular, 0)
             : (authCount * GasCostOf.NewAccount, 0);
 
         [DoesNotReturn, StackTraceHidden]
@@ -119,13 +117,48 @@ public static class IntrinsicGasCalculator
 
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong tokensInCallData, ulong floorTokensInAccessList)
     {
-        // The floor tracks the reduced EIP-2780 base, else the legacy floor would dominate.
-        ulong floorBase = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        // The floor tracks the reduced EIP-2780 base plus state-independent transaction setup costs.
+        ulong floorBase = CalculateFloorBase(transaction, spec);
         return spec switch
         {
             { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
             { IsEip7623Enabled: true } => floorBase + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
             _ => 0
         };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong CalculateFloorBase(Transaction transaction, IReleaseSpec spec)
+    {
+        if (!spec.IsEip2780Enabled)
+        {
+            return GasCostOf.Transaction;
+        }
+
+        ulong floorBase = GasCostOf.TransactionEip2780;
+        if (transaction.IsContractCreation)
+        {
+            floorBase += spec.IsEip8038Enabled
+                ? Eip8038Constants.CreateAccess
+                : spec.IsEip8037Enabled
+                    ? GasCostOf.CreateRegular
+                    : GasCostOf.TxCreate;
+            if (!transaction.Value.IsZero)
+            {
+                floorBase += GasCostOf.TransferLogEip2780;
+            }
+        }
+        else if (transaction.SenderAddress != transaction.To)
+        {
+            floorBase += spec.IsEip8038Enabled
+                ? Eip8038Constants.ColdAccountAccess
+                : GasCostOf.ColdAccountAccess;
+            if (!transaction.Value.IsZero)
+            {
+                floorBase += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            }
+        }
+
+        return floorBase;
     }
 }

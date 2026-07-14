@@ -7,6 +7,6 @@ namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 // ARCHIVE_URL_TEMPLATE already points there, so only the version/name need overriding.
 public static class Constants
 {
-    public const string ArchiveVersion = "tests-zkevm@v0.5.0";
+    public const string ArchiveVersion = "tests-zkevm@v0.6.0";
     public const string ArchiveName = "fixtures_zkevm.tar.gz";
 }

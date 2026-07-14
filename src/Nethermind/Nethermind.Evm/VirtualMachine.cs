@@ -293,12 +293,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                             if (isCreate)
                             {
                                 IncorporateChildStateGasRefunds(previousState);
-                                // EIP-8037: refund the CREATE/CREATE2 up-front NEW_ACCOUNT state gas when the target
-                                // already existed — the code lands on an existing account leaf.
-                                if (previousState.IsCreateOnPreExistingAccount)
-                                {
-                                    CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
-                                }
                             }
                         }
                     }
@@ -308,7 +302,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         TGasPolicy.UpdateGasUp(ref _currentState.Gas, TGasPolicy.GetRemainingGas(in previousState.Gas));
                         RemoveAdvancedStateGasRefund(previousState, ref previousState.Gas);
                         TGasPolicy.RestoreChildStateGas(ref _currentState.Gas, in previousState.Gas);
-                        if (previousState.ExecutionType.IsAnyCreate())
+                        if (previousState.ExecutionType.IsAnyCreate() && previousState.IsCreateStateGasCharged)
                         {
                             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
                         }
@@ -480,7 +474,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas);
             // The parent's up-front create state charge is refunded LIFO: a spilled charge
             // returns to gas_left (burned by a later halt), not the reservoir (which survives it).
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+            if (previousState.IsCreateStateGasCharged)
+            {
+                CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
+            }
             RemoveAdvancedStateGasRefund(previousState, ref _currentState.Gas);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -612,6 +609,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
+        bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -619,7 +617,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         PopAndRestoreParentState();
-        if (failedCreate)
+        if (failedCreate && childCreateStateGasCharged)
         {
             // State-gas refunds are LIFO: spilled state gas returns to gas_left first, then
             // the reservoir; refunding straight to the reservoir would survive a later halt.
@@ -794,6 +792,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
         bool childNewAccountCharged = _currentState.NewAccountCharged;
+        bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -801,7 +800,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         previousCallOutput = ZeroPaddedSpan.Empty;
 
         PopAndRestoreParentState();
-        if (failedCreate)
+        if (failedCreate && childCreateStateGasCharged)
         {
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
         }
