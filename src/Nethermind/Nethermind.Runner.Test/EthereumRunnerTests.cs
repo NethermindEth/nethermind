@@ -118,6 +118,14 @@ public class EthereumRunnerTests
             result.Add(("flashbots", configProvider));
         }
 
+        // These runner smoke/step tests build a node from the production configs but with an in-memory or
+        // otherwise minimal DB, which cannot back the flat persisted-snapshot catalog. Run the patricia
+        // baseline (matching the default test suite); production flat default is exercised elsewhere.
+        foreach ((string _, ConfigProvider configProvider) in result)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
+        }
+
         return result;
     }
 
@@ -329,9 +337,6 @@ public class EthereumRunnerTests
     {
         Rlp.ResetDecoders(); // One day this will be fix. But that day is not today, because it is seriously difficult.
         configProvider.GetConfig<IInitConfig>().DiagnosticMode = DiagnosticMode.MemDb;
-        // The flat backend's persisted-snapshot catalog is rocksdb-backed and unavailable under the MemDb
-        // diagnostic mode, so this smoke test runs the patricia baseline (matching the default test suite).
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = false;
         TempPath tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
 
