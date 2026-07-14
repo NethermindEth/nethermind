@@ -11,9 +11,9 @@ namespace Nethermind.Core.Test;
 public class GCSchedulerTests
 {
     [Test]
-    public void Sustained_sweep_fires_after_interval_without_gen2_collections()
+    public void Sustained_sweep_fires_after_interval_and_resets_counter()
     {
-        StabilizeAndDrain();
+        DrainSweepCounter();
 
         for (int i = 1; i < GCScheduler.SustainedSweepBlockInterval; i++)
         {
@@ -26,9 +26,9 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Sustained_sweep_is_postponed_when_gen2_was_collected_by_another_mechanism()
+    public void Sustained_sweep_is_postponed_by_scheduler_issued_gen2_but_not_gen1()
     {
-        StabilizeAndDrain();
+        DrainSweepCounter();
 
         for (int i = 0; i < 10; i++)
         {
@@ -37,16 +37,19 @@ public class GCSchedulerTests
 
         Assert.That(GCScheduler.Instance.BlocksSinceSustainedSweep, Is.EqualTo(10));
 
-        // An idle-window sweep / runtime collection elsewhere: the accumulated interval restarts.
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
-        GCScheduler.Instance.NotifyBlockProcessed();
+        // A gen1 idle-window sweep does not collect gen2 — the interval keeps accumulating.
+        Assert.That(GCScheduler.Instance.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
+        Assert.That(GCScheduler.Instance.BlocksSinceSustainedSweep, Is.EqualTo(10));
+
+        // A gen2 idle-window sweep restarts it: gen2 was just collected by another mechanism.
+        Assert.That(GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
         Assert.That(GCScheduler.Instance.BlocksSinceSustainedSweep, Is.Zero);
     }
 
     [Test]
     public void Sustained_sweep_stays_armed_and_retries_while_gc_guard_is_held()
     {
-        StabilizeAndDrain();
+        DrainSweepCounter();
 
         for (int i = 1; i < GCScheduler.SustainedSweepBlockInterval; i++)
         {
@@ -72,12 +75,10 @@ public class GCSchedulerTests
         Assert.That(GCScheduler.Instance.BlocksSinceSustainedSweep, Is.Zero);
     }
 
-    // Force a real gen2 collection, then let the next notification observe it: the counter resets
-    // and the gen2 observation is synced, giving each test a deterministic just-reset start.
-    private static void StabilizeAndDrain()
+    // The singleton counter survives across tests; a gen2 GCCollect resets it deterministically.
+    private static void DrainSweepCounter()
     {
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
-        GCScheduler.Instance.NotifyBlockProcessed();
+        Assert.That(GCScheduler.Instance.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True);
         Assert.That(GCScheduler.Instance.BlocksSinceSustainedSweep, Is.Zero);
     }
 }

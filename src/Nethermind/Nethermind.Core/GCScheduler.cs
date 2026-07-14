@@ -37,7 +37,6 @@ public sealed class GCScheduler
 
     private bool _skipNextGC = false;
     private int _blocksSinceSustainedSweep;
-    private int _lastObservedGen2Collections;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -184,6 +183,14 @@ public sealed class GCScheduler
 
         // Reset the block counter after GC
         _countToGC = MaxBlocksWithoutGC;
+        // Any gen2-level forced collection (an idle-window sweep or the sustained sweep itself)
+        // restarts the sustained-sweep interval: gen2 is being collected by this scheduler, so the
+        // sustained sweep has nothing to add. Runtime-initiated collections deliberately do NOT
+        // reset it — they are the escalation the sweep exists to prevent, not a substitute.
+        if (generation >= GC.MaxGeneration)
+        {
+            Interlocked.Exchange(ref _blocksSinceSustainedSweep, 0);
+        }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         // Also trim native memory used by Db
         MallocHelper.Instance.MallocTrim((uint)1.MiB);
@@ -197,38 +204,29 @@ public sealed class GCScheduler
 
     /// <summary>
     /// Per-processed-block notification driving a concurrent background gen2 sweep after
-    /// <see cref="SustainedSweepBlockInterval"/> consecutive blocks without any gen2 collection.
+    /// <see cref="SustainedSweepBlockInterval"/> consecutive blocks without a scheduler-issued
+    /// gen2 collection.
     /// </summary>
     /// <remarks>
     /// When blocks stream back-to-back (sync, benchmark replay, short-slot chains) the idle-window
     /// sweeps never engage, so gen2 garbage accumulates for minutes until the runtime escalates to a
     /// multi-second blocking full collection that freezes block processing. A periodic concurrent
-    /// sweep keeps gen2 small enough that the escalation never happens. Any observed gen2 collection
-    /// — an idle-window sweep, the runtime's own background collection, or this sweep itself —
-    /// restarts the interval, so on a synced node whose post-payload sweeps already collect gen2
-    /// regularly this never fires. Call from a background (non-processing) thread: the initiating
+    /// sweep keeps gen2 small enough that the escalation never happens. Any gen2 collection issued
+    /// through <see cref="GCCollect"/> — an idle-window sweep or this sweep itself — restarts the
+    /// interval, so on a synced node whose post-payload sweeps already collect gen2 regularly this
+    /// never fires. Runtime-initiated collections do not restart it: they are the losing race this
+    /// sweep exists to prevent. Call from a background (non-processing) thread: the initiating
     /// thread absorbs the collection's start-up pause. The GC guard may be held (the NoGCRegion
     /// bracket around a payload), in which case the counter stays armed and the sweep retries on the
     /// next block rather than skipping a whole interval.
     /// </remarks>
     public void NotifyBlockProcessed()
     {
-        // Gen2 was collected since the last block by another mechanism — nothing has accumulated,
-        // so postpone: restart the no-gen2 interval instead of adding a redundant sweep.
-        int gen2Collections = GC.CollectionCount(GC.MaxGeneration);
-        if (gen2Collections != _lastObservedGen2Collections)
-        {
-            _lastObservedGen2Collections = gen2Collections;
-            Interlocked.Exchange(ref _blocksSinceSustainedSweep, 0);
-            return;
-        }
-
         if (Interlocked.Increment(ref _blocksSinceSustainedSweep) < SustainedSweepBlockInterval) return;
 
-        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
-        {
-            Interlocked.Exchange(ref _blocksSinceSustainedSweep, 0);
-        }
+        // A successful gen2 GCCollect resets the counter; on failure (GC guard held) the counter
+        // stays armed so the sweep retries on the next block.
+        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
     }
 
     // Test-only visibility into the sustained-sweep counter.
