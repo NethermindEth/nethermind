@@ -1,11 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
