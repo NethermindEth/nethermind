@@ -68,7 +68,7 @@ public class FrameTxReceiptDecoderTests
         new()
         {
             TxType = TxType.FrameTx,
-            GasUsedTotal = (long)frameReceipts.Aggregate(0UL, static (sum, f) => sum + f.GasUsed),
+            GasUsedTotal = frameReceipts.Aggregate(0UL, static (sum, f) => sum + f.GasUsed),
             Payer = TestItem.AddressA,
             FrameReceipts = frameReceipts,
         };

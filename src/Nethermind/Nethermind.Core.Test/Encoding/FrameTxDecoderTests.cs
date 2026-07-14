@@ -146,8 +146,8 @@ public class FrameTxDecoderTests
             SenderAddress = TestItem.AddressA,
             Frames = frames ?? [Frame()],
             FrameSignatures = signatures ?? [],
-            GasPrice = 1.GWei(), // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 30.GWei(),
+            GasPrice = 1.GWei, // max_priority_fee_per_gas
+            DecodedMaxFeePerGas = 30.GWei,
         };
 
     private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, UInt256 value = default, byte[]? data = null) =>
