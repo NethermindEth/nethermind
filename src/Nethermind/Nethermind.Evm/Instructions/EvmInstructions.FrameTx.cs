@@ -25,7 +25,8 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 scope, out UInt256 offset, out UInt256 length))
+        // Spec stack order (top to bottom): offset, length, scope.
+        if (!stack.PopUInt256(out UInt256 offset, out UInt256 length, out UInt256 scope))
             return EvmExceptionType.StackUnderflow;
 
         TxFrame frame = ctx.CurrentFrame;
@@ -41,6 +42,24 @@ public static unsafe partial class EvmInstructions
         if (scope > TxFrame.ApproveScopeMask || scopeByte == 0 || (scopeByte & ~allowed) != 0)
             return EvmExceptionType.Revert;
 
+        bool approvesExecution = (scopeByte & TxFrame.ApproveExecution) != 0;
+        bool approvesPayment = (scopeByte & TxFrame.ApprovePayment) != 0;
+
+        if (approvesExecution)
+        {
+            // Re-approval and non-sender targets revert the frame.
+            if (ctx.SenderApproved || resolvedTarget != ctx.Sender) return EvmExceptionType.Revert;
+        }
+
+        if (approvesPayment)
+        {
+            // A second payer, payment before execution approval (unless this APPROVE grants both),
+            // and an underfunded payer all revert the frame.
+            if (ctx.Payer is not null) return EvmExceptionType.Revert;
+            if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
+            if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
+        }
+
         // Load the return data region (RETURN semantics). The outer loop applies the approval effects.
         // EIP8141-ISSUE: the spec does not define what happens to APPROVE's return data; loaded like
         // RETURN and left to the outer loop. Propose the spec state its disposition explicitly.
@@ -52,7 +71,9 @@ public static unsafe partial class EvmInstructions
 
         vm.ReturnData = returnData.ToArray();
         ctx.ApprovalScopeSignal = scopeByte;
-        return EvmExceptionType.None;
+        // Stop (not None): APPROVE exits the current call frame successfully, and the dispatch
+        // loop only polls ReturnData for opcodes at CREATE and above.
+        return EvmExceptionType.Stop;
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
@@ -66,6 +87,7 @@ public static unsafe partial class EvmInstructions
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
+        if (param > 0x0B) return EvmExceptionType.BadInstruction;
 
         byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -96,8 +118,8 @@ public static unsafe partial class EvmInstructions
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
-        // EIP8141-ISSUE: FRAMEDATALOAD/FRAMEDATACOPY stack order is under-specified (audit L-8);
-        // popping offset (top) then frameIndex.
+        // EIP8141-ISSUE: no explicit stack table (audit L-8); the prose lists offset, frameIndex —
+        // read top-to-bottom, so offset is on top (matching CALLDATALOAD).
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
 
@@ -115,12 +137,13 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        // EIP8141-ISSUE: stack order under-specified (audit L-8); frameIndex popped first (top),
-        // remaining (memOffset, dataOffset, length) delegated to the shared DataCopy helper.
-        if (!stack.PopUInt256(out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
+        // EIP8141-ISSUE: no explicit stack table (audit L-8); the prose lists memOffset, dataOffset,
+        // length, frameIndex — read top-to-bottom like the SIGPARAM copy list, so frameIndex is deepest.
+        if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 frameIndex))
+            return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
 
-        return DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas, ctx.Frames[(int)frameIndex.u0].Data.Span);
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, ctx.Frames[(int)frameIndex.u0].Data.Span);
     }
 
     /// <summary>FRAMEPARAM (0xb3): read a frame-scoped field.</summary>
@@ -133,8 +156,10 @@ public static unsafe partial class EvmInstructions
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
-        if (!stack.PopUInt256(out UInt256 param, out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
+        // Spec stack order: frameIndex on top, param second.
+        if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
+        if (param > 0x08) return EvmExceptionType.BadInstruction;
 
         int index = (int)frameIndex.u0;
         TxFrame frame = ctx.Frames[index];
@@ -170,8 +195,10 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 param, out UInt256 signatureIndex)) return EvmExceptionType.StackUnderflow;
+        // Spec stack order: signatureIndex on top, param second.
+        if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
+        if (param > 0x04) return EvmExceptionType.BadInstruction;
 
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
@@ -179,9 +206,12 @@ public static unsafe partial class EvmInstructions
         if (param.u0 == 0x04)
         {
             if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            // EIP8141-ISSUE: SIGPARAM copy stack order under-specified; length/dataOffset/memOffset
-            // delegated to DataCopy after popping param+signatureIndex above.
-            return DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas, signature.Signature.Span);
+            // Spec stack order after signatureIndex/param: length, dataOffset, memOffset.
+            // EIP8141-ISSUE: this is the reverse of the CALLDATACOPY operand order — likely a spec
+            // oversight worth pinning with an explicit stack table; implemented as written.
+            if (!stack.PopUInt256(out UInt256 length, out UInt256 dataOffset, out UInt256 memOffset))
+                return EvmExceptionType.StackUnderflow;
+            return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
         }
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);

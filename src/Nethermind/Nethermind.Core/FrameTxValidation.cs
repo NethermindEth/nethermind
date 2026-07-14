@@ -20,6 +20,8 @@ public static class FrameTxValidation
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
+    public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
+    public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
     public const string InvalidSignatureScheme = "unknown signature scheme";
     public const string ArbitrarySignatureWithSigner = "ARBITRARY signatures must not name a signer";
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
@@ -44,6 +46,7 @@ public static class FrameTxValidation
         }
 
         ulong totalFrameGas = 0;
+        bool hasExpiryFrame = false;
         for (int i = 0; i < frames.Length; i++)
         {
             TxFrame frame = frames[i];
@@ -78,6 +81,23 @@ public static class FrameTxValidation
             {
                 error = AtomicBatchOnLastFrame;
                 return false;
+            }
+
+            if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
+            {
+                if (frame.Flags != 0 || !frame.Value.IsZero || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
+                {
+                    error = InvalidExpiryFrame;
+                    return false;
+                }
+
+                if (hasExpiryFrame)
+                {
+                    error = MultipleExpiryFrames;
+                    return false;
+                }
+
+                hasExpiryFrame = true;
             }
 
             ulong accumulated = totalFrameGas + frame.GasLimit;

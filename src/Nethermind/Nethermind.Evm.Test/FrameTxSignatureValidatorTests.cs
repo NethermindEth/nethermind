@@ -1,0 +1,203 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Rlp;
+using NUnit.Framework;
+
+namespace Nethermind.Evm.Test;
+
+/// <summary>
+/// The spec <c>validate_signature</c> matrix: every protocol-validated signature must verify before
+/// any frame executes. SECP256K1 recovers and compares against the resolved signer (explicit or
+/// tx.sender); ARBITRARY entries pass pre-flight (their witness is verified by frame code); P256
+/// acceptance is deferred (EIP8141-GAP — the secp256r1 primitive routes through the precompile
+/// provider in a later slice), pinned here as a rejection.
+/// </summary>
+[TestFixture]
+public class FrameTxSignatureValidatorTests
+{
+    private readonly IEthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
+    private readonly Ecdsa _ecdsa = new();
+
+    [Test]
+    public void Validate_NoSignatures_ReturnsTrue()
+    {
+        Transaction tx = CreateFrameTx();
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_Secp256k1SignsCanonicalHashWithExplicitSigner_ReturnsTrue()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_Secp256k1WithAbsentSigner_ResolvesToTxSender()
+    {
+        // "If absent, tx.sender is used" — the sender key must have produced the signature.
+        Transaction tx = CreateFrameTx(sender: TestItem.PrivateKeyA.Address);
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyA, signer: null)];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_Secp256k1SignedByDifferentKey_ReturnsFalse()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyC.Address)];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+    }
+
+    [Test]
+    public void Validate_Secp256k1WrongLength_ReturnsFalse()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, new byte[64])];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignatureLength));
+    }
+
+    [Test]
+    public void Validate_Secp256k1WithRawRecoveryIdV_ReturnsTrue()
+    {
+        // EIP8141-GAP: the spec does not pin the v encoding of the 1-byte recovery id; the
+        // validator normalizes to the EIP-2 27/28 range, so a raw 0/1 recovery id also verifies.
+        Transaction tx = CreateFrameTx();
+        TxFrameSignature canonical = Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address);
+        byte[] rawIdBytes = canonical.Signature.ToArray();
+        rawIdBytes[0] -= 27;
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, rawIdBytes)];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_Secp256k1SignsExplicitDigest_ReturnsTrue()
+    {
+        Transaction tx = CreateFrameTx();
+        ValueHash256 digest = Keccak.Compute("external message");
+        Signature signature = _ecdsa.Sign(TestItem.PrivateKeyB, in digest);
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, digest.ToByteArray(), ToVrs(signature)),
+        ];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_Secp256k1DigestSignatureCheckedAgainstDifferentDigest_ReturnsFalse()
+    {
+        Transaction tx = CreateFrameTx();
+        ValueHash256 signedDigest = Keccak.Compute("signed message");
+        ValueHash256 claimedDigest = Keccak.Compute("different message");
+        Signature signature = _ecdsa.Sign(TestItem.PrivateKeyB, in signedDigest);
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, claimedDigest.ToByteArray(), ToVrs(signature)),
+        ];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+    }
+
+    [Test]
+    public void Validate_ArbitraryEntry_PassesPreFlight()
+    {
+        // ARBITRARY witnesses are verified by frame code, not by the protocol pre-flight.
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad })];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_P256SignerMismatchesPublicKey_ReturnsFalse()
+    {
+        // The signer address must be keccak256(qx || qy)[12:] — checked even while verification
+        // itself is deferred.
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressB, default, new byte[TxFrameSignature.P256SignatureLength])];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidP256Signer));
+    }
+
+    [Test]
+    public void Validate_P256WithMatchingSigner_RejectedAsNotYetSupported()
+    {
+        // EIP8141-GAP: a spec-conformant P256 signature must VERIFY here once the secp256r1
+        // primitive is routed through the precompile provider; until then the prototype rejects.
+        Transaction tx = CreateFrameTx();
+        byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
+        raw.AsSpan(64).Fill(0x42); // qx || qy
+        Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.P256NotSupported));
+    }
+
+    [Test]
+    public void Validate_SecondEntryInvalid_WholeValidationFails()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures =
+        [
+            Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[65]),
+        ];
+
+        Assert.That(FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, out string? error), Is.False);
+        Assert.That(error, Is.Not.Null);
+    }
+
+    private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
+    {
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = _ecdsa.Sign(key, in sigHash);
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));
+    }
+
+    private static byte[] ToVrs(Signature signature)
+    {
+        byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        bytes[0] = (byte)signature.V;
+        signature.Bytes.CopyTo(bytes.AsSpan(1));
+        return bytes;
+    }
+
+    private static Transaction CreateFrameTx(Address? sender = null) =>
+        new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = sender ?? TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 100_000, default, default)],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100,
+        };
+}

@@ -66,9 +66,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault());
 
-        VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
-            Eip8141Constants.EntryPointAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
-
         for (int i = 0; i < frames.Length; i++)
         {
             TxFrame frame = frames[i];
@@ -83,6 +80,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
             bool isStatic = frame.Mode == TxFrame.ModeVerify;
+
+            // ORIGIN returns the frame's caller throughout all call depths.
+            VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
+                caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
 
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, spec, tracer);
 
@@ -108,9 +109,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, IReleaseSpec spec, ITxTracer tracer)
     {
+        // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
+        UInt256 value = frame.Value;
+        if (!value.IsZero && WorldState.GetBalance(caller) < value)
+        {
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+        }
+
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
         ReadOnlyMemory<byte> inputData = frame.Data;
-        UInt256 value = frame.Value;
 
         ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
@@ -122,6 +129,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             inputData: in inputData);
 
         Snapshot snapshot = WorldState.TakeSnapshot();
+        if (!value.IsZero)
+        {
+            // The VM credits the executing account; the caller-side debit is the processor's job.
+            WorldState.SubtractFromBalance(caller, in value, spec);
+        }
+
         StackAccessTracker accessTracker = new();
 
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
@@ -143,6 +156,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private void ApplyApproval(FrameTxContext frameContext, Address resolvedTarget, IReleaseSpec spec)
     {
+        // Approval validity (scope allowance, re-approval, target, prior execution approval, payer
+        // balance) is enforced by the APPROVE handler, which reverts the frame on violation; a
+        // signal only arrives here from a successfully completed frame.
         byte scope = frameContext.ApprovalScopeSignal;
         if (scope == 0) return;
         frameContext.ApprovalScopeSignal = 0;
@@ -152,7 +168,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameContext.SenderApproved = true;
         }
 
-        if ((scope & TxFrame.ApprovePayment) != 0 && frameContext.Payer is null)
+        if ((scope & TxFrame.ApprovePayment) != 0)
         {
             // EIP8141: charge the max cost up front from the payer and consume the sender nonce.
             // Refund of unused gas is wired with full gas accounting in a later slice.
