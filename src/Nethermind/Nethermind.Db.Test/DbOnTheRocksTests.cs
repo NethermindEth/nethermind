@@ -436,6 +436,25 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Snapshot_multiget_uses_point_in_time_view()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+            byte[][] keys = [[1], [2], [3]];
+            _db[keys[0]] = [10];
+            _db[keys[1]] = [20];
+
+            using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            _db[keys[0]] = [11];
+            _db[keys[1]] = null;
+            _db[keys[2]] = [30];
+            byte[]?[] values = new byte[]?[keys.Length];
+
+            snapshot.MultiGet(keys, values);
+
+            Assert.That(values, Is.EqualTo(new byte[]?[] { [10], [20], null }));
+        }
+
+        [Test]
         public void Snapshot_dispose_cleans_up_read_options()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;

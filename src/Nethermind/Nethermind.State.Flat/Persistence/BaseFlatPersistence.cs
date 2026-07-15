@@ -91,6 +91,22 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            byte[][] keys = new byte[addresses.Length][];
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                byte[] key = new byte[AccountKeyLength];
+                EncodeAccountKeyHashed(key, addresses[i]);
+                keys[i] = key;
+            }
+
+            state.MultiGet(keys, accounts);
+        }
+
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
         {
