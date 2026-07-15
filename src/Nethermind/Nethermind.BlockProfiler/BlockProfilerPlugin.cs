@@ -48,9 +48,10 @@ public class BlockProfilerModule(FrozenSet<ulong> targets) : Module
 {
     protected override void Load(ContainerBuilder builder) =>
         // Decorating IBranchProcessor guarantees the observer is instantiated with the main processor
-        // (no eager-activation dance). The factory captures the parsed target set.
-        builder.AddDecorator<IBranchProcessor>((ctx, inner) =>
-            new ProfilingBranchProcessor(inner, targets, ctx.Resolve<ILogManager>()));
+        // (no eager-activation dance).
+        builder
+            .AddSingleton(targets)
+            .AddDecorator<IBranchProcessor, ProfilingBranchProcessor>();
 }
 
 /// <summary>
@@ -104,8 +105,7 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
-        // (ulong) cast keeps this source compilable as a drop-in against older images where Block.Number was long
-        if (!_targets.Contains((ulong)e.Block.Number)) return;
+        if (!_targets.Contains(e.Block.Number)) return;
         if (!IsMeasureApiAvailable()) return;
         lock (s_profilerSync)
         {
@@ -118,7 +118,7 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_targets.Contains((ulong)e.Block.Number)) return;
+        if (!_targets.Contains(e.Block.Number)) return;
         lock (s_profilerSync)
         {
             if (!s_collecting) return;
