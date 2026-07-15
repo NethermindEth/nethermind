@@ -62,10 +62,6 @@ public class StateSyncRunner(
             await StateSyncPrecursorWait(token);
             TuneStateDb(syncConfig.TuneDbMode);
 
-            RecordedBalStore recordedBalStore = new(logManager);
-            recordedBalStore.Insert(0, new GeneratedBlockAccessList());
-     
-
             try
             {
                 if (syncConfig.SnapSync)
@@ -100,7 +96,7 @@ public class StateSyncRunner(
     {
         stateSyncPivot.UpdateHeaderForcefully();
         BlockHeader? lastPivot = stateSyncPivot.GetPivotHeader();
-
+        GetBALS(firstPivot.Number, lastPivot!.Number);
         if (lastPivot is null)
         {
             if (_logger.IsInfo) _logger.Info("BAL healing skipped - no pivot header available.");
@@ -124,12 +120,13 @@ public class StateSyncRunner(
 
             if(firstPivot.Number == lastPivot?.Number)
             {
-                if (_logger.IsInfo) _logger.Info($"BAL healing complete - no new pivot header available after block {firstPivot.Number}.");
+                if (_logger.IsInfo) _logger.Info($"BAL healing skipped - no new pivot header available after block {firstPivot.Number}.");
                 await Task.Delay(1000, token);
                 continue;
             }
     
             if (_logger.IsInfo) _logger.Info($"BAL healing: first pivot {firstPivot.Number}, last pivot {lastPivot?.Number.ToString() ?? "<unknown>"}");
+            GetBALS(firstPivot.Number, lastPivot.Number);
             bool healingComplete2 = await balHealing.Run(firstPivot, lastPivot, stateSyncPivot.UpdatedStorages, token);
                 
             if (!healingComplete2)
@@ -149,7 +146,7 @@ public class StateSyncRunner(
     }
 
 
-    public async void GetBALS(ulong start)
+    public async void GetBALS(ulong start, ulong end)
     {
         RecordedBalStore recordedBalStore = new(logManager);
         ulong blockNumber = start;
@@ -189,6 +186,8 @@ public class StateSyncRunner(
             if(_logger.IsInfo) _logger.Info($"Inserted bal for block number {blockNumber}.");
 
             blockNumber++;
+            if (blockNumber > end)
+                break;
         }                    
     }
 

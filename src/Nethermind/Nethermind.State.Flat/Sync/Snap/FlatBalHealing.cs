@@ -29,8 +29,9 @@ public class FlatBalHealing(
     // ITreeSyncStore store,
     IPersistence persistence,
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    ILogManager logManager,
-    IVerifyTrieStarter? verifyTrieStarter = null) : IBalHealing
+    ILogManager logManager
+    // IVerifyTrieStarter? verifyTrieStarter = null
+    ) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
 
@@ -50,14 +51,14 @@ public class FlatBalHealing(
             // VerifyStorageCompleteness(updatedStorageAccounts, token);
 
             Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorageAccounts);
-            StateId from;
-                using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
-                    from = reader.CurrentState;
+            // StateId from;
+            //     using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+            //         from = reader.CurrentState;
 
-            persistence.Flush(); // DisableWAL writes are only durable after flush; flush before moving the pointer
-            using (persistence.CreateWriteBatch(from, new StateId(firstPivot.Number, reassembledRoot), WriteFlags.DisableWAL)) { }
+            // persistence.Flush(); // DisableWAL writes are only durable after flush; flush before moving the pointer
+            // using (persistence.CreateWriteBatch(from, new StateId(firstPivot.Number, reassembledRoot), WriteFlags.DisableWAL)) { }
                 
-            verifyTrieStarter?.TryStartVerifyTrie(firstPivot);
+            // verifyTrieStarter?.TryStartVerifyTrie(firstPivot);
 
             if (reassembledRoot is null)
             {
