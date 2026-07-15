@@ -156,6 +156,29 @@ public class DetectionScannerTests
     }
 
     [Test]
+    public async Task Chunk_shrinks_after_cancellation()
+    {
+        SeedHead(100_000); // large enough that the first chunk is the base size
+        List<long> widths = [];
+        bool firstCancels = true;
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                LogFilter f = ci.Arg<LogFilter>();
+                widths.Add((long)(f.ToBlock.BlockNumber ?? 0) - (long)(f.FromBlock.BlockNumber ?? 0));
+                if (firstCancels) { firstCancels = false; throw new OperationCanceledException(); }
+                return (IEnumerable<FilterLog>)[];
+            });
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunNext(); // first chunk pre-empted -> shrink, retry rescheduled
+        await _scheduler.RunNext(); // retry runs at the smaller size
+
+        Assert.That(widths[0], Is.EqualTo(4_999), "first chunk uses the base size (5000 blocks)");
+        Assert.That(widths[^1], Is.LessThan(widths[0]), "chunk shrank after the cancellation");
+    }
+
+    [Test]
     public async Task Reaching_pruned_history_marks_complete()
     {
         SeedHead(5);

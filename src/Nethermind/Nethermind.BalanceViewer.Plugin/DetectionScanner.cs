@@ -45,12 +45,21 @@ public sealed class DetectionScanner(
     private static readonly Hash256 TransferSingleTopic = new("0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62");
     private static readonly Hash256 TransferBatchTopic = new("0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb");
 
-    private const int ChunkBlocks = 5_000;   // small chunks so each scheduled task finishes within an inter-block gap
+    // Per-account chunk size adapts: it grows on a chunk that completes (sparse accounts race ahead — the
+    // log index makes wide ranges cheap) and halves on one pre-empted by block processing (very active
+    // accounts settle on a size that fits an inter-block gap, instead of retrying an oversized range forever).
+    private const int BaseChunkBlocks = 5_000;
+    private const int MinChunkBlocks = 250;
+    private const int MaxChunkBlocks = 250_000;
     private const int MaxContracts = 2_000;  // safety cap on distinct contracts discovered per account
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
 
     private readonly ILogger _logger = logManager.GetClassLogger<DetectionScanner>();
-    private readonly ConcurrentDictionary<string, byte> _active = new();
+    private readonly ConcurrentDictionary<string, int> _active = new(); // key -> current adaptive chunk size
+
+    private int CurrentChunk(string key) => _active.TryGetValue(key, out int c) ? c : BaseChunkBlocks;
+    private void Grow(string key) => _active.AddOrUpdate(key, BaseChunkBlocks, static (_, c) => Math.Min(c * 2, MaxChunkBlocks));
+    private void Shrink(string key) => _active.AddOrUpdate(key, MinChunkBlocks, static (_, c) => Math.Max(c / 2, MinChunkBlocks));
 
     private readonly record struct DetectRequest(long ChainId, Address Account);
 
@@ -64,7 +73,7 @@ public sealed class DetectionScanner(
         // arrived since the last scan. A previously-"complete" account is re-scanned for the forward gap as
         // the chain advances, so tokens received after the first visit are still detected.
         if (entry is { Complete: true } && entry.Head >= head) return;
-        if (!_active.TryAdd(Key(chainId, account), 0)) return; // a chunk chain is already running for this account
+        if (!_active.TryAdd(Key(chainId, account), BaseChunkBlocks)) return; // a chunk chain is already running for this account
         Schedule(new DetectRequest(chainId, account));
     }
 
@@ -85,6 +94,7 @@ public sealed class DetectionScanner(
         {
             DetectionEntry? existing = cache.Get(chainId, account.ToString());
             long curHead = (long)(blockFinder.Head?.Number ?? 0);
+            int chunk = CurrentChunk(key);
 
             // Forward phase: cover blocks that arrived since the last scan, extending the covered range
             // upward one chunk at a time (kept contiguous with the existing range). Runs before the downward
@@ -92,7 +102,7 @@ public sealed class DetectionScanner(
             if (existing is not null && curHead > existing.Head)
             {
                 long flo = existing.Head + 1;
-                long fhi = Math.Min(curHead, flo + ChunkBlocks - 1);
+                long fhi = Math.Min(curHead, flo + chunk - 1);
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
                 try
@@ -101,10 +111,12 @@ public sealed class DetectionScanner(
                 }
                 catch (OperationCanceledException)
                 {
+                    Shrink(key);
                     Persist(chainId, account, existing.Contracts, existing.NftContracts, existing.ScannedFrom, existing.Head, existing.Complete);
                     Schedule(req);
                     return Task.CompletedTask;
                 }
+                Grow(key);
                 Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, fhi, existing.Complete);
                 Schedule(req); // continue: remaining forward gap, then any downward history
                 return Task.CompletedTask;
@@ -117,7 +129,7 @@ public sealed class DetectionScanner(
             long priorScannedFrom = existing is { ScannedFrom: > 0 } ? existing.ScannedFrom : head + 1;
             long hi = priorScannedFrom - 1;
             if (hi <= 0) { Persist(chainId, account, existing?.Contracts, existing?.NftContracts, 0, head, complete: true); _active.TryRemove(key, out _); return Task.CompletedTask; }
-            long lo = Math.Max(0, hi - ChunkBlocks + 1);
+            long lo = Math.Max(0, hi - chunk + 1);
 
             HashSet<string> erc20 = existing is null ? [] : [.. existing.Contracts];
             HashSet<string> nfts = existing is null ? [] : [.. existing.NftContracts];
@@ -128,7 +140,8 @@ public sealed class DetectionScanner(
             catch (OperationCanceledException)
             {
                 // pre-empted by block processing (or deadline) — keep any contracts found, don't advance the
-                // cursor, and retry this range on a later scheduling slot
+                // cursor, shrink the chunk so the retry is likelier to fit an inter-block gap, and retry later
+                Shrink(key);
                 Persist(chainId, account, erc20, nfts, priorScannedFrom, head, complete: false);
                 Schedule(req);
                 return Task.CompletedTask;
@@ -145,7 +158,7 @@ public sealed class DetectionScanner(
             bool complete = lo <= 0 || erc20.Count + nfts.Count >= MaxContracts;
             Persist(chainId, account, erc20, nfts, complete ? 0 : lo, head, complete);
             if (complete) _active.TryRemove(key, out _);
-            else Schedule(req);
+            else { Grow(key); Schedule(req); } // chunk finished within the gap — go wider next time
         }
         catch (Exception e)
         {
