@@ -134,6 +134,19 @@
           "NETStandard.Library": "1.6.1"
         }
       },
+      "JetBrains.FormatRipper": {
+        "type": "Transitive",
+        "resolved": "2.4.0",
+        "contentHash": "k5eGab1DArJH0k94ZO9oxDxg8go1KvR1oPGPzyVvfplEHetgrc2hGZ6Cken8fVsdS/Xp3hMnHd9L5MXb7JJM4A=="
+      },
+      "JetBrains.HabitatDetector": {
+        "type": "Transitive",
+        "resolved": "1.4.6",
+        "contentHash": "kNN79C3hIt+1AzPNKbddouXXGaL84bi2T42Zsa2A0nXyatg1V5q+WLI9NddCtWjMdb9CLkDem2VIc/5lHWaXJQ==",
+        "dependencies": {
+          "JetBrains.FormatRipper": "2.4.0"
+        }
+      },
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -615,6 +628,14 @@
           "Nethermind.State": "[1.40.0-unstable, )",
           "Nethermind.TxPool": "[1.40.0-unstable, )",
           "Polly": "[8.7.0, )"
+        }
+      },
+      "nethermind.blockprofiler": {
+        "type": "Project",
+        "dependencies": {
+          "JetBrains.Profiler.Api": "[1.4.11, )",
+          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[1.40.0-unstable, )"
         }
       },
       "nethermind.censorshipdetector.plugin": {
@@ -1369,6 +1390,15 @@
         "contentHash": "vpC39vgCxbVBnsn8boeQv2aGIdEFqQMnjsoDvyYfr6tC93Fe9KqNG1mAiF6KLzJTwk6aiWHGNYE2EqmDUzk5ng==",
         "dependencies": {
           "Grpc.Core": "2.46.6"
+        }
+      },
+      "JetBrains.Profiler.Api": {
+        "type": "CentralTransitive",
+        "requested": "[1.4.11, )",
+        "resolved": "1.4.11",
+        "contentHash": "4XOA72p49dmzT9k2NyhSVYnLxjw+OPJpXen2gNFsbWquZPjnpoPqXJosVfeONDOST52cgAg3c1q/cBa6/R3NLQ==",
+        "dependencies": {
+          "JetBrains.HabitatDetector": "1.4.6"
         }
       },
       "KubernetesClient": {
