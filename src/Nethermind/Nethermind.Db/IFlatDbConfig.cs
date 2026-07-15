@@ -43,6 +43,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Lower bound, in bytes, for the RocksDB write buffer (memtable) size of the flat-state columns. The per-batch adjuster never shrinks a column's memtable below this value. Raising it lets frequent small persistence batches (small CompactSize) coalesce and deduplicate in the memtable instead of churning L0, decoupling write amplification from CompactSize.", DefaultValue = "16777216")]
     long PersistenceWriteBufferFloor { get; set; }
 
+    [ConfigItem(Description = "Upper bound, in bytes, that the per-batch adjuster grows a flat-state column's RocksDB write buffer (memtable) to, and (at 4x) its base level size. Heavy columns use the whole cap; Account uses half and the metadata columns a quarter, preserving the 64/32/16 MB ratio at the default. Raising it lets a heavy-block CompactSize persist coalesce in the memtable instead of forcing a flush and L0 pileup that stalls concurrent reads; the cost is transient memtable memory during the persist.", DefaultValue = "67108864")]
+    long PersistenceWriteBufferCap { get; set; }
+
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 

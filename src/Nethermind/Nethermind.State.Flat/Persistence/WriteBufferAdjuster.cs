@@ -7,24 +7,34 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.Persistence;
 
-internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor)
+internal class WriteBufferAdjuster(
+    IColumnsDb<FlatDbColumns> db,
+    long writeBufferFloor = WriteBufferAdjuster.DefaultWriteBufferFloor,
+    long writeBufferCap = WriteBufferAdjuster.DefaultWriteBufferCap)
 {
     internal const int ColumnCount = 7;
     internal const long DefaultWriteBufferFloor = 16 * MemorySizes.MiB;
+    internal const long DefaultWriteBufferCap = 64 * MemorySizes.MiB;
 
-    private static long MaxWriteBufferSize(FlatDbColumns column) => column switch
+    // Upper bound the per-batch adjuster grows a column's memtable to. The heavy columns use the whole cap;
+    // Account and the metadata/fallback columns scale down from it, preserving the historical 64/32/16 MB ratio
+    // at the default cap. Raising the cap lets a heavy-block CompactSize persist coalesce in the memtable instead
+    // of forcing a flush and L0 pileup.
+    private long MaxWriteBufferSize(FlatDbColumns column) => column switch
     {
-        FlatDbColumns.Account => 32 * MemorySizes.MiB,
-        FlatDbColumns.Storage => 64 * MemorySizes.MiB,
-        FlatDbColumns.StateNodes => 64 * MemorySizes.MiB,
-        FlatDbColumns.StateTopNodes => 64 * MemorySizes.MiB,
-        FlatDbColumns.StorageNodes => 64 * MemorySizes.MiB,
-        _ => 16 * MemorySizes.MiB,                            // Metadata, FallbackNodes
+        FlatDbColumns.Account => _writeBufferCap / 2,
+        FlatDbColumns.Storage => _writeBufferCap,
+        FlatDbColumns.StateNodes => _writeBufferCap,
+        FlatDbColumns.StateTopNodes => _writeBufferCap,
+        FlatDbColumns.StorageNodes => _writeBufferCap,
+        _ => _writeBufferCap / 4,                             // Metadata, FallbackNodes
     };
 
     // Lower bound applied per column. Frequent small persistence batches (small CompactSize) would otherwise
     // shrink the memtable to the floor and churn L0; raising the floor lets them coalesce in the memtable instead.
     private readonly long _writeBufferFloor = writeBufferFloor <= 0 ? DefaultWriteBufferFloor : writeBufferFloor;
+
+    private readonly long _writeBufferCap = writeBufferCap <= 0 ? DefaultWriteBufferCap : writeBufferCap;
 
     private bool _syncBufferSet;
 
@@ -50,14 +60,14 @@ internal class WriteBufferAdjuster(IColumnsDb<FlatDbColumns> db, long writeBuffe
         {
             if (!_syncBufferSet)
             {
-                SetWriteBuffer(db, FlatDbColumns.Account);
-                SetWriteBuffer(db, FlatDbColumns.Storage);
-                SetWriteBuffer(db, FlatDbColumns.StateNodes);
-                SetWriteBuffer(db, FlatDbColumns.StorageNodes);
+                SetWriteBuffer(FlatDbColumns.Account);
+                SetWriteBuffer(FlatDbColumns.Storage);
+                SetWriteBuffer(FlatDbColumns.StateNodes);
+                SetWriteBuffer(FlatDbColumns.StorageNodes);
                 _syncBufferSet = true;
 
-                static void SetWriteBuffer(IColumnsDb<FlatDbColumns> columnsDb, FlatDbColumns col) =>
-                    columnsDb.GetColumnDb(col).SetWriteBuffer(MaxWriteBufferSize(col));
+                void SetWriteBuffer(FlatDbColumns col) =>
+                    db.GetColumnDb(col).SetWriteBuffer(MaxWriteBufferSize(col));
             }
 
             return batch.GetColumnBatch(column);

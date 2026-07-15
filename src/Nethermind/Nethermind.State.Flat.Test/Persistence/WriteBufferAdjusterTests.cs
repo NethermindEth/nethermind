@@ -138,6 +138,37 @@ public class WriteBufferAdjusterTests
         _columnDb.Received(1).SetWriteBuffer(floor);
     }
 
+    [Test]
+    public void AdjustWriteBuffer_WithRaisedCap_GrowsAboveDefaultCeiling()
+    {
+        const long cap = 512 * MemorySizes.MiB;
+        WriteBufferAdjuster sut = new(_db, WriteBufferAdjuster.DefaultWriteBufferFloor, cap);
+
+        // 100 MB written -> target 150 MB. The default Account ceiling (32 MB) would clamp it; the raised cap
+        // (Account ceiling = cap/2 = 256 MB) lets the memtable grow to the full 150 MB so a heavy persist
+        // coalesces instead of forcing a flush.
+        WriteBufferAdjuster.CountingWriteBatch store =
+            (WriteBufferAdjuster.CountingWriteBatch)sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[100 * MemorySizes.MiB], null);
+        sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(150 * MemorySizes.MiB);
+    }
+
+    [Test]
+    public void Wrap_WithDisableWAL_WithRaisedCap_ScalesPerColumnCaps()
+    {
+        const long cap = 512 * MemorySizes.MiB;
+        WriteBufferAdjuster sut = new(_db, WriteBufferAdjuster.DefaultWriteBufferFloor, cap);
+
+        sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
+
+        _columnDbs[FlatDbColumns.Account].Received(1).SetWriteBuffer(cap / 2);
+        _columnDbs[FlatDbColumns.Storage].Received(1).SetWriteBuffer(cap);
+        _columnDbs[FlatDbColumns.StateNodes].Received(1).SetWriteBuffer(cap);
+        _columnDbs[FlatDbColumns.StorageNodes].Received(1).SetWriteBuffer(cap);
+    }
+
     private sealed class StubWriteBatch : IWriteBatch
     {
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = default) { }
