@@ -127,6 +127,21 @@ namespace Nethermind.Network.Test.Stats
             }
         }
 
+        [Test]
+        public void TryFromEnr_keeps_independent_tcp_and_discovery_addresses()
+        {
+            NodeRecord enr = CreateSplitEndpointEnr(TestItem.PrivateKeyA);
+
+            bool result = Node.TryFromEnr(enr, out Node? node);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(node!.Address, Is.EqualTo(new IPEndPoint(IPAddress.Parse("8.8.8.8"), 30303)));
+                Assert.That(node.DiscoveryAddress, Is.EqualTo(new IPEndPoint(IPAddress.Parse("2001:4860:4860::8888"), 30304)));
+            }
+        }
+
         [TestCaseSource(nameof(TryRequestEnrSequenceCases))]
         public void TryRequestEnrSequence_tracks_active_request(
             ulong initialSequence,
@@ -238,6 +253,20 @@ namespace Nethermind.Network.Test.Stats
             enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
             enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
             enr.SetEntry(new Tcp6Entry(30303));
+            enr.SetEntry(new Udp6Entry(30304));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+            return enr;
+        }
+
+        private static NodeRecord CreateSplitEndpointEnr(PrivateKey privateKey)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.8")));
+            enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.SetEntry(new TcpEntry(30303));
             enr.SetEntry(new Udp6Entry(30304));
             enr.EnrSequence = 1;
             new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);

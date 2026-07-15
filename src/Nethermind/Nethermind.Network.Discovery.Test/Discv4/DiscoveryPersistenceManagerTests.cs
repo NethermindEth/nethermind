@@ -223,12 +223,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         public async Task RunDiscoveryPersistenceCommit_Should_Preserve_Enr_In_Common_Storage(CancellationToken cancellationToken)
         {
             NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: 30304);
-            Node node = new(TestItem.PrivateKeyA.PublicKey, "8.8.8.8", 30304)
-            {
-                Enr = enr
-            };
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
 
-            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node, cancellationToken);
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node!, cancellationToken);
 
             using (Assert.EnterMultipleScope())
             {
@@ -242,6 +239,61 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 Assert.That(persistedNode.Host, Is.EqualTo("8.8.8.8"));
                 Assert.That(persistedNode.Port, Is.EqualTo(30303));
                 Assert.That(persistedNode.DiscoveryPort, Is.EqualTo(30304));
+            }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_RoundTrip_TcpOnly_Enr_Endpoint(CancellationToken cancellationToken)
+        {
+            IPAddress address = IPAddress.Parse("192.168.1.1");
+            NodeRecord enr = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                address,
+                tcpPort: 30303,
+                udpPort: null);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            node!.SetDiscoveryEndpoint(new IPEndPoint(address, 30304));
+
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node!, cancellationToken);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                Assert.That(persistedNodes[0].IsEnode, Is.True);
+                Assert.That(persistedNodes[0].Port, Is.EqualTo(30303));
+                Assert.That(persistedNodes[0].DiscoveryPort, Is.EqualTo(30304));
+            }
+
+            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+            await _discv4Adapter.Received(1).Ping(
+                Arg.Is<Node>(persistedNode =>
+                    persistedNode.Address.Equals(new IPEndPoint(address, 30303)) &&
+                    persistedNode.DiscoveryAddress.Equals(new IPEndPoint(address, 30304))),
+                Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task RunDiscoveryPersistenceCommit_Should_NotRestore_Stale_Enr_Tcp_Endpoint(CancellationToken cancellationToken)
+        {
+            IPAddress address = IPAddress.Parse("192.168.1.1");
+            NodeRecord enr = TestEnrBuilder.BuildSigned(
+                TestItem.PrivateKeyA,
+                address,
+                tcpPort: 30303,
+                udpPort: 30304);
+            Assert.That(Node.TryFromEnr(enr, out Node? node), Is.True);
+            node!.UpdateEndpoint(new Node(TestItem.PublicKeyA, address.ToString(), 30305, 30304));
+
+            NetworkNode[] persistedNodes = await RunSinglePersistenceCommit(node!, cancellationToken);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNodes, Has.Length.EqualTo(1));
+                Assert.That(persistedNodes[0].IsEnode, Is.True);
+                Assert.That(persistedNodes[0].Port, Is.EqualTo(30305));
+                Assert.That(persistedNodes[0].DiscoveryPort, Is.EqualTo(30304));
             }
         }
 
