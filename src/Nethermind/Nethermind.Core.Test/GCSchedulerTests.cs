@@ -13,6 +13,10 @@ public class GCSchedulerTests
 {
     private readonly GCScheduler _scheduler = new(sustainedSweepEnabled: false);
 
+    // Disarm the singleton's sweep so its timer cannot hold the shared static guard mid-test.
+    [SetUp]
+    public void SetUp() => GCScheduler.Instance.SweepBaselineAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
+
     [Test]
     public void Sweep_fires_only_when_allocation_budget_is_exceeded()
     {
