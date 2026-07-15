@@ -2,13 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Arm = System.Runtime.Intrinsics.Arm;
+using x64 = System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -704,18 +709,9 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(1)]
-        [TestCase(7)]
-        [TestCase(8)]
-        [TestCase(15)]
-        [TestCase(16)]
-        [TestCase(31)]
-        [TestCase(32)]
-        [TestCase(33)]
-        [TestCase(64)]
-        [TestCase(128)]
-        [TestCase(256)]
-        [TestCase(500)]
+        private static readonly int[] FastHashLengths = [1, 4, 5, 7, 8, 15, 16, 31, 32, 33, 64, 128, 256, 500];
+
+        [TestCaseSource(nameof(FastHashLengths))]
         public void FastHash_VariousLengths_AllBytesContribute(int length)
         {
             byte[] input = new byte[length];
@@ -735,27 +731,395 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(1, 1000u, 2000u)]
-        [TestCase(8, 1000u, 2000u)]
-        [TestCase(16, 1000u, 2000u)]
-        [TestCase(16, 0u, 1u)]
-        [TestCase(16, 0u, 0xFFFFFFFFu)]
-        [TestCase(20, 1000u, 2000u)]
-        [TestCase(32, 1000u, 2000u)]
-        [TestCase(33, 1000u, 2000u)]
-        [TestCase(64, 1000u, 2000u)]
-        [TestCase(65, 1000u, 2000u)]
-        [TestCase(71, 1000u, 2000u)]
-        [TestCase(79, 1000u, 2000u)]
-        [TestCase(80, 1000u, 2000u)]
-        [TestCase(128, 1000u, 2000u)]
+        [TestCaseSource(nameof(FastHashSeedCases))]
         public void FastHash_SeedAffectsOutput(int length, uint seed1, uint seed2)
         {
+            Require(AesIsSupported, "AES path");
+
             byte[] input = new byte[length];
             for (int i = 0; i < length; i++)
                 input[i] = (byte)(i * 0x17 + 0x42);
 
-            Assert.That(SpanExtensions.FastHash(input, seed1), Is.Not.EqualTo(SpanExtensions.FastHash(input, seed2)), $"seeds {seed1} vs {seed2} for {length} bytes");
+            Assert.That(FastHashAes(input, seed1), Is.Not.EqualTo(FastHashAes(input, seed2)), $"seeds {seed1} vs {seed2} for {length} bytes");
+        }
+
+        private static IEnumerable<TestCaseData> FastHashSeedCases()
+        {
+            foreach (int length in new int[] { 1, 8, 16, 20, 32, 33, 64, 65, 71, 79, 80, 128 })
+                yield return new TestCaseData(length, 1000u, 2000u);
+
+            yield return new TestCaseData(16, 0u, 1u);
+            yield return new TestCaseData(16, 0u, uint.MaxValue);
+        }
+
+        private static int FastHashAes(byte[] input, uint seed)
+        {
+            ref byte start = ref MemoryMarshal.GetArrayDataReference(input);
+            Vector128<byte> aesSeed = Vector128.Create(seed).AsByte();
+            if (input.Length >= 16)
+                return SpanExtensions.FastHashAes(ref start, input.Length, aesSeed);
+
+            Vector128<byte> finalSeed = aesSeed ^ Vector128.Create(
+                0x9E3779B9u, 0x85EBCA6Bu, 0xC2B2AE35u, 0x27D4EB2Fu).AsByte();
+            return SpanExtensions.FastHashAesShort(ref start, input.Length, aesSeed, finalSeed);
+        }
+
+#if !ZK_EVM
+        [TestCase(false, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_PublicPath")]
+        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_XxHash3Fallback")]
+        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceXxHash3)
+        {
+            const int count = 1024;
+            const long seed = 0x510E527FADE682D1L;
+            ulong pairedDelta = SolveCrcInput(0);
+            byte[] input0 = new byte[sizeof(ulong)];
+            byte[] input1 = new byte[sizeof(ulong)];
+            int equalPairs = 0;
+
+            for (uint value = 0; value < count; value++)
+            {
+                ulong word = value * 0x9E3779B97F4A7C15UL;
+                BinaryPrimitives.WriteUInt64LittleEndian(input0, word);
+                BinaryPrimitives.WriteUInt64LittleEndian(input1, word ^ pairedDelta);
+
+                int hash0 = forceXxHash3
+                    ? SpanExtensions.FastHashXxHash3(input0, seed)
+                    : input0.FastHash();
+                int hash1 = forceXxHash3
+                    ? SpanExtensions.FastHashXxHash3(input1, seed)
+                    : input1.FastHash();
+                if (hash0 == hash1) equalPairs++;
+            }
+
+            Assert.That(equalPairs, Is.LessThan(4), $"structured pairs produced {equalPairs}/{count} equal hashes");
+        }
+#endif
+
+        [Test]
+        public void FastHash_ShortPaddingIncludesLength()
+        {
+            byte[] input = [1, 2, 3, 4, 5, 6, 7, 8];
+            byte[] extended = [1, 2, 3, 4, 5, 6, 7, 8, 0];
+
+            Assert.That(input.FastHash(), Is.Not.EqualTo(extended.FastHash()));
+        }
+
+        private const int HashDistributionSampleCount = 4096;
+        private static readonly uint[] HashSeeds = [0u, 1u, 0xDEADBEEFu];
+        private static bool AesIsSupported => x64.Aes.IsSupported || Arm.Aes.IsSupported;
+
+        [Test]
+        public void ComputeAesSeed_LengthAffectsSeed()
+            => Assert.That(SpanExtensions.ComputeAesSeed(32), Is.Not.EqualTo(SpanExtensions.ComputeAesSeed(33)));
+
+        [TestCase(32, 0, 4)]
+        [TestCase(48, 20, 36)]
+        [TestCase(64, 20, 36)]
+        [TestCase(192, 68, 132)]
+        [TestCase(208, 68, 132)]
+        public void FastHashAes_StructuredWordsAreDistributed(int length, int offsetA, int offsetB)
+        {
+            Require(AesIsSupported, "AES path");
+
+            byte[] input = new byte[length];
+            AssertIntHashesAreDistributedForSeeds((value, seed) =>
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(offsetA), value);
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(offsetB), value);
+                return SpanExtensions.FastHashAes(
+                    ref MemoryMarshal.GetArrayDataReference(input), length, Vector128.Create(seed).AsByte());
+            }, $"{length}-byte structured inputs");
+        }
+
+        [Test]
+        public void FastHashAes_StructuredFirstRoundInputsAreDistributed()
+        {
+            Require(AesIsSupported, "AES path");
+
+            byte[] input = new byte[32];
+            Vector128<byte> zeroRound = AesRound(Vector128<byte>.Zero);
+            AssertIntHashesAreDistributed(value =>
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(4), value);
+                Vector128<byte> first = MemoryMarshal.Read<Vector128<byte>>(input);
+                Vector128<byte> paired = zeroRound ^ AesRound(first);
+                MemoryMarshal.Write(input.AsSpan(16), in paired);
+                return SpanExtensions.FastHash(input);
+            }, "counterbalanced first-round inputs");
+        }
+
+        [Test]
+        public void StorageCell_GetHashCode_StructuredSlotsAreDistributed()
+        {
+            Require(AesIsSupported, "AES path");
+
+            byte[] slotBytes = new byte[32];
+            AssertIntHashesAreDistributed(value =>
+            {
+                Vector128<byte> second = Vector128.Create((uint)value, 0u, 0u, 0u).AsByte();
+                Vector128<byte> first = AesRound(second);
+                MemoryMarshal.Write(slotBytes, in first);
+                MemoryMarshal.Write(slotBytes.AsSpan(16), in second);
+
+                StorageCell cell = new(Address.Zero, new UInt256(slotBytes, isBigEndian: false));
+                return cell.GetHashCode();
+            }, "structured storage slots");
+        }
+
+        [Test]
+        public void StorageCell_PairedAddressAndSlotHashesAreDistributed()
+        {
+            Require(AesIsSupported, "AES path");
+
+            const uint lengthSeedDifference = Address.Size ^ 32;
+            byte[] addressBytes = new byte[Address.Size];
+            byte[] slotBytes = new byte[32];
+            int[] intHashes = new int[HashDistributionSampleCount];
+            long[] hashes = new long[HashDistributionSampleCount];
+            int equalComponentHashes = 0;
+            int inconsistentHashWidths = 0;
+
+            for (int value = 0; value < HashDistributionSampleCount; value++)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(addressBytes, value);
+                for (int offset = 0; offset < 16; offset += sizeof(uint))
+                {
+                    uint word = BinaryPrimitives.ReadUInt32LittleEndian(addressBytes.AsSpan(offset)) ^ lengthSeedDifference;
+                    BinaryPrimitives.WriteUInt32LittleEndian(slotBytes.AsSpan(offset), word);
+                }
+                addressBytes.AsSpan(16, sizeof(uint)).CopyTo(slotBytes.AsSpan(16));
+
+                Address address = new(addressBytes);
+                long indexHash = SpanExtensions.FastHash64For32Bytes(ref MemoryMarshal.GetArrayDataReference(slotBytes));
+                equalComponentHashes += indexHash == address.GetHashCode64() ? 1 : 0;
+
+                StorageCell cell = new(address, new UInt256(slotBytes, isBigEndian: false));
+                intHashes[value] = cell.GetHashCode();
+                hashes[value] = cell.GetHashCode64();
+                ulong hash = (ulong)hashes[value];
+                inconsistentHashWidths += intHashes[value] != (int)(hash ^ (hash >> 32)) ? 1 : 0;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(equalComponentHashes, Is.LessThan(4), "fixed-size component hashes");
+                Assert.That(inconsistentHashWidths, Is.Zero, "32-bit hashes");
+                AssertIntHashesAreDistributed(value => intHashes[value], "paired storage cells");
+                AssertHash64WindowsAreDistributed(hashes, "paired storage cells");
+            }
+        }
+
+        [Test]
+        public void MumFold_EqualInputsAreDistributed()
+            => AssertIntHashesAreDistributed(
+                value => (int)SpanExtensions.MumFold((uint)value, (uint)value),
+                "equal input words");
+
+        private static Vector128<byte> AesRound(Vector128<byte> state)
+            => x64.Aes.IsSupported
+                ? x64.Aes.Encrypt(state, Vector128<byte>.Zero)
+                : Arm.Aes.MixColumns(Arm.Aes.Encrypt(state, Vector128<byte>.Zero));
+
+        [Test]
+        public void FastHashAes_StructuredTailInputsAreDistributed()
+        {
+            Require(AesIsSupported, "AES path");
+
+            byte[] input0 = new byte[72];
+            byte[] input1 = new byte[72];
+            BinaryPrimitives.WriteUInt64LittleEndian(input1.AsSpan(64), SolveCrcInput(0));
+
+            Assert.That(input0.FastHash(), Is.Not.EqualTo(input1.FastHash()));
+        }
+
+        [Test]
+        public void FastHashAes_Twin16ByteHalvesAreDistributed()
+        {
+            Require(AesIsSupported, "AES path");
+
+            byte[] input = new byte[32];
+            AssertIntHashesAreDistributedForSeeds((value, seed) =>
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(4), value);
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(20), value);
+                return SpanExtensions.FastHashAes(
+                    ref MemoryMarshal.GetArrayDataReference(input), input.Length, Vector128.Create(seed).AsByte());
+            }, "twin-half inputs");
+        }
+
+        // Exercise mirrored values across both pairs of the 4-lane AES fold.
+        [Test]
+        public void FastHash_PairedSiblingBlocksAreDistributed()
+        {
+            Require(AesIsSupported, "AES lane fold");
+
+            const int length = 96;       // exercises the 4-lane fold path (> 64 bytes)
+            const int blockA = 32;       // 16-byte block feeding one fold-pair lane
+            const int blockB = 48;       // 16-byte block feeding its pair
+            const int mirrorOffset = 4;  // same offset inside both blocks
+            byte[] input = new byte[length];
+            AssertIntHashesAreDistributedForSeeds((value, seed) =>
+            {
+                // Keep the two blocks byte-identical while varying the mirrored value in both.
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(blockA + mirrorOffset), value);
+                BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(blockB + mirrorOffset), value);
+                return SpanExtensions.FastHashAes(
+                    ref MemoryMarshal.GetArrayDataReference(input), length, Vector128.Create(seed).AsByte());
+            }, "mirrored-block inputs");
+        }
+
+        // Exercise correlated values in two words feeding the same CRC lane.
+        [Test]
+        public void FastHashCrc_StructuredLaneInputsAreDistributed()
+        {
+            const int length = 64;    // one 64-byte unrolled iteration: words 0 and 32 both feed lane h0
+            byte[] input = new byte[length];
+            AssertIntHashesAreDistributedForSeeds((value, seed) =>
+            {
+                ulong delta0 = (uint)value;
+                uint target = BitOperations.Crc32C(BitOperations.Crc32C(0u, delta0), 0UL);
+                ulong f = SolveCrcInput(target);
+                BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(0), delta0);
+                BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(32), f);
+                return SpanExtensions.FastHashCrc(
+                    ref MemoryMarshal.GetArrayDataReference(input), length, seed);
+            }, "CRC intra-lane inputs");
+        }
+
+        private static void Require(bool supported, string feature)
+        {
+            if (!supported)
+                Assert.Ignore($"The {feature} is not available on this CPU.");
+        }
+
+        private static void AssertIntHashesAreDistributedForSeeds(Func<int, uint, int> getHash, string context)
+        {
+            foreach (uint seed in HashSeeds)
+                AssertIntHashesAreDistributed(value => getHash(value, seed), $"{context} for seed {seed}");
+        }
+
+        private static void AssertIntHashesAreDistributed(Func<int, int> getHash, string context)
+        {
+            HashSet<int> hashes = new(HashDistributionSampleCount);
+            for (int value = 0; value < HashDistributionSampleCount; value++)
+                hashes.Add(getHash(value));
+
+            Assert.That(hashes.Count, Is.GreaterThan(HashDistributionSampleCount - 32),
+                $"{context} collapsed to {hashes.Count}/{HashDistributionSampleCount} distinct hashes");
+        }
+
+        // Exercise correlated values across two lanes of the fixed-size CRC path.
+        [Test]
+        public void FastHash64For32BytesCrc_StructuredLaneInputsAreDistributed()
+        {
+            foreach (uint seed in HashSeeds)
+            {
+                byte[] input = new byte[32];
+                long[] hashes = new long[HashDistributionSampleCount];
+                for (ulong c = 0; c < HashDistributionSampleCount; c++)
+                {
+                    ulong e = SolveCrcInput(BitOperations.Crc32C(0u, c));
+                    BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(0), c);
+                    BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(16), e);
+                    hashes[c] = SpanExtensions.FastHash64For32BytesCrc(
+                        ref MemoryMarshal.GetArrayDataReference(input), seed);
+                }
+
+                AssertHash64WindowsAreDistributed(hashes, $"32-byte CRC lane inputs for seed {seed}");
+            }
+        }
+
+        [TestCase(20)]
+        [TestCase(32)]
+        public void FastHash64_CacheBitWindowsAreDistributed(int length)
+        {
+            const int count = 4096;
+            byte[] input = new byte[length];
+            long[] hashes = new long[count];
+            long[] crcHashes = new long[count];
+#if !ZK_EVM
+            long[] xxHashes = new long[count];
+#endif
+            uint seed = SpanExtensions.ComputeSeed(length);
+            for (ulong value = 0; value < count; value++)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(input.AsSpan(length - 8), value);
+                ref byte start = ref MemoryMarshal.GetArrayDataReference(input);
+                hashes[value] = length == 20
+                    ? SpanExtensions.FastHash64For20Bytes(ref start)
+                    : SpanExtensions.FastHash64For32Bytes(ref start);
+                crcHashes[value] = length == 20
+                    ? SpanExtensions.FastHash64For20BytesCrc(ref start, seed)
+                    : SpanExtensions.FastHash64For32BytesCrc(ref start, seed);
+#if !ZK_EVM
+                xxHashes[value] = SpanExtensions.FastHash64XxHash3(ref start, length, seed);
+#endif
+            }
+
+            AssertHash64WindowsAreDistributed(hashes, $"{length}-byte hashes");
+            AssertHash64WindowsAreDistributed(crcHashes, $"{length}-byte CRC hashes");
+#if !ZK_EVM
+            AssertHash64WindowsAreDistributed(xxHashes, $"{length}-byte XXH3 hashes");
+#endif
+        }
+
+        private static void AssertHash64WindowsAreDistributed(long[] hashes, string context)
+        {
+            HashSet<long> fullHashes = new(hashes.Length);
+            HashSet<int> way0Sets = new(hashes.Length);
+            HashSet<int> signatures = new(hashes.Length);
+            HashSet<int> way1Sets = new(hashes.Length);
+
+            foreach (long hash in hashes)
+            {
+                ulong bits = (ulong)hash;
+                fullHashes.Add(hash);
+                way0Sets.Add((int)(bits & 0x3FFF));
+                signatures.Add((int)((bits >> 22) & 0xF_FFFF));
+                way1Sets.Add((int)((bits >> 42) & 0x3FFF));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fullHashes.Count, Is.GreaterThan(hashes.Length - 32), $"{context}: full hash");
+                Assert.That(way0Sets.Count, Is.GreaterThan(hashes.Length * 3 / 4), $"{context}: bits 0-13");
+                Assert.That(signatures.Count, Is.GreaterThan(hashes.Length - 32), $"{context}: bits 22-41");
+                Assert.That(way1Sets.Count, Is.GreaterThan(hashes.Length * 3 / 4), $"{context}: bits 42-55");
+            }
+        }
+
+        private static ulong SolveCrcInput(uint target)
+        {
+            Span<uint> pivBasis = stackalloc uint[32];
+            Span<ulong> pivSrc = stackalloc ulong[32];
+            pivBasis.Clear();
+            ulong dependentInput = 0;
+            for (int i = 0; i < 64; i++)
+            {
+                uint b = BitOperations.Crc32C(0u, 1UL << i);
+                ulong s = 1UL << i;
+                while (b != 0)
+                {
+                    int col = BitOperations.TrailingZeroCount(b);
+                    if (pivBasis[col] == 0) { pivBasis[col] = b; pivSrc[col] = s; break; }
+                    b ^= pivBasis[col];
+                    s ^= pivSrc[col];
+                }
+                if (b == 0 && dependentInput == 0) dependentInput = s;
+            }
+
+            if (target == 0) return dependentInput;
+
+            ulong f = 0;
+            uint t = target;
+            while (t != 0)
+            {
+                int col = BitOperations.TrailingZeroCount(t);
+                if (pivBasis[col] == 0) break; // target not in column space (does not happen for CRC32C)
+                t ^= pivBasis[col];
+                f ^= pivSrc[col];
+            }
+            return f;
         }
 
         // ── CountZeros edge-case tests ──
