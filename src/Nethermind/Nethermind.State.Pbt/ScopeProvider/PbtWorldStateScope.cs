@@ -146,93 +146,133 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private PbtWriteBatch BuildChanges()
     {
         PbtWriteBatch batch = new(estimatedStems: _dirtyAccounts.Count + 16);
-        Dictionary<AddressAsKey, Stem> headerStems = [];
-
-        // self-destructed (including deleted) accounts drop every prior header leaf: basic data,
-        // code hash, header slots and header code chunks. Storage-zone stems of pre-existing
-        // storage are left in place — clearing them would need a per-address stem index — which is
-        // an accepted divergence from a from-scratch merkelization (flat reads stay correct via
-        // the self-destruct markers). Emitted before the account/slot writes so re-create wins.
-        foreach ((AddressAsKey address, _) in _selfDestructed)
-        {
-            Stem headerStem = GetHeaderStem(headerStems, address);
-            byte[]? prior = Bundle.GetLeafBlob(headerStem);
-            if (prior is null) continue;
-
-            for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
-            {
-                if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _))
-                {
-                    batch.Add(headerStem, (byte)subIndex, default);
-                }
-            }
-        }
-
+        HashSet<ValueHash256> overflowCodes = [];
         Span<byte> basicData = stackalloc byte[32];
-        foreach ((AddressAsKey address, Account? account) in _dirtyAccounts)
+
+        // One pass per touched address so every stem is built completely before it is added — the
+        // header stem gathers self-destruct clears, account data, code chunks and header slots, and
+        // storage slots are grouped by their storage stem. Content-addressed overflow code stems are
+        // shared across accounts, so they are emitted once per code hash.
+        foreach (AddressAsKey address in TouchedAddresses())
         {
-            // deletions were handled by the self-destruct pass
-            if (account is null) continue;
+            Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
+            _dirtyAccounts.TryGetValue(address, out Account? account);
+            bool deleted = account is null && _dirtyAccounts.ContainsKey(address);
+            _dirtySlots.TryGetValue(address, out ConcurrentDictionary<UInt256, EvmWord>? slots);
 
-            Stem headerStem = GetHeaderStem(headerStems, address);
+            Dictionary<byte, ValueHash256> header = [];
 
-            // Code (immutable after creation) is only chunked when it was written this block; its
-            // hash then identifies the pending bytes. For an unchanged-code account whose balance or
-            // nonce changed we still rewrite BASIC_DATA, so its code size is read back from the prior
-            // BASIC_DATA leaf rather than fetching the whole code.
-            byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
-            uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
-                : !account.HasCode ? 0
-                : PriorCodeSize(headerStem);
-
-            PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-            batch.Add(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicData);
-            batch.Add(headerStem, PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.Bytes);
-
-            if (updatedCode is not null)
+            // self-destructed (including deleted) accounts drop every prior header leaf; the
+            // storage-zone stems of pre-existing storage are left stale (an accepted divergence).
+            // Written before the account data so a same-block re-create wins per sub-index.
+            if (_selfDestructed.ContainsKey(address))
             {
-                byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
-                int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
-                for (int i = 0; i < headerChunks; i++)
+                byte[]? prior = Bundle.GetLeafBlob(headerStem);
+                if (prior is not null)
                 {
-                    batch.Add(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), chunks[i]);
-                }
-
-                // overflow chunks are content-addressed by code hash and shared between contracts;
-                // rewriting existing values is idempotent and they are never deleted
-                for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
-                {
-                    Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-                    batch.Add(overflowStem, subIndex, chunks[i]);
+                    for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
+                    {
+                        if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _)) header[(byte)subIndex] = default;
+                    }
                 }
             }
-        }
 
-        foreach ((AddressAsKey address, ConcurrentDictionary<UInt256, EvmWord> slots) in _dirtySlots)
-        {
-            // slots of an account that ends the block deleted never reach the tree
-            if (_dirtyAccounts.TryGetValue(address, out Account? account) && account is null) continue;
-
-            foreach ((UInt256 slot, EvmWord value) in slots)
+            if (account is not null)
             {
-                Stem stem;
-                byte subIndex;
-                if (PbtKeyDerivation.IsHeaderSlot(slot))
+                // Code (immutable after creation) is only chunked when it was written this block; its
+                // hash then identifies the pending bytes. For an unchanged-code account whose balance
+                // or nonce changed we still rewrite BASIC_DATA, so its code size is read back from the
+                // prior BASIC_DATA leaf rather than fetching the whole code.
+                byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
+                uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
+                    : !account.HasCode ? 0
+                    : PriorCodeSize(headerStem);
+
+                PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+                header[PbtKeyDerivation.BasicDataLeafKey] = ToLeaf(basicData);
+                header[PbtKeyDerivation.CodeHashLeafKey] = ToLeaf(account.CodeHash.Bytes);
+
+                if (updatedCode is not null)
                 {
-                    stem = GetHeaderStem(headerStems, address);
-                    subIndex = PbtKeyDerivation.HeaderSlotSubIndex(slot);
+                    byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
+                    int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
+                    for (int i = 0; i < headerChunks; i++)
+                    {
+                        header[PbtKeyDerivation.HeaderCodeChunkSubIndex(i)] = ToLeaf(chunks[i]);
+                    }
+
+                    // overflow chunks are content-addressed and shared; emit each code's once
+                    if (chunks.Length > PbtKeyDerivation.HeaderCodeChunks && overflowCodes.Add(account.CodeHash))
+                    {
+                        AddOverflowChunks(batch, account.CodeHash, chunks);
+                    }
                 }
-                else
+            }
+
+            // header storage slots (0..63); a deleted account's slots never reach the tree
+            if (!deleted && slots is not null)
+            {
+                foreach ((UInt256 slot, EvmWord value) in slots)
                 {
-                    stem = PbtKeyDerivation.StorageStem(address, slot, out subIndex);
+                    if (PbtKeyDerivation.IsHeaderSlot(slot)) header[PbtKeyDerivation.HeaderSlotSubIndex(slot)] = SlotLeaf(value);
+                }
+            }
+
+            if (header.Count > 0) batch.Add(headerStem, header);
+
+            // storage-zone slots (64+), grouped by their storage stem
+            if (!deleted && slots is not null)
+            {
+                Dictionary<Stem, Dictionary<byte, ValueHash256>> storage = [];
+                foreach ((UInt256 slot, EvmWord value) in slots)
+                {
+                    if (PbtKeyDerivation.IsHeaderSlot(slot)) continue;
+
+                    Stem stem = PbtKeyDerivation.StorageStem(address, slot, out byte subIndex);
+                    if (!storage.TryGetValue(stem, out Dictionary<byte, ValueHash256>? stemChanges)) storage[stem] = stemChanges = [];
+                    stemChanges[subIndex] = SlotLeaf(value);
                 }
 
-                batch.Add(stem, subIndex, EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
+                foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in storage) batch.Add(stem, stemChanges);
             }
         }
 
         return batch;
     }
+
+    /// <summary>The distinct addresses touched this block: dirty accounts, self-destructs and dirty storage.</summary>
+    private HashSet<AddressAsKey> TouchedAddresses()
+    {
+        HashSet<AddressAsKey> addresses = new(_dirtyAccounts.Count + _dirtySlots.Count);
+        foreach ((AddressAsKey address, _) in _dirtyAccounts) addresses.Add(address);
+        foreach ((AddressAsKey address, _) in _selfDestructed) addresses.Add(address);
+        foreach ((AddressAsKey address, _) in _dirtySlots) addresses.Add(address);
+        return addresses;
+    }
+
+    /// <summary>Adds a code's overflow chunks (index 128+), grouped by their content-addressed code-zone stem.</summary>
+    private static void AddOverflowChunks(PbtWriteBatch batch, in ValueHash256 codeHash, byte[][] chunks)
+    {
+        Dictionary<Stem, Dictionary<byte, ValueHash256>> overflow = [];
+        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
+        {
+            Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, i, out byte subIndex);
+            if (!overflow.TryGetValue(stem, out Dictionary<byte, ValueHash256>? stemChanges)) overflow[stem] = stemChanges = [];
+            stemChanges[subIndex] = ToLeaf(chunks[i]);
+        }
+
+        foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in overflow) batch.Add(stem, stemChanges);
+    }
+
+    private static ValueHash256 ToLeaf(ReadOnlySpan<byte> value)
+    {
+        ValueHash256 leaf = default;
+        value.CopyTo(leaf.BytesAsSpan);
+        return leaf;
+    }
+
+    private static ValueHash256 SlotLeaf(in EvmWord value) =>
+        EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
 
     /// <summary>Reads the code size preserved in the account's prior <c>BASIC_DATA</c> leaf (0 if the account is new).</summary>
     private uint PriorCodeSize(in Stem headerStem)
@@ -241,13 +281,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         return prior is not null && StemLeafBlob.TryGetValue(prior, PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
             ? PbtKeyDerivation.ReadBasicDataCodeSize(basicData)
             : 0;
-    }
-
-    private Stem GetHeaderStem(Dictionary<AddressAsKey, Stem> cache, AddressAsKey address)
-    {
-        ref Stem stem = ref CollectionsMarshal.GetValueRefOrAddDefault(cache, address, out bool exists);
-        if (!exists) stem = PbtKeyDerivation.AccountHeaderStem(address);
-        return stem;
     }
 
     private void SetSlot(Address address, in UInt256 slot, in EvmWord value)
