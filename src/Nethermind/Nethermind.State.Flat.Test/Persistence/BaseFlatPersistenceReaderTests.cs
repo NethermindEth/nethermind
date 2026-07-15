@@ -27,6 +27,7 @@ public class BaseFlatPersistenceReaderTests
         reader.GetAccounts([first, second], accounts);
 
         Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(store.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
         Assert.That(store.Keys, Has.Length.EqualTo(2));
         Assert.That(store.Keys![0], Is.EqualTo(first.Bytes[..20].ToArray()));
         Assert.That(store.Keys[1], Is.EqualTo(second.Bytes[..20].ToArray()));
@@ -61,6 +62,7 @@ public class BaseFlatPersistenceReaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+            Assert.That(store.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
             Assert.That(keys, Has.Length.EqualTo(2));
             Assert.That(keys[0], Is.EqualTo(firstExpectedKey));
             Assert.That(keys[1], Is.EqualTo(secondExpectedKey));
@@ -140,6 +142,7 @@ public class BaseFlatPersistenceReaderTests
     private sealed class TrackingMultiGetStore : ISortedKeyValueStore
     {
         public int MultiGetCalls { get; private set; }
+        public ReadFlags LastFlags { get; private set; }
         public byte[][]? Keys { get; private set; }
 
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
@@ -148,6 +151,7 @@ public class BaseFlatPersistenceReaderTests
         public void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
         {
             MultiGetCalls++;
+            LastFlags = flags;
             Keys = new byte[values.Length][];
             for (int i = 0; i < values.Length; i++)
             {

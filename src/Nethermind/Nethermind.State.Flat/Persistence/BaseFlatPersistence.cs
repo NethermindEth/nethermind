@@ -100,7 +100,7 @@ public static class BaseFlatPersistence
             for (int i = 0; i < addresses.Length; i++)
                 EncodeAccountKeyHashed(keys.AsSpan(i * AccountKeyLength, AccountKeyLength), addresses[i]);
 
-            state.MultiGet(keys, AccountKeyLength, accounts);
+            state.MultiGet(keys, AccountKeyLength, accounts, ReadFlags.HintCacheMiss);
         }
 
         [SkipLocalsInit]
@@ -130,7 +130,7 @@ public static class BaseFlatPersistence
                 EncodeStorageKeyHashedWithShortPrefix(keys.AsSpan(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i]);
 
             byte[]?[] encodedValues = new byte[]?[addresses.Length];
-            storage.MultiGet(keys, StorageKeyLength, encodedValues);
+            storage.MultiGet(keys, StorageKeyLength, encodedValues, ReadFlags.HintCacheMiss);
             for (int i = 0; i < encodedValues.Length; i++)
             {
                 byte[]? encodedValue = encodedValues[i];
