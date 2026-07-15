@@ -966,51 +966,75 @@
         const fiatEnabled = (meta) => Boolean(meta.registry || meta.feeds);
         const anyFiat = () => enabledNodes().some((n) => fiatEnabled(n.meta));
 
-        function parseRoundAnswer(hexValue) {
+        // parsed answer of latestRoundData, normalized to PRICE_DECIMALS. `decimals` is the feed's own
+        // decimals (most Chainlink USD feeds are 8, but some — e.g. DOLO/USD — are 18); without this the
+        // price would be off by 10^(feedDecimals-8). Defaults to PRICE_DECIMALS (a no-op) for callers that
+        // already normalize separately (FX rates via normalizeFxRate).
+        function parseRoundAnswer(hexValue, decimals = PRICE_DECIMALS) {
             if (!hexValue || hexValue.length < 2 + 64 * 5) return null;
             const words = hexValue.slice(2);
-            const answer = BigInt('0x' + words.slice(64, 128));
+            let answer = BigInt('0x' + words.slice(64, 128));
             const updatedAt = Number(BigInt('0x' + words.slice(192, 256)));
             if (answer <= 0n || answer >= 1n << 255n) return null; // zero or negative int256
             if (Date.now() / 1000 - updatedAt > PRICE_STALE_SECONDS) return null;
-            return answer;
+            const d = typeof decimals === 'bigint' ? decimals : BigInt(decimals);
+            answer = d >= PRICE_DECIMALS ? answer / 10n ** (d - PRICE_DECIMALS) : answer * 10n ** (PRICE_DECIMALS - d);
+            return answer > 0n ? answer : null;
         }
 
-        // assetKey: 'native' or a lowercase token address
-        function priceCall(meta, assetKey) {
-            // standalone aggregator wins (tokens the registry lacks, e.g. XAUt→XAU/USD; and the only
-            // source on feed-only chains like Gnosis)
-            const standalone = assetKey === 'native' ? meta.feeds?.native : meta.feeds?.[assetKey];
-            if (standalone) return ['eth_call', [{ to: standalone, data: SEL_LATEST_ROUND }, 'latest']];
-            if (meta.registry) {
-                const base = assetKey === 'native' ? PSEUDO_ETH : (meta.alias?.[assetKey] ?? assetKey);
-                return ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']];
-            }
-            return null;
-        }
+        // Chainlink feed decimals are static per feed; cache them so pricing adds at most one decimals()
+        // call per distinct feed per session (not one per token per refresh). Key: 'reg:<base>' | 'feed:<addr>'.
+        const feedDecimalsCache = new Map();
+        const parseFeedDecimals = (hex) => { try { return (hex && hex !== '0x') ? BigInt(hex) : PRICE_DECIMALS; } catch { return PRICE_DECIMALS; } };
 
         // Unified price probe for one asset: the calls needed and how to combine their results into a
         // USD price (PRICE_DECIMALS scale), or null if the asset has no discoverable price. Handles a
         // single feed/registry lookup, and "derived" assets priced as (base feed × an on-chain rate) —
         // e.g. wstETH = stETH/USD × wstETH.stEthPerToken(), which the Feed Registry doesn't list directly.
         function priceProbe(meta, assetKey) {
+            // registry price + decimals for a base token; the decimals call is dropped once cached
+            const regCalls = (base, key) => {
+                const calls = [['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']]];
+                if (!feedDecimalsCache.has(key)) calls.push(['eth_call', [{ to: meta.registry, data: SEL_FEED_DECIMALS_REG + pad32(base) + pad32(DENOM.USD) }, 'latest']]);
+                return calls;
+            };
+            const regDecimals = (key, r) => { if (!feedDecimalsCache.has(key)) feedDecimalsCache.set(key, parseFeedDecimals(r[1])); return feedDecimalsCache.get(key); };
+
             const d = meta.derived?.[assetKey];
             if (d && meta.registry) {
+                const key = 'reg:' + d.base;
+                const price = regCalls(d.base, key);
+                const rateIdx = price.length; // rate call follows the (1 or 2) price calls
                 return {
-                    calls: [
-                        ['eth_call', [{ to: meta.registry, data: SEL_LATEST_ROUND_REG + pad32(d.base) + pad32(DENOM.USD) }, 'latest']],
-                        ['eth_call', [{ to: d.rateTo, data: d.rateData }, 'latest']],
-                    ],
+                    calls: [...price, ['eth_call', [{ to: d.rateTo, data: d.rateData }, 'latest']]],
                     combine: (r) => {
-                        const base = parseRoundAnswer(r[0]);
+                        const base = parseRoundAnswer(r[0], regDecimals(key, r));
                         let rate = null;
-                        try { if (r[1] && r[1] !== '0x') rate = BigInt(r[1]); } catch { }
+                        try { if (r[rateIdx] && r[rateIdx] !== '0x') rate = BigInt(r[rateIdx]); } catch { }
                         return base !== null && rate !== null && rate > 0n ? base * rate / 10n ** BigInt(d.rateDecimals) : null;
                     },
                 };
             }
-            const call = priceCall(meta, assetKey);
-            return call ? { calls: [call], combine: (r) => parseRoundAnswer(r[0]) } : null;
+            // standalone aggregator (tokens the registry lacks; the only source on feed-only chains)
+            const standalone = assetKey === 'native' ? meta.feeds?.native : meta.feeds?.[assetKey];
+            if (standalone) {
+                const key = 'feed:' + standalone;
+                const calls = [['eth_call', [{ to: standalone, data: SEL_LATEST_ROUND }, 'latest']]];
+                if (!feedDecimalsCache.has(key)) calls.push(['eth_call', [{ to: standalone, data: SEL_DECIMALS }, 'latest']]);
+                return {
+                    calls,
+                    combine: (r) => {
+                        if (!feedDecimalsCache.has(key)) feedDecimalsCache.set(key, parseFeedDecimals(r[1]));
+                        return parseRoundAnswer(r[0], feedDecimalsCache.get(key));
+                    },
+                };
+            }
+            if (meta.registry) {
+                const base = assetKey === 'native' ? PSEUDO_ETH : (meta.alias?.[assetKey] ?? assetKey);
+                const key = 'reg:' + base;
+                return { calls: regCalls(base, key), combine: (r) => parseRoundAnswer(r[0], regDecimals(key, r)) };
+            }
+            return null;
         }
 
         // Uniswap-V2 spot price of a token in USD (PRICE_DECIMALS scale) from a pair's reserves, or null

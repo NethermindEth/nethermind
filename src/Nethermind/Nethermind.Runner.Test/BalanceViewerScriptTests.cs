@@ -222,13 +222,13 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
-    public void PriceCall_PrefersStandaloneFeedThenRegistry()
+    public void PriceProbe_RoutesStandaloneThenRegistry()
     {
         using V8ScriptEngine engine = CreateEngine();
-        // XAUt has no registry entry — it must route to the standalone XAU/USD aggregator
-        object xaut = engine.Evaluate("priceCall(CHAINS[1], '0x68749665ff8d2d112fa859aa293f07a622782f38')[1][0].to.toLowerCase()");
-        // DAI is in the registry — it must route to the registry with the latestRoundData(base,quote) selector
-        object dai = engine.Evaluate("priceCall(CHAINS[1], '0x6b175474e89094c44da98b954eedeac495271d0f')[1][0].data.slice(0,10)");
+        // XAUt has no registry entry — its first call must target the standalone XAU/USD aggregator
+        object xaut = engine.Evaluate("priceProbe(CHAINS[1], '0x68749665ff8d2d112fa859aa293f07a622782f38').calls[0][1][0].to.toLowerCase()");
+        // DAI is in the registry — its first call must use the registry latestRoundData(base,quote) selector
+        object dai = engine.Evaluate("priceProbe(CHAINS[1], '0x6b175474e89094c44da98b954eedeac495271d0f').calls[0][1][0].data.slice(0,10)");
         Assert.Multiple(() =>
         {
             Assert.That(xaut, Is.EqualTo("0x214ed9da11d2fbe465a6fc601a91e62ebec1a0d6"), "XAUt → XAU/USD standalone feed");
@@ -240,20 +240,42 @@ public class BalanceViewerScriptTests
     public void PriceProbe_DerivesWstEthFromStEthTimesWrapRatio()
     {
         using V8ScriptEngine engine = CreateEngine();
-        // wstETH is priced as stETH/USD × stEthPerToken(): 2 calls, combined off-chain
+        // wstETH = stETH/USD × stEthPerToken(): registry price + feed-decimals + rate = 3 calls (decimals uncached)
         object result = engine.Evaluate("""
             (function () {
                 const now = Math.floor(Date.now() / 1000);
                 const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
                 const round = (ans) => '0x' + w('1') + w(ans) + w(now.toString(16)) + w(now.toString(16)) + w('1');
                 const probe = priceProbe(CHAINS[1], '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0');
-                const base = round((2000n * 10n ** 8n).toString(16)); // stETH = $2000.00000000
+                const base = round((2000n * 10n ** 8n).toString(16)); // stETH = $2000 (8-dec feed)
+                const dec = '0x' + w((8).toString(16));
                 const rate = '0x' + w((12n * 10n ** 17n).toString(16)); // 1.2 wstETH→stETH (18 dec)
-                return JSON.stringify({ calls: probe.calls.length, price: probe.combine([base, rate]).toString() });
+                return JSON.stringify({ calls: probe.calls.length, price: probe.combine([base, dec, rate]).toString() });
             })()
             """);
         // 2000 × 1.2 = $2400.00000000
-        Assert.That(result, Is.EqualTo("{\"calls\":2,\"price\":\"240000000000\"}"));
+        Assert.That(result, Is.EqualTo("{\"calls\":3,\"price\":\"240000000000\"}"));
+    }
+
+    [Test]
+    public void PriceProbe_NormalizesNon8DecimalFeeds()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // DOLO/USD is an 18-decimal registry feed; without normalizing it reads 10^10 too high. The probe
+        // fetches the feed's decimals (price + decimals = 2 calls) and scales to PRICE_DECIMALS.
+        object result = engine.Evaluate("""
+            (function () {
+                const now = Math.floor(Date.now() / 1000);
+                const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
+                const round = (ans) => '0x' + w('1') + w(ans) + w(now.toString(16)) + w(now.toString(16)) + w('1');
+                const probe = priceProbe(CHAINS[1], '0x0f81001ef0a83ecce5ccebf63eb302c70a39a654'); // DOLO
+                const price = round((225n * 10n ** 14n).toString(16)); // $0.0225 at 18 decimals (2.25e16)
+                const dec = '0x' + w((18).toString(16));
+                return JSON.stringify({ calls: probe.calls.length, price: probe.combine([price, dec]).toString() });
+            })()
+            """);
+        // 2.25e16 (18-dec) → 2.25e6 (8-dec) = $0.0225
+        Assert.That(result, Is.EqualTo("{\"calls\":2,\"price\":\"2250000\"}"));
     }
 
     [Test]
