@@ -1899,8 +1899,8 @@ namespace Nethermind.TxPool.Test
                 Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
                 FrameSignatures = [],
                 GasLimit = 1_000_000,
-                MaxFeePerGas = 1.GWei,
-                MaxPriorityFeePerGas = 1.GWei,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
             };
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
