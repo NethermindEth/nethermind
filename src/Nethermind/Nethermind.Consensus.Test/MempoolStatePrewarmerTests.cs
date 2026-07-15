@@ -1,15 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -63,11 +74,11 @@ public class MempoolStatePrewarmerTests
     }
 
     [Test]
-    public void BuildNextBlockHeader_PreservesChainSpecificHeaderSubtype()
+    public async Task PreWarmFromMempool_PassesHeaderPreservingChainSpecificSubtypeToPreWarmer()
     {
         // Regression: the header was previously built via `new BlockHeader(...)`, degrading chain-specific subtypes
         // to a plain BlockHeader and throwing InvalidCastException in chain-specific processors (e.g. XDC).
-        ChainSpecificHeader parent = new(
+        ChainSpecificHeader parentHeader = new(
             TestItem.KeccakA, Keccak.OfAnEmptySequenceRlp, TestItem.AddressA, UInt256.One, 10, 30_000_000, 100, [])
         {
             Hash = TestItem.KeccakB,
@@ -75,14 +86,42 @@ public class MempoolStatePrewarmerTests
             ParentBeaconBlockRoot = TestItem.KeccakD,
             BaseFeePerGas = 7,
         };
+        Block head = new(parentHeader);
 
-        BlockHeader next = MempoolStatePrewarmer.BuildNextBlockHeader(parent, timestamp: 200, London.Instance);
+        ITxSource txSource = Substitute.For<ITxSource>();
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(BuildSenderTxs(TestItem.PrivateKeyA, 1));
+        IBlockProducerTxSourceFactory txSourceFactory = Substitute.For<IBlockProducerTxSourceFactory>();
+        txSourceFactory.Create().Returns(txSource);
 
-        Assert.That(next, Is.InstanceOf<ChainSpecificHeader>(), "chain-specific header subtypes must survive so chain-specific processors don't hit an InvalidCastException");
-        Assert.That(next.Number, Is.EqualTo(parent.Number + 1), "the child is the parent's successor");
-        Assert.That(next.MixHash, Is.EqualTo(parent.MixHash), "MixHash is propagated from the parent");
-        Assert.That(next.ParentBeaconBlockRoot, Is.EqualTo(parent.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
-        Assert.That(next.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parent, London.Instance)), "BaseFeePerGas is recalculated for the child");
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+
+        DateTime headTime = DateTimeOffset.FromUnixTimeSeconds((long)parentHeader.Timestamp).UtcDateTime;
+        ITimestamper timestamper = Substitute.For<ITimestamper>();
+        timestamper.UtcNow.Returns(headTime);
+        timestamper.UnixTime.Returns(new UnixTime(headTime));
+
+        IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
+        blocksConfig.PreWarming.Returns(PreWarmMode.BlockAndMempool);
+        blocksConfig.SecondsPerSlot.Returns(12ul);
+
+        DeltaCapturingPreWarmer preWarmer = new();
+
+        using MempoolStatePrewarmer _ = new(
+            preWarmer, txSourceFactory, blockTree, specProvider, timestamper, blocksConfig, LimboLogs.Instance);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+
+        BlockHeader deltaHeader = await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(deltaHeader, Is.InstanceOf<ChainSpecificHeader>(), "chain-specific header subtypes must survive so chain-specific processors don't hit an InvalidCastException");
+        Assert.That(deltaHeader.Number, Is.EqualTo(parentHeader.Number + 1), "the child is the parent's successor");
+        Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
+        Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
+        Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
     }
 
     // Stands in for a chain-specific header subtype (e.g. XdcBlockHeader) whose CreateSimulatedChild returns its own type.
@@ -96,6 +135,28 @@ public class MempoolStatePrewarmerTests
             {
                 MixHash = Hash256.Zero,
             };
+    }
+
+    /// <summary>
+    /// Captures the header of the first delta block <see cref="MempoolStatePrewarmer"/> offers for warming, by
+    /// invoking <c>nextDelta</c> itself instead of only recording the call (as <see cref="StartSpeculativePreWarm"/>
+    /// would with a plain substitute).
+    /// </summary>
+    private sealed class DeltaCapturingPreWarmer : IBlockCachePreWarmer
+    {
+        public readonly TaskCompletionSource<BlockHeader> CapturedHeader = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public CacheType ClearCaches() => default;
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+        {
+            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Header);
+            return Task.CompletedTask;
+        }
+
+        public void Dispose() { }
     }
 
     private static Transaction[] BuildSenderTxs(PrivateKey sender, int count) =>

@@ -117,7 +117,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <summary>
     /// Builds the synthetic "next block" header for warming.
     /// </summary>
-    internal static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
+    private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
     {
         BlockHeader header = parent.CreateSimulatedChild(timestamp);
         header.MixHash = parent.MixHash;
