@@ -717,18 +717,11 @@
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
-                // sDAI (Savings xDAI, ERC-4626) = xDAI/USD × convertToAssets(1e18); no Chainlink feed / DEX pool for it
-                derived: {
-                    '0xaf204776c7245bf4147c2612bf6e5972ee483701': {
-                        base: 'native', // xDAI, priced via the DAI/USD feed
-                        rateTo: '0xaf204776c7245bf4147c2612bf6e5972ee483701',
-                        rateData: '0x07a2d13a0000000000000000000000000000000000000000000000000de0b6b3a7640000', // convertToAssets(1e18)
-                        rateDecimals: 18,
-                    },
-                },
-                // Honeyswap (Uniswap-V2 fork) factory + quote tokens
+                // Honeyswap (Uniswap-V2 fork) factory + quote tokens. Gnosis pools are much smaller than
+                // mainnet's, so use a lower liquidity floor so genuine (thin) gnosis pools still price.
                 dex: {
                     factory: '0xA818b4F111Ccac7AA31D0BCc0806d64F2E0737D7',
+                    minLiquidityUsd: 5000n,
                     quotes: [
                         { addr: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1', decimals: 18 }, // WETH
                         { addr: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d', decimals: 18 }, // WXDAI
@@ -757,6 +750,8 @@
         const SEL_GET_PAIR = '0xe6a43905';         // getPair(address,address) — Uniswap-V2 factory
         const SEL_GET_RESERVES = '0x0902f1ac';     // getReserves() — Uniswap-V2 pair
         const SEL_TOKEN0 = '0x0dfe1681';           // token0() — Uniswap-V2 pair
+        const SEL_ASSET = '0x38d52e0f';            // asset() — ERC-4626 vault underlying
+        const SEL_CONVERT_TO_ASSETS = '0x07a2d13a'; // convertToAssets(uint256) — ERC-4626
         // DEX price discovery: reject pools with less than this much quote-side liquidity (USD), so a
         // spammer can't fabricate a price with a tiny pool; and hide auto-detected holdings worth less
         // than this (dust/spam) — both restorable.
@@ -1004,6 +999,9 @@
         // Once known-missing, skip the registry and let the DEX fallback price the token — same result, but
         // it stops re-reverting on every refresh (which spammed the node's error log).
         const registryMiss = new Set();
+        // Addresses learned NOT to be ERC-4626 vaults (asset() reverts), so the vault-pricing fallback
+        // doesn't re-probe them every refresh.
+        const notVault = new Set();
 
         // Unified price probe for one asset: the calls needed and how to combine their results into a
         // USD price (PRICE_DECIMALS scale), or null if the asset has no discoverable price. Handles a
@@ -1067,7 +1065,7 @@
 
         // Uniswap-V2 spot price of a token in USD (PRICE_DECIMALS scale) from a pair's reserves, or null
         // if the pool holds too little quote-side liquidity to be trusted (anti-spoofing).
-        function computeV2Price8(reservesHex, token0Hex, tokenAddr, tokenDecimals, quote, quoteUsd8) {
+        function computeV2Price8(reservesHex, token0Hex, tokenAddr, tokenDecimals, quote, quoteUsd8, minLiquidityUsd = DEX_MIN_LIQUIDITY_USD) {
             if (!reservesHex || reservesHex.length < 2 + 64 * 2 || !token0Hex || token0Hex.length < 66) return null;
             if (!Number.isInteger(tokenDecimals) || quoteUsd8 === null || quoteUsd8 <= 0n) return null;
             let r0, r1;
@@ -1079,7 +1077,7 @@
             if (reserveToken <= 0n || reserveQuote <= 0n) return null;
             const quoteScale = 10n ** BigInt(quote.decimals);
             // reject thin pools: reserveQuote (USD) = reserveQuote * quoteUsd8 / quoteScale / PRICE_SCALE
-            if (reserveQuote * quoteUsd8 < DEX_MIN_LIQUIDITY_USD * quoteScale * PRICE_SCALE) return null;
+            if (reserveQuote * quoteUsd8 < minLiquidityUsd * quoteScale * PRICE_SCALE) return null;
             return reserveQuote * 10n ** BigInt(tokenDecimals) * quoteUsd8 / (reserveToken * quoteScale);
         }
 
@@ -1106,43 +1104,78 @@
                 prices.set(addr, p ? p.combine(clRes.slice(p.start, p.start + p.n)) : null);
             });
 
-            // 2) DEX fallback for the still-unpriced
-            const unpriced = items.filter((it) => prices.get(it.addr) === null || prices.get(it.addr) === undefined);
-            if (!meta.dex || unpriced.length === 0) return prices;
+            const stillUnpriced = () => items.filter((it) => prices.get(it.addr) === null || prices.get(it.addr) === undefined);
 
-            // quote-token USD prices via Chainlink
-            const qCalls = [];
-            const qProbes = meta.dex.quotes.map((q) => {
-                const probe = priceProbe(meta, q.addr);
-                if (!probe) return null;
-                const start = qCalls.length;
-                for (const c of probe.calls) qCalls.push(c);
-                return { start, n: probe.calls.length, combine: probe.combine };
-            });
-            const qRes = qCalls.length ? await rpcBatch(qCalls, node.rpcPath) : [];
-            const quoteUsd = meta.dex.quotes.map((q, i) => (qProbes[i] ? qProbes[i].combine(qRes.slice(qProbes[i].start, qProbes[i].start + qProbes[i].n)) : null));
+            // 2) DEX fallback (Uniswap-V2-style pools) for the still-unpriced
+            const dexUnpriced = meta.dex ? stillUnpriced() : [];
+            if (dexUnpriced.length) {
+                // quote-token USD prices via Chainlink
+                const qCalls = [];
+                const qProbes = meta.dex.quotes.map((q) => {
+                    const probe = priceProbe(meta, q.addr);
+                    if (!probe) return null;
+                    const start = qCalls.length;
+                    for (const c of probe.calls) qCalls.push(c);
+                    return { start, n: probe.calls.length, combine: probe.combine };
+                });
+                const qRes = qCalls.length ? await rpcBatch(qCalls, node.rpcPath) : [];
+                const quoteUsd = meta.dex.quotes.map((q, i) => (qProbes[i] ? qProbes[i].combine(qRes.slice(qProbes[i].start, qProbes[i].start + qProbes[i].n)) : null));
 
-            // getPair(token, quote) for every unpriced token against every quote
-            const pairCalls = [];
-            for (const it of unpriced) for (const q of meta.dex.quotes) pairCalls.push(['eth_call', [{ to: meta.dex.factory, data: SEL_GET_PAIR + pad32(it.addr) + pad32(q.addr) }, 'latest']]);
-            const pairRes = await rpcBatch(pairCalls, node.rpcPath);
-            const found = [];
-            let k = 0;
-            for (const it of unpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
-                const pair = pairFromResult(pairRes[k++]);
-                if (pair && quoteUsd[qi] !== null) found.push({ it, qi, pair });
+                // getPair(token, quote) for every unpriced token against every quote
+                const pairCalls = [];
+                for (const it of dexUnpriced) for (const q of meta.dex.quotes) pairCalls.push(['eth_call', [{ to: meta.dex.factory, data: SEL_GET_PAIR + pad32(it.addr) + pad32(q.addr) }, 'latest']]);
+                const pairRes = await rpcBatch(pairCalls, node.rpcPath);
+                const found = [];
+                let k = 0;
+                for (const it of dexUnpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
+                    const pair = pairFromResult(pairRes[k++]);
+                    if (pair && quoteUsd[qi] !== null) found.push({ it, qi, pair });
+                }
+                if (found.length) {
+                    const rCalls = [];
+                    for (const f of found) { rCalls.push(['eth_call', [{ to: f.pair, data: SEL_GET_RESERVES }, 'latest']]); rCalls.push(['eth_call', [{ to: f.pair, data: SEL_TOKEN0 }, 'latest']]); }
+                    const rRes = await rpcBatch(rCalls, node.rpcPath);
+                    for (let i = 0; i < found.length; i++) {
+                        const { it, qi } = found[i];
+                        if (prices.get(it.addr)) continue; // priced by an earlier quote
+                        const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], meta.dex.minLiquidityUsd ?? DEX_MIN_LIQUIDITY_USD);
+                        if (price !== null && price > 0n) prices.set(it.addr, price);
+                    }
+                }
             }
-            if (found.length === 0) return prices;
 
-            // getReserves + token0 for each candidate pair
-            const rCalls = [];
-            for (const f of found) { rCalls.push(['eth_call', [{ to: f.pair, data: SEL_GET_RESERVES }, 'latest']]); rCalls.push(['eth_call', [{ to: f.pair, data: SEL_TOKEN0 }, 'latest']]); }
-            const rRes = await rpcBatch(rCalls, node.rpcPath);
-            for (let i = 0; i < found.length; i++) {
-                const { it, qi } = found[i];
-                if (prices.get(it.addr)) continue; // priced by an earlier quote
-                const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi]);
-                if (price !== null && price > 0n) prices.set(it.addr, price);
+            // 3) ERC-4626 vault fallback: price a vault token as convertToAssets(1 share) × price(underlying).
+            // Generic — covers sDAI (xDAI), sUSDe, sfrxETH, etc. without per-token config.
+            const vaultCandidates = stillUnpriced().filter((it) => !notVault.has(it.addr));
+            if (vaultCandidates.length) {
+                const assetRes = await rpcBatch(vaultCandidates.map((it) => ['eth_call', [{ to: it.addr, data: SEL_ASSET }, 'latest']]), node.rpcPath);
+                const vaults = [];
+                vaultCandidates.forEach((it, i) => {
+                    const asset = pairFromResult(assetRes[i]);
+                    if (asset) vaults.push({ it, asset: asset.toLowerCase() }); else notVault.add(it.addr);
+                });
+                if (vaults.length) {
+                    // price the underlying assets (recursively — Chainlink/DEX/native), then read each vault's
+                    // share->asset rate and the asset's decimals
+                    const uPrices = await resolvePrices8(node, [...new Set(vaults.map((v) => v.asset))].map((a) => ({ addr: a, decimals: 18 })));
+                    const cCalls = [];
+                    for (const v of vaults) {
+                        const oneShare = (10n ** BigInt(v.it.decimals)).toString(16).padStart(64, '0');
+                        cCalls.push(['eth_call', [{ to: v.it.addr, data: SEL_CONVERT_TO_ASSETS + oneShare }, 'latest']]);
+                        cCalls.push(['eth_call', [{ to: v.asset, data: SEL_DECIMALS }, 'latest']]);
+                    }
+                    const cRes = await rpcBatch(cCalls, node.rpcPath);
+                    for (let i = 0; i < vaults.length; i++) {
+                        const v = vaults[i];
+                        const uPrice = uPrices.get(v.asset);
+                        if (uPrice === null || uPrice === undefined) continue;
+                        let assets = null;
+                        try { const raw = cRes[i * 2]; if (raw && raw !== '0x') assets = BigInt(raw); } catch { }
+                        if (assets === null || assets <= 0n) { notVault.add(v.it.addr); continue; }
+                        let assetDec = 18n; try { const dr = cRes[i * 2 + 1]; if (dr && dr !== '0x') assetDec = BigInt(dr); } catch { }
+                        prices.set(v.it.addr, assets * uPrice / 10n ** assetDec); // convertToAssets(1 share) × underlying price
+                    }
+                }
             }
             return prices;
         }
@@ -2482,11 +2515,38 @@
                 await Promise.all(enabledNodes().map((node) =>
                     refreshNode(node, addresses, fxRate).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
                 recomputeTotals();
+                pruneEmptyDetected();
                 refreshNftThumbs();
                 resolveReverseNames();
             } finally {
                 refreshing = false;
             }
+        }
+
+        // Auto-detected token rows are chain-level and persist once found; drop any that no pinned account
+        // holds anymore (confirmed zero balance across all accounts) so a since-emptied token (e.g. one sold
+        // long ago) stops showing. Seeded defaults and manually-tracked tokens are always kept.
+        function pruneEmptyDetected() {
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) return;
+            let changed = false;
+            for (const node of enabledNodes()) {
+                const state = stateOf(node.chainId);
+                const defaults = new Set((node.meta.defaults || []).map((d) => d.address.toLowerCase()));
+                const kept = state.detected.filter((token) => {
+                    const key = token.address.toLowerCase();
+                    if (defaults.has(key)) return true; // seeded defaults always shown
+                    let allKnown = true, held = false;
+                    for (const a of addresses) {
+                        const c = cache.get(a.address + '|' + node.chainId + ':' + key);
+                        if (!c || c.bal === null || c.bal === undefined) { allKnown = false; break; }
+                        if (c.bal !== '0') { held = true; break; }
+                    }
+                    return held || !allKnown; // drop only when every account confirms a zero balance
+                });
+                if (kept.length !== state.detected.length) { state.detected = kept; store.save(node.chainId); changed = true; }
+            }
+            if (changed) { renderTokens(); renderCards(); }
         }
 
         // ---------- actions ----------
