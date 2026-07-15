@@ -132,10 +132,15 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void CleanupTimeouts(ulong round)
     {
-        _timeouts.EndRound(round);
+        const ulong retainedRoundCount = XdcConstants.PoolHygieneRound;
+        _timeouts.RemoveRoundsOutsideRetention(round, retainedRoundCount);
 
+        if (round < retainedRoundCount)
+            return;
+
+        ulong lastRoundToRemove = round - retainedRoundCount;
         foreach (KeyValuePair<ulong, byte> kvp in _tcBuildStartedByRound)
-            if (kvp.Key <= round) _tcBuildStartedByRound.TryRemove(kvp.Key, out _);
+            if (kvp.Key <= lastRoundToRemove) _tcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string? errorMessage)

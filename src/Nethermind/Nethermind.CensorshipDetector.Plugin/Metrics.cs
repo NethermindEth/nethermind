@@ -4,7 +4,7 @@
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 
-namespace Nethermind.Consensus.Processing.CensorshipDetector;
+namespace Nethermind.CensorshipDetector.Plugin;
 
 public static class Metrics
 {
