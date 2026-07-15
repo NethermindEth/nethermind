@@ -61,6 +61,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
 {
     private static readonly PathString NodesPath = new("/balances-nodes");
     private static readonly PathString ProxyPathPrefix = new("/balances-rpc");
+    private static readonly PathString DetectProxyPathPrefix = new("/balances-detect-rpc");
     private static readonly PathString DetectPath = new("/balances-detect");
 
     private static readonly JsonSerializerOptions JsonOpts =
@@ -82,11 +83,12 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         PathString path = context.Request.Path;
         bool isStaticFile = HttpMethods.IsGet(context.Request.Method) && Routes.ContainsKey(path);
         bool isNodesList = HttpMethods.IsGet(context.Request.Method) && path == NodesPath;
-        bool isProxy = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(ProxyPathPrefix);
+        bool isProxy = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(ProxyPathPrefix) && !path.StartsWithSegments(DetectProxyPathPrefix);
+        bool isDetectProxy = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(DetectProxyPathPrefix);
         bool isDetectGet = HttpMethods.IsGet(context.Request.Method) && path == DetectPath;
         bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
         bool isDetectDelete = HttpMethods.IsDelete(context.Request.Method) && path == DetectPath;
-        if (!isStaticFile && !isNodesList && !isProxy && !isDetectGet && !isDetectPost && !isDetectDelete)
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete)
         {
             return next(context);
         }
@@ -100,6 +102,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
 
         if (isNodesList) return ServeNodesAsync(context);
         if (isProxy) return ProxyAsync(context);
+        if (isDetectProxy) return ProxyDetectAsync(context);
         if (isDetectGet) return ServeDetectGetAsync(context);
         if (isDetectPost) return ServeDetectPostAsync(context);
         if (isDetectDelete)
@@ -145,6 +148,21 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
 
         context.Response.ContentType = "application/json";
         await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
+    }
+
+    // POST /balances-detect-rpc/{port} — forwards a detection request to a sibling node's /balances-detect,
+    // so the multi-chain view drives historical detection on sibling chains too (not only the connected one).
+    private async Task ProxyDetectAsync(HttpContext context)
+    {
+        context.Request.Path.StartsWithSegments(DetectProxyPathPrefix, out PathString remaining);
+        if (!int.TryParse(remaining.Value?.TrimStart('/'), out int port) || !siblings.IsKnownSibling(port))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        context.Response.ContentType = "application/json";
+        await siblings.ProxyDetectAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
     // GET /balances-detect?chainId=<id>&address=<0x…> — the cached detection entry, or null.

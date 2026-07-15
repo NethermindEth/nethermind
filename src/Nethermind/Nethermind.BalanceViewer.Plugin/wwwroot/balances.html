@@ -787,7 +787,10 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            return { rpcPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, detectHead: null, button: null };
+            // historical detection runs against each node's own /balances-detect: directly for the connected
+            // node, and through the same-origin proxy for siblings (so sibling chains get scanned too)
+            const detectPath = rpcPath === '/' ? 'balances-detect' : 'balances-detect-rpc/' + rpcPath.slice('balances-rpc/'.length);
+            return { rpcPath, detectPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, detectHead: null, button: null };
         }
 
         // ENS availability is detected per node rather than assumed per chain: many
@@ -986,6 +989,10 @@
         // call per distinct feed per session (not one per token per refresh). Key: 'reg:<base>' | 'feed:<addr>'.
         const feedDecimalsCache = new Map();
         const parseFeedDecimals = (hex) => { try { return (hex && hex !== '0x') ? BigInt(hex) : PRICE_DECIMALS; } catch { return PRICE_DECIMALS; } };
+        // Bases learned to be absent from the Feed Registry (their latestRoundData reverts "Feed not found").
+        // Once known-missing, skip the registry and let the DEX fallback price the token — same result, but
+        // it stops re-reverting on every refresh (which spammed the node's error log).
+        const registryMiss = new Set();
 
         // Unified price probe for one asset: the calls needed and how to combine their results into a
         // USD price (PRICE_DECIMALS scale), or null if the asset has no discoverable price. Handles a
@@ -1031,8 +1038,15 @@
             }
             if (meta.registry) {
                 const base = assetKey === 'native' ? PSEUDO_ETH : (meta.alias?.[assetKey] ?? assetKey);
+                if (registryMiss.has(base)) return null; // known not-listed → DEX fallback prices it, no revert
                 const key = 'reg:' + base;
-                return { calls: regCalls(base, key), combine: (r) => parseRoundAnswer(r[0], regDecimals(key, r)) };
+                return {
+                    calls: regCalls(base, key),
+                    combine: (r) => {
+                        if (r[0] === null || r[0] === undefined) { registryMiss.add(base); return null; } // feed not found
+                        return parseRoundAnswer(r[0], regDecimals(key, r));
+                    },
+                };
             }
             return null;
         }
@@ -1623,6 +1637,7 @@
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
         let tokensExpanded = false;         // detected-chip list expanded past the collapse limit
         let hiddenExpanded = false;         // hidden-tokens section expanded
+        let hiddenShowAll = false;          // show all hidden chips past HIDDEN_COLLAPSE
         const TOKEN_COLLAPSE = 20;          // detected chips shown before "＋N more…"
         const HIDDEN_COLLAPSE = 30;         // hidden chips shown when the section is expanded
 
@@ -1790,30 +1805,33 @@
             } catch { /* next poll retries from the advanced cursor */ }
         }
 
-        // historical: ask the serving node to scan its retained history in-process (POST triggers/resumes
-        // and returns progress), then vet whatever contracts it has found so far. Runs each poll; the node
-        // resumes and caches, so it converges then no-ops. Only the connected node exposes this endpoint.
-        async function nodeDetect(node) {
-            if (!detectEnabled || node.rpcPath !== '/' || nodeDetectBusy) return;
+        // historical: ask each node to scan its retained history in-process (POST triggers/resumes and
+        // returns progress), then vet whatever contracts it has found so far. Runs every enabled node —
+        // the connected one directly, siblings through the same-origin proxy — so every chain is scanned,
+        // not just the one serving the page. The node resumes and caches, converging then no-opping.
+        async function nodeDetect() {
+            if (!detectEnabled || nodeDetectBusy) return;
             const addresses = mergedAddresses();
             if (addresses.length === 0) { detecting = false; updateDetectIndicator(); return; }
             nodeDetectBusy = true;
             detecting = true; updateDetectIndicator(); // show the spinner while vetting too, not just during the node scan
             try {
                 let scanning = false;
-                for (const entry of addresses) {
-                    let data;
-                    try {
-                        const res = await fetch('balances-detect', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ chainId: node.chainId, address: entry.address }),
-                        });
-                        data = res.ok ? await res.json() : null;
-                    } catch { continue; }
-                    if (!data) { scanning = true; continue; } // scan just started; nothing cached yet
-                    if (data.contracts?.length) await vetAndAdd(node, [entry.address], data.contracts);
-                    if (data.nftContracts?.length) await vetAndAddNfts(node, [entry.address], data.nftContracts);
-                    if (!data.complete) scanning = true;
+                for (const node of enabledNodes()) {
+                    for (const entry of addresses) {
+                        let data;
+                        try {
+                            const res = await fetch(node.detectPath, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ chainId: node.chainId, address: entry.address }),
+                            });
+                            data = res.ok ? await res.json() : null;
+                        } catch { continue; }
+                        if (!data) { scanning = true; continue; } // scan just started; nothing cached yet
+                        if (data.contracts?.length) await vetAndAdd(node, [entry.address], data.contracts);
+                        if (data.nftContracts?.length) await vetAndAddNfts(node, [entry.address], data.nftContracts);
+                        if (!data.complete) scanning = true;
+                    }
                 }
                 detecting = scanning;
                 updateDetectIndicator();
@@ -2024,7 +2042,7 @@
                 box.append(toggle);
                 if (hiddenExpanded) {
                     const wrap = el('div', 'hidden-tokens');
-                    for (const [node, token] of hidden.slice(0, HIDDEN_COLLAPSE)) {
+                    for (const [node, token] of hidden.slice(0, hiddenShowAll ? hidden.length : HIDDEN_COLLAPSE)) {
                         const chip = el('span', 'chip auto');
                         const ticker = tickerLabel(token.ticker, node);
                         ticker.style.setProperty('--tcol', tokenColor(token.ticker));
@@ -2037,7 +2055,11 @@
                         chip.append(restore);
                         wrap.append(chip);
                     }
-                    if (hidden.length > HIDDEN_COLLAPSE) wrap.append(el('span', 'kind', `and ${hidden.length - HIDDEN_COLLAPSE} more…`));
+                    if (hidden.length > HIDDEN_COLLAPSE) {
+                        const more = el('button', 'link chip-add', hiddenShowAll ? 'show fewer' : `＋${hidden.length - HIDDEN_COLLAPSE} more…`);
+                        more.onclick = () => { hiddenShowAll = !hiddenShowAll; renderTokens(); };
+                        wrap.append(more);
+                    }
                     const all = el('button', 'link chip-add', 'restore all');
                     all.onclick = restoreHidden;
                     wrap.append(all);
@@ -2109,7 +2131,7 @@
                     renderTokens();
                     recomputeTotals();
                     refreshBalances();
-                    for (const node of enabledNodes()) nodeDetect(node); // re-derive for any remaining addresses
+                    nodeDetect(); // re-derive for any remaining addresses (all chains)
                 };
                 head.append(unpin);
                 card.append(head);
@@ -2425,7 +2447,7 @@
                 setStatus(label ? `${label} → ${address}` : 'Pinned ' + address);
                 renderCards();
                 refreshBalances();
-                nodeDetect(own()); // kick off the node-side historical scan for the new address
+                nodeDetect(); // kick off the node-side historical scan for the new address
             } catch (e) {
                 setStatus(e.message, true);
             }
@@ -2498,7 +2520,7 @@
                     const id = Number(BigInt(sibling.chainId));
                     const existing = nodes.find((n) => n.chainId === id);
                     if (existing) {
-                        if (existing !== own()) existing.rpcPath = 'balances-rpc/' + sibling.port;
+                        if (existing !== own()) { existing.rpcPath = 'balances-rpc/' + sibling.port; existing.detectPath = 'balances-detect-rpc/' + sibling.port; }
                         continue;
                     }
                     const node = makeNode('balances-rpc/' + sibling.port, id);
@@ -2577,7 +2599,7 @@
                 }
             }
             if (changed) refreshBalances();
-            nodeDetect(own()); // advance the node-side historical scan (own chain); no-op once complete
+            nodeDetect(); // advance the node-side historical scan (own chain); no-op once complete
         }
 
         async function init() {
@@ -2608,7 +2630,7 @@
                 detectEnabled = !detectEnabled;
                 localStorage.setItem(DETECT_KEY, detectEnabled ? '1' : '0');
                 detectBtn.classList.toggle('on', detectEnabled);
-                if (detectEnabled) nodeDetect(own()); else { detecting = false; updateDetectIndicator(); }
+                if (detectEnabled) nodeDetect(); else { detecting = false; updateDetectIndicator(); }
                 setStatus(detectEnabled ? 'Token auto-detection on' : 'Token auto-detection off');
             };
 
@@ -2645,7 +2667,7 @@
                 $('addrInput').placeholder = '0x address (ENS unavailable on ' + enabledNodes().map((n) => n.meta.name).join('/') + ')';
             }
             applyNodeLayout();
-            nodeDetect(own()); // start the node-side historical scan (own chain); real-time runs per poll
+            nodeDetect(); // start the node-side historical scan (own chain); real-time runs per poll
             renderFeed();
             pollHead();
             setInterval(pollHead, 12000);

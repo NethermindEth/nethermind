@@ -19,6 +19,10 @@ public interface ISiblingNodeRegistry
 
     /// <summary>Forwards a JSON-RPC request body to the sibling on the given localhost port.</summary>
     Task ProxyAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken);
+
+    /// <summary>Forwards a detection request body to the sibling's /balances-detect, so the multi-chain
+    /// view can drive historical detection on sibling chains (not just the connected one).</summary>
+    Task ProxyDetectAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken);
 }
 
 public readonly record struct SiblingNode(int Port, string ChainId);
@@ -94,9 +98,15 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
         return false;
     }
 
-    public async Task ProxyAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken)
+    public Task ProxyAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken) =>
+        ForwardAsync($"http://127.0.0.1:{port}/", requestBody, responseBody, cancellationToken);
+
+    public Task ProxyDetectAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken) =>
+        ForwardAsync($"http://127.0.0.1:{port}/balances-detect", requestBody, responseBody, cancellationToken);
+
+    private async Task ForwardAsync(string url, Stream requestBody, Stream responseBody, CancellationToken cancellationToken)
     {
-        using HttpRequestMessage forward = new(HttpMethod.Post, $"http://127.0.0.1:{port}/");
+        using HttpRequestMessage forward = new(HttpMethod.Post, url);
         forward.Content = new StreamContent(requestBody);
         forward.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         using HttpResponseMessage response = await _client.SendAsync(forward, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
