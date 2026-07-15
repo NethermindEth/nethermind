@@ -166,8 +166,8 @@ public static unsafe partial class EvmInstructions
             &InstructionSStoreUnmetered<TGasPolicy, TTracingInst>;
 
         // Jump instructions.
-        lookup[(int)Instruction.JUMP] = &InstructionJump;
-        lookup[(int)Instruction.JUMPI] = &InstructionJumpIf;
+        lookup[(int)Instruction.JUMP] = TTracingInst.IsActive ? &InstructionJump : &InstructionJumpAndSkipJumpDest;
+        lookup[(int)Instruction.JUMPI] = TTracingInst.IsActive ? &InstructionJumpIf : &InstructionJumpIfAndSkipJumpDest;
         lookup[(int)Instruction.PC] = &InstructionProgramCounter<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.MSIZE] = &InstructionEnvUInt64<TGasPolicy, OpMSize<TGasPolicy>, TTracingInst>;
         lookup[(int)Instruction.GAS] = &InstructionGas<TGasPolicy, TTracingInst>;
