@@ -30,6 +30,12 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
+    // Per-env (i.e. per-block) code cache: within one block it avoids re-reading code and
+    // re-running jump-destination analysis on every CALL, while the first fetch of each code hash
+    // still reads through the world state, so witness-completeness checks keep firing. The
+    // process-wide StaticCodeCache.Instance must not be used here: it would leak code across
+    // blocks and mask deliberately missing witness code (negative validation tests).
+    private readonly StaticCodeCache _codeCache = new();
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
@@ -59,10 +65,7 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            // This env only consumes an already-built witness (guest side), so serving CodeInfo from
-            // the code-hash cache is safe here and avoids re-running jump-destination analysis on
-            // every CALL.
-            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
+            codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
             executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
@@ -107,7 +110,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
             logManager
         );
 }
