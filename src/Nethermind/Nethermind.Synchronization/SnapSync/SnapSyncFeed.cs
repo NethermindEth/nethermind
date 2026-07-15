@@ -30,7 +30,6 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 try
                 {
-                    await Task.Delay(2000, token);
                     bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
 
                     if (request is not null)

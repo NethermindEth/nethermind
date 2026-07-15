@@ -174,6 +174,60 @@ public class FlatBalHealingTests
     }
 
     [Test]
+    public async Task Emptied_account_that_still_has_storage_is_removed_from_state()
+    {
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressB, 200));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 0));
+
+        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        Assert.That(result, Is.True);
+        _syncStore.Received(1).FinalizeSync(lastPivot);
+    }
+
+    [Test]
+    public async Task Cleared_storage_slot_is_removed_from_flat_store()
+    {
+        // The BAL zeroes slot 1. The trie drops it, but the flat store must drop it too — otherwise
+        // a stale zero entry survives and flat diverges from trie for eth_getStorageAt / re-sync.
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05]), new Slot(2, [0x07])]));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 100, slots: [new Slot(2, [0x07])]));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        ReadOnlyAccountChanges changes = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(1, new StorageChange(0, UInt256.Zero))
+            .TestObject;
+        BlockHeader lastPivot = SetupBlock(11, expected, Bal(changes));
+
+        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        Assert.That(result, Is.True);
+        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
+        Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+    }
+
+    [Test]
+    public async Task Removed_account_storage_is_wiped_from_flat_store()
+    {
+        // Account A is emptied and dropped from the trie; its flat storage must be wiped too,
+        // otherwise the removed account's slots linger in the flat store.
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]), Acc(TestItem.AddressB, 200));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressB, 200));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        BlockHeader lastPivot = SetupBlock(11, expected, BalanceBal(TestItem.AddressA, 0));
+
+        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        Assert.That(result, Is.True);
+        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+    }
+
+    [Test]
     public async Task Falls_back_when_a_bal_is_missing()
     {
         SeedInitialState(Acc(TestItem.AddressA, 100));
@@ -258,6 +312,13 @@ public class FlatBalHealingTests
         new(address, balance, nonce, code, slots ?? []);
 
     private static Hash256 StorageOf(Address address) => address.ToAccountPath.ToCommitment();
+
+    private bool FlatSlotExists(Address address, UInt256 slot)
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader(ReaderFlags.Sync);
+        SlotValue value = default;
+        return reader.TryGetSlot(address, slot, ref value);
+    }
 
     private static BlockHeader Pivot(ulong number, Hash256 stateRoot) =>
         Build.A.BlockHeader.WithNumber(number).WithStateRoot(stateRoot).TestObject;

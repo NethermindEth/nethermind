@@ -14,9 +14,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Synchronization.FastSync;
+// using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -24,10 +26,11 @@ public class FlatBalHealing(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     ITrieReassembler trieReassembler,
-    ITreeSyncStore store,
+    // ITreeSyncStore store,
     IPersistence persistence,
     [KeyFilter(DbNames.Code)] IDb codeDb,
-    ILogManager logManager) : IBalHealing
+    ILogManager logManager,
+    IVerifyTrieStarter? verifyTrieStarter = null) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
 
@@ -44,7 +47,18 @@ public class FlatBalHealing(
 
             if (_logger.IsInfo) _logger.Info($"All {toApply.Count} BALs present for the pivot range.");
 
+            // VerifyStorageCompleteness(updatedStorageAccounts, token);
+
             Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorageAccounts);
+            StateId from;
+                using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+                    from = reader.CurrentState;
+
+            persistence.Flush(); // DisableWAL writes are only durable after flush; flush before moving the pointer
+            using (persistence.CreateWriteBatch(from, new StateId(firstPivot.Number, reassembledRoot), WriteFlags.DisableWAL)) { }
+                
+            verifyTrieStarter?.TryStartVerifyTrie(firstPivot);
+
             if (reassembledRoot is null)
             {
                 if (_logger.IsInfo) _logger.Info("Trie reassembly produced no root — falling back to traditional state sync.");
@@ -53,13 +67,15 @@ public class FlatBalHealing(
 
             if (_logger.IsInfo) _logger.Info($"Trie reassembly produced state root {reassembledRoot}. Applying BALs to reach {lastPivot.StateRoot}.");
 
+            // VerifyReassembledStructure(reassembledRoot, token);
+
             if (!ApplyBals(reassembledRoot, lastPivot, toApply.AsSpan(), token))
             {
                 if (_logger.IsInfo) _logger.Info($"Applying BALs failed to reach {lastPivot.StateRoot} — falling back to traditional state sync.");
                 return Task.FromResult(false);
             }
 
-            store.FinalizeSync(lastPivot);
+            // store.FinalizeSync(lastPivot);
 
             return Task.FromResult(true);
         }
@@ -76,6 +92,112 @@ public class FlatBalHealing(
         {
             toApply.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Diagnostic: scans every persisted account and reports those whose storage trie is incomplete
+    /// (storage-root node absent) yet are NOT in the heal set — i.e. accounts the reassembler would
+    /// reuse with a dangling <c>StorageRoot</c>. Under the invariant
+    /// <c>persisted ∧ not-heal-flagged ⟹ complete</c> this count must be zero; any non-zero count is
+    /// the root cause of a wrong reassembled root. Each dangling account is classified by whether its
+    /// flat storage leaves are present (reassemble-able) or missing (must be re-downloaded).
+    /// </summary>
+    private void VerifyStorageCompleteness(IReadOnlyCollection<Hash256> updatedStorageAccounts, CancellationToken token)
+    {
+        HashSet<ValueHash256> flagged = new(updatedStorageAccounts.Count);
+        foreach (Hash256 h in updatedStorageAccounts) flagged.Add(h.ValueHash256);
+
+        AccountDecoder decoder = AccountDecoder.Slim;
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+
+        long scanned = 0, withStorage = 0, danglingFlagged = 0, danglingUnflagged = 0, danglingUnflaggedNoLeaves = 0;
+
+        using IPersistence.IFlatIterator it = reader.CreateAccountIterator();
+        while (it.MoveNext())
+        {
+            if (token.IsCancellationRequested) return;
+            scanned++;
+
+            Account? account = decoder.Decode(it.CurrentValue);
+            if (account is null || account.StorageRoot == Keccak.EmptyTreeHash) continue;
+            withStorage++;
+
+            Hash256 owner = it.CurrentKey.ToCommitment();
+            if (reader.TryLoadStorageRlp(owner, TreePath.Empty, ReadFlags.None) is not null) continue;
+
+            // Storage-root node absent → storage trie incomplete on disk.
+            if (flagged.Contains(it.CurrentKey))
+            {
+                danglingFlagged++;
+                continue;
+            }
+
+            danglingUnflagged++;
+            bool hasFlatLeaves;
+            using (IPersistence.IFlatIterator sit = reader.CreateStorageIterator(owner))
+                hasFlatLeaves = sit.MoveNext();
+            if (!hasFlatLeaves) danglingUnflaggedNoLeaves++;
+
+            if (_logger.IsWarn && danglingUnflagged <= 32)
+                _logger.Warn($"Dangling storage UNFLAGGED: account {it.CurrentKey} storageRoot {account.StorageRoot} flatLeaves={hasFlatLeaves}");
+        }
+
+        if (_logger.IsInfo)
+            _logger.Info($"Storage completeness: scanned {scanned}, withStorage {withStorage}, dangling(flagged) {danglingFlagged}, dangling(UNFLAGGED) {danglingUnflagged} (of which no flat leaves {danglingUnflaggedNoLeaves}).");
+    }
+
+    /// <summary>
+    /// Diagnostic: walks the reassembled trie at <paramref name="reassembledRoot"/> and asserts it structurally
+    /// contains exactly the flat account set — every flat account is reachable, and each account's storage trie is
+    /// walkable from its (rewritten) storage root. Value mismatches are ignored (the reassembled state is a pre-BAL
+    /// mix); only structural drops (dropped accounts, dangling storage) are reported. A correct reassembly reports
+    /// zero of both. This bypasses <see cref="FlatTrieVerifier"/>'s CurrentState fallback by walking the reassembled
+    /// root explicitly.
+    /// </summary>
+    private void VerifyReassembledStructure(Hash256 reassembledRoot, CancellationToken token)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+
+        StateTree stateTree = new(new PersistenceTrieStoreAdapter(reader, batch, enableDoubleWriteCheck: false), logManager);
+        AccountDecoder decoder = AccountDecoder.Slim;
+
+        long scanned = 0, missingInTrie = 0, withStorage = 0, danglingStorage = 0;
+
+        using IPersistence.IFlatIterator it = reader.CreateAccountIterator();
+        while (it.MoveNext())
+        {
+            if (token.IsCancellationRequested) return;
+            scanned++;
+
+            ReadOnlySpan<byte> path = reader.IsPreimageMode
+                ? Keccak.Compute(it.CurrentKey.Bytes[..20]).Bytes
+                : it.CurrentKey.Bytes;
+
+            ReadOnlySpan<byte> trieRlp = stateTree.Get(path, reassembledRoot);
+            if (trieRlp.IsEmpty)
+            {
+                missingInTrie++;
+                if (_logger.IsWarn && missingInTrie <= 32)
+                    _logger.Warn($"Reassembled trie MISSING flat account: {it.CurrentKey}");
+                continue;
+            }
+
+            Account? account = decoder.Decode(it.CurrentValue);
+            if (account is null || account.StorageRoot == Keccak.EmptyTreeHash) continue;
+            withStorage++;
+
+            Hash256 owner = it.CurrentKey.ToCommitment();
+            if (reader.TryLoadStorageRlp(owner, TreePath.Empty, ReadFlags.None) is null)
+            {
+                danglingStorage++;
+                if (_logger.IsWarn && danglingStorage <= 32)
+                    _logger.Warn($"Reassembled trie DANGLING storage: account {it.CurrentKey} storageRoot {account.StorageRoot}");
+            }
+        }
+
+        if (_logger.IsInfo)
+            _logger.Info($"Reassembled structure ({reassembledRoot}): scanned {scanned}, missingInTrie {missingInTrie}, withStorage {withStorage}, danglingStorage {danglingStorage}.");
     }
 
     private bool TryCollectBals(BlockHeader firstPivot, BlockHeader lastPivot, ref ArrayPoolListRef<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
@@ -203,16 +325,25 @@ public class FlatBalHealing(
                 foreach ((UInt256 slot, byte[] value) in slots)
                 {
                     storage.Set(slot, value);
-                    batch.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero(value));
+                    // A cleared slot must be removed from flat, not written as a zero entry: a null
+                    // SlotValue hits the delete path, matching the trie which drops the leaf.
+                    // WithoutLeadingZeros keeps a single 0 byte for a zero value, so test IsZero, not length.
+                    batch.SetStorage(address, slot, value.IsZero() ? null : SlotValue.FromSpanWithoutLeadingZero(value));
                 }
 
                 storage.Commit();
                 account = account.WithChangedStorageRoot(storage.RootHash);
             }
 
-            Account? toWrite = account.IsTotallyEmpty ? null : account;
+            // EIP-158 state clearing removes empty accounts (balance/nonce/code) regardless of storage;
+            // IsTotallyEmpty would keep an emptied account alive while it still carries a storage root.
+            Account? toWrite = account.IsEmpty ? null : account;
             stateTree.Set(address, toWrite);
             batch.SetAccount(address, toWrite);
+
+            // Removing the account from the trie drops its storage subtree, but flat leaves are not
+            // reachable from the trie — wipe them explicitly so stale slots don't survive in flat.
+            if (toWrite is null) batch.SelfDestruct(address);
         }
 
         stateTree.Commit();
