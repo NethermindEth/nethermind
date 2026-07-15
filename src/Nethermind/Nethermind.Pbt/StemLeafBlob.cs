@@ -27,10 +27,7 @@ public static class StemLeafBlob
     private const int BitmapLength = 32;
     private const int LeafCount = 256;
     private const int OffsetEntryLength = 2;
-    private const int TreeDepth = 8;
-    private const int NodesPerLeafPath = TreeDepth + 1;
     private const int RootPosition = 2 * LeafCount - 2;
-    private const int MaxNodeCount = 2 * LeafCount - 1;
 
     public static bool TryGetValue(ReadOnlySpan<byte> blob, byte subIndex, out ReadOnlySpan<byte> value)
     {
@@ -85,18 +82,21 @@ public static class StemLeafBlob
 
         sortedChanges.Sort(static (left, right) => left.SubIndex.CompareTo(right.SubIndex));
 
-        int previousLiveCount = GetLiveCount(blob);
-        int estimatedLiveCount = Math.Min(MaxNodeCount, previousLiveCount + NodesPerLeafPath * sortedChanges.Count);
-        using RebuildState state = new(
+        int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
+        byte[] result = new byte[BitmapLength + liveCount * (OffsetEntryLength + ValueLength)];
+        bitmap.CopyTo(result);
+
+        RebuildState state = new(
             blob,
             previousBitmap,
-            bitmap,
+            result,
             sortedChanges.AsSpan(),
-            previousLiveCount,
-            estimatedLiveCount);
+            GetLiveCount(blob),
+            liveCount);
 
-        subtreeRoot = state.Rebuild(0, LeafCount, RootPosition);
-        return state.Assemble(bitmap);
+        NodeRef rootRef = state.Rebuild(0, LeafCount, RootPosition);
+        subtreeRoot = state.Resolve(rootRef);
+        return result;
     }
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
@@ -136,6 +136,16 @@ public static class StemLeafBlob
         }
 
         return false;
+    }
+
+    /// <summary>The number of live nodes a rebuild emits for <paramref name="bitmap"/>: present leaves plus every internal node whose range holds one.</summary>
+    private static int CountLiveNodes(ReadOnlySpan<byte> bitmap, int low, int high)
+    {
+        if (!RangeHasLeaf(bitmap, low, high)) return 0;
+        if (high - low == 1) return 1;
+
+        int middle = low + (high - low) / 2;
+        return 1 + CountLiveNodes(bitmap, low, middle) + CountLiveNodes(bitmap, middle, high);
     }
 
     private static int LeafPosition(byte subIndex) =>
@@ -181,6 +191,22 @@ public static class StemLeafBlob
 
     private readonly record struct LeafChange(byte SubIndex, ValueHash256 Value);
 
+    private enum NodeKind : byte { Empty, Leaf, Internal }
+
+    /// <summary>A reference to a rebuilt node: its kind and, for a leaf or internal node, its slot in the new blob.</summary>
+    private readonly record struct NodeRef(NodeKind Kind, int Slot)
+    {
+        public static readonly NodeRef Empty = new(NodeKind.Empty, 0);
+        public static NodeRef Leaf(int slot) => new(NodeKind.Leaf, slot);
+        public static NodeRef Internal(int slot) => new(NodeKind.Internal, slot);
+    }
+
+    /// <remarks>
+    /// Rebuilds directly into the caller-allocated final blob: the bitmap already sits at its front,
+    /// and each live node is written to its slot in the offset and node regions as the post-order walk
+    /// reaches it. The recursion hands each subtree up as a <see cref="NodeRef"/> into that buffer, so
+    /// a node's hash is materialized only where a parent needs it, never copied by value up the stack.
+    /// </remarks>
     private ref struct RebuildState
     {
         private readonly ReadOnlySpan<byte> _previousBitmap;
@@ -188,24 +214,28 @@ public static class StemLeafBlob
         private readonly ReadOnlySpan<byte> _previousOffsets;
         private readonly ReadOnlySpan<byte> _previousNodes;
         private readonly ReadOnlySpan<LeafChange> _changes;
-        private ArrayPoolListRef<byte> _offsets;
-        private ArrayPoolListRef<byte> _nodes;
+        private readonly Span<byte> _buffer;
+        private readonly int _nodeBase;
         private int _previousSlot;
         private int _changeIndex;
+        private int _slot;
 
         public RebuildState(
             ReadOnlySpan<byte> blob,
             ReadOnlySpan<byte> previousBitmap,
-            ReadOnlySpan<byte> newBitmap,
+            Span<byte> buffer,
             ReadOnlySpan<LeafChange> changes,
             int previousLiveCount,
-            int estimatedLiveCount)
+            int liveCount)
         {
             _previousBitmap = previousBitmap;
-            _newBitmap = newBitmap;
+            _newBitmap = buffer[..BitmapLength];
+            _buffer = buffer;
+            _nodeBase = BitmapLength + liveCount * OffsetEntryLength;
             _changes = changes;
             _previousSlot = 0;
             _changeIndex = 0;
+            _slot = 0;
 
             int previousOffsetsLength = previousLiveCount * OffsetEntryLength;
             _previousOffsets = blob.IsEmpty
@@ -214,12 +244,9 @@ public static class StemLeafBlob
             _previousNodes = blob.IsEmpty
                 ? default
                 : blob[(BitmapLength + previousOffsetsLength)..];
-
-            _offsets = new ArrayPoolListRef<byte>(estimatedLiveCount * OffsetEntryLength);
-            _nodes = new ArrayPoolListRef<byte>(estimatedLiveCount * ValueLength);
         }
 
-        public ValueHash256 Rebuild(int low, int high, int position)
+        public NodeRef Rebuild(int low, int high, int position)
         {
             if (_changeIndex >= _changes.Length || _changes[_changeIndex].SubIndex >= high)
             {
@@ -232,43 +259,36 @@ public static class StemLeafBlob
                 if (IsPresent(_previousBitmap, (byte)low)) _previousSlot++;
 
                 ValueHash256 value = _changes[_changeIndex++].Value;
-                if (value == default) return default;
+                if (value == default) return NodeRef.Empty;
 
-                Append(position, value);
-                return Blake3Hash.Hash(value.Bytes);
+                return NodeRef.Leaf(Append(position, value.Bytes));
             }
 
             int width = high - low;
             int middle = low + width / 2;
-            ValueHash256 left = Rebuild(low, middle, position - width);
-            ValueHash256 right = Rebuild(middle, high, position - 1);
+            NodeRef left = Rebuild(low, middle, position - width);
+            NodeRef right = Rebuild(middle, high, position - 1);
 
             if (RangeHasLeaf(_previousBitmap, low, high)) _previousSlot++;
-            if (!RangeHasLeaf(_newBitmap, low, high)) return default;
+            if (!RangeHasLeaf(_newBitmap, low, high)) return NodeRef.Empty;
 
-            ValueHash256 hash = Blake3Hash.HashPairOrZero(left, right);
-            Append(position, hash);
-            return hash;
+            ValueHash256 hash = Blake3Hash.HashPairOrZero(Resolve(left), Resolve(right));
+            return NodeRef.Internal(Append(position, hash.Bytes));
         }
 
-        public readonly byte[] Assemble(ReadOnlySpan<byte> bitmap)
+        /// <summary>Materializes the hash a rebuilt node contributes to its parent.</summary>
+        /// <remarks>
+        /// A leaf entry stores its value, so its contributed hash is <c>blake3(value)</c>; an internal
+        /// entry stores its already-cached hash, returned verbatim; an empty subtree folds to zero.
+        /// </remarks>
+        public readonly ValueHash256 Resolve(in NodeRef node) => node.Kind switch
         {
-            Debug.Assert(_offsets.Count / OffsetEntryLength == _nodes.Count / ValueLength);
+            NodeKind.Empty => default,
+            NodeKind.Leaf => Blake3Hash.Hash(NodeAt(node.Slot)),
+            _ => new ValueHash256(NodeAt(node.Slot)),
+        };
 
-            byte[] result = new byte[BitmapLength + _offsets.Count + _nodes.Count];
-            bitmap.CopyTo(result);
-            _offsets.AsSpan().CopyTo(result.AsSpan(BitmapLength));
-            _nodes.AsSpan().CopyTo(result.AsSpan(BitmapLength + _offsets.Count));
-            return result;
-        }
-
-        public void Dispose()
-        {
-            _offsets.Dispose();
-            _nodes.Dispose();
-        }
-
-        private ValueHash256 CopyCleanSubtree(int width, int position)
+        private NodeRef CopyCleanSubtree(int width, int position)
         {
             int firstSlot = _previousSlot;
             int previousCount = _previousOffsets.Length / OffsetEntryLength;
@@ -278,21 +298,25 @@ public static class StemLeafBlob
             }
 
             int count = _previousSlot - firstSlot;
-            if (count == 0) return default;
+            if (count == 0) return NodeRef.Empty;
 
-            _offsets.AddRange(_previousOffsets.Slice(firstSlot * OffsetEntryLength, count * OffsetEntryLength));
-            _nodes.AddRange(_previousNodes.Slice(firstSlot * ValueLength, count * ValueLength));
+            _previousOffsets.Slice(firstSlot * OffsetEntryLength, count * OffsetEntryLength)
+                .CopyTo(_buffer.Slice(BitmapLength + _slot * OffsetEntryLength, count * OffsetEntryLength));
+            _previousNodes.Slice(firstSlot * ValueLength, count * ValueLength)
+                .CopyTo(_buffer.Slice(_nodeBase + _slot * ValueLength, count * ValueLength));
+            _slot += count;
 
-            ReadOnlySpan<byte> root = _previousNodes.Slice((_previousSlot - 1) * ValueLength, ValueLength);
-            return width == 1 ? Blake3Hash.Hash(root) : new ValueHash256(root);
+            int rootSlot = _slot - 1;
+            return width == 1 ? NodeRef.Leaf(rootSlot) : NodeRef.Internal(rootSlot);
         }
 
-        private void Append(int position, in ValueHash256 node)
+        private int Append(int position, ReadOnlySpan<byte> node)
         {
-            Span<byte> encodedOffset = stackalloc byte[OffsetEntryLength];
-            WriteOffset(encodedOffset, position);
-            _offsets.AddRange(encodedOffset);
-            _nodes.AddRange(node.Bytes);
+            WriteOffset(_buffer.Slice(BitmapLength + _slot * OffsetEntryLength, OffsetEntryLength), position);
+            node.CopyTo(_buffer.Slice(_nodeBase + _slot * ValueLength, ValueLength));
+            return _slot++;
         }
+
+        private readonly ReadOnlySpan<byte> NodeAt(int slot) => _buffer.Slice(_nodeBase + slot * ValueLength, ValueLength);
     }
 }
