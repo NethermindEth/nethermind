@@ -10,11 +10,13 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -22,43 +24,51 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.State;
 
+/// <summary>
+/// Compares the EIP-8297 partitioned-binary-tree scope provider (<see cref="PbtScopeProvider"/>)
+/// against the plain Merkle-Patricia trie scope provider (<see cref="TrieStoreScopeProvider"/>)
+/// at the <see cref="IWorldStateScopeProvider"/> level.
+/// </summary>
 [MemoryDiagnoser]
 [WarmupCount(3)]
 [MinIterationCount(3)]
 [MaxIterationCount(10)]
 public class PbtScopeProviderBenchmark
 {
+    public enum Backend
+    {
+        Trie,
+        Pbt
+    }
+
     private readonly CancellationTokenSource _cts = new();
 
-    private SnapshotableMemColumnsDb<PbtColumns> _db = null!;
-    private MemDb _codeDb = null!;
-    private PbtDbManager _manager = null!;
-    private PbtScopeProvider _provider = null!;
+    private SnapshotableMemColumnsDb<PbtColumns>? _pbtDb;
+    private PbtDbManager? _pbtManager;
+    private IWorldStateScopeProvider _provider = null!;
 
     private BlockHeader _baseHeader = null!;
     private Address[] _addresses = null!;
 
+    [Params(Backend.Trie, Backend.Pbt)]
+    public Backend StateBackend { get; set; }
+
     [Params(100, 500)]
     public int AccountCount { get; set; }
 
-    // 0 isolates pure account merkelization; >0 also exercises the storage-zone stem path.
+    // 0 isolates pure account merkelization; >0 also exercises the storage path.
     [Params(0, 20)]
     public int StorageSlotsPerAccount { get; set; }
 
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _db = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
-        _codeDb = new MemDb();
-        PbtConfig config = new();
-        PbtSnapshotRepository repository = new();
-        PbtRocksDbPersistence persistence = new(_db);
-        PbtPersistenceCoordinator coordinator = new(
-            config, new BenchFinalizedStateProvider(), persistence, repository,
-            NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
-        _manager = new PbtDbManager(
-            repository, coordinator, persistence, new BenchProcessExitSource(_cts), LimboLogs.Instance);
-        _provider = new PbtScopeProvider(_codeDb, _manager, isReadOnly: false);
+        _provider = StateBackend switch
+        {
+            Backend.Pbt => CreatePbtProvider(),
+            Backend.Trie => CreateTrieProvider(),
+            _ => throw new ArgumentOutOfRangeException(nameof(StateBackend))
+        };
 
         _addresses = new Address[AccountCount];
         for (int i = 0; i < AccountCount; i++)
@@ -78,6 +88,23 @@ public class PbtScopeProviderBenchmark
 
         _baseHeader = Build.A.BlockHeader.WithNumber(1).WithStateRoot(baseRoot).TestObject;
     }
+
+    private IWorldStateScopeProvider CreatePbtProvider()
+    {
+        _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
+        PbtConfig config = new();
+        PbtSnapshotRepository repository = new();
+        PbtRocksDbPersistence persistence = new(_pbtDb);
+        PbtPersistenceCoordinator coordinator = new(
+            config, new BenchFinalizedStateProvider(), persistence, repository,
+            NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        _pbtManager = new PbtDbManager(
+            repository, coordinator, persistence, new BenchProcessExitSource(_cts), LimboLogs.Instance);
+        return new PbtScopeProvider(new MemDb(), _pbtManager, isReadOnly: false);
+    }
+
+    private static IWorldStateScopeProvider CreateTrieProvider() =>
+        new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), LimboLogs.Instance);
 
     [Benchmark]
     public Hash256 WriteAndUpdateRootHash()
@@ -123,10 +150,14 @@ public class PbtScopeProviderBenchmark
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        _cts.Cancel();
-        _manager.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (_pbtManager is not null)
+        {
+            _cts.Cancel();
+            _pbtManager.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _pbtDb!.Dispose();
+        }
+
         _cts.Dispose();
-        _db.Dispose();
     }
 
     private static Address DeriveAddress(int index) =>
