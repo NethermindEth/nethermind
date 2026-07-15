@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Pbt;
 
@@ -19,16 +18,16 @@ public static class Blake3Hash
     }
 
     /// <summary>
-    /// The EIP-8297 node hash: 32 zero bytes when the input is 64 zero bytes (an empty subtree),
-    /// otherwise BLAKE3 of the input.
+    /// The EIP-8297 node hash: 32 zero bytes when both children are zero (an empty subtree),
+    /// otherwise BLAKE3 of <paramref name="left"/> concatenated with <paramref name="right"/>.
     /// </summary>
-    public static ValueHash256 HashPairOrZero(ReadOnlySpan<byte> left32, ReadOnlySpan<byte> right32)
+    public static ValueHash256 HashPairOrZero(in ValueHash256 left, in ValueHash256 right)
     {
-        if (left32.IsZero() && right32.IsZero()) return default;
+        if (left == default && right == default) return default;
 
         Span<byte> pair = stackalloc byte[64];
-        left32.CopyTo(pair);
-        right32.CopyTo(pair[32..]);
+        left.Bytes.CopyTo(pair);
+        right.Bytes.CopyTo(pair[32..]);
         return Hash(pair);
     }
 }

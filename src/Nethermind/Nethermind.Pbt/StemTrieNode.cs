@@ -31,24 +31,26 @@ public sealed class StemTrieNode
 
     public ValueHash256 ComputeHash() => IsStem
         ? StemLeafBlob.ComputeStemNodeHash(Stem, LeafSubtreeRoot)
-        : Blake3Hash.HashPairOrZero(LeftHash.Bytes, RightHash.Bytes);
+        : Blake3Hash.HashPairOrZero(LeftHash, RightHash);
 
-    public byte[] Encode()
+    /// <summary>Largest encoded node size: internal node = tag + two 32-byte hashes.</summary>
+    public const int MaxEncodedLength = 1 + 32 + 32;
+
+    /// <summary>Encodes the node into <paramref name="destination"/> (≥ <see cref="MaxEncodedLength"/> bytes) and returns the length written.</summary>
+    public int Encode(Span<byte> destination)
     {
         if (IsStem)
         {
-            byte[] data = new byte[1 + Stem.Length + 32];
-            data[0] = StemTag;
-            Stem.Bytes.CopyTo(data.AsSpan(1));
-            LeafSubtreeRoot.Bytes.CopyTo(data.AsSpan(1 + Stem.Length));
-            return data;
+            destination[0] = StemTag;
+            Stem.Bytes.CopyTo(destination[1..]);
+            LeafSubtreeRoot.Bytes.CopyTo(destination[(1 + Stem.Length)..]);
+            return 1 + Stem.Length + 32;
         }
 
-        byte[] encoded = new byte[1 + 32 + 32];
-        encoded[0] = InternalTag;
-        LeftHash.Bytes.CopyTo(encoded.AsSpan(1));
-        RightHash.Bytes.CopyTo(encoded.AsSpan(33));
-        return encoded;
+        destination[0] = InternalTag;
+        LeftHash.Bytes.CopyTo(destination[1..]);
+        RightHash.Bytes.CopyTo(destination[33..]);
+        return MaxEncodedLength;
     }
 
     public static StemTrieNode Decode(ReadOnlySpan<byte> data) => data[0] switch

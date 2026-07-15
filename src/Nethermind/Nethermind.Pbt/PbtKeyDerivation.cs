@@ -40,6 +40,16 @@ public static class PbtKeyDerivation
         address.Bytes.CopyTo(dest32[12..]);
     }
 
+    /// <summary>The 32-byte tree key: the 31-byte stem followed by the 1-byte sub-index.</summary>
+    public static ValueHash256 TreeKey(in Stem stem, byte subIndex)
+    {
+        ValueHash256 key = default;
+        Span<byte> bytes = key.BytesAsSpan;
+        stem.Bytes.CopyTo(bytes);
+        bytes[Stem.Length] = subIndex;
+        return key;
+    }
+
     /// <summary>BLAKE3 of the 32-byte left-padded address; the flat account/storage column key.</summary>
     public static ValueHash256 AddressKeyHash(Address address)
     {
