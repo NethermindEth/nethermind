@@ -1,63 +1,92 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-public interface IStemTrieNodeSource
+/// <summary>
+/// Backing store for the PBT tree: the stem trie nodes and the per-stem 256-leaf blobs. Reads
+/// return a poolable, disposable wrapper (null = absent); writes take a span the store copies
+/// (an empty span removes the node / deletes the stem).
+/// </summary>
+public interface IPbtStore
 {
-    byte[]? GetTrieNode(in TrieNodeKey key);
+    MemoryManager<byte>? GetTrieNode(in TrieNodeKey key);
+    void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node);
+    MemoryManager<byte>? GetLeafBlob(in Stem stem);
+    void SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob);
 }
 
 /// <summary>
-/// Applies a batch of stem changes to the top-level EIP-8297 binary trie and returns the new root.
-/// Leaf subtrees are opaque here: a stem node carries only the 256-leaf subtree root computed by
-/// <see cref="StemLeafBlob"/>.
+/// Applies a batch of EIP-8297 tree-key writes and returns the new root. It folds each affected
+/// stem's leaf blob (<see cref="StemLeafBlob"/>), then maintains the top-level binary trie of stems.
 /// </summary>
 /// <remarks>
-/// The structure is the canonical binary trie of the stem set: an internal node exists at every
+/// The stem trie is the canonical binary trie of the stem set: an internal node exists at every
 /// path prefix shared by two or more stems, and each stem node sits at the shortest prefix unique
 /// to it — the EIP's minimal-internal-node rule, maintained by splitting on insert and by hoisting
-/// a lone sibling stem on delete. Existing nodes are read through <see cref="IStemTrieNodeSource"/>
-/// and kept in a per-call overlay so the batch never re-reads the source.
+/// a lone sibling stem on delete. Nodes and blobs are read/written through <see cref="IPbtStore"/>;
+/// nodes touched in a batch are kept in a per-call overlay so the store is never re-read.
 /// </remarks>
 public static class TrieUpdater
 {
     /// <summary>
-    /// Applies <paramref name="stemChanges"/> (null value = delete the stem) to the tree rooted at
-    /// <paramref name="currentRoot"/>, recomputes affected hashes bottom-up, emits every changed
-    /// node into <paramref name="dirtyNodesOut"/> (null = node removed) and returns the new root
-    /// hash (32 zero bytes for an empty tree). An empty change set returns <paramref name="currentRoot"/> untouched.
+    /// Applies <paramref name="changes"/> (each entry a 32-byte tree key → value; an empty value
+    /// clears the leaf) to the tree rooted at <paramref name="currentRoot"/>, writing the new leaf
+    /// blobs and trie nodes to <paramref name="store"/>, and returns the new root (32 zero bytes for
+    /// an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    public static ValueHash256 Update(
-        IStemTrieNodeSource source,
-        in ValueHash256 currentRoot,
-        IReadOnlyDictionary<Stem, ValueHash256?> stemChanges,
-        IDictionary<TrieNodeKey, byte[]?> dirtyNodesOut) =>
-        stemChanges.Count == 0 ? currentRoot : new Updater(source).Run(stemChanges, dirtyNodesOut);
+    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
+        changes.Count == 0 ? currentRoot : new Updater(store).Run(changes);
 
-    private sealed class Updater(IStemTrieNodeSource source)
+    private sealed class Updater(IPbtStore store)
     {
         private readonly Dictionary<TrieNodeKey, StemTrieNode?> _overlay = [];
         private readonly HashSet<TrieNodeKey> _dirty = [];
         private readonly List<TrieNodeKey> _walkedPath = [];
 
-        public ValueHash256 Run(IReadOnlyDictionary<Stem, ValueHash256?> stemChanges, IDictionary<TrieNodeKey, byte[]?> dirtyNodesOut)
+        public ValueHash256 Run(PbtWriteBatch changes)
         {
-            foreach ((Stem stem, ValueHash256? leafSubtreeRoot) in stemChanges)
+            foreach ((Stem stem, Dictionary<byte, PbtWriteBatch.Entry> subChanges) in GroupByStem(changes))
             {
-                if (leafSubtreeRoot is { } subtreeRoot)
-                {
-                    Insert(stem, subtreeRoot);
-                }
-                else
+                using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
+                byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), subChanges, changes.Blob, out ValueHash256 subtreeRoot);
+                store.SetLeafBlob(stem, newBlob);
+
+                if (newBlob.Length == 0)
                 {
                     Delete(stem);
                 }
+                else
+                {
+                    Insert(stem, subtreeRoot);
+                }
             }
 
-            return ComputeHashes(dirtyNodesOut);
+            return ComputeHashes();
+        }
+
+        /// <summary>Groups the batch by stem, keeping the last entry per (stem, sub-index) — the last-write-wins the dict used to give.</summary>
+        private static Dictionary<Stem, Dictionary<byte, PbtWriteBatch.Entry>> GroupByStem(PbtWriteBatch changes)
+        {
+            Dictionary<Stem, Dictionary<byte, PbtWriteBatch.Entry>> byStem = [];
+            ReadOnlySpan<PbtWriteBatch.Entry> entries = changes.Entries;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                ref readonly PbtWriteBatch.Entry entry = ref entries[i];
+                ReadOnlySpan<byte> key = entry.Key.Bytes;
+                Stem stem = new(key[..Stem.Length]);
+                if (!byStem.TryGetValue(stem, out Dictionary<byte, PbtWriteBatch.Entry>? subChanges))
+                {
+                    byStem[stem] = subChanges = [];
+                }
+
+                subChanges[key[Stem.Length]] = entry;
+            }
+
+            return byStem;
         }
 
         private void Insert(in Stem stem, in ValueHash256 leafSubtreeRoot)
@@ -173,11 +202,12 @@ public static class TrieUpdater
             }
         }
 
-        private ValueHash256 ComputeHashes(IDictionary<TrieNodeKey, byte[]?> dirtyNodesOut)
+        private ValueHash256 ComputeHashes()
         {
             List<TrieNodeKey> keys = [.. _dirty];
             keys.Sort(static (a, b) => b.Depth.CompareTo(a.Depth));
 
+            Span<byte> encoded = stackalloc byte[StemTrieNode.MaxEncodedLength];
             foreach (TrieNodeKey key in keys)
             {
                 StemTrieNode? node = _overlay[key];
@@ -200,7 +230,8 @@ public static class TrieUpdater
                     }
                 }
 
-                dirtyNodesOut[key] = node?.Encode();
+                // an empty span removes the node
+                store.SetTrieNode(key, node is null ? default : encoded[..node.Encode(encoded)]);
             }
 
             return GetNode(TrieNodeKey.Root)?.ComputeHash() ?? default;
@@ -230,8 +261,8 @@ public static class TrieUpdater
         {
             if (_overlay.TryGetValue(key, out StemTrieNode? node)) return node;
 
-            byte[]? data = source.GetTrieNode(key);
-            node = data is null ? null : StemTrieNode.Decode(data);
+            using MemoryManager<byte>? data = store.GetTrieNode(key);
+            node = data is null ? null : StemTrieNode.Decode(data.GetSpan());
             _overlay[key] = node;
             return node;
         }

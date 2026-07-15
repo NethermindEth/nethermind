@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -15,10 +17,12 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>
 /// The read/write surface of one processing branch: flat reads/writes go through the bundle,
-/// while <see cref="UpdateRootHash"/> folds the block's cumulative dirty state into EIP-8297
-/// tree keys, rewrites the touched stem leaf blobs, and runs a stem trie batch for the root.
+/// while <see cref="UpdateRootHash"/> folds the block's cumulative dirty state into an EIP-8297
+/// tree-key write batch and hands it to <see cref="TrieUpdater"/> for the root. The scope is the
+/// <see cref="IPbtStore"/> the updater reads/writes: reads come from the bundle, writes land in the
+/// per-block overlays that <see cref="Commit"/> seals into the snapshot.
 /// </summary>
-public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
+public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
     private readonly IPbtCommitTarget _commitTarget;
     private readonly bool _isReadOnly;
@@ -81,33 +85,24 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         if (!_rootDirty) return;
 
+        // idempotent: rebuild the overlays from scratch against the pre-block state each call
         _blobOverlay.Clear();
         _nodeOverlay.Clear();
 
-        Dictionary<Stem, Dictionary<byte, byte[]?>> stemChanges = [];
-        Dictionary<Stem, byte[]?> priorBlobs = [];
-        BuildStemChanges(stemChanges, priorBlobs);
-
-        Dictionary<Stem, ValueHash256?> stemRoots = new(stemChanges.Count);
-        foreach ((Stem stem, Dictionary<byte, byte[]?> changes) in stemChanges)
-        {
-            byte[] blob = StemLeafBlob.Apply(GetPriorBlob(priorBlobs, stem) ?? [], changes, out ValueHash256 subtreeRoot);
-            _blobOverlay[stem] = blob;
-            if (blob.Length == 0)
-            {
-                // not a ternary: `cond ? null : valueHash256` silently routes the null through the
-                // implicit Hash256? conversion and yields a zero hash instead of a null
-                stemRoots[stem] = null;
-            }
-            else
-            {
-                stemRoots[stem] = subtreeRoot;
-            }
-        }
-
-        _rootHash = TrieUpdater.Update(Bundle, _currentStateId.StateRoot, stemRoots, _nodeOverlay).ToHash256();
+        using PbtWriteBatch changes = BuildChanges();
+        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes).ToHash256();
         _rootDirty = false;
     }
+
+    // ---- IPbtStore: the updater reads prior state from the bundle and writes into the per-block overlays ----
+
+    MemoryManager<byte>? IPbtStore.GetTrieNode(in TrieNodeKey key) => ArrayMemoryManager.From(Bundle.GetTrieNode(key));
+
+    MemoryManager<byte>? IPbtStore.GetLeafBlob(in Stem stem) => ArrayMemoryManager.From(Bundle.GetLeafBlob(stem));
+
+    void IPbtStore.SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node) => _nodeOverlay[key] = node.Length == 0 ? null : node.ToArray();
+
+    void IPbtStore.SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob) => _blobOverlay[stem] = blob.ToArray();
 
     public void Commit(ulong blockNumber)
     {
@@ -143,43 +138,49 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void Dispose() => Bundle.Dispose();
 
-    /// <summary>Derives the EIP-8297 leaf changes of the block: header stems from dirty accounts (with code mirrored as chunks), storage stems from dirty slots, and clears from self-destructs.</summary>
-    private void BuildStemChanges(Dictionary<Stem, Dictionary<byte, byte[]?>> stemChanges, Dictionary<Stem, byte[]?> priorBlobs)
+    /// <summary>
+    /// Derives the EIP-8297 tree-key writes of the block into a <see cref="PbtWriteBatch"/>: header
+    /// stems from dirty accounts (with code mirrored as chunks), storage stems from dirty slots, and
+    /// clears from self-destructs. Values are fed as spans; the batch owns the copied blob.
+    /// </summary>
+    private PbtWriteBatch BuildChanges()
     {
+        PbtWriteBatch batch = new(estimatedEntries: _dirtyAccounts.Count * 2 + 16, estimatedBytes: (_dirtyAccounts.Count * 2 + 16) * 32);
+        Dictionary<Stem, byte[]?> priorBlobs = [];
         Dictionary<AddressAsKey, Stem> headerStems = [];
 
         // self-destructed (including deleted) accounts drop every prior header leaf: basic data,
         // code hash, header slots and header code chunks. Storage-zone stems of pre-existing
         // storage are left in place — clearing them would need a per-address stem index — which is
         // an accepted divergence from a from-scratch merkelization (flat reads stay correct via
-        // the self-destruct markers).
+        // the self-destruct markers). Emitted before the account/slot writes so re-create wins.
         foreach ((AddressAsKey address, _) in _selfDestructed)
         {
             Stem headerStem = GetHeaderStem(headerStems, address);
             byte[]? prior = GetPriorBlob(priorBlobs, headerStem);
             if (prior is null) continue;
 
-            Dictionary<byte, byte[]?> changes = GetStemChanges(stemChanges, headerStem);
             for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
             {
-                if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _)) changes[(byte)subIndex] = null;
+                if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _))
+                {
+                    batch.Add(PbtKeyDerivation.TreeKey(headerStem, (byte)subIndex), default);
+                }
             }
         }
 
+        Span<byte> basicData = stackalloc byte[32];
         foreach ((AddressAsKey address, Account? account) in _dirtyAccounts)
         {
             // deletions were handled by the self-destruct pass
             if (account is null) continue;
 
             Stem headerStem = GetHeaderStem(headerStems, address);
-            Dictionary<byte, byte[]?> changes = GetStemChanges(stemChanges, headerStem);
-
             byte[]? code = account.HasCode ? CodeDb.GetCode(account.CodeHash) : null;
 
-            byte[] basicData = new byte[32];
             PbtKeyDerivation.PackBasicData(basicData, (uint)(code?.Length ?? 0), account.Nonce, account.Balance);
-            changes[PbtKeyDerivation.BasicDataLeafKey] = basicData;
-            changes[PbtKeyDerivation.CodeHashLeafKey] = account.CodeHash.BytesToArray();
+            batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.BasicDataLeafKey), basicData);
+            batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.Bytes);
 
             if (code is not null && CodeChunksNeeded(address, headerStem, account, priorBlobs))
             {
@@ -187,7 +188,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
                 for (int i = 0; i < headerChunks; i++)
                 {
-                    changes[PbtKeyDerivation.HeaderCodeChunkSubIndex(i)] = chunks[i];
+                    batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i)), chunks[i]);
                 }
 
                 // overflow chunks are content-addressed by code hash and shared between contracts;
@@ -195,7 +196,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
                 {
                     Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-                    GetStemChanges(stemChanges, overflowStem)[subIndex] = chunks[i];
+                    batch.Add(PbtKeyDerivation.TreeKey(overflowStem, subIndex), chunks[i]);
                 }
             }
         }
@@ -207,18 +208,23 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
             foreach ((UInt256 slot, EvmWord value) in slots)
             {
-                byte[]? value32 = EvmWordSlot.IsZero(value) ? null : EvmWordSlot.ToArray32(value);
+                Stem stem;
+                byte subIndex;
                 if (PbtKeyDerivation.IsHeaderSlot(slot))
                 {
-                    GetStemChanges(stemChanges, GetHeaderStem(headerStems, address))[PbtKeyDerivation.HeaderSlotSubIndex(slot)] = value32;
+                    stem = GetHeaderStem(headerStems, address);
+                    subIndex = PbtKeyDerivation.HeaderSlotSubIndex(slot);
                 }
                 else
                 {
-                    Stem stem = PbtKeyDerivation.StorageStem(address, slot, out byte subIndex);
-                    GetStemChanges(stemChanges, stem)[subIndex] = value32;
+                    stem = PbtKeyDerivation.StorageStem(address, slot, out subIndex);
                 }
+
+                batch.Add(PbtKeyDerivation.TreeKey(stem, subIndex), EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
             }
         }
+
+        return batch;
     }
 
     private bool CodeChunksNeeded(AddressAsKey address, in Stem headerStem, Account account, Dictionary<Stem, byte[]?> priorBlobs)
@@ -244,12 +250,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ref byte[]? blob = ref CollectionsMarshal.GetValueRefOrAddDefault(cache, stem, out bool exists);
         if (!exists) blob = Bundle.GetLeafBlob(stem);
         return blob;
-    }
-
-    private static Dictionary<byte, byte[]?> GetStemChanges(Dictionary<Stem, Dictionary<byte, byte[]?>> stemChanges, in Stem stem)
-    {
-        ref Dictionary<byte, byte[]?>? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(stemChanges, stem, out _);
-        return changes ??= [];
     }
 
     private void SetSlot(Address address, in UInt256 slot, in EvmWord value)

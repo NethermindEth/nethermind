@@ -16,7 +16,7 @@ namespace Nethermind.State.Pbt;
 /// </summary>
 /// <param name="snapshots">Leased layer chain, newest first; the bundle takes ownership of the leases.</param>
 /// <param name="reader">Leased persistence reader; the bundle takes ownership.</param>
-public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IReader reader, bool isReadOnly) : IStemTrieNodeSource, IDisposable
+public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IReader reader, bool isReadOnly) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = isReadOnly ? null : new PbtSnapshotContent();
 

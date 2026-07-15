@@ -18,19 +18,19 @@ public class StemLeafBlobTests
         byte[] value5 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] value200 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        byte[] blob = StemLeafBlob.Apply([], new Dictionary<byte, byte[]?> { [5] = value5, [200] = value200 }, out _);
+        byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = value5, [200] = value200 }, out _);
         Assert.That(blob, Has.Length.EqualTo(32 + 2 * 32));
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out ReadOnlySpan<byte> read5) && read5.SequenceEqual(value5));
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
         Assert.That(StemLeafBlob.TryGetValue(blob, 6, out _), Is.False);
 
-        // null clears, untouched leaves survive
-        blob = StemLeafBlob.Apply(blob, new Dictionary<byte, byte[]?> { [5] = null }, out _);
+        // an empty value clears, untouched leaves survive
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [5] = null }, out _);
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out _), Is.False);
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out read200) && read200.SequenceEqual(value200));
 
         // an all-zero value clears too, and an empty blob signals stem deletion with a zero root
-        blob = StemLeafBlob.Apply(blob, new Dictionary<byte, byte[]?> { [200] = new byte[32] }, out ValueHash256 emptyRoot);
+        blob = Apply(blob, new Dictionary<byte, byte[]?> { [200] = new byte[32] }, out ValueHash256 emptyRoot);
         Assert.That(blob, Is.Empty);
         Assert.That(emptyRoot, Is.EqualTo(default(ValueHash256)));
     }
@@ -58,10 +58,24 @@ public class StemLeafBlobTests
             reference.Insert([.. stem.Bytes, subIndex], value!);
         }
 
-        StemLeafBlob.Apply([], changes, out ValueHash256 subtreeRoot);
+        Apply([], changes, out ValueHash256 subtreeRoot);
 
         // a single-stem reference tree's root is exactly the stem node hash
         ValueHash256 stemNodeHash = StemLeafBlob.ComputeStemNodeHash(stem, subtreeRoot);
         Assert.That(stemNodeHash, Is.EqualTo(new ValueHash256(reference.Merkelize())));
+    }
+
+    /// <summary>Packs the changes into a value blob + entry map (as the write batch does) and applies them.</summary>
+    private static byte[] Apply(ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, out ValueHash256 subtreeRoot)
+    {
+        List<byte> valueBlob = [];
+        Dictionary<byte, PbtWriteBatch.Entry> entries = [];
+        foreach ((byte subIndex, byte[]? value) in changes)
+        {
+            entries[subIndex] = new PbtWriteBatch.Entry(default, valueBlob.Count, value?.Length ?? 0);
+            if (value is not null) valueBlob.AddRange(value);
+        }
+
+        return StemLeafBlob.Apply(prior, entries, valueBlob.ToArray(), out subtreeRoot);
     }
 }
