@@ -27,7 +27,7 @@ public sealed class GCScheduler
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
-    private readonly Timer _sustainedSweepTimer;
+    private readonly Timer? _sustainedSweepTimer;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
     private bool _isNextGcBlocking = false;
@@ -43,11 +43,19 @@ public sealed class GCScheduler
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    private GCScheduler()
+    private GCScheduler() : this(sustainedSweepEnabled: true)
+    {
+    }
+
+    // Test ctor: a private instance without the sweep timer cannot race assertions on its state.
+    internal GCScheduler(bool sustainedSweepEnabled)
     {
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
-        _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        if (sustainedSweepEnabled)
+        {
+            _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
     }
 
     /// <summary>
