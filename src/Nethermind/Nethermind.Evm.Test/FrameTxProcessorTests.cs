@@ -459,6 +459,9 @@ public class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        // compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided),
+        // so the entry must be present when the hash is computed and signed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         Ecdsa ecdsa = new();
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, in sigHash);
