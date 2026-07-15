@@ -37,7 +37,7 @@ public static class PbtSnapshotCompactor
                 }
             }
 
-            foreach (((AddressAsKey, UInt256) slotKey, byte[]? value) in content.Slots)
+            foreach (((AddressAsKey, UInt256) slotKey, EvmWord value) in content.Slots)
             {
                 merged.Slots[slotKey] = value;
             }

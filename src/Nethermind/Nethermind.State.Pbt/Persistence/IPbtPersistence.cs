@@ -28,8 +28,8 @@ public interface IPbtPersistence
         StateId CurrentState { get; }
         Account? GetAccount(Address address);
 
-        /// <summary>Returns the stored slot value, or null when absent (= zero).</summary>
-        byte[]? GetSlot(Address address, in UInt256 slot);
+        /// <summary>Returns the stored slot value, or zero when absent.</summary>
+        EvmWord GetSlot(Address address, in UInt256 slot);
 
         byte[]? GetLeafBlob(in Stem stem);
         byte[]? GetTrieNode(in TrieNodeKey key);
@@ -40,8 +40,8 @@ public interface IPbtPersistence
         /// <summary>Null deletes the account entry.</summary>
         void SetAccount(Address address, Account? account);
 
-        /// <summary>Null (= zero) deletes the slot entry.</summary>
-        void SetSlot(Address address, in UInt256 slot, byte[]? value);
+        /// <summary>A zero value deletes the on-disk slot entry (absence = zero).</summary>
+        void SetSlot(Address address, in UInt256 slot, in EvmWord value);
 
         /// <summary>Deletes every stored slot of the address.</summary>
         void SelfDestructStorage(Address address);

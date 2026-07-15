@@ -127,7 +127,8 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
         {
             using PbtSnapshotBundle bundle = outer.GatherBundle(new StateId(baseBlock), isReadOnly: true);
-            return bundle.GetSlot(address, index) ?? [];
+            EvmWord value = bundle.GetSlot(address, index);
+            return EvmWordSlot.IsZero(value) ? [] : EvmWordSlot.ToStrippedBytes(value);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : outer._codeDbOverlay[codeHash.Bytes];
@@ -146,7 +147,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);
 
-        public byte[]? GetSlot(Address address, in UInt256 slot) => inner.GetSlot(address, slot);
+        public EvmWord GetSlot(Address address, in UInt256 slot) => inner.GetSlot(address, slot);
 
         public byte[]? GetLeafBlob(in Stem stem) => inner.GetLeafBlob(stem);
 

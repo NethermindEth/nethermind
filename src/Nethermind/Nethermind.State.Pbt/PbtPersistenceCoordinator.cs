@@ -158,7 +158,7 @@ public class PbtPersistenceCoordinator(
             batch.SetAccount(address, account);
         }
 
-        foreach (((AddressAsKey Address, UInt256 Slot) key, byte[]? value) in content.Slots)
+        foreach (((AddressAsKey Address, UInt256 Slot) key, EvmWord value) in content.Slots)
         {
             batch.SetSlot(key.Address, key.Slot, value);
         }

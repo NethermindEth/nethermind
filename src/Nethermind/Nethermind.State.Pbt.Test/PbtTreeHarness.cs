@@ -9,14 +9,15 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>
-/// Drives <see cref="StemLeafBlob"/> + <see cref="StemTrie"/> the way the production scope does:
+/// Drives <see cref="StemLeafBlob"/> + <see cref="TrieUpdater"/> the way the production scope does:
 /// batches of raw 32-byte key/value writes are grouped by stem, folded into blobs, and pushed
-/// through a trie batch over dictionary-backed stores that persist across batches.
+/// through a trie update over dictionary-backed stores that persist across batches.
 /// </summary>
 public sealed class PbtTreeHarness : IStemTrieNodeSource
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
+    private ValueHash256 _root;
 
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
@@ -40,7 +41,7 @@ public sealed class PbtTreeHarness : IStemTrieNodeSource
         Dictionary<Stem, ValueHash256?> stemChanges = [];
         foreach ((Stem stem, Dictionary<byte, byte[]?> changes) in perStem)
         {
-            byte[] blob = StemLeafBlob.Apply(_blobs.GetValueOrDefault(stem, []), changes);
+            byte[] blob = StemLeafBlob.Apply(_blobs.GetValueOrDefault(stem, []), changes, out ValueHash256 subtreeRoot);
             if (blob.Length == 0)
             {
                 _blobs.Remove(stem);
@@ -49,12 +50,12 @@ public sealed class PbtTreeHarness : IStemTrieNodeSource
             else
             {
                 _blobs[stem] = blob;
-                stemChanges[stem] = StemLeafBlob.ComputeSubtreeRoot(blob);
+                stemChanges[stem] = subtreeRoot;
             }
         }
 
         Dictionary<TrieNodeKey, byte[]?> dirtyNodes = [];
-        ValueHash256 root = new StemTrie(this).BatchUpdate(stemChanges, dirtyNodes);
+        _root = TrieUpdater.Update(this, _root, stemChanges, dirtyNodes);
         foreach ((TrieNodeKey key, byte[]? node) in dirtyNodes)
         {
             if (node is null)
@@ -67,6 +68,6 @@ public sealed class PbtTreeHarness : IStemTrieNodeSource
             }
         }
 
-        return root;
+        return _root;
     }
 }

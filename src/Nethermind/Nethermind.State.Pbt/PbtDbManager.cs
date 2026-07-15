@@ -112,7 +112,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public StateId CurrentState => StateId.PreGenesis;
         public Account? GetAccount(Address address) => null;
-        public byte[]? GetSlot(Address address, in UInt256 slot) => null;
+        public EvmWord GetSlot(Address address, in UInt256 slot) => default;
         public byte[]? GetLeafBlob(in Stem stem) => null;
         public byte[]? GetTrieNode(in TrieNodeKey key) => null;
 
