@@ -11,17 +11,20 @@ namespace Nethermind.Stateless.Execution.IO;
 
 internal static class InputDecoder
 {
-    private const ushort AmsterdamRevision1SchemaId = ((ushort)ProtocolFork.Amsterdam << 8) | 0x01;
+    /// <summary>The schema revision selecting the SSZ <c>StatelessInput</c> payload encoding.</summary>
+    internal const byte Revision1 = 0x01;
 
     internal static StatelessPayload Decode(ReadOnlySpan<byte> data)
     {
         ushort schemaId = BinaryPrimitives.ReadUInt16BigEndian(data);
+        ProtocolFork fork = (ProtocolFork)(schemaId >> 8);
+        byte revision = (byte)schemaId;
+        ReadOnlySpan<byte> payload = data[sizeof(ushort)..];
 
-        return schemaId switch
+        return (fork, revision) switch
         {
-            AmsterdamRevision1SchemaId => DecodeRevision1<SszExecutionPayloadV4>(
-                data[sizeof(ushort)..],
-                ProtocolFork.Amsterdam),
+            (ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV4>(payload, fork),
+            ( >= ProtocolFork.Cancun and < ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV3>(payload, fork),
             _ => throw new ArgumentException($"Unsupported schema id: 0x{schemaId:x4}", nameof(data))
         };
     }
@@ -33,7 +36,7 @@ internal static class InputDecoder
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
 
         return new(
-            Block: input.NewPayloadRequest.ToBlock()!,
+            Block: input.NewPayloadRequest.ToBlock(requestsEnabled: protocolFork >= ProtocolFork.Prague)!,
             Witness: input.Witness,
             ChainConfig: input.ChainConfig,
             PublicKeys: input.PublicKeys,
