@@ -20,6 +20,8 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private const int AccountReadBatchSize = 256;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -191,78 +193,83 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
-                Address[] addressesToRead = new Address[accountCount];
-                int[] addressIndices = new int[accountCount];
-                int addressCount = 0;
-                for (int i = 0; i < accountCount; i++)
-                {
-                    ReadOnlyAccountChanges accountChange = accountChanges[i];
-                    if (sink is null && accountChange.StorageChanges.Length == 0) continue;
-
-                    addressesToRead[addressCount] = accountChange.Address;
-                    addressIndices[addressCount] = i;
-                    addressCount++;
-                }
-
-                if (addressCount > 0)
-                {
-                    token.ThrowIfCancellationRequested();
-                    Account?[] batchAccounts = new Account?[addressCount];
-                    _snapshotBundle.GetAccounts(addressesToRead.AsSpan(0, addressCount), batchAccounts);
-                    for (int i = 0; i < addressCount; i++)
-                        loadedAccounts[addressIndices[i]] = batchAccounts[i];
-                }
-
-                // Phase 1: trie warmup + sink.OnAccountRead. Sink slot reads are
+                // Phase 1: account reads + trie warmup + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                Parallel.ForEach(Partitioner.Create(0, accountCount, AccountReadBatchSize), parallelOptions, range =>
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    ReadOnlyAccountChanges ac = accountChanges[i];
-                    Address address = ac.Address;
-
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
-
-                    ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
-                    int storageChangeCount = storageChanges.Length;
-
-                    Account? account = loadedAccounts[i];
-
-                    if (sink is not null && sink.StillNeeded(address, out _))
-                        sink.OnAccountRead(address, account);
-
-                    if (account is null) return;
-                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                    if (storageRoot == Keccak.EmptyTreeHash) return;
-
-                    if (storageChangeCount > 0)
+                    int rangeLength = range.Item2 - range.Item1;
+                    Address[] addressesToRead = new Address[rangeLength];
+                    int[] addressIndices = new int[rangeLength];
+                    int addressCount = 0;
+                    for (int i = range.Item1; i < range.Item2; i++)
                     {
-                        FlatStorageTree storageWarmer = new(
-                            this,
-                            _warmer,
-                            _snapshotBundle,
-                            _configuration,
-                            _concurrencyQuota,
-                            storageRoot,
-                            address,
-                            _logManager);
+                        ReadOnlyAccountChanges accountChange = accountChanges[i];
+                        if (sink is null && accountChange.StorageChanges.Length == 0) continue;
 
-                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
-                        {
-                            UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                                Interlocked.Increment(ref _outstandingWarmups);
-                        }
+                        addressesToRead[addressCount] = accountChange.Address;
+                        addressIndices[addressCount] = i;
+                        addressCount++;
                     }
 
-                    if (accounts is not null)
+                    if (addressCount > 0)
                     {
-                        accounts[i] = account;
-                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                        Account?[] batchAccounts = new Account?[addressCount];
+                        _snapshotBundle.GetAccounts(addressesToRead.AsSpan(0, addressCount), batchAccounts);
+                        for (int i = 0; i < addressCount; i++)
+                            loadedAccounts[addressIndices[i]] = batchAccounts[i];
+                    }
+
+                    for (int i = range.Item1; i < range.Item2; i++)
+                    {
+                        if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
+
+                        ReadOnlyAccountChanges ac = accountChanges[i];
+                        Address address = ac.Address;
+
+                        if (_snapshotBundle.ShouldQueuePrewarm(address)
+                            && _warmer.PushAddressJob(this, address, snapshot))
+                            Interlocked.Increment(ref _outstandingWarmups);
+
+                        ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                        int storageChangeCount = storageChanges.Length;
+
+                        Account? account = loadedAccounts[i];
+
+                        if (sink is not null && sink.StillNeeded(address, out _))
+                            sink.OnAccountRead(address, account);
+
+                        if (account is null) continue;
+                        Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                        if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                        if (storageChangeCount > 0)
+                        {
+                            FlatStorageTree storageWarmer = new(
+                                this,
+                                _warmer,
+                                _snapshotBundle,
+                                _configuration,
+                                _concurrencyQuota,
+                                storageRoot,
+                                address,
+                                _logManager);
+
+                            foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                            {
+                                UInt256 key = slotChanges.Key;
+                                if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                    && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                    Interlocked.Increment(ref _outstandingWarmups);
+                            }
+                        }
+
+                        if (accounts is not null)
+                        {
+                            accounts[i] = account;
+                            selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                        }
                     }
                 });
 
