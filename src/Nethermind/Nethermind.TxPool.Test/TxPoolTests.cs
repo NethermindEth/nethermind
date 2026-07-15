@@ -1886,6 +1886,33 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Heze.Instance));
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                MaxFeePerGas = 1.GWei,
+                MaxPriorityFeePerGas = 1.GWei,
+            };
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "frame transactions must enter the pool once the EIP-8141 fork is active");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction must be pending");
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);

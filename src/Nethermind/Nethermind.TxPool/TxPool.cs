@@ -148,7 +148,7 @@ namespace Nethermind.TxPool
 
             _preHashFilters =
             [
-                new NotSupportedTxFilter(txPoolConfig, _logger),
+                new NotSupportedTxFilter(txPoolConfig, _specProvider, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
