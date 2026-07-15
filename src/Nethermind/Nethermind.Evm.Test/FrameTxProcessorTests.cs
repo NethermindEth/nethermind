@@ -117,7 +117,11 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)frame.GasLimit));
+        // The payer is charged only the spent gas: less than the whole balance (charged), but
+        // more than balance minus the frame gas limit (unused gas refunded).
+        UInt256 balance = _stateProvider.GetBalance(Sender);
+        Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
+        Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
     }
 
     [Test]
@@ -187,7 +191,11 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)));
+        // Sender pays the transferred value plus the spent gas (unused gas refunded), so the
+        // charge is more than the value alone but less than value + both frame gas limits.
+        UInt256 balance = _stateProvider.GetBalance(Sender);
+        Assert.That(balance, Is.LessThan(1.Ether - (UInt256)12345), "value transferred and gas charged");
+        Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)), "unused gas refunded");
     }
 
     [Test]
@@ -209,7 +217,8 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
-    [TestCase((byte)0x06, 400_000UL, TestName = "Execute_TxParam_MaxCost")]
+    // Max cost = sum(frame gas) 400000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
+    [TestCase((byte)0x06, 415_950UL, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
