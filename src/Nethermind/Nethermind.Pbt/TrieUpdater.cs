@@ -32,8 +32,9 @@ public interface IPbtStore
 /// path prefix shared by two or more stems, and each stem node sits at the shortest prefix unique
 /// to it — the EIP's minimal-internal-node rule. The batch is applied bulk-set style (mirroring
 /// <c>PatriciaTree.BulkSet</c>): the write entries — one per stem, already grouped by the producer —
-/// are sorted once by stem and a single recursive descent over the groups partitions them into the
-/// sixteen boundary slots of each group, so every shared prefix is walked only once. A range that
+/// are never globally sorted; instead each group radix-partitions its own range in place into the
+/// sixteen boundary slots by the four stem bits at its depth, so a single recursive descent walks
+/// every shared prefix only once. A range that
 /// collapses to a single stem folds that stem's
 /// leaf blob and hands the stem node up to be placed at its shortest unique prefix by the bottom-up
 /// rebuild of the enclosing groups; hashes are computed on the way back up. Groups and blobs are
@@ -54,7 +55,8 @@ public static class TrieUpdater
     {
         public ValueHash256 Run(PbtWriteBatch changes)
         {
-            PbtWriteBatch.StemEntry[] entries = SortedStems(changes);
+            // No global sort: each group radix-partitions its own range in place during the descent.
+            PbtWriteBatch.StemEntry[] entries = changes.Entries.ToArray();
             using MemoryManager<byte>? rootData = store.GetTrieNode(TrieNodeKey.Root);
             return ApplyGroup(TrieNodeKey.Root, entries, Wrap(rootData), default).NodeHash();
         }
@@ -64,7 +66,7 @@ public static class TrieUpdater
 
         /// <summary>
         /// Applies <paramref name="entries"/> — a non-empty range of one-per-stem writes sharing bits
-        /// <c>[0, key.Depth)</c>, sorted ascending by stem — to the group at <paramref name="key"/>,
+        /// <c>[0, key.Depth)</c> in any order — to the group at <paramref name="key"/>,
         /// given its current <paramref name="existing"/> content or a stem <paramref name="pushed"/>
         /// down from the parent's boundary slot (mutually exclusive: a boundary stem implies no child
         /// group). Writes or removes every affected group blob at or below <paramref name="key"/> and
@@ -72,7 +74,7 @@ public static class TrieUpdater
         /// A stem result is not written here: it hoists into the parent, cascading across group
         /// boundaries (except at the root group, whose root position may hold a stem).
         /// </summary>
-        private Slot ApplyGroup(in TrieNodeKey key, ReadOnlySpan<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, in Slot pushed)
+        private Slot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, in Slot pushed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -131,7 +133,7 @@ public static class TrieUpdater
             changed.Clear();
             for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
             {
-                ReadOnlySpan<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
                 if (bucket.IsEmpty)
                 {
                     // untouched: reuse the cached boundary hash / stem, never loading the child group
@@ -218,36 +220,46 @@ public static class TrieUpdater
         }
 
         /// <summary>
-        /// Splits <paramref name="entries"/> (sorted ascending by stem, sharing bits
-        /// <c>[0, depth)</c>) into the sixteen boundary buckets of the group at
-        /// <paramref name="depth"/>: bucket i is <paramref name="bounds"/>[i]..[i+1].
+        /// Radix-partitions <paramref name="entries"/> (sharing bits <c>[0, depth)</c>, any order) in place
+        /// into the sixteen boundary buckets of the group at <paramref name="depth"/>, keyed by the four
+        /// stem bits at that depth: bucket i is <paramref name="bounds"/>[i]..[i+1]. Mirrors
+        /// <c>PatriciaTree.BulkSet</c>'s per-level bucket sort — no global sort is needed, and within-bucket
+        /// order is arbitrary since each bucket is re-partitioned by its child group.
         /// </summary>
-        private static void Partition(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, Span<int> bounds)
+        private static void Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> bounds)
         {
-            int index = 0;
-            bounds[0] = 0;
+            Span<int> counts = stackalloc int[PbtTrieNodeGroup.BoundarySlots];
+            counts.Clear();
+            for (int i = 0; i < entries.Length; i++) counts[NibbleOf(entries[i].Stem, depth)]++;
+
+            int total = 0;
             for (int bucket = 0; bucket < PbtTrieNodeGroup.BoundarySlots; bucket++)
             {
-                while (index < entries.Length && NibbleOf(entries[index].Stem, depth) == bucket) index++;
-                bounds[bucket + 1] = index;
+                bounds[bucket] = total;
+                total += counts[bucket];
             }
+            bounds[PbtTrieNodeGroup.BoundarySlots] = total;
+            Debug.Assert(total == entries.Length);
 
-            Debug.Assert(index == entries.Length);
-        }
-
-        /// <summary>Materializes the batch's per-stem writes and returns them sorted ascending by stem.</summary>
-        private static PbtWriteBatch.StemEntry[] SortedStems(PbtWriteBatch changes)
-        {
-            PbtWriteBatch.StemEntry[] sorted = changes.Entries.ToArray();
-
-            // locals, not inline: a span over the by-value Stem temporary of a.Stem/b.Stem dangles
-            Array.Sort(sorted, static (a, b) =>
+            // In-place American-flag permutation: each swap places one entry into its final bucket.
+            Span<int> heads = stackalloc int[PbtTrieNodeGroup.BoundarySlots];
+            bounds[..PbtTrieNodeGroup.BoundarySlots].CopyTo(heads);
+            for (int bucket = 0; bucket < PbtTrieNodeGroup.BoundarySlots; bucket++)
             {
-                Stem left = a.Stem;
-                Stem right = b.Stem;
-                return left.Bytes.SequenceCompareTo(right.Bytes);
-            });
-            return sorted;
+                while (heads[bucket] < bounds[bucket + 1])
+                {
+                    int target = NibbleOf(entries[heads[bucket]].Stem, depth);
+                    if (target == bucket)
+                    {
+                        heads[bucket]++;
+                    }
+                    else
+                    {
+                        (entries[heads[bucket]], entries[heads[target]]) = (entries[heads[target]], entries[heads[bucket]]);
+                        heads[target]++;
+                    }
+                }
+            }
         }
 
         private static int NibbleOf(in Stem stem, int depth) => NibbleAt(stem.Bytes[depth >> 3], depth);
