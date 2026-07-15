@@ -265,6 +265,7 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -292,6 +293,14 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
@@ -402,6 +411,32 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            ValueHash256[] addressHashes = new ValueHash256[addresses.Length];
+            byte[]?[] encodedAccounts = new byte[]?[addresses.Length];
+            for (int i = 0; i < addresses.Length; i++)
+                addressHashes[i] = addresses[i].ToAccountPath;
+
+            _flatReader.GetAccounts(addressHashes, encodedAccounts);
+
+            for (int i = 0; i < encodedAccounts.Length; i++)
+            {
+                byte[]? encodedAccount = encodedAccounts[i];
+                if (encodedAccount is null or { Length: 0 })
+                {
+                    accounts[i] = null;
+                    continue;
+                }
+
+                RlpReader ctx = new(encodedAccount);
+                accounts[i] = _accountDecoder.Decode(ref ctx);
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
@@ -447,6 +482,9 @@ public static class BasePersistence
 
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
+            _flatReader.GetAccounts(addresses, accounts);
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);

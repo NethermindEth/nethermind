@@ -77,6 +77,53 @@ public sealed class ReadOnlySnapshotBundle(
         return account;
     }
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+
+        if (addresses.Length != accounts.Length)
+            throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+        Address[] missingAddresses = new Address[addresses.Length];
+        int[] missingIndices = new int[addresses.Length];
+        int missingCount = 0;
+
+        for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
+        {
+            Address address = addresses[addressIndex];
+            HashedKey<Address> key = new(address);
+            bool found = false;
+
+            for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (!snapshots[snapshotIndex].TryGetAccount(key, out Account? account)) continue;
+
+                accounts[addressIndex] = account;
+                found = true;
+                break;
+            }
+
+            if (found) continue;
+
+            if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
+            {
+                accounts[addressIndex] = persistedAccount;
+                continue;
+            }
+
+            missingAddresses[missingCount] = address;
+            missingIndices[missingCount] = addressIndex;
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        Account?[] missingAccounts = new Account?[missingCount];
+        persistenceReader.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+        for (int i = 0; i < missingCount; i++)
+            accounts[missingIndices[i]] = missingAccounts[i];
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);

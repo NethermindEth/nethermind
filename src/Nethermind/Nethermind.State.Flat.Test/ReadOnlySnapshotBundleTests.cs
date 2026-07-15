@@ -74,6 +74,27 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void GetAccounts_UsesSnapshotsAndBatchesOnlyPersistenceMisses()
+    {
+        Address snapshotAddress = TestItem.AddressA;
+        Address persistedAddress = TestItem.AddressB;
+        Account snapshotAccount = TestItem.GenerateIndexedAccount(1);
+        Account persistedAccount = TestItem.GenerateIndexedAccount(2);
+        TrackingPersistenceReader reader = new(persistedAddress, persistedAccount);
+
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(c => c.Accounts[new HashedKey<Address>(snapshotAddress)] = snapshotAccount)),
+            reader);
+        Account?[] accounts = new Account?[2];
+
+        bundle.GetAccounts([snapshotAddress, persistedAddress], accounts);
+
+        Assert.That(accounts, Is.EqualTo(new[] { snapshotAccount, persistedAccount }));
+        Assert.That(reader.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(reader.RequestedAddresses, Is.EqualTo(new[] { persistedAddress }));
+    }
+
+    [Test]
     public void DetermineSelfDestructSnapshotIdx_ReturnsHighestIndexWhenSelfDestructed()
     {
         Address address = TestItem.AddressA;
@@ -202,5 +223,32 @@ public class ReadOnlySnapshotBundleTests
         bundle.Dispose(); // tears down for real
 
         Assert.That(() => bundle.GetAccount(TestItem.AddressA), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    private sealed class TrackingPersistenceReader(Address address, Account account) : IPersistence.IPersistenceReader
+    {
+        public int MultiGetCalls { get; private set; }
+        public Address[]? RequestedAddresses { get; private set; }
+
+        public Account? GetAccount(Address requestedAddress) => requestedAddress == address ? account : null;
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            MultiGetCalls++;
+            RequestedAddresses = addresses.ToArray();
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
+
+        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public StateId CurrentState => default;
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
     }
 }

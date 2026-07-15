@@ -187,12 +187,35 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
+            Account?[] loadedAccounts = new Account?[accountCount];
+            Account?[]? accounts = sink is null ? null : loadedAccounts;
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                Address[] addressesToRead = new Address[accountCount];
+                int[] addressIndices = new int[accountCount];
+                int addressCount = 0;
+                for (int i = 0; i < accountCount; i++)
+                {
+                    ReadOnlyAccountChanges accountChange = accountChanges[i];
+                    if (sink is null && accountChange.StorageChanges.Length == 0) continue;
+
+                    addressesToRead[addressCount] = accountChange.Address;
+                    addressIndices[addressCount] = i;
+                    addressCount++;
+                }
+
+                if (addressCount > 0)
+                {
+                    token.ThrowIfCancellationRequested();
+                    Account?[] batchAccounts = new Account?[addressCount];
+                    _snapshotBundle.GetAccounts(addressesToRead.AsSpan(0, addressCount), batchAccounts);
+                    for (int i = 0; i < addressCount; i++)
+                        loadedAccounts[addressIndices[i]] = batchAccounts[i];
+                }
+
+                // Phase 1: trie warmup + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 Parallel.For(0, accountCount, parallelOptions, (i) =>
                 {
@@ -208,9 +231,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account = loadedAccounts[i];
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);

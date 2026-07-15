@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -88,6 +89,17 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
         return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
+    }
+
+    public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+    {
+        if (keys.Length != values.Length)
+            throw new ArgumentException("Keys and values must have the same length.", nameof(values));
+
+        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
+        KeyValuePair<byte[], byte[]?>[] results = _mainDb.MultiGet(keys, _columnFamily, readOptions);
+        for (int i = 0; i < results.Length; i++)
+            values[i] = results[i].Value;
     }
 
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
