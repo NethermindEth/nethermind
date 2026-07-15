@@ -99,13 +99,7 @@ public static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
         // Validate the jump destination and update the program counter if valid.
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
-        if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
-        {
-            // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-            vm.OpCodeCount++;
-            TGasPolicy.Consume<JumpDestGasCost>(ref gas);
-            programCounter++;
-        }
+        SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
         // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
         PrefetchCodeAtDestination(ref stack, programCounter);
 
@@ -163,13 +157,7 @@ public static partial class EvmInstructions
         if (shouldJump)
         {
             if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
-            if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
-            {
-                // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-                vm.OpCodeCount++;
-                TGasPolicy.Consume<JumpDestGasCost>(ref gas);
-                programCounter++;
-            }
+            SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, ref programCounter);
             // Prefetch the cache line at the jump destination since hardware prefetcher can't predict jumps.
             PrefetchCodeAtDestination(ref stack, programCounter);
         }
@@ -180,6 +168,20 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+    {
+        if (TSkipJumpDest.IsActive && !TGasPolicy.IsOutOfGas(in gas))
+        {
+            // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
+            vm.OpCodeCount++;
+            TGasPolicy.Consume<JumpDestGasCost>(ref gas);
+            programCounter++;
+        }
     }
 
     [SkipLocalsInit]
@@ -414,12 +416,6 @@ public static partial class EvmInstructions
                     // Best-effort hint: PREFETCHT0 never faults. A GC relocation just
                     // makes the hint useless, not unsafe.
                     Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
-                    // Prefetch next cache line too (64 bytes ahead)
-                    nuint nextLine = (dest + 64) & ~(nuint)63;
-                    if (nextLine < codeLength)
-                    {
-                        Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, nextLine)));
-                    }
                 }
             }
         }
