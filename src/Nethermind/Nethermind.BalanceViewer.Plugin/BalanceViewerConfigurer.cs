@@ -117,6 +117,10 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         }
 
         context.Response.ContentType = contentType;
+        // The UI is a single self-contained file that changes with each plugin build; without this a
+        // browser heuristically caches it and keeps running stale code after an upgrade (e.g. detection
+        // appearing broken on a device that visited an older version). Force a fresh fetch each load.
+        context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         return context.Response.SendFileAsync(file);
     }
 

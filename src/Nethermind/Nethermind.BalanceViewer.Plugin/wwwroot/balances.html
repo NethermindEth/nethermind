@@ -1642,22 +1642,28 @@
             const ignored = ignoredAddrs(node.chainId);
             const fresh = candidates.map((c) => c.toLowerCase()).filter((c) => !manual.has(c) && !shown.has(c) && !ignored.has(c));
             if (fresh.length === 0) return;
-            await resolveTokenMetas(node, fresh);
+            // balanceOf first — then metadata and pricing only touch tokens actually held, not every
+            // candidate the node returned (an active account has thousands of spam candidates, ~none held)
             const calls = [];
             for (const c of fresh) for (const a of addrList) calls.push(['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]);
             const bals = await rpcBatch(calls, node.rpcPath);
-
-            // collect confirmed holdings first, so unpriceable ones can be filtered in a single price batch
-            const held = [];
+            const heldRawByAddr = [];
             for (let ci = 0; ci < fresh.length; ci++) {
-                const meta = tokenMetaCache.get(node.chainId + '|' + fresh[ci]);
-                if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
                 let heldRaw = null;
                 for (let ai = 0; ai < addrList.length; ai++) {
                     const raw = bals[ci * addrList.length + ai];
                     try { if (raw && raw !== '0x' && BigInt(raw) > 0n) { heldRaw = raw; break; } } catch { }
                 }
-                if (heldRaw !== null) held.push({ addr: fresh[ci], meta, heldRaw });
+                if (heldRaw !== null) heldRawByAddr.push({ addr: fresh[ci], heldRaw });
+            }
+            if (heldRawByAddr.length === 0) return;
+
+            await resolveTokenMetas(node, heldRawByAddr.map((h) => h.addr));
+            const held = [];
+            for (const { addr, heldRaw } of heldRawByAddr) {
+                const meta = tokenMetaCache.get(node.chainId + '|' + addr);
+                if (!meta || !meta.ticker || meta.decimals === null || meta.decimals === undefined) continue;
+                held.push({ addr, meta, heldRaw });
             }
             if (held.length === 0) return;
 
@@ -1760,6 +1766,7 @@
             const addresses = mergedAddresses();
             if (addresses.length === 0) { detecting = false; updateDetectIndicator(); return; }
             nodeDetectBusy = true;
+            detecting = true; updateDetectIndicator(); // show the spinner while vetting too, not just during the node scan
             try {
                 let scanning = false;
                 for (const entry of addresses) {
@@ -1778,7 +1785,7 @@
                 }
                 detecting = scanning;
                 updateDetectIndicator();
-            } finally { nodeDetectBusy = false; }
+            } finally { nodeDetectBusy = false; if (!detecting) updateDetectIndicator(); }
         }
 
         function updateDetectIndicator() {
