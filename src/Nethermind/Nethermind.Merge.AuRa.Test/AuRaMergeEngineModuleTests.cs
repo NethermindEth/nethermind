@@ -13,15 +13,11 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Merge.AuRa.Contracts;
-using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Test;
@@ -172,16 +168,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
                 // as normally, test blockchain don't use INethermindApi at all.
                 .AddModule(new AuRaModule(ChainSpec))
-
-                .AddSingleton<ISigner>(NullSigner.Instance)
                 .AddModule(new AuRaMergeModule())
                 .AddSingleton<NethermindApi.Dependencies>()
                 .AddSingleton<IReportingValidator>(NullReportingValidator.Instance)
                 .AddSingleton<ISealer>(NullSealEngine.Instance) // Test not originally made with aura sealer
-
-                .AddScoped<WithdrawalContractFactory>()
-                .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
-                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
 
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))

@@ -52,8 +52,8 @@ namespace Nethermind.Merge.AuRa
 
                 .AddLast<IP2PCapabilityResolver, MergeP2PCapabilityResolver>()
 
-                // Aura (non merge) use `BlockProducerStarter` directly.
-                .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+                // The post-merge env uses the plain AuRa tx pool source (no posdao/randomness txs).
+                .Bind<IBlockProducerTxSourceFactory, AuRaTxPoolTxSourceFactory>()
 
                 // Post-merge block production decorates the AuRa engine factory (from AuRaModule).
                 .AddSingleton<ManualTimestamper>()

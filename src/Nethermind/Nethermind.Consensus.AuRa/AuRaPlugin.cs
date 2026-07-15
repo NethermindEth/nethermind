@@ -71,7 +71,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
-                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaTxPoolTxSourceFactory>()
+                .AddSingleton<AuRaBlockProducerEnvFactory>()
                 .AddSingleton<AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
