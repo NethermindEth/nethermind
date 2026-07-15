@@ -1902,6 +1902,7 @@ namespace Nethermind.TxPool.Test
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
             };
+            frameTx.Hash = frameTx.CalculateHash();
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
