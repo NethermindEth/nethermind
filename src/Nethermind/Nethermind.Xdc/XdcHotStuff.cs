@@ -208,10 +208,20 @@ namespace Nethermind.Xdc
                 if (spec.SwitchBlock < head.Number)
                     await Vote(head, epochInfo);
 
-                // Voting may advance the round, which cancels this task.
-                if (ct.IsCancellationRequested) return;
+                // Voting may advance the round and replace _roundCts - reentrantly, if this node's
+                // own vote completes a QC synchronously, or concurrently, if a peer's vote/timeout
+                // does. Re-derive the live round and token instead of trusting the cancellation as a
+                // signal that some other task already took over proposing for it.
+                ulong proposeRound;
+                CancellationToken proposeCt;
+                lock (_lockObject)
+                {
+                    if (!_running || _roundCts is null) return;
+                    proposeRound = _xdcContext.CurrentRound;
+                    proposeCt = _roundCts.Token;
+                }
 
-                await TryPropose(head, round, ct);
+                await TryPropose(head, proposeRound, proposeCt);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
