@@ -116,7 +116,46 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
+            DecodeStorageValue(buffer[..resultSize], ref outValue);
+            return true;
+        }
+
+        public void GetStorages(
+            ReadOnlySpan<ValueHash256> addresses,
+            ReadOnlySpan<ValueHash256> slots,
+            Span<SlotValue> values,
+            Span<bool> found)
+        {
+            if (addresses.Length != slots.Length || addresses.Length != values.Length || addresses.Length != found.Length)
+                throw new ArgumentException("Addresses, slots, values, and found flags must have the same length.", nameof(values));
+
+            byte[][] keys = new byte[addresses.Length][];
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, addresses[i], slots[i]);
+                keys[i] = key;
+            }
+
+            byte[]?[] encodedValues = new byte[]?[addresses.Length];
+            storage.MultiGet(keys, encodedValues);
+            for (int i = 0; i < encodedValues.Length; i++)
+            {
+                byte[]? encodedValue = encodedValues[i];
+                if (encodedValue is null or { Length: 0 })
+                {
+                    found[i] = false;
+                    continue;
+                }
+
+                DecodeStorageValue(encodedValue, ref values[i]);
+                found[i] = true;
+            }
+        }
+
+        private void DecodeStorageValue(ReadOnlySpan<byte> encodedValue, ref SlotValue outValue)
+        {
+            ReadOnlySpan<byte> value = encodedValue;
             if (rlpWrapSlots)
             {
                 RlpReader ctx = new(value);
@@ -149,8 +188,6 @@ public static class BaseFlatPersistence
                     ref MemoryMarshal.GetReference(value),
                     (uint)len);
             }
-
-            return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);

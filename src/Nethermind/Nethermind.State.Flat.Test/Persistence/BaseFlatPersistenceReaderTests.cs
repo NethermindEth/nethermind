@@ -33,6 +33,43 @@ public class BaseFlatPersistenceReaderTests
         Assert.That(accounts, Is.EqualTo(new byte[]?[] { [1], [2] }));
     }
 
+    [Test]
+    public void GetStorages_UsesSingleMultiGetWithEncodedKeys()
+    {
+        ValueHash256 firstAddress = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)i).ToArray());
+        ValueHash256 secondAddress = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)(255 - i)).ToArray());
+        ValueHash256 firstSlot = new(Enumerable.Repeat((byte)0x11, ValueHash256.MemorySize).ToArray());
+        ValueHash256 secondSlot = new(Enumerable.Repeat((byte)0x22, ValueHash256.MemorySize).ToArray());
+        TrackingMultiGetStore store = new();
+        BaseFlatPersistence.Reader reader = new(store, store);
+        SlotValue[] values = new SlotValue[2];
+        bool[] found = new bool[2];
+
+        reader.GetStorages([firstAddress, secondAddress], [firstSlot, secondSlot], values, found);
+
+        byte[] firstExpectedKey = new byte[52];
+        firstAddress.Bytes[..4].CopyTo(firstExpectedKey);
+        firstSlot.Bytes.CopyTo(firstExpectedKey.AsSpan(4));
+        firstAddress.Bytes[4..20].CopyTo(firstExpectedKey.AsSpan(36));
+        byte[] secondExpectedKey = new byte[52];
+        secondAddress.Bytes[..4].CopyTo(secondExpectedKey);
+        secondSlot.Bytes.CopyTo(secondExpectedKey.AsSpan(4));
+        secondAddress.Bytes[4..20].CopyTo(secondExpectedKey.AsSpan(36));
+
+        Assert.That(store.Keys, Is.Not.Null);
+        byte[][] keys = store.Keys!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+            Assert.That(keys, Has.Length.EqualTo(2));
+            Assert.That(keys[0], Is.EqualTo(firstExpectedKey));
+            Assert.That(keys[1], Is.EqualTo(secondExpectedKey));
+            Assert.That(found, Is.All.True);
+            Assert.That(values[0].AsReadOnlySpan[SlotValue.ByteCount - 1], Is.EqualTo(1));
+            Assert.That(values[1].AsReadOnlySpan[SlotValue.ByteCount - 1], Is.EqualTo(2));
+        }
+    }
+
     // Regression: a slot value longer than SlotValue.ByteCount must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.

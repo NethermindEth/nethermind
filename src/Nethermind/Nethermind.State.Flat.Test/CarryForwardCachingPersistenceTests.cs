@@ -59,6 +59,27 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
+    [Test]
+    public void GetSlots_BatchesMissesAndServesSubsequentReadsFromCache()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        StorageCell[] cells =
+        [
+            new(TestItem.AddressA, (UInt256)1),
+            new(TestItem.AddressB, (UInt256)2),
+        ];
+
+        ReadSlots(cache, cells);
+        ReadSlots(cache, cells);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.SlotMultiGetCalls, Is.EqualTo(1));
+            Assert.That(inner.SlotReads, Is.EqualTo(2));
+        }
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
@@ -116,11 +137,18 @@ public class CarryForwardCachingPersistenceTests
         reader.GetAccount(address);
     }
 
+    private static void ReadSlots(IPersistence persistence, StorageCell[] cells)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        reader.GetSlots(cells, new SlotValue[cells.Length], new bool[cells.Length]);
+    }
+
     public sealed class FakePersistence : IPersistence
     {
         public StateId ReaderState = Basis0;
         public int AccountReads;
         public int SlotReads;
+        public int SlotMultiGetCalls;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
@@ -140,6 +168,13 @@ public class CarryForwardCachingPersistenceTests
                 parent.SlotReads++;
                 outValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);
                 return true;
+            }
+
+            public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+            {
+                parent.SlotMultiGetCalls++;
+                for (int i = 0; i < storageCells.Length; i++)
+                    found[i] = TryGetSlot(storageCells[i].Address, storageCells[i].Index, ref slots[i]);
             }
 
             public StateId CurrentState => parent.ReaderState;
