@@ -665,6 +665,8 @@
             1: {
                 name: 'Ethereum', ticker: 'ETH', ens: true, tag: '', logo: 'logos/ethereum-logo.svg',
                 registry: FEED_REGISTRY,
+                strictValueGate: true, // deep Uniswap coverage: an auto-detected token with no price is spam
+
                 // no direct registry feeds for wrapped assets — price via the underlying
                 alias: {
                     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': PSEUDO_ETH, // WETH
@@ -1684,8 +1686,14 @@
                 let hide = looksLikeSpam(meta.ticker, meta.decimals, heldRaw);
                 if (!hide && priceGate) {
                     const price = prices.get(addr);
-                    if (price === null || price === undefined) hide = true; // no discoverable price
-                    else if (BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals) < DETECT_MIN_VALUE_USD * PRICE_SCALE) hide = true; // dust
+                    if (price !== null && price !== undefined) {
+                        if (BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals) < DETECT_MIN_VALUE_USD * PRICE_SCALE) hide = true; // priced dust
+                    } else if (node.meta.strictValueGate) {
+                        // unpriceable: only treat as spam on chains with deep price coverage (mainnet), where
+                        // a legit token would have been priced. On sparsely-covered chains (e.g. Gnosis, where
+                        // liquidity sits on venues we don't read) keep it — the name/amount heuristic already ran.
+                        hide = true;
+                    }
                 }
                 if (hide) {
                     state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name, spam: true });
@@ -2064,10 +2072,20 @@
                     for (const node of enabledNodes()) {
                         const state = stateOf(node.chainId);
                         state.addresses = state.addresses.filter((a) => a.address !== entry.address);
+                        // Auto-detected tokens and hidden spam are derived from the pinned addresses, so drop
+                        // them (reset to the seeded defaults) and clear the hidden list. Detection is then
+                        // re-run below, re-adding whatever any remaining address still holds — so an unpinned
+                        // account's tokens disappear entirely (not left in the hidden tab) and return if re-added.
+                        state.detected = (node.meta.defaults || []).map((t) => ({ ...t, auto: true }));
+                        state.ignored = [];
                         store.save(node.chainId);
                     }
+                    detecting = false;
                     renderCards();
+                    renderTokens();
                     recomputeTotals();
+                    refreshBalances();
+                    for (const node of enabledNodes()) nodeDetect(node); // re-derive for any remaining addresses
                 };
                 head.append(unpin);
                 card.append(head);
