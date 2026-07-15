@@ -115,13 +115,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     }
 
     /// <summary>
-    /// Builds the synthetic "next block" header for speculative warming.
+    /// Builds the synthetic "next block" header for warming.
     /// </summary>
-    /// <remarks>
-    /// Uses <see cref="BlockHeader.CreateSimulatedChild"/>, which dispatches virtually, so chain-specific header
-    /// subtypes (e.g. <c>XdcBlockHeader</c>) are preserved instead of degrading to a plain <see cref="BlockHeader"/>
-    /// that chain-specific processors don't expect (which would otherwise throw an <see cref="InvalidCastException"/>).
-    /// </remarks>
     internal static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
     {
         BlockHeader header = parent.CreateSimulatedChild(timestamp);
