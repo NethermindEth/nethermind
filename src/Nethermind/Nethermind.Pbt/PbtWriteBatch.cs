@@ -1,42 +1,42 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// A batch of tree-key → value writes applied together by <see cref="TrieUpdater.UpdateRoot"/>,
-/// mirroring the Patricia bulk-set interface. Writes are grouped by their 31-byte stem as they are
-/// added — each stem carries a sub-index → 32-byte value map — because the producer naturally emits
-/// consecutive writes sharing a stem, and the per-stem map is exactly what a stem's leaf blob folds.
+/// A batch of per-stem writes applied together by <see cref="TrieUpdater.UpdateRoot"/>, mirroring
+/// the Patricia bulk-set interface: a plain list of one entry per stem, each carrying that stem's
+/// sub-index → 32-byte value map. Grouping is the caller's job — every stem must be added exactly
+/// once (<see cref="Add"/> throws otherwise), so the caller merges all writes to a stem beforehand.
 /// </summary>
-/// <remarks>Duplicate writes resolve last-write-wins per (stem, sub-index); a zero value clears the leaf.</remarks>
+/// <remarks>A zero value clears the leaf. <see cref="Dispose"/> returns the pooled entry list.</remarks>
 public sealed class PbtWriteBatch(int estimatedStems) : IDisposable
 {
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>
     /// <param name="Changes">The stem's sub-index → 32-byte value writes; a zero value clears the leaf.</param>
     internal readonly record struct StemEntry(Stem Stem, Dictionary<byte, ValueHash256> Changes);
 
-    private readonly Dictionary<Stem, Dictionary<byte, ValueHash256>> _byStem = new(estimatedStems);
+    private readonly ArrayPoolList<StemEntry> _entries = new(estimatedStems);
+    private readonly HashSet<Stem> _stems = new(estimatedStems);
 
-    /// <summary>Appends a write to <paramref name="stem"/>'s sub-index <paramref name="subIndex"/>. An empty <paramref name="value"/> (or all zero) clears the leaf.</summary>
-    public void Add(in Stem stem, byte subIndex, ReadOnlySpan<byte> value)
+    /// <summary>Adds <paramref name="stem"/>'s complete writes. Throws if the stem was already added — the caller must merge duplicate stems itself.</summary>
+    public void Add(in Stem stem, Dictionary<byte, ValueHash256> changes)
     {
-        if (!_byStem.TryGetValue(stem, out Dictionary<byte, ValueHash256>? changes))
-        {
-            _byStem[stem] = changes = [];
-        }
-
-        ValueHash256 leaf = default;
-        value.CopyTo(leaf.BytesAsSpan);
-        changes[subIndex] = leaf;
+        if (!_stems.Add(stem)) throw new InvalidOperationException($"Stem {stem} added to the write batch more than once");
+        _entries.Add(new StemEntry(stem, changes));
     }
 
-    /// <summary>The number of distinct stems written; zero means the batch applies no changes.</summary>
-    public int Count => _byStem.Count;
+    /// <summary>The number of stems written; zero means the batch applies no changes.</summary>
+    public int Count => _entries.Count;
 
-    internal Dictionary<Stem, Dictionary<byte, ValueHash256>> Stems => _byStem;
+    internal ReadOnlySpan<StemEntry> Entries => _entries.AsSpan();
 
-    public void Dispose() => _byStem.Clear();
+    public void Dispose()
+    {
+        _entries.Dispose();
+        _stems.Clear();
+    }
 }

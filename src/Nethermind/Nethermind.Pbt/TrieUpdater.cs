@@ -227,12 +227,7 @@ public static class TrieUpdater
         /// <summary>Materializes the batch's per-stem writes and returns them sorted ascending by stem.</summary>
         private static PbtWriteBatch.StemEntry[] SortedStems(PbtWriteBatch changes)
         {
-            PbtWriteBatch.StemEntry[] sorted = new PbtWriteBatch.StemEntry[changes.Count];
-            int index = 0;
-            foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in changes.Stems)
-            {
-                sorted[index++] = new PbtWriteBatch.StemEntry(stem, stemChanges);
-            }
+            PbtWriteBatch.StemEntry[] sorted = changes.Entries.ToArray();
 
             // locals, not inline: a span over the by-value Stem temporary of a.Stem/b.Stem dangles
             Array.Sort(sorted, static (a, b) =>
