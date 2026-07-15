@@ -84,6 +84,18 @@ public static class PbtKeyDerivation
     public static byte HeaderSlotSubIndex(in UInt256 slot) => (byte)(HeaderStorageOffset + slot.u0);
 
     /// <summary>
+    /// The 32-byte tree key for a storage slot (EIP-8297 <c>get_tree_key_for_storage_slot</c>): the
+    /// first 64 slots live in the account header, the rest in the storage zone.
+    /// </summary>
+    public static ValueHash256 StorageKey(Address address, in UInt256 slot)
+    {
+        if (IsHeaderSlot(slot)) return TreeKey(AccountHeaderStem(address), HeaderSlotSubIndex(slot));
+
+        Stem stem = StorageStem(address, slot, out byte subIndex);
+        return TreeKey(stem, subIndex);
+    }
+
+    /// <summary>
     /// Builds the storage-zone stem for <paramref name="slot"/> (which must be at or above
     /// <see cref="HeaderStorageOffset"/>): the storage high bit, a 60-bit address prefix and a
     /// 187-bit suffix bound to the address and tree index.
@@ -178,6 +190,9 @@ public static class PbtKeyDerivation
         BinaryPrimitives.WriteUInt64BigEndian(dest32[16..], balance.u1);
         BinaryPrimitives.WriteUInt64BigEndian(dest32[24..], balance.u0);
     }
+
+    /// <summary>Reads the <c>code_size</c> field (offset 4, 4 bytes big-endian) from a packed <c>BASIC_DATA</c> leaf.</summary>
+    public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(basicData.Slice(4, 4));
 
     /// <summary>Copies the high <paramref name="bitCount"/> MSB-first bits of <paramref name="src"/> into <paramref name="dest"/> at <paramref name="destBitOffset"/> (dest must be zeroed).</summary>
     private static void CopyBits(ReadOnlySpan<byte> src, int bitCount, Span<byte> dest, int destBitOffset)
