@@ -62,6 +62,7 @@ public class InitializeNetwork : IStep
     private readonly IFlatDbConfig _flatDbConfig;
     private readonly IPruningConfig _pruningConfig;
     private readonly INodeStorageFactory _nodeStorageFactory;
+    private readonly FlatStateActivationPolicy _flatStateActivationPolicy;
     private readonly ILogManager _logManager;
 
     private readonly ILogger _logger;
@@ -87,6 +88,7 @@ public class InitializeNetwork : IStep
         IFlatDbConfig flatDbConfig,
         IPruningConfig pruningConfig,
         INodeStorageFactory nodeStorageFactory,
+        FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager
     )
     {
@@ -109,6 +111,7 @@ public class InitializeNetwork : IStep
         _flatDbConfig = flatDbConfig;
         _pruningConfig = pruningConfig;
         _nodeStorageFactory = nodeStorageFactory;
+        _flatStateActivationPolicy = flatStateActivationPolicy;
         _logManager = logManager;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
@@ -192,7 +195,7 @@ public class InitializeNetwork : IStep
             _logger.Error("Unable to start the peer manager.", e);
         }
 
-        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
+        ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatStateActivationPolicy, _flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
         ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
@@ -202,9 +205,11 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
     }
 
-    private static string GetDbLayoutPostfix(IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)
+    private static string GetDbLayoutPostfix(FlatStateActivationPolicy flatStateActivationPolicy, IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)
     {
-        if (flatDbConfig.Enabled)
+        // Gate on the resolved backend decision, not flatDbConfig.Enabled: a flat-enabled node can still run
+        // on patricia (e.g. an existing patricia state with ImportFromPruningTrieState off). See FlatStateActivationPolicy.
+        if (flatStateActivationPolicy.ShouldTurnOnFlatDb())
         {
             return flatDbConfig.Layout switch
             {
