@@ -40,32 +40,35 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootA = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
-        PbtTrieNodeGroup group = new();
-        group[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hashA);
-        group[14] = PbtTrieNodeGroup.InternalSlot(hashB);
-        group[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
-        group[PbtTrieNodeGroup.BoundaryPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
-        group[PbtTrieNodeGroup.BoundaryPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
+        PbtTrieNodeGroup.Slot[] slots = new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount];
+        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hashA);
+        slots[14] = PbtTrieNodeGroup.InternalSlot(hashB);
+        slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
+        slots[PbtTrieNodeGroup.BoundaryPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
+        slots[PbtTrieNodeGroup.BoundaryPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        int length = group.Encode(encoded);
+        int length = PbtTrieNodeGroup.Encode(slots, encoded);
         Assert.That(length, Is.EqualTo(8 + 5 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        PbtTrieNodeGroup.Slot[] roundTripped = new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount];
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
-            Assert.That(decoded[position].Kind, Is.EqualTo(group[position].Kind), $"kind at {position}");
-            Assert.That(decoded[position].Stem, Is.EqualTo(group[position].Stem), $"stem at {position}");
-            Assert.That(decoded[position].Hash, Is.EqualTo(group[position].Hash), $"hash at {position}");
+            PbtTrieNodeGroup.Slot slot = decoded[position];
+            Assert.That(slot.Kind, Is.EqualTo(slots[position].Kind), $"kind at {position}");
+            Assert.That(slot.Stem, Is.EqualTo(slots[position].Stem), $"stem at {position}");
+            Assert.That(slot.Hash, Is.EqualTo(slots[position].Hash), $"hash at {position}");
+            roundTripped[position] = slot;
         }
 
         // deterministic: re-encoding the decoded group reproduces the bytes exactly
         byte[] reencoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        Assert.That(decoded.Encode(reencoded), Is.EqualTo(length));
+        Assert.That(PbtTrieNodeGroup.Encode(roundTripped, reencoded), Is.EqualTo(length));
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
         // an empty group encodes to nothing (the store's removal marker)
-        Assert.That(new PbtTrieNodeGroup().Encode(encoded), Is.EqualTo(0));
+        Assert.That(PbtTrieNodeGroup.Encode(new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount], encoded), Is.EqualTo(0));
 
         // validation: position bit 31, a stem bit without its presence bit, and a length that does
         // not match the bitmaps are all rejected

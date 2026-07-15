@@ -24,7 +24,7 @@ namespace Nethermind.Pbt;
 /// the encoding deterministic. A stem position has no present positions below it in the group and
 /// no child groups below it. An empty group encodes to zero bytes, the store's removal marker.
 /// </remarks>
-public sealed class PbtTrieNodeGroup
+public readonly ref struct PbtTrieNodeGroup
 {
     public enum NodeKind : byte
     {
@@ -76,9 +76,49 @@ public sealed class PbtTrieNodeGroup
     /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
 
-    private readonly Slot[] _slots = new Slot[PositionCount];
+    private readonly ReadOnlySpan<byte> _data;
+    private readonly uint _presence;
+    private readonly uint _stems;
 
-    public ref Slot this[int position] => ref _slots[position];
+    private PbtTrieNodeGroup(ReadOnlySpan<byte> data, uint presence, uint stems)
+    {
+        _data = data;
+        _presence = presence;
+        _stems = stems;
+    }
+
+    /// <summary>True for the default group, the absence sentinel; a stored group is never empty.</summary>
+    public bool IsEmpty => _data.IsEmpty;
+
+    /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
+    public Slot this[int position]
+    {
+        get
+        {
+            uint bit = 1u << position;
+            if ((_presence & bit) == 0) return default;
+
+            uint below = bit - 1;
+            int offset = HeaderLength
+                + BitOperations.PopCount(_presence & below) * HashLength
+                + BitOperations.PopCount(_stems & below) * Stem.Length;
+
+            Slot slot = default;
+            if ((_stems & bit) != 0)
+            {
+                slot.Kind = NodeKind.Stem;
+                slot.Stem = new Stem(_data.Slice(offset, Stem.Length));
+                offset += Stem.Length;
+            }
+            else
+            {
+                slot.Kind = NodeKind.Internal;
+            }
+
+            slot.Hash = new ValueHash256(_data.Slice(offset, HashLength));
+            return slot;
+        }
+    }
 
     public static Slot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
@@ -93,7 +133,10 @@ public sealed class PbtTrieNodeGroup
     /// <summary>The boundary slot index of boundary <paramref name="position"/>.</summary>
     public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
 
-    /// <summary>Decodes a non-empty group encoding, validating the bitmaps and the implied length.</summary>
+    /// <summary>
+    /// Validates a non-empty group encoding (bitmaps and implied length) and wraps it as a
+    /// read-only view; the returned group borrows <paramref name="data"/> and reads slots on demand.
+    /// </summary>
     public static PbtTrieNodeGroup Decode(ReadOnlySpan<byte> data)
     {
         if (data.Length < HeaderLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
@@ -111,41 +154,21 @@ public sealed class PbtTrieNodeGroup
             throw new InvalidDataException($"Trie node group length {data.Length} does not match its bitmaps (expected {expectedLength})");
         }
 
-        PbtTrieNodeGroup group = new();
-        int offset = HeaderLength;
-        for (uint remaining = presence; remaining != 0; remaining &= remaining - 1)
-        {
-            int position = BitOperations.TrailingZeroCount(remaining);
-            ref Slot slot = ref group._slots[position];
-            if ((stems & (1u << position)) != 0)
-            {
-                slot.Kind = NodeKind.Stem;
-                slot.Stem = new Stem(data.Slice(offset, Stem.Length));
-                offset += Stem.Length;
-            }
-            else
-            {
-                slot.Kind = NodeKind.Internal;
-            }
-
-            slot.Hash = new ValueHash256(data.Slice(offset, HashLength));
-            offset += HashLength;
-        }
-
-        return group;
+        return new PbtTrieNodeGroup(data, presence, stems);
     }
 
     /// <summary>
-    /// Encodes the group into <paramref name="destination"/> (≥ <see cref="MaxEncodedLength"/> bytes)
-    /// and returns the length written; 0 for an empty group, which the caller stores as a removal.
+    /// Encodes the <paramref name="slots"/> (a full <see cref="PositionCount"/>-length builder) into
+    /// <paramref name="destination"/> (≥ <see cref="MaxEncodedLength"/> bytes) and returns the length
+    /// written; 0 for an empty group, which the caller stores as a removal.
     /// </summary>
-    public int Encode(Span<byte> destination)
+    public static int Encode(ReadOnlySpan<Slot> slots, Span<byte> destination)
     {
         uint presence = 0;
         uint stems = 0;
         for (int position = 0; position < PositionCount; position++)
         {
-            NodeKind kind = _slots[position].Kind;
+            NodeKind kind = slots[position].Kind;
             if (kind == NodeKind.Absent) continue;
 
             presence |= 1u << position;
@@ -159,7 +182,7 @@ public sealed class PbtTrieNodeGroup
         int offset = HeaderLength;
         for (uint remaining = presence; remaining != 0; remaining &= remaining - 1)
         {
-            ref Slot slot = ref _slots[BitOperations.TrailingZeroCount(remaining)];
+            Slot slot = slots[BitOperations.TrailingZeroCount(remaining)];
             if (slot.Kind == NodeKind.Stem)
             {
                 slot.Stem.Bytes.CopyTo(destination[offset..]);
