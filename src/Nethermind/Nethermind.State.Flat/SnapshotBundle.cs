@@ -177,22 +177,19 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
-        // TrieWarmer only touch `_transientResource`
-        GuardDispose();
-
-        if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
+        // The warmer only warms nodes from persistence, so it must not read the recyclable _snapshots or
+        // _transientResource: a concurrent scope reset can recycle those mid-traversal. The warm job holds a
+        // ReadOnlySnapshotBundle lease (TryLeaseReadOnlyBundle) that covers exactly the reads below.
+        if (_trieNodeCache.TryGet(null, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = _transientResource.GetOrAddStateNode(path,
-                DoFindStateNodeExternal(path, hash, out node)
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        HashedKey<TreePath> key = new(path);
+        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node)
+            ? node
+            : new TrieNode(NodeType.Unknown, hash);
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -244,21 +241,17 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
-        GuardDispose();
-
-        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
+        // Persistence-only, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
+        if (_trieNodeCache.TryGet(address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
+        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node) && node is not null
+            ? node
+            : new TrieNode(NodeType.Unknown, hash);
     }
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
