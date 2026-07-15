@@ -118,6 +118,55 @@ public class StemTrieTests
         }
     }
 
+    [TestCase(7)]
+    [TestCase(99)]
+    public void LargeSingleBatch_MatchesReference_AndStoreStaysCanonical(int seed)
+    {
+        Random rng = new(seed);
+
+        // many distinct stems, half of them clustered around a few bases with shared prefixes, so a
+        // single batch drives the bulk partition deep and exercises splits across many branches
+        List<byte[]> bases = [];
+        for (int i = 0; i < 8; i++)
+        {
+            byte[] baseStem = new byte[31];
+            rng.NextBytes(baseStem);
+            bases.Add(baseStem);
+        }
+
+        List<(byte[], byte[]?)> writes = [];
+        Dictionary<string, byte[]> model = [];
+        for (int i = 0; i < 300; i++)
+        {
+            byte[] stem = rng.Next(2) == 0 ? new byte[31] : (byte[])bases[rng.Next(bases.Count)].Clone();
+            if (stem.AsSpan().IsZero() || rng.Next(2) == 0) rng.NextBytes(stem);
+            else
+            {
+                int bit = rng.Next(Stem.LengthInBits);
+                stem[bit >> 3] ^= (byte)(1 << (7 - (bit & 7)));
+            }
+
+            byte[] key = [.. stem, (byte)rng.Next(256)];
+            byte[] value = new byte[32];
+            rng.NextBytes(value);
+            writes.Add((key, value));
+            model[key.ToHexString()] = value;
+        }
+
+        PbtTreeHarness harness = new();
+        ValueHash256 root = harness.ApplyBatch(writes);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(ModelEntries(model))));
+
+        PbtTreeHarness fresh = new();
+        fresh.ApplyBatch(ModelEntries(model));
+        Assert.That(harness.Nodes, Has.Count.EqualTo(fresh.Nodes.Count));
+        foreach ((TrieNodeKey key, byte[] expected) in fresh.Nodes)
+        {
+            Assert.That(harness.Nodes.TryGetValue(key, out byte[]? actual), $"missing node at {key}");
+            Assert.That(actual.AsSpan().SequenceEqual(expected), $"node mismatch at {key}");
+        }
+    }
+
     private static List<(byte[], byte[]?)> ModelEntries(Dictionary<string, byte[]> model)
     {
         List<(byte[], byte[]?)> entries = [];
