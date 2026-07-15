@@ -35,6 +35,13 @@ namespace Nethermind.JsonRpc.Data
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
+
+            // EIP-8141: surface the gas payer and per-frame results for frame transactions.
+            if (receipt.TxType == TxType.FrameTx)
+            {
+                Payer = receipt.Payer;
+                FrameReceipts = (receipt.FrameReceipts ?? []).Select(static f => new FrameReceiptForRpc(f)).ToArray();
+            }
         }
 
         public Hash256 TransactionHash { get; set; }
@@ -62,6 +69,12 @@ namespace Nethermind.JsonRpc.Data
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Address? Payer { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public FrameReceiptForRpc[]? FrameReceipts { get; set; }
 
         public TxType Type { get; set; }
 
