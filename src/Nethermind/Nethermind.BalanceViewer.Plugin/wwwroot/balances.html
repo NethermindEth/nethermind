@@ -701,7 +701,8 @@
                 // Uniswap-V2 factory + quote tokens for on-chain price discovery of tokens the Chainlink
                 // registry doesn't list (quote USD prices come from Chainlink, so only the pool ratio is trusted)
                 dex: {
-                    factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
+                    factory: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f', // Uniswap V2
+                    v3: { factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984', fees: [500, 3000, 10000] }, // Uniswap V3
                     quotes: [
                         { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 }, // WETH
                         { addr: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC
@@ -717,11 +718,10 @@
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
-                // Honeyswap (Uniswap-V2 fork) factory + quote tokens. Gnosis pools are much smaller than
-                // mainnet's, so use a lower liquidity floor so genuine (thin) gnosis pools still price.
+                // Honeyswap (Uniswap-V2 fork) factory + quote tokens
                 dex: {
                     factory: '0xA818b4F111Ccac7AA31D0BCc0806d64F2E0737D7',
-                    minLiquidityUsd: 5000n,
+                    v3: { factory: '0xe32F7dD7e3f098D518ff19A22d5f028e076489B1', fees: [500, 3000, 10000] }, // Uniswap V3
                     quotes: [
                         { addr: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1', decimals: 18 }, // WETH
                         { addr: '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d', decimals: 18 }, // WXDAI
@@ -752,11 +752,14 @@
         const SEL_TOKEN0 = '0x0dfe1681';           // token0() — Uniswap-V2 pair
         const SEL_ASSET = '0x38d52e0f';            // asset() — ERC-4626 vault underlying
         const SEL_CONVERT_TO_ASSETS = '0x07a2d13a'; // convertToAssets(uint256) — ERC-4626
-        // DEX price discovery: reject pools with less than this much quote-side liquidity (USD), so a
-        // spammer can't fabricate a price with a tiny pool; and hide auto-detected holdings worth less
-        // than this (dust/spam) — both restorable.
-        const DEX_MIN_LIQUIDITY_USD = 25000n;
-        const DETECT_MIN_VALUE_USD = 1n;
+        const SEL_GET_POOL = '0x1698ee82';         // getPool(address,address,uint24) — Uniswap-V3 factory
+        const SEL_SLOT0 = '0x3850c7bd';            // slot0() — Uniswap-V3 pool (sqrtPriceX96 is the first word)
+        // DEX price discovery: reject pools with less than this much quote-side liquidity (USD) so an empty
+        // or dust pool can't produce a garbage price. Kept low because most spam has NO pool at all (already
+        // unpriceable → hidden), while legit but CEX-traded tokens (e.g. PROVE) have thin, arbitraged pools
+        // whose price is accurate; the per-holding value gate below is the real spam filter.
+        const DEX_MIN_LIQUIDITY_USD = 1000n;
+        const DETECT_MIN_VALUE_USD = 1n; // hide auto-detected holdings worth less than this (dust/spam), restorable
         const IFACE_ERC721 = '80ac58cd';
         const IFACE_ERC721_ENUMERABLE = '780e9d63';
         const IFACE_ERC1155 = 'd9b67a26';
@@ -1081,7 +1084,29 @@
             return reserveQuote * 10n ** BigInt(tokenDecimals) * quoteUsd8 / (reserveToken * quoteScale);
         }
 
+        // Uniswap-V3 spot price of a token in USD (PRICE_DECIMALS scale) from a pool's slot0 sqrtPriceX96, or
+        // null if the pool holds too little quote-side liquidity (quoteBalRaw = quote token balance in the pool).
+        function computeV3Price8(slot0Hex, token0Hex, tokenAddr, tokenDecimals, quote, quoteUsd8, quoteBalRaw, minLiquidityUsd = DEX_MIN_LIQUIDITY_USD) {
+            if (!slot0Hex || slot0Hex.length < 66 || !token0Hex || token0Hex.length < 66) return null;
+            if (!Number.isInteger(tokenDecimals) || quoteUsd8 === null || quoteUsd8 <= 0n) return null;
+            let sqrtP; try { sqrtP = BigInt('0x' + slot0Hex.slice(2, 66)); } catch { return null; }
+            if (sqrtP <= 0n) return null;
+            const quoteScale = 10n ** BigInt(quote.decimals);
+            let quoteBal = 0n; try { if (quoteBalRaw && quoteBalRaw !== '0x') quoteBal = BigInt(quoteBalRaw); } catch { }
+            if (quoteBal * quoteUsd8 < minLiquidityUsd * quoteScale * PRICE_SCALE) return null; // anti-spoof: real quote depth
+            const token0 = '0x' + token0Hex.slice(-40);
+            const tokenIsToken0 = token0.toLowerCase() === tokenAddr.toLowerCase();
+            const tokenScale = 10n ** BigInt(tokenDecimals);
+            const p2 = sqrtP * sqrtP;         // (sqrtPriceX96)^2 = price(token1/token0, raw) × 2^192
+            const Q192 = 1n << 192n;
+            // price8 = (whole quote per whole token) × quoteUsd8
+            return tokenIsToken0
+                ? p2 * tokenScale * quoteUsd8 / (Q192 * quoteScale)   // token = token0, quote = token1
+                : Q192 * tokenScale * quoteUsd8 / (p2 * quoteScale);  // token = token1, quote = token0
+        }
+
         const pairFromResult = (raw) => (raw && raw.length >= 66 && !/^0x0*$/.test(raw)) ? '0x' + raw.slice(-40) : null;
+        const feeHex = (fee) => fee.toString(16).padStart(64, '0');
 
         // Resolve USD prices (PRICE_DECIMALS scale) for token addresses: Chainlink first, then a Uniswap-V2
         // pool fallback (quote prices come from Chainlink, so only the pool ratio is taken on-chain).
@@ -1106,10 +1131,10 @@
 
             const stillUnpriced = () => items.filter((it) => prices.get(it.addr) === null || prices.get(it.addr) === undefined);
 
-            // 2) DEX fallback (Uniswap-V2-style pools) for the still-unpriced
-            const dexUnpriced = meta.dex ? stillUnpriced() : [];
-            if (dexUnpriced.length) {
-                // quote-token USD prices via Chainlink
+            // 2) DEX fallback for the still-unpriced: Uniswap-V2-style pools, then Uniswap-V3 pools
+            if (meta.dex && stillUnpriced().length) {
+                const floor = meta.dex.minLiquidityUsd ?? DEX_MIN_LIQUIDITY_USD;
+                // quote-token USD prices via Chainlink (shared by the V2 and V3 passes)
                 const qCalls = [];
                 const qProbes = meta.dex.quotes.map((q) => {
                     const probe = priceProbe(meta, q.addr);
@@ -1121,25 +1146,57 @@
                 const qRes = qCalls.length ? await rpcBatch(qCalls, node.rpcPath) : [];
                 const quoteUsd = meta.dex.quotes.map((q, i) => (qProbes[i] ? qProbes[i].combine(qRes.slice(qProbes[i].start, qProbes[i].start + qProbes[i].n)) : null));
 
-                // getPair(token, quote) for every unpriced token against every quote
-                const pairCalls = [];
-                for (const it of dexUnpriced) for (const q of meta.dex.quotes) pairCalls.push(['eth_call', [{ to: meta.dex.factory, data: SEL_GET_PAIR + pad32(it.addr) + pad32(q.addr) }, 'latest']]);
-                const pairRes = await rpcBatch(pairCalls, node.rpcPath);
-                const found = [];
-                let k = 0;
-                for (const it of dexUnpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
-                    const pair = pairFromResult(pairRes[k++]);
-                    if (pair && quoteUsd[qi] !== null) found.push({ it, qi, pair });
+                // 2a) Uniswap-V2 pools: getPair(token, quote) for every unpriced token against every quote
+                const dexUnpriced = stillUnpriced();
+                if (meta.dex.factory && dexUnpriced.length) {
+                    const pairCalls = [];
+                    for (const it of dexUnpriced) for (const q of meta.dex.quotes) pairCalls.push(['eth_call', [{ to: meta.dex.factory, data: SEL_GET_PAIR + pad32(it.addr) + pad32(q.addr) }, 'latest']]);
+                    const pairRes = await rpcBatch(pairCalls, node.rpcPath);
+                    const found = [];
+                    let k = 0;
+                    for (const it of dexUnpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
+                        const pair = pairFromResult(pairRes[k++]);
+                        if (pair && quoteUsd[qi] !== null) found.push({ it, qi, pair });
+                    }
+                    if (found.length) {
+                        const rCalls = [];
+                        for (const f of found) { rCalls.push(['eth_call', [{ to: f.pair, data: SEL_GET_RESERVES }, 'latest']]); rCalls.push(['eth_call', [{ to: f.pair, data: SEL_TOKEN0 }, 'latest']]); }
+                        const rRes = await rpcBatch(rCalls, node.rpcPath);
+                        for (let i = 0; i < found.length; i++) {
+                            const { it, qi } = found[i];
+                            if (prices.get(it.addr)) continue; // priced by an earlier quote
+                            const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], floor);
+                            if (price !== null && price > 0n) prices.set(it.addr, price);
+                        }
+                    }
                 }
-                if (found.length) {
-                    const rCalls = [];
-                    for (const f of found) { rCalls.push(['eth_call', [{ to: f.pair, data: SEL_GET_RESERVES }, 'latest']]); rCalls.push(['eth_call', [{ to: f.pair, data: SEL_TOKEN0 }, 'latest']]); }
-                    const rRes = await rpcBatch(rCalls, node.rpcPath);
-                    for (let i = 0; i < found.length; i++) {
-                        const { it, qi } = found[i];
-                        if (prices.get(it.addr)) continue; // priced by an earlier quote
-                        const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], meta.dex.minLiquidityUsd ?? DEX_MIN_LIQUIDITY_USD);
-                        if (price !== null && price > 0n) prices.set(it.addr, price);
+
+                // 2b) Uniswap-V3 pools: getPool(token, quote, fee) across fee tiers, price from slot0 sqrtPriceX96
+                const v3 = meta.dex.v3;
+                const v3Unpriced = v3 ? stillUnpriced() : [];
+                if (v3Unpriced.length) {
+                    const poolCalls = [], idx = [];
+                    for (const it of v3Unpriced) for (let qi = 0; qi < meta.dex.quotes.length; qi++) {
+                        if (quoteUsd[qi] === null || quoteUsd[qi] === undefined) continue;
+                        for (const fee of v3.fees) { poolCalls.push(['eth_call', [{ to: v3.factory, data: SEL_GET_POOL + pad32(it.addr) + pad32(meta.dex.quotes[qi].addr) + feeHex(fee) }, 'latest']]); idx.push({ it, qi }); }
+                    }
+                    const poolRes = await rpcBatch(poolCalls, node.rpcPath);
+                    const pools = [];
+                    poolRes.forEach((raw, i) => { const pool = pairFromResult(raw); if (pool) pools.push({ ...idx[i], pool }); });
+                    if (pools.length) {
+                        const dCalls = [];
+                        for (const p of pools) {
+                            dCalls.push(['eth_call', [{ to: p.pool, data: SEL_SLOT0 }, 'latest']]);
+                            dCalls.push(['eth_call', [{ to: p.pool, data: SEL_TOKEN0 }, 'latest']]);
+                            dCalls.push(['eth_call', [{ to: meta.dex.quotes[p.qi].addr, data: SEL_BALANCE_OF + pad32(p.pool) }, 'latest']]);
+                        }
+                        const dRes = await rpcBatch(dCalls, node.rpcPath);
+                        for (let i = 0; i < pools.length; i++) {
+                            const { it, qi } = pools[i];
+                            if (prices.get(it.addr)) continue; // priced by an earlier pool/quote
+                            const price = computeV3Price8(dRes[i * 3], dRes[i * 3 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], dRes[i * 3 + 2], floor);
+                            if (price !== null && price > 0n) prices.set(it.addr, price);
+                        }
                     }
                 }
             }

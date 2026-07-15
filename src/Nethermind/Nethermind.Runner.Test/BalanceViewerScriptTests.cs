@@ -295,17 +295,39 @@ public class BalanceViewerScriptTests
             """);
         Assert.That(priced, Is.EqualTo("100000000"), "0.0005 WETH x $2000 = $1.00 (8-dec)");
 
-        // same ratio but only 1 WETH (~$2000) of liquidity -> below the anti-spoofing floor -> rejected
+        // same ratio but only 0.1 WETH (~$200) of liquidity -> below the anti-spoofing floor -> rejected
         object thin = engine.Evaluate("""
             (function () {
                 const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
                 const T = '0x000000000000000000000000000000000000000a';
-                const reserves = '0x' + w((2000n * 10n ** 18n).toString(16)) + w((1n * 10n ** 18n).toString(16)) + w('0');
+                const reserves = '0x' + w((200000n * 10n ** 18n).toString(16)) + w((10n ** 17n).toString(16)) + w('0');
                 const quote = { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 };
                 return computeV2Price8(reserves, '0x' + w(T), T, 18, quote, 2000n * 10n ** 8n) === null ? 'null' : 'priced';
             })()
             """);
         Assert.That(thin, Is.EqualTo("null"), "thin pool below the liquidity floor is rejected");
+    }
+
+    [Test]
+    public void ComputeV3Price8_PricesFromSqrtPriceAndRejectsThinPools()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // token0 = TOKEN (18-dec), token1 = WETH (18-dec). sqrtPriceX96 = 2^96 => price(token1/token0)=1,
+        // i.e. 1 WETH per TOKEN; ETH=$2000 => TOKEN = $2000. Deep pool (10 WETH ~$20k) -> priced; thin -> null.
+        object result = engine.Evaluate("""
+            (function () {
+                const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
+                const T = '0x000000000000000000000000000000000000000a';
+                const slot0 = '0x' + w((1n << 96n).toString(16)); // sqrtPriceX96 = 2^96
+                const quote = { addr: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', decimals: 18 };
+                const deep = '0x' + w((10n * 10n ** 18n).toString(16));  // 10 WETH (~$20k) in pool
+                const thin = '0x' + w((10n ** 17n).toString(16));        // 0.1 WETH (~$200)
+                const priced = computeV3Price8(slot0, '0x' + w(T), T, 18, quote, 2000n * 10n ** 8n, deep);
+                const rejected = computeV3Price8(slot0, '0x' + w(T), T, 18, quote, 2000n * 10n ** 8n, thin);
+                return JSON.stringify({ priced: priced === null ? 'null' : priced.toString(), rejected: rejected === null ? 'null' : 'priced' });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"priced\":\"200000000000\",\"rejected\":\"null\"}")); // $2000.00000000, thin rejected
     }
 
     [Test]
