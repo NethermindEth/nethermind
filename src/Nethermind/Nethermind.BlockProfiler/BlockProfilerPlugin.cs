@@ -109,7 +109,9 @@ public sealed class ProfilingBranchProcessor : IBranchProcessor, IDisposable
         if (!IsMeasureApiAvailable()) return;
         lock (s_profilerSync)
         {
-            if (s_collecting) MeasureProfiler.StopCollectingData(); // close any stray window (e.g. a prior target that errored)
+            // Discard any stray window's samples (e.g. a prior target that errored): StopCollectingData
+            // alone keeps the buffer, which would bleed into the next snapshot's SaveData.
+            if (s_collecting) MeasureProfiler.DropData();
             MeasureProfiler.StartCollectingData();
             s_collecting = true;
         }
