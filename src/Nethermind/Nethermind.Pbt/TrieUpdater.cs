@@ -49,10 +49,10 @@ public static class TrieUpdater
 
         public ValueHash256 Run(PbtWriteBatch changes)
         {
-            foreach ((Stem stem, Dictionary<byte, PbtWriteBatch.Entry> subChanges) in GroupByStem(changes))
+            foreach ((Stem stem, Dictionary<byte, ValueHash256> subChanges) in GroupByStem(changes))
             {
                 using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
-                byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), subChanges, changes.Blob, out ValueHash256 subtreeRoot);
+                byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), subChanges, out ValueHash256 subtreeRoot);
                 store.SetLeafBlob(stem, newBlob);
 
                 if (newBlob.Length == 0)
@@ -68,22 +68,22 @@ public static class TrieUpdater
             return ComputeHashes();
         }
 
-        /// <summary>Groups the batch by stem, keeping the last entry per (stem, sub-index) — the last-write-wins the dict used to give.</summary>
-        private static Dictionary<Stem, Dictionary<byte, PbtWriteBatch.Entry>> GroupByStem(PbtWriteBatch changes)
+        /// <summary>Groups the batch by stem, keeping the last value per (stem, sub-index) — the last-write-wins the dict used to give.</summary>
+        private static Dictionary<Stem, Dictionary<byte, ValueHash256>> GroupByStem(PbtWriteBatch changes)
         {
-            Dictionary<Stem, Dictionary<byte, PbtWriteBatch.Entry>> byStem = [];
+            Dictionary<Stem, Dictionary<byte, ValueHash256>> byStem = [];
             ReadOnlySpan<PbtWriteBatch.Entry> entries = changes.Entries;
             for (int i = 0; i < entries.Length; i++)
             {
                 ref readonly PbtWriteBatch.Entry entry = ref entries[i];
                 ReadOnlySpan<byte> key = entry.Key.Bytes;
                 Stem stem = new(key[..Stem.Length]);
-                if (!byStem.TryGetValue(stem, out Dictionary<byte, PbtWriteBatch.Entry>? subChanges))
+                if (!byStem.TryGetValue(stem, out Dictionary<byte, ValueHash256>? subChanges))
                 {
                     byStem[stem] = subChanges = [];
                 }
 
-                subChanges[key[Stem.Length]] = entry;
+                subChanges[key[Stem.Length]] = entry.Value;
             }
 
             return byStem;

@@ -65,17 +65,17 @@ public class StemLeafBlobTests
         Assert.That(stemNodeHash, Is.EqualTo(new ValueHash256(reference.Merkelize())));
     }
 
-    /// <summary>Packs the changes into a value blob + entry map (as the write batch does) and applies them.</summary>
+    /// <summary>Maps the byte[] changes to 32-byte leaf values (null/empty = clear) and applies them.</summary>
     private static byte[] Apply(ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, out ValueHash256 subtreeRoot)
     {
-        List<byte> valueBlob = [];
-        Dictionary<byte, PbtWriteBatch.Entry> entries = [];
+        Dictionary<byte, ValueHash256> mapped = [];
         foreach ((byte subIndex, byte[]? value) in changes)
         {
-            entries[subIndex] = new PbtWriteBatch.Entry(default, valueBlob.Count, value?.Length ?? 0);
-            if (value is not null) valueBlob.AddRange(value);
+            ValueHash256 leaf = default;
+            value?.CopyTo(leaf.BytesAsSpan);
+            mapped[subIndex] = leaf;
         }
 
-        return StemLeafBlob.Apply(prior, entries, valueBlob.ToArray(), out subtreeRoot);
+        return StemLeafBlob.Apply(prior, mapped, out subtreeRoot);
     }
 }

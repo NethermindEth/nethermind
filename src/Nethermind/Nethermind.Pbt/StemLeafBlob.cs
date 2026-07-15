@@ -37,10 +37,9 @@ public static class StemLeafBlob
     }
 
     /// <summary>
-    /// Applies <paramref name="changes"/> (each value read from <paramref name="valueBlob"/> at its
-    /// entry's offset/length; length 0 or all-zero clears the leaf) to <paramref name="blob"/>,
-    /// returning the new blob and, via <paramref name="subtreeRoot"/>, its merkelized 256-leaf
-    /// subtree root. Returns an empty array (and a zero root) when no leaves remain.
+    /// Applies <paramref name="changes"/> (each a 32-byte leaf value; a zero value clears the leaf)
+    /// to <paramref name="blob"/>, returning the new blob and, via <paramref name="subtreeRoot"/>,
+    /// its merkelized 256-leaf subtree root. Returns an empty array (and a zero root) when no leaves remain.
     /// </summary>
     /// <remarks>
     /// Merkelization folds the 256 leaves pairwise over 8 levels (each present value hashes to
@@ -49,14 +48,14 @@ public static class StemLeafBlob
     /// hashes for a full stem; intermediate-level caching is the optimization hook if it ever shows
     /// up in profiles.
     /// </remarks>
-    public static byte[] Apply(ReadOnlySpan<byte> blob, IReadOnlyDictionary<byte, PbtWriteBatch.Entry> changes, ReadOnlySpan<byte> valueBlob, out ValueHash256 subtreeRoot)
+    public static byte[] Apply(ReadOnlySpan<byte> blob, IReadOnlyDictionary<byte, ValueHash256> changes, out ValueHash256 subtreeRoot)
     {
         Span<byte> bitmap = stackalloc byte[BitmapLength];
         if (!blob.IsEmpty) blob[..BitmapLength].CopyTo(bitmap);
 
-        foreach ((byte subIndex, PbtWriteBatch.Entry entry) in changes)
+        foreach ((byte subIndex, ValueHash256 value) in changes)
         {
-            if (ChangedValue(valueBlob, entry).IsZero())
+            if (value == default)
             {
                 bitmap[subIndex >> 3] &= (byte)~(1 << (7 - (subIndex & 7)));
             }
@@ -83,10 +82,9 @@ public static class StemLeafBlob
             if ((bitmap[subIndex >> 3] & (1 << (7 - (subIndex & 7)))) == 0) continue;
 
             Span<byte> destination = result.AsSpan(offset);
-            if (changes.TryGetValue((byte)subIndex, out PbtWriteBatch.Entry changed))
+            if (changes.TryGetValue((byte)subIndex, out ValueHash256 changed))
             {
-                // a present bit with a set change is a non-zero value of the full 32 bytes
-                ChangedValue(valueBlob, changed).CopyTo(destination[(ValueLength - changed.Length)..]);
+                changed.Bytes.CopyTo(destination);
             }
             else
             {
@@ -113,9 +111,6 @@ public static class StemLeafBlob
         subtreeRoot = new ValueHash256(level[..ValueLength]);
         return result;
     }
-
-    private static ReadOnlySpan<byte> ChangedValue(ReadOnlySpan<byte> valueBlob, in PbtWriteBatch.Entry entry) =>
-        valueBlob.Slice(entry.Offset, entry.Length);
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
     public static ValueHash256 ComputeStemNodeHash(in Stem stem, in ValueHash256 subtreeRoot)
