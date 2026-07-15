@@ -2328,9 +2328,16 @@
                         try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
                         if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
                     }
-                    const fiatText = value8 !== null ? formatFiat(value8) : '';
                     const rowKey = node.chainId + ':' + asset.key;
-                    cache.set(entry.address + '|' + rowKey, { bal: balText, fiat: fiatText, value8 });
+                    const cacheKey = entry.address + '|' + rowKey;
+                    // A transient price/RPC miss (null value8) shouldn't wipe an already-valued row to blank/$0:
+                    // keep the last good value if we had one. A genuine zero balance yields value8 === 0n and
+                    // still updates. This matches the cache's purpose of not blanking cells between refetches.
+                    const prev = cache.get(cacheKey);
+                    const keepPrev = value8 === null && prev && prev.value8 !== null && prev.value8 !== undefined;
+                    const finalValue8 = keepPrev ? prev.value8 : value8;
+                    const fiatText = finalValue8 !== null && finalValue8 !== undefined ? formatFiat(finalValue8) : '';
+                    cache.set(cacheKey, { bal: balText, fiat: fiatText, value8: finalValue8 });
 
                     const balCell = card?.querySelector(`td[data-key="${rowKey}"]`);
                     if (balCell) {
