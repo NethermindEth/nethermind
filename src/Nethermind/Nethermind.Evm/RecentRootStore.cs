@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -91,6 +90,12 @@ public static class RecentRootStore
 
         StorageCell cell = RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
         ReadOnlySpan<byte> stored = state.Get(cell);
+        // A stored entry hash is always <= 32 bytes; anything longer cannot be a valid entry and would also
+        // underflow the pad below. Not reachable via the trie today, but guarded defensively.
+        if (stored.Length > HashLength)
+        {
+            return false;
+        }
 
         // Storage values are held as minimal big-endian bytes; pad back to a full word before comparing.
         Span<byte> padded = stackalloc byte[HashLength];
