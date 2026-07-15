@@ -217,6 +217,53 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return found;
         }
 
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<SlotValue> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetSlots(storageCells, slots, found);
+                return;
+            }
+
+            StorageCell[] missingCells = new StorageCell[storageCells.Length];
+            int[] missingIndices = new int[storageCells.Length];
+            int missingCount = 0;
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                if (parent._slots.TryGetValue((cell.Address, cell.Index), out CachedSlot cached))
+                {
+                    found[i] = cached.Found;
+                    if (cached.Found) slots[i] = cached.Value;
+                    continue;
+                }
+
+                missingCells[missingCount] = cell;
+                missingIndices[missingCount] = i;
+                missingCount++;
+            }
+
+            if (missingCount == 0) return;
+
+            SlotValue[] missingSlots = new SlotValue[missingCount];
+            bool[] missingFound = new bool[missingCount];
+            inner.GetSlots(missingCells.AsSpan(0, missingCount), missingSlots, missingFound);
+            for (int i = 0; i < missingCount; i++)
+            {
+                StorageCell cell = missingCells[i];
+                SlotValue slot = missingSlots[i];
+                bool slotFound = missingFound[i];
+                int destinationIndex = missingIndices[i];
+                slots[destinationIndex] = slot;
+                found[destinationIndex] = slotFound;
+                parent.TryCacheSlot((cell.Address, cell.Index), new CachedSlot(slotFound, slotFound ? slot : default), generation);
+            }
+        }
+
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
