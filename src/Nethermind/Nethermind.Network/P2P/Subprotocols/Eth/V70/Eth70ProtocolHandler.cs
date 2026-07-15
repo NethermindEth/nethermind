@@ -35,7 +35,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
     private const ulong NoBlockSeen = ulong.MaxValue;
-    private const ulong MinimumSupportedTransactionGas = GasCostOf.TransactionEip2780;
+    // Before EIP-3529, refunds could reduce gas used by at most half.
+    private const ulong MinimumSupportedTransactionGas = GasCostOf.Transaction / 2;
 
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
     private readonly ISpecProvider _specProvider;

@@ -243,9 +243,9 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.TransactionEip2780, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.TransactionEip2780 * 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.TransactionEip2780 * 3, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 3 / 2, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -485,7 +485,7 @@ public class Eth70ProtocolHandlerTests
     {
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.TransactionEip2780 - 1, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction / 2 - 1, Logs = [] }
         ];
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
