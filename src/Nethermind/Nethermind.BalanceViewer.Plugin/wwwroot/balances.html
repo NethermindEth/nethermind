@@ -265,6 +265,11 @@
             cursor: pointer; animation: bvspin 0.8s linear infinite;
         }
         .scan-spin.active:hover { border-top-color: var(--danger); } /* hints click-to-cancel */
+        .scan-spin.paused {
+            display: inline-block; width: 11px; height: 11px; box-sizing: border-box; margin: 0 3px; vertical-align: middle;
+            border: 1.5px dashed var(--border-soft); border-radius: 50%; opacity: 0.6; cursor: pointer;
+        }
+        .scan-spin.paused:hover { opacity: 1; border-color: var(--accent); } /* hints click-to-resume */
 
         .thumbs {
             display: flex;
@@ -712,6 +717,15 @@
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
                 defaults: GNOSIS_DEFAULT_TOKENS,
+                // sDAI (Savings xDAI, ERC-4626) = xDAI/USD × convertToAssets(1e18); no Chainlink feed / DEX pool for it
+                derived: {
+                    '0xaf204776c7245bf4147c2612bf6e5972ee483701': {
+                        base: 'native', // xDAI, priced via the DAI/USD feed
+                        rateTo: '0xaf204776c7245bf4147c2612bf6e5972ee483701',
+                        rateData: '0x07a2d13a0000000000000000000000000000000000000000000000000de0b6b3a7640000', // convertToAssets(1e18)
+                        rateDecimals: 18,
+                    },
+                },
                 // Honeyswap (Uniswap-V2 fork) factory + quote tokens
                 dex: {
                     factory: '0xA818b4F111Ccac7AA31D0BCc0806d64F2E0737D7',
@@ -1004,15 +1018,18 @@
             };
             const regDecimals = (key, r) => { if (!feedDecimalsCache.has(key)) feedDecimalsCache.set(key, parseFeedDecimals(r[1])); return feedDecimalsCache.get(key); };
 
+            // "derived" assets: price the base asset (recursively — registry, standalone feed, or native, so
+            // this works on feed-only chains like Gnosis) and multiply by an on-chain rate. e.g. mainnet
+            // wstETH = stETH/USD × stEthPerToken(); gnosis sDAI = xDAI/USD × sDAI.convertToAssets(1e18).
             const d = meta.derived?.[assetKey];
-            if (d && meta.registry) {
-                const key = 'reg:' + d.base;
-                const price = regCalls(d.base, key);
-                const rateIdx = price.length; // rate call follows the (1 or 2) price calls
+            if (d) {
+                const baseProbe = priceProbe(meta, d.base);
+                if (!baseProbe) return null;
+                const rateIdx = baseProbe.calls.length; // rate call follows the base's price calls
                 return {
-                    calls: [...price, ['eth_call', [{ to: d.rateTo, data: d.rateData }, 'latest']]],
+                    calls: [...baseProbe.calls, ['eth_call', [{ to: d.rateTo, data: d.rateData }, 'latest']]],
                     combine: (r) => {
-                        const base = parseRoundAnswer(r[0], regDecimals(key, r));
+                        const base = baseProbe.combine(r.slice(0, rateIdx));
                         let rate = null;
                         try { if (r[rateIdx] && r[rateIdx] !== '0x') rate = BigInt(r[rateIdx]); } catch { }
                         return base !== null && rate !== null && rate > 0n ? base * rate / 10n ** BigInt(d.rateDecimals) : null;
@@ -1425,6 +1442,39 @@
         const isWatchedAny = (address) =>
             enabledNodes().some((n) => stateOf(n.chainId).watched.includes(address.toLowerCase()));
 
+        // marks an address watched on every chain (activity notifications; a client-side display list)
+        function watchAddress(key) {
+            for (const node of enabledNodes()) {
+                const state = stateOf(node.chainId);
+                if (!state.watched.includes(key)) state.watched.push(key);
+                store.save(node.chainId);
+            }
+        }
+
+        // best-effort: request Notification permission + register the service worker for system notifications;
+        // returns false (and optionally reports why) if unavailable — activity then only shows in the status line
+        async function requestSystemNotifications(report) {
+            if (!window.isSecureContext) {
+                // browsers refuse service workers and notification permission on plain HTTP (except localhost)
+                if (report) setStatus('System notifications need HTTPS or localhost — activity will only show in this line', true);
+                return false;
+            }
+            if (!('Notification' in window)) {
+                if (report) setStatus('This browser has no Notification support — activity will only show in this line', true);
+                return false;
+            }
+            const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+            if (permission !== 'granted') {
+                if (report) setStatus('Notification permission was not granted — activity will only show in this line', true);
+                return false;
+            }
+            try {
+                await navigator.serviceWorker.register('balances-sw.js');
+                await navigator.serviceWorker.ready;
+                return true;
+            } catch { if (report) setStatus('Service worker registration failed — activity will only show in this line', true); return false; }
+        }
+
         async function toggleWatch(entry, bell) {
             const key = entry.address.toLowerCase();
             const who = entry.label || shortAddr(entry.address);
@@ -1439,31 +1489,8 @@
                 return;
             }
 
-            let systemNotifications = false;
-            if (!window.isSecureContext) {
-                // browsers refuse service workers and notification permission on plain
-                // HTTP (except localhost) — a tunnel or TLS proxy enables the real thing
-                setStatus('System notifications need HTTPS or localhost — activity will only show in this line', true);
-            } else if (!('Notification' in window)) {
-                setStatus('This browser has no Notification support — activity will only show in this line', true);
-            } else {
-                const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-                if (permission !== 'granted') {
-                    setStatus('Notification permission was not granted — activity will only show in this line', true);
-                } else {
-                    try {
-                        await navigator.serviceWorker.register('balances-sw.js');
-                        await navigator.serviceWorker.ready;
-                        systemNotifications = true;
-                    } catch { setStatus('Service worker registration failed — activity will only show in this line', true); }
-                }
-            }
-
-            for (const node of enabledNodes()) {
-                const state = stateOf(node.chainId);
-                if (!state.watched.includes(key)) state.watched.push(key);
-                store.save(node.chainId);
-            }
+            const systemNotifications = await requestSystemNotifications(true);
+            watchAddress(key);
             bell.classList.add('on');
             if (systemNotifications) {
                 setStatus('Watching ' + who + ' for activity');
@@ -1847,22 +1874,34 @@
             } finally { nodeDetectBusy = false; }
         }
 
-        // drive each account card's history-scan spinner from scanState (updated every detection poll)
+        // drive each account card's history-scan indicator from scanState / detectionCancelled (tri-state:
+        // spinning while scanning, a static "paused" dot when cancelled, hidden when complete/idle)
         function updateScanIndicators() {
             for (const el of document.querySelectorAll('[data-scan]')) {
-                const st = scanState.get(el.dataset.scan);
+                const addr = el.dataset.scan;
+                const st = scanState.get(addr);
+                const paused = detectionCancelled.has(addr);
                 el.classList.toggle('active', !!st);
-                el.title = st ? `Scanning history… ${st.pct}% — click to cancel` : '';
+                el.classList.toggle('paused', !st && paused);
+                el.title = st ? `Scanning history… ${st.pct}% — click to cancel`
+                    : paused ? 'Scan paused — click to resume' : '';
             }
         }
 
-        // stop scanning an account: skip it in future polls and clear its spinner (node finishes any
-        // in-flight background chunk on its own; re-pinning the address resumes detection)
-        function cancelScan(address) {
-            detectionCancelled.add(address.toLowerCase());
-            scanState.delete(address.toLowerCase());
-            detecting = scanState.size > 0;
-            updateScanIndicators();
+        // toggle scanning for an account: cancel a running scan, or resume a cancelled one. Cancelling skips
+        // it in future polls (the node finishes any in-flight background chunk on its own); resuming re-triggers.
+        function toggleScan(address) {
+            const addr = address.toLowerCase();
+            if (detectionCancelled.has(addr)) {
+                detectionCancelled.delete(addr);
+                updateScanIndicators();
+                nodeDetect();
+            } else {
+                detectionCancelled.add(addr);
+                scanState.delete(addr);
+                detecting = scanState.size > 0;
+                updateScanIndicators();
+            }
         }
 
         // restores a single hidden token: remove it from the ignore list and show it again
@@ -2121,7 +2160,7 @@
                 // progress %, click to cancel. updateScanIndicators() drives its state each detection poll.
                 const scan = el('span', 'scan-spin');
                 scan.dataset.scan = entry.address.toLowerCase();
-                scan.onclick = () => cancelScan(entry.address);
+                scan.onclick = () => toggleScan(entry.address);
                 head.append(scan);
                 const rename = el('button', 'link tag', '🏷️');
                 rename.title = 'Name this account';
@@ -2473,6 +2512,10 @@
                     if (!state.addresses.some((a) => a.address === address)) state.addresses.push({ address, label });
                     store.save(node.chainId);
                 }
+                // activity notifications are on by default for a newly pinned account (the 🔔 can turn them off);
+                // request permission on this user gesture, falling back to the status line if not granted
+                watchAddress(address.toLowerCase());
+                requestSystemNotifications(false);
                 input.value = '';
                 setStatus(label ? `${label} → ${address}` : 'Pinned ' + address);
                 renderCards();

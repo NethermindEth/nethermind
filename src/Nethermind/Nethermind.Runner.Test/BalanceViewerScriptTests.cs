@@ -258,6 +258,28 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void PriceProbe_DerivesGnosisSdaiFromXdaiTimesVaultRate()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // gnosis sDAI = xDAI/USD (a standalone feed, not a registry) × convertToAssets(1e18): exercises the
+        // derived path with a feed-based (non-registry) base — base price + decimals + rate = 3 calls
+        object result = engine.Evaluate("""
+            (function () {
+                const now = Math.floor(Date.now() / 1000);
+                const w = (h) => h.replace(/^0x/, '').padStart(64, '0');
+                const round = (ans) => '0x' + w('1') + w(ans) + w(now.toString(16)) + w(now.toString(16)) + w('1');
+                const probe = priceProbe(CHAINS[100], '0xaf204776c7245bf4147c2612bf6e5972ee483701'); // sDAI
+                const dai = round((1n * 10n ** 8n).toString(16)); // xDAI/USD = $1 (8-dec feed)
+                const daiDec = '0x' + w((8).toString(16));
+                const rate = '0x' + w((12483n * 10n ** 14n).toString(16)); // 1.2483 xDAI/sDAI (18-dec)
+                return JSON.stringify({ calls: probe.calls.length, price: probe.combine([dai, daiDec, rate]).toString() });
+            })()
+            """);
+        // $1 × 1.2483 = $1.24830000
+        Assert.That(result, Is.EqualTo("{\"calls\":3,\"price\":\"124830000\"}"));
+    }
+
+    [Test]
     public void PriceProbe_NormalizesNon8DecimalFeeds()
     {
         using V8ScriptEngine engine = CreateEngine();
