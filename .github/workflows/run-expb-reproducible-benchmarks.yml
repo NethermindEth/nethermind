@@ -699,19 +699,23 @@ jobs:
 
           # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
           if [[ -n "${TRACE_BLOCKS:-}" ]]; then
-            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_PROFILE_BLOCKS = \"${TRACE_BLOCKS}\"" "${RENDERED_CONFIG_FILE}"
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
           fi
 
           # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
           if [[ -n "${CLIENT_ENV:-}" ]]; then
             IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
             for entry in "${client_env_entries[@]}"; do
-              entry="$(printf '%s' "${entry}" | xargs)"
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
               [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
               env_key="${entry%%=*}"
               env_value="${entry#*=}"
-              "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.\"${env_key}\" = \"${env_value}\"" "${RENDERED_CONFIG_FILE}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
               echo "Set client env ${env_key}=${env_value}."
             done
           fi
@@ -1816,7 +1820,8 @@ jobs:
 
           # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
           if [[ -n "${TRACE_BLOCKS:-}" ]]; then
-            "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_env.NETHERMIND_PROFILE_BLOCKS = \"${TRACE_BLOCKS}\"" "${RENDERED_CONFIG_FILE}"
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
           fi
 
