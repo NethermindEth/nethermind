@@ -102,7 +102,7 @@ public partial class NewPayloadRequest<TExecutionPayload>
         return request;
     }
 
-    public Block? ToBlock()
+    public Block? ToBlock(bool requestsEnabled)
     {
         if (ExecutionPayload is null)
             return null;
@@ -110,6 +110,16 @@ public partial class NewPayloadRequest<TExecutionPayload>
         ExecutionPayload payload = ExecutionPayload.AsExecutionPayload();
         payload.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
 
+        if (requestsEnabled)
+            payload.ExecutionRequests = GetFlatEncodedRequests();
+
+        Result<Block> result = payload.TryGetBlock();
+
+        return result.Data ?? throw new InvalidOperationException(result.Error);
+    }
+
+    private byte[][] GetFlatEncodedRequests()
+    {
         ExecutionRequest[] deposits = new ExecutionRequest[ExecutionRequests.Deposits.Length];
 
         for (int i = 0; i < deposits.Length; i++)
@@ -138,10 +148,6 @@ public partial class NewPayloadRequest<TExecutionPayload>
         using ArrayPoolList<byte[]> pool = ExecutionRequestExtensions.GetFlatEncodedRequests(
             deposits, withdrawals, consolidations, builderDeposits, builderExits);
 
-        payload.ExecutionRequests = [.. pool];
-
-        Result<Block> result = payload.TryGetBlock();
-
-        return result.Data ?? throw new InvalidOperationException(result.Error);
+        return [.. pool];
     }
 }

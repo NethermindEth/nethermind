@@ -36,7 +36,7 @@ internal static class InputDecoder
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
 
         return new(
-            Block: input.NewPayloadRequest.ToBlock()!,
+            Block: input.NewPayloadRequest.ToBlock(requestsEnabled: protocolFork >= ProtocolFork.Prague)!,
             Witness: input.Witness,
             ChainConfig: input.ChainConfig,
             PublicKeys: input.PublicKeys,

@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -102,6 +103,7 @@ public class StatelessSchemaTests
 
         StatelessPayload payload = InputDecoder.Decode(encoded);
         bool foundByName = ProtocolForkExtensions.TryGetByName(fork.GetName(), out ProtocolFork forkByName);
+        Hash256 expectedRequestsHash = fork >= ProtocolFork.Prague ? ExecutionRequestExtensions.EmptyRequestsHash : null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -109,6 +111,37 @@ public class StatelessSchemaTests
             Assert.That(payload.ChainConfig.ChainId, Is.EqualTo(1));
             Assert.That(foundByName, Is.True);
             Assert.That(forkByName, Is.EqualTo(fork));
+            Assert.That(payload.Block.Header.RequestsHash, Is.EqualTo(expectedRequestsHash));
+        }
+    }
+
+    [TestCase((byte)ExecutionRequestType.Deposit, ExecutionRequestExtensions.DepositRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.WithdrawalRequest, ExecutionRequestExtensions.WithdrawalRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.ConsolidationRequest, ExecutionRequestExtensions.ConsolidationRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.BuilderDepositRequest, ExecutionRequestExtensions.BuilderDepositRequestsBytesSize)]
+    [TestCase((byte)ExecutionRequestType.BuilderExitRequest, ExecutionRequestExtensions.BuilderExitRequestsBytesSize)]
+    public void Request_struct_conversion_roundtrips(byte requestType, int size)
+    {
+        byte[] data = new byte[size];
+
+        for (int i = 0; i < data.Length; i++)
+            data[i] = (byte)i;
+
+        ExecutionRequest request = new() { RequestType = requestType, RequestData = data };
+        ExecutionRequest roundTripped = (ExecutionRequestType)requestType switch
+        {
+            ExecutionRequestType.Deposit => DepositRequest.From(request).ToExecutionRequest(),
+            ExecutionRequestType.WithdrawalRequest => WithdrawalRequest.From(request).ToExecutionRequest(),
+            ExecutionRequestType.ConsolidationRequest => ConsolidationRequest.From(request).ToExecutionRequest(),
+            ExecutionRequestType.BuilderDepositRequest => BuilderDepositRequest.From(request).ToExecutionRequest(),
+            ExecutionRequestType.BuilderExitRequest => BuilderExitRequest.From(request).ToExecutionRequest(),
+            _ => throw new AssertionException($"Unsupported request type: {requestType}")
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.RequestType, Is.EqualTo(requestType));
+            Assert.That(roundTripped.RequestData, Is.EqualTo(data));
         }
     }
 
