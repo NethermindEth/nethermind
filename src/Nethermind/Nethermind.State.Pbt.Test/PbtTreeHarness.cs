@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
 

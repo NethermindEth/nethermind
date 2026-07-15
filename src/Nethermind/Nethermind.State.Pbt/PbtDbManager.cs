@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;

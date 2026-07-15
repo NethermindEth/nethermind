@@ -5,7 +5,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 /// <summary>
 /// A 31-byte EIP-8297 stem: a 4-bit zone identifier followed by 244 bits of key material
@@ -36,15 +36,6 @@ public readonly record struct Stem
     public int Zone => Bytes[0] >> 4;
 
     public bool IsStorageZone => (Bytes[0] & 0x80) != 0;
-
-    /// <summary>The column holding this stem's leaf blob, per the zone partition.</summary>
-    public PbtColumns LeafColumn => Zone switch
-    {
-        0x0 => PbtColumns.AccountLeaves,
-        0x1 => PbtColumns.CodeLeaves,
-        >= 0x8 => PbtColumns.StorageLeaves,
-        _ => throw new NotSupportedException($"Zone {Zone} is reserved"),
-    };
 
     /// <summary>Gets stem bit <paramref name="index"/> in MSB-first order.</summary>
     public int GetBit(int index) => (Bytes[index >> 3] >> (7 - (index & 7))) & 1;

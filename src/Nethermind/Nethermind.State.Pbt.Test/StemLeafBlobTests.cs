@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Pbt;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;

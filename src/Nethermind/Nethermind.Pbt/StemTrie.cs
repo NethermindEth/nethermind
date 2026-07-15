@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 public interface IStemTrieNodeSource
 {

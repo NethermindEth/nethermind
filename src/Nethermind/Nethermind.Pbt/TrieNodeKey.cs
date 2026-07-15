@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 /// <summary>
 /// Position of a stem trie node: its depth (0 at the root, up to 248 at the stem level) and the

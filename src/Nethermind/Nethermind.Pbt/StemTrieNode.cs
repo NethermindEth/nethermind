@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 /// <summary>
 /// A mutable stem trie node: either an internal node holding its two child hashes, or a stem node

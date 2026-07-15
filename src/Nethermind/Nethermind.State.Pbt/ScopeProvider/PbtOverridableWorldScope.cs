@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Trie;
 

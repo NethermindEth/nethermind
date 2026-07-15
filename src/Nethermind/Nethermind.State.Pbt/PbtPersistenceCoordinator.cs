@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Trie.Pruning;
 
