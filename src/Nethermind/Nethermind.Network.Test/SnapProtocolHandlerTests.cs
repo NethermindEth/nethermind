@@ -18,6 +18,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -64,10 +65,10 @@ public class SnapProtocolHandlerTests
         }
 
 
-        private SnapProtocolHandler? _snapProtocolHandler;
-        public SnapProtocolHandler SnapProtocolHandler
+        private Snap1ProtocolHandler? _snapProtocolHandler;
+        public Snap1ProtocolHandler Snap1ProtocolHandler
         {
-            get => _snapProtocolHandler ??= new SnapProtocolHandler(
+            get => _snapProtocolHandler ??= new Snap1ProtocolHandler(
                 Session,
                 NodeStatsManager,
                 MessageSerializationService,
@@ -111,7 +112,7 @@ public class SnapProtocolHandlerTests
                         ZeroPacket packet = new(buffer);
 
                         packet.PacketType = SnapMessageCode.AccountRange;
-                        SnapProtocolHandler.HandleMessage(packet);
+                        Snap1ProtocolHandler.HandleMessage(packet);
                         ReferenceCountUtil.Release(packet); // releases buffer
                     });
                 return this;
@@ -131,7 +132,7 @@ public class SnapProtocolHandlerTests
         Context ctx = new Context()
             .WithResponseBytesRecorder;
 
-        SnapProtocolHandler protocolHandler = ctx.SnapProtocolHandler;
+        Snap1ProtocolHandler protocolHandler = ctx.Snap1ProtocolHandler;
 
         ctx.SimulatedLatency = TimeSpan.Zero;
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
@@ -172,7 +173,7 @@ public class SnapProtocolHandlerTests
             SerializerInfo.Create(new GetTrieNodesMessageSerializer()),
             SerializerInfo.Create(new TrieNodesMessageSerializer()));
 
-        SnapProtocolHandler handler = new(
+        Snap1ProtocolHandler handler = new(
             session,
             Substitute.For<INodeStatsManager>(),
             serializer,
@@ -219,7 +220,7 @@ public class SnapProtocolHandlerTests
         Context ctx = new Context()
             .WithResponseBytesRecorder;
 
-        SnapProtocolHandler protocolHandler = ctx.SnapProtocolHandler;
+        Snap1ProtocolHandler protocolHandler = ctx.Snap1ProtocolHandler;
 
         // Just setting baseline
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();

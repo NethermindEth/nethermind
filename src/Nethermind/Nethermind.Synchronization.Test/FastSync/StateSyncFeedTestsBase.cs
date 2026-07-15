@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -335,7 +336,7 @@ public abstract class StateSyncFeedTestsBase(
             GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = request.RootHash,
-                AccountAndStoragePaths = SnapProtocolHandler.GetPathGroups(request),
+                AccountAndStoragePaths = Snap1ProtocolHandler.GetPathGroups(request),
             }, token);
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>

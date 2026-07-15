@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -18,12 +19,16 @@ internal static class SnapMessageLimits
     public const int MaxResponseSlotsPerAccount = 131_072;
     public const long MaxResponseBytes = 3_145_728; // 3 MiB
 
+    public const int MaxRequestBlockHashes = 4_096;
+    public const long BlockAccessListsSoftResponseBytes = 2_097_152; // 2 MiB
+
     // Real range-proof sets are bounded by 2 * trie depth (~128). The cap leaves headroom
     // without admitting amplification (an unbounded Proofs list lets an attacker pack
     // ~hundreds of thousands of minimum-size RLP entries inside one inbound frame).
     public const int MaxProofs = 256;
 
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));
+    public static readonly RlpLimit GetBlockAccessListsHashesRlpLimit = RlpLimit.For<GetBlockAccessListsMessage>(MaxRequestBlockHashes, nameof(GetBlockAccessListsMessage.BlockHashes));
     public static readonly RlpLimit GetStorageRangeAccountsRlpLimit = RlpLimit.For<GetStorageRangeMessage>(MaxRequestAccounts, nameof(GetStorageRangeMessage.StorageRange));
     public static readonly RlpLimit GetTrieNodesPathGroupsRlpLimit = RlpLimit.For<GetTrieNodesMessage>(MaxRequestPathGroups, nameof(GetTrieNodesMessage.Paths));
     public static RlpLimit GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(MaxRequestPathsPerGroup, nameof(PathGroup.Group));

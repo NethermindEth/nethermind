@@ -8,7 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class AccountRangeMessageSerializer : IZeroMessageSerializer<AccountRangeMessage>
     {

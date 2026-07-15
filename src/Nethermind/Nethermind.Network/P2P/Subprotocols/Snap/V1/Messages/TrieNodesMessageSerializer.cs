@@ -5,7 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class TrieNodesMessageSerializer : IZeroMessageSerializer<TrieNodesMessage>
     {
