@@ -4,9 +4,11 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -406,12 +408,10 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_CodelessSenderSelfVerify_TransactionInvalid()
+    public void Execute_CodelessSenderSelfVerify_WithoutSignature_TransactionInvalid()
     {
-        // EIP8141: the spec "default code" gives a codeless sender an implicit APPROVE when a
-        // SECP256K1 signature at index 0 matches — not yet implemented, so the empty account runs
-        // as empty code, never approves, and the transaction fails for lack of payer. This test
-        // pins the pending state and must flip to success when default code lands.
+        // Default code requires a canonical-hash SECP256K1 signature at index 0; with no
+        // signatures the VERIFY default code reverts, so the transaction fails for lack of payer.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
@@ -421,6 +421,32 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False);
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+    }
+
+    [Test]
+    public void Execute_CodelessSenderSelfVerify_WithSignature_ApprovesViaDefaultCode()
+    {
+        // A codeless EOA (Sender == PrivateKeyA.Address) sends a self-verify frame with a
+        // canonical-hash SECP256K1 signature at index 0. Default code recovers to the sender,
+        // calls APPROVE(scope) with the frame's allowed scope, sets the payer, and the tx is valid
+        // without deploying any code.
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Ecdsa ecdsa = new();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
     private TransactionResult Process(Transaction tx)

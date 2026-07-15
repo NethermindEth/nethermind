@@ -108,7 +108,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
 
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, spec, tracer, out ulong frameGasUsed);
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, spec, tracer, out ulong frameGasUsed);
             totalFrameGasUsed += frameGasUsed;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
@@ -238,7 +238,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return (ulong)zeros + (ulong)(data.Length - zeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
     {
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
@@ -246,6 +246,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             gasUsed = 0;
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+        }
+
+        // Default code: a codeless target (empty code hash, no EIP-7702 delegation indicator) runs
+        // the protocol-defined behavior instead of the EVM.
+        if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
+        {
+            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, spec, tracer, out gasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -291,6 +298,56 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         return substate;
     }
+
+    /// <summary>
+    /// EIP-8141 default code for a codeless target. VERIFY: require a canonical-hash SECP256K1
+    /// signature at index 0 whose resolved signer is the target, then signal APPROVE with the
+    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code (value transfer only).
+    /// The signature's cryptographic validity is already checked in pre-flight; default code checks
+    /// only the structural conditions the spec pins.
+    /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
+    /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
+    /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
+    /// EIP8141: default-code gas metering is pending; the sig verification cost is already charged
+    /// in the intrinsic, so no gas is charged here yet.
+    /// </summary>
+    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    {
+        gasUsed = 0;
+
+        if (isStatic)
+        {
+            byte allowedScope = frame.AllowedApproveScope;
+            if (allowedScope == 0)
+            {
+                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            }
+
+            TxFrameSignature[] signatures = frameContext.Signatures;
+            if (signatures.Length == 0
+                || signatures[0].Scheme != TxFrameSignature.SchemeSecp256k1
+                || !signatures[0].Msg.IsEmpty
+                || frameContext.ResolvedSigner(0) != resolvedTarget)
+            {
+                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            }
+
+            frameContext.ApprovalScopeSignal = allowedScope;
+            return DefaultCodeSuccess();
+        }
+
+        // SENDER / DEFAULT: as if calling empty code — perform only the value transfer.
+        if (!frame.Value.IsZero)
+        {
+            WorldState.SubtractFromBalance(caller, in frame.Value, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, frame.Value, spec);
+        }
+
+        return DefaultCodeSuccess();
+    }
+
+    private static TransactionSubstate DefaultCodeSuccess() =>
+        new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
 
     private void ApplyApproval(FrameTxContext frameContext, Address resolvedTarget, IReleaseSpec spec)
     {
