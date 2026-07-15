@@ -146,7 +146,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private PbtWriteBatch BuildChanges()
     {
         PbtWriteBatch batch = new(estimatedEntries: _dirtyAccounts.Count * 2 + 16);
-        Dictionary<Stem, byte[]?> priorBlobs = [];
         Dictionary<AddressAsKey, Stem> headerStems = [];
 
         // self-destructed (including deleted) accounts drop every prior header leaf: basic data,
@@ -157,7 +156,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         foreach ((AddressAsKey address, _) in _selfDestructed)
         {
             Stem headerStem = GetHeaderStem(headerStems, address);
-            byte[]? prior = GetPriorBlob(priorBlobs, headerStem);
+            byte[]? prior = Bundle.GetLeafBlob(headerStem);
             if (prior is null) continue;
 
             for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
@@ -176,15 +175,23 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             if (account is null) continue;
 
             Stem headerStem = GetHeaderStem(headerStems, address);
-            byte[]? code = account.HasCode ? CodeDb.GetCode(account.CodeHash) : null;
 
-            PbtKeyDerivation.PackBasicData(basicData, (uint)(code?.Length ?? 0), account.Nonce, account.Balance);
+            // Code (immutable after creation) is only chunked when it was written this block; its
+            // hash then identifies the pending bytes. For an unchanged-code account whose balance or
+            // nonce changed we still rewrite BASIC_DATA, so its code size is read back from the prior
+            // BASIC_DATA leaf rather than fetching the whole code.
+            byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
+            uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
+                : !account.HasCode ? 0
+                : PriorCodeSize(headerStem);
+
+            PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
             batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.BasicDataLeafKey), basicData);
             batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.Bytes);
 
-            if (code is not null && CodeChunksNeeded(address, headerStem, account, priorBlobs))
+            if (updatedCode is not null)
             {
-                byte[][] chunks = PbtKeyDerivation.ChunkifyCode(code);
+                byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
                 int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
                 for (int i = 0; i < headerChunks; i++)
                 {
@@ -208,34 +215,20 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             foreach ((UInt256 slot, EvmWord value) in slots)
             {
-                Stem stem;
-                byte subIndex;
-                if (PbtKeyDerivation.IsHeaderSlot(slot))
-                {
-                    stem = GetHeaderStem(headerStems, address);
-                    subIndex = PbtKeyDerivation.HeaderSlotSubIndex(slot);
-                }
-                else
-                {
-                    stem = PbtKeyDerivation.StorageStem(address, slot, out subIndex);
-                }
-
-                batch.Add(PbtKeyDerivation.TreeKey(stem, subIndex), EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
+                batch.Add(PbtKeyDerivation.StorageKey(address, slot), EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
             }
         }
 
         return batch;
     }
 
-    private bool CodeChunksNeeded(AddressAsKey address, in Stem headerStem, Account account, Dictionary<Stem, byte[]?> priorBlobs)
+    /// <summary>Reads the code size preserved in the account's prior <c>BASIC_DATA</c> leaf (0 if the account is new).</summary>
+    private uint PriorCodeSize(in Stem headerStem)
     {
-        // a self-destruct in this block cleared the prior chunks, so they must be rewritten
-        if (_selfDestructed.ContainsKey(address)) return true;
-
-        byte[]? prior = GetPriorBlob(priorBlobs, headerStem);
-        return prior is null
-            || !StemLeafBlob.TryGetValue(prior, PbtKeyDerivation.CodeHashLeafKey, out ReadOnlySpan<byte> priorCodeHash)
-            || !priorCodeHash.SequenceEqual(account.CodeHash.Bytes);
+        byte[]? prior = Bundle.GetLeafBlob(headerStem);
+        return prior is not null && StemLeafBlob.TryGetValue(prior, PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
+            ? PbtKeyDerivation.ReadBasicDataCodeSize(basicData)
+            : 0;
     }
 
     private Stem GetHeaderStem(Dictionary<AddressAsKey, Stem> cache, AddressAsKey address)
@@ -243,13 +236,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         ref Stem stem = ref CollectionsMarshal.GetValueRefOrAddDefault(cache, address, out bool exists);
         if (!exists) stem = PbtKeyDerivation.AccountHeaderStem(address);
         return stem;
-    }
-
-    private byte[]? GetPriorBlob(Dictionary<Stem, byte[]?> cache, in Stem stem)
-    {
-        ref byte[]? blob = ref CollectionsMarshal.GetValueRefOrAddDefault(cache, stem, out bool exists);
-        if (!exists) blob = Bundle.GetLeafBlob(stem);
-        return blob;
     }
 
     private void SetSlot(Address address, in UInt256 slot, in EvmWord value)

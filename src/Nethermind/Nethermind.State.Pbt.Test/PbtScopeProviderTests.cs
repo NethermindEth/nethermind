@@ -61,6 +61,9 @@ public class PbtScopeProviderTests
         using (worldState.BeginScope(header1))
         {
             worldState.AddToBalance(TestItem.AddressA, 5, Spec);
+            // a contract receiving ETH is dirty with unchanged code — its BASIC_DATA is rewritten
+            // and its code size must be preserved (read back, not recomputed from the code)
+            worldState.AddToBalance(TestItem.AddressB, 10, Spec);
             worldState.Set(new StorageCell(TestItem.AddressB, 5), [0]);
             worldState.Set(new StorageCell(TestItem.AddressB, 70), [0x07]);
             worldState.Commit(Spec);
@@ -69,6 +72,7 @@ public class PbtScopeProviderTests
         }
 
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 105);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 0, 52, bigCode);
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0);
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);
         Assert.That(root2, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
@@ -79,6 +83,9 @@ public class PbtScopeProviderTests
         Assert.That(accountAt1.Balance, Is.EqualTo((UInt256)100));
         Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressA, out AccountStruct accountAt2), Is.True);
         Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)105));
+        Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressB, out AccountStruct accountBAt2), Is.True);
+        Assert.That(accountBAt2.Balance, Is.EqualTo((UInt256)52));
+        Assert.That(accountBAt2.CodeHash, Is.EqualTo(ValueKeccak.Compute(bigCode)));
         Assert.That(ctx.StateReader.GetStorage(header1, TestItem.AddressB, 5).ToArray(), Is.EqualTo((byte[])[0xAB]));
         Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 5).IsZero());
         Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000).ToArray(), Is.EqualTo((byte[])[0x12, 0x34]));
