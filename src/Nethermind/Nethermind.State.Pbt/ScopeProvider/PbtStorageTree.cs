@@ -18,8 +18,8 @@ public sealed class PbtStorageTree(PbtWorldStateScope scope, Address address) : 
 
     public byte[] Get(in UInt256 index)
     {
-        byte[]? value = scope.Bundle.GetSlot(address, index);
-        return value is null || value.Length == 0 ? StorageTree.ZeroBytes : value;
+        EvmWord value = scope.Bundle.GetSlot(address, index);
+        return EvmWordSlot.IsZero(value) ? StorageTree.ZeroBytes : EvmWordSlot.ToStrippedBytes(value);
     }
 
     public void HintSet(in UInt256 index, byte[]? value)

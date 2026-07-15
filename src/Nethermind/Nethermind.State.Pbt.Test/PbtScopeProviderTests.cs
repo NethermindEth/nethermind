@@ -147,7 +147,8 @@ public class PbtScopeProviderTests
         PbtReferenceModel.SetAccount(model, address, 0, 5);
         PbtReferenceModel.SetSlot(model, address, 3, 0x99);
         Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
-        Assert.That(scope.CreateStorageTree(address).Get(3), Is.EqualTo(slotValue));
+        // the storage tree returns the stripped (leading-zeros-removed) value, per the EVM contract
+        Assert.That(scope.CreateStorageTree(address).Get(3), Is.EqualTo((byte[])[0x99]));
         Assert.That(scope.CreateStorageTree(address).Get(500).AsSpan().IsZero());
     }
 }

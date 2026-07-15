@@ -15,12 +15,13 @@ namespace Nethermind.State.Pbt;
 /// <remarks>
 /// Account/slot maps are concurrent because block processing may populate them from parallel
 /// write batches; blobs and nodes are written single-threaded at commit. Conventions: a null
-/// account = deleted; a null slot value = zero; an empty blob = stem deleted; a null node = removed.
+/// account = deleted; a present slot entry = written in this layer (its value may be zero); an
+/// empty blob = stem deleted; a null node = removed.
 /// </remarks>
 public class PbtSnapshotContent
 {
     public ConcurrentDictionary<AddressAsKey, Account?> Accounts { get; } = new();
-    public ConcurrentDictionary<(AddressAsKey Address, UInt256 Slot), byte[]?> Slots { get; } = new();
+    public ConcurrentDictionary<(AddressAsKey Address, UInt256 Slot), EvmWord> Slots { get; } = new();
     public ConcurrentDictionary<AddressAsKey, bool> SelfDestructs { get; } = new();
     public Dictionary<Stem, byte[]> LeafBlobs { get; } = [];
     public Dictionary<TrieNodeKey, byte[]?> TrieNodes { get; } = [];

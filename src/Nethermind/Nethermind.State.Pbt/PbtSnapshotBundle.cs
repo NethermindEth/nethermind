@@ -35,21 +35,21 @@ public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IRea
         return reader.GetAccount(address);
     }
 
-    /// <summary>Returns the slot value, or null when zero/absent. The walk stops at a self-destruct marker.</summary>
-    public byte[]? GetSlot(Address address, in UInt256 slot)
+    /// <summary>Returns the slot value (zero when absent or self-destructed). The walk stops at a self-destruct marker.</summary>
+    public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         AddressAsKey key = address;
         (AddressAsKey, UInt256) slotKey = (key, slot);
         if (_writeBuffer is not null)
         {
-            if (_writeBuffer.Slots.TryGetValue(slotKey, out byte[]? value)) return value;
-            if (_writeBuffer.SelfDestructs.ContainsKey(key)) return null;
+            if (_writeBuffer.Slots.TryGetValue(slotKey, out EvmWord value)) return value;
+            if (_writeBuffer.SelfDestructs.ContainsKey(key)) return default;
         }
 
         foreach (PbtSnapshot snapshot in snapshots)
         {
-            if (snapshot.Content.Slots.TryGetValue(slotKey, out byte[]? value)) return value;
-            if (snapshot.Content.SelfDestructs.ContainsKey(key)) return null;
+            if (snapshot.Content.Slots.TryGetValue(slotKey, out EvmWord value)) return value;
+            if (snapshot.Content.SelfDestructs.ContainsKey(key)) return default;
         }
 
         return reader.GetSlot(address, slot);
@@ -86,8 +86,9 @@ public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IRea
 
     public void SetAccount(Address address, Account? account) => WriteBuffer.Accounts[address] = account;
 
-    public void SetSlot(Address address, in UInt256 slot, byte[] value) =>
-        WriteBuffer.Slots[(address, slot)] = value.AsSpan().IsZero() ? null : value;
+    // present entry = written in this layer; a zero value is a valid write (distinct from absent)
+    public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
+        WriteBuffer.Slots[(address, slot)] = value;
 
     public void SelfDestruct(Address address)
     {

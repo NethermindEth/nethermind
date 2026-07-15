@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -81,12 +82,13 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
             return AccountDecoder.Slim.Decode(ref reader);
         }
 
-        public byte[]? GetSlot(Address address, in UInt256 slot)
+        public EvmWord GetSlot(Address address, in UInt256 slot)
         {
             ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
             Span<byte> key = stackalloc byte[StorageKeyLength];
             EncodeStorageKey(addressHash, slot, key);
-            return snapshot.GetColumn(PbtColumns.Storage).Get(key);
+            byte[]? stored = snapshot.GetColumn(PbtColumns.Storage).Get(key);
+            return stored is null ? default : EvmWordSlot.FromStripped(stored);
         }
 
         public byte[]? GetLeafBlob(in Stem stem) => snapshot.GetColumn(LeafColumn(stem)).Get(stem.Bytes);
@@ -121,19 +123,20 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
             }
         }
 
-        public void SetSlot(Address address, in UInt256 slot, byte[]? value)
+        public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
         {
             ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
             Span<byte> key = stackalloc byte[StorageKeyLength];
             EncodeStorageKey(addressHash, slot, key);
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storage);
-            if (value is null)
+            if (EvmWordSlot.IsZero(value))
             {
+                // zero slots are not stored; absence reads back as zero
                 storage.Remove(key);
             }
             else
             {
-                storage.PutSpan(key, value);
+                storage.PutSpan(key, EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros());
             }
         }
 

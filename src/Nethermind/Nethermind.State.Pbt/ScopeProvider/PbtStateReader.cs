@@ -28,7 +28,10 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
         using PbtSnapshotBundle? bundle = manager.TryGatherBundle(new StateId(baseBlock), isReadOnly: true);
-        return bundle?.GetSlot(address, index) ?? [];
+        if (bundle is null) return [];
+
+        EvmWord value = bundle.GetSlot(address, index);
+        return EvmWordSlot.IsZero(value) ? [] : EvmWordSlot.ToStrippedBytes(value);
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];

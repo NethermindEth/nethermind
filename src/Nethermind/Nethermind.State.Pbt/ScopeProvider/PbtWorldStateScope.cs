@@ -26,7 +26,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     // cumulative per-block dirty state; slot maps and destruct markers are concurrent because the
     // world state flushes storage write batches from parallel workers
     private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [];
-    private readonly ConcurrentDictionary<AddressAsKey, ConcurrentDictionary<UInt256, byte[]>> _dirtySlots = new();
+    private readonly ConcurrentDictionary<AddressAsKey, ConcurrentDictionary<UInt256, EvmWord>> _dirtySlots = new();
     private readonly ConcurrentDictionary<AddressAsKey, bool> _selfDestructed = new();
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
@@ -91,7 +91,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         Dictionary<Stem, ValueHash256?> stemRoots = new(stemChanges.Count);
         foreach ((Stem stem, Dictionary<byte, byte[]?> changes) in stemChanges)
         {
-            byte[] blob = StemLeafBlob.Apply(GetPriorBlob(priorBlobs, stem) ?? [], changes);
+            byte[] blob = StemLeafBlob.Apply(GetPriorBlob(priorBlobs, stem) ?? [], changes, out ValueHash256 subtreeRoot);
             _blobOverlay[stem] = blob;
             if (blob.Length == 0)
             {
@@ -101,11 +101,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             }
             else
             {
-                stemRoots[stem] = StemLeafBlob.ComputeSubtreeRoot(blob);
+                stemRoots[stem] = subtreeRoot;
             }
         }
 
-        _rootHash = new StemTrie(Bundle).BatchUpdate(stemRoots, _nodeOverlay).ToHash256();
+        _rootHash = TrieUpdater.Update(Bundle, _currentStateId.StateRoot, stemRoots, _nodeOverlay).ToHash256();
         _rootDirty = false;
     }
 
@@ -200,14 +200,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             }
         }
 
-        foreach ((AddressAsKey address, ConcurrentDictionary<UInt256, byte[]> slots) in _dirtySlots)
+        foreach ((AddressAsKey address, ConcurrentDictionary<UInt256, EvmWord> slots) in _dirtySlots)
         {
             // slots of an account that ends the block deleted never reach the tree
             if (_dirtyAccounts.TryGetValue(address, out Account? account) && account is null) continue;
 
-            foreach ((UInt256 slot, byte[] value) in slots)
+            foreach ((UInt256 slot, EvmWord value) in slots)
             {
-                byte[]? value32 = AsLeafValue(value);
+                byte[]? value32 = EvmWordSlot.IsZero(value) ? null : EvmWordSlot.ToArray32(value);
                 if (PbtKeyDerivation.IsHeaderSlot(slot))
                 {
                     GetStemChanges(stemChanges, GetHeaderStem(headerStems, address))[PbtKeyDerivation.HeaderSlotSubIndex(slot)] = value32;
@@ -252,17 +252,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         return changes ??= [];
     }
 
-    private static byte[]? AsLeafValue(byte[] value)
-    {
-        if (value.AsSpan().IsZero()) return null;
-        if (value.Length == 32) return value;
-
-        byte[] padded = new byte[32];
-        value.CopyTo(padded.AsSpan(32 - value.Length));
-        return padded;
-    }
-
-    private void SetSlot(Address address, in UInt256 slot, byte[] value)
+    private void SetSlot(Address address, in UInt256 slot, in EvmWord value)
     {
         Bundle.SetSlot(address, slot, value);
         _rootDirty = true;
@@ -301,19 +291,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-            new StorageWriteBatch(scope, key, scope._dirtySlots.GetOrAdd(key, static _ => new ConcurrentDictionary<UInt256, byte[]>()));
+            new StorageWriteBatch(scope, key, scope._dirtySlots.GetOrAdd(key, static _ => new ConcurrentDictionary<UInt256, EvmWord>()));
 
         public void Dispose()
         {
         }
     }
 
-    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address, ConcurrentDictionary<UInt256, byte[]> slots) : IWorldStateScopeProvider.IStorageWriteBatch
+    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address, ConcurrentDictionary<UInt256, EvmWord> slots) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
         {
-            slots[index] = value;
-            scope.SetSlot(address, index, value);
+            // the world state passes a stripped (leading-zeros-removed) value; canonicalize to 32 bytes
+            EvmWord word = EvmWordSlot.FromStripped(value);
+            slots[index] = word;
+            scope.SetSlot(address, index, word);
         }
 
         public void Clear()

@@ -37,10 +37,18 @@ public static class StemLeafBlob
     }
 
     /// <summary>
-    /// Applies <paramref name="changes"/> to <paramref name="blob"/> and returns the new blob.
-    /// A null or all-zero value clears the leaf. Returns an empty array when no leaves remain.
+    /// Applies <paramref name="changes"/> to <paramref name="blob"/>, returning the new blob and,
+    /// via <paramref name="subtreeRoot"/>, its merkelized 256-leaf subtree root. A null or all-zero
+    /// value clears the leaf. Returns an empty array (and a zero root) when no leaves remain.
     /// </summary>
-    public static byte[] Apply(ReadOnlySpan<byte> blob, IReadOnlyDictionary<byte, byte[]?> changes)
+    /// <remarks>
+    /// Merkelization folds the 256 leaves pairwise over 8 levels (each present value hashes to
+    /// <c>blake3(value)</c>, absent leaves are 32 zero bytes, empty subtrees fold to zero). The leaf
+    /// level is filled during packing, so this is a single pass over the present values — up to 511
+    /// hashes for a full stem; intermediate-level caching is the optimization hook if it ever shows
+    /// up in profiles.
+    /// </remarks>
+    public static byte[] Apply(ReadOnlySpan<byte> blob, IReadOnlyDictionary<byte, byte[]?> changes, out ValueHash256 subtreeRoot)
     {
         Span<byte> bitmap = stackalloc byte[BitmapLength];
         if (!blob.IsEmpty) blob[..BitmapLength].CopyTo(bitmap);
@@ -59,49 +67,34 @@ public static class StemLeafBlob
 
         int count = 0;
         for (int i = 0; i < BitmapLength; i++) count += BitOperations.PopCount(bitmap[i]);
-        if (count == 0) return [];
+        if (count == 0)
+        {
+            subtreeRoot = default;
+            return [];
+        }
 
         byte[] result = new byte[BitmapLength + ValueLength * count];
         bitmap.CopyTo(result);
+        Span<byte> level = stackalloc byte[LeafCount * ValueLength];
         int offset = BitmapLength;
         for (int subIndex = 0; subIndex < LeafCount; subIndex++)
         {
             if ((bitmap[subIndex >> 3] & (1 << (7 - (subIndex & 7)))) == 0) continue;
 
+            Span<byte> destination = result.AsSpan(offset);
             if (changes.TryGetValue((byte)subIndex, out byte[]? changed))
             {
-                changed!.CopyTo(result.AsSpan(offset));
+                changed!.CopyTo(destination);
             }
             else
             {
                 TryGetValue(blob, (byte)subIndex, out ReadOnlySpan<byte> existing);
-                existing.CopyTo(result.AsSpan(offset));
+                existing.CopyTo(destination);
             }
 
+            // hash the just-packed leaf value into the merkelization level while it is warm
+            Blake3Hash.Hash(destination[..ValueLength], level.Slice(subIndex * ValueLength, ValueLength));
             offset += ValueLength;
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Merkelizes the 256 leaves: each present value hashes to <c>blake3(value)</c>, absent leaves
-    /// are 32 zero bytes, folded pairwise over 8 levels with the empty-subtree-to-zero rule.
-    /// </summary>
-    // Recomputes all 8 levels (up to 511 hashes) per call; intermediate-level caching is the
-    // obvious optimization hook if this shows up in profiles.
-    public static ValueHash256 ComputeSubtreeRoot(ReadOnlySpan<byte> blob)
-    {
-        if (blob.IsEmpty) return default;
-
-        Span<byte> level = stackalloc byte[LeafCount * ValueLength];
-        for (int subIndex = 0; subIndex < LeafCount; subIndex++)
-        {
-            Span<byte> slot = level.Slice(subIndex * ValueLength, ValueLength);
-            if (TryGetValue(blob, (byte)subIndex, out ReadOnlySpan<byte> value))
-            {
-                Blake3Hash.Hash(value, slot);
-            }
         }
 
         for (int width = LeafCount / 2; width >= 1; width /= 2)
@@ -115,7 +108,8 @@ public static class StemLeafBlob
             }
         }
 
-        return new ValueHash256(level[..ValueLength]);
+        subtreeRoot = new ValueHash256(level[..ValueLength]);
+        return result;
     }
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
