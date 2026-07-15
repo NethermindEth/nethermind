@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -13,8 +14,10 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Proofs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -92,5 +95,9 @@ public class FrameTxBlockReceiptsTests
         Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must be the union of frame logs");
         Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo((long)Eip8141Constants.IntrinsicGasCost),
             "spec gas includes the frame tx intrinsic cost");
+
+        // The frame-aware wire encoding must produce a computable receipts root.
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
+        Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 }
