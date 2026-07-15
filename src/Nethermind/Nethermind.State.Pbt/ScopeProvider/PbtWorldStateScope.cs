@@ -145,7 +145,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// </summary>
     private PbtWriteBatch BuildChanges()
     {
-        PbtWriteBatch batch = new(estimatedEntries: _dirtyAccounts.Count * 2 + 16, estimatedBytes: (_dirtyAccounts.Count * 2 + 16) * 32);
+        PbtWriteBatch batch = new(estimatedEntries: _dirtyAccounts.Count * 2 + 16);
         Dictionary<Stem, byte[]?> priorBlobs = [];
         Dictionary<AddressAsKey, Stem> headerStems = [];
 
