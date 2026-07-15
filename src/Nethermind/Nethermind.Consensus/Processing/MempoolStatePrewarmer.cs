@@ -111,14 +111,25 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
-        // CreateSimulatedChild dispatches virtually, so chain-specific header subtypes (e.g. XdcBlockHeader)
-        // are preserved instead of degrading to a plain BlockHeader that chain-specific processors don't expect.
+        return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
+    }
+
+    /// <summary>
+    /// Builds the synthetic "next block" header for speculative warming.
+    /// </summary>
+    /// <remarks>
+    /// Uses <see cref="BlockHeader.CreateSimulatedChild"/>, which dispatches virtually, so chain-specific header
+    /// subtypes (e.g. <c>XdcBlockHeader</c>) are preserved instead of degrading to a plain <see cref="BlockHeader"/>
+    /// that chain-specific processors don't expect (which would otherwise throw an <see cref="InvalidCastException"/>).
+    /// </remarks>
+    internal static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
+    {
         BlockHeader header = parent.CreateSimulatedChild(timestamp);
         header.MixHash = parent.MixHash;
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
         header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
 
-        return new NextBlockContext(header, spec);
+        return header;
     }
 
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
