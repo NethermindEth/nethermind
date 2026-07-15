@@ -145,7 +145,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// </summary>
     private PbtWriteBatch BuildChanges()
     {
-        PbtWriteBatch batch = new(estimatedEntries: _dirtyAccounts.Count * 2 + 16);
+        PbtWriteBatch batch = new(estimatedStems: _dirtyAccounts.Count + 16);
         Dictionary<AddressAsKey, Stem> headerStems = [];
 
         // self-destructed (including deleted) accounts drop every prior header leaf: basic data,
@@ -163,7 +163,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             {
                 if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _))
                 {
-                    batch.Add(PbtKeyDerivation.TreeKey(headerStem, (byte)subIndex), default);
+                    batch.Add(headerStem, (byte)subIndex, default);
                 }
             }
         }
@@ -186,8 +186,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                 : PriorCodeSize(headerStem);
 
             PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-            batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.BasicDataLeafKey), basicData);
-            batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.Bytes);
+            batch.Add(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicData);
+            batch.Add(headerStem, PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.Bytes);
 
             if (updatedCode is not null)
             {
@@ -195,7 +195,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                 int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
                 for (int i = 0; i < headerChunks; i++)
                 {
-                    batch.Add(PbtKeyDerivation.TreeKey(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i)), chunks[i]);
+                    batch.Add(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), chunks[i]);
                 }
 
                 // overflow chunks are content-addressed by code hash and shared between contracts;
@@ -203,7 +203,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                 for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
                 {
                     Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-                    batch.Add(PbtKeyDerivation.TreeKey(overflowStem, subIndex), chunks[i]);
+                    batch.Add(overflowStem, subIndex, chunks[i]);
                 }
             }
         }
@@ -215,7 +215,19 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             foreach ((UInt256 slot, EvmWord value) in slots)
             {
-                batch.Add(PbtKeyDerivation.StorageKey(address, slot), EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
+                Stem stem;
+                byte subIndex;
+                if (PbtKeyDerivation.IsHeaderSlot(slot))
+                {
+                    stem = GetHeaderStem(headerStems, address);
+                    subIndex = PbtKeyDerivation.HeaderSlotSubIndex(slot);
+                }
+                else
+                {
+                    stem = PbtKeyDerivation.StorageStem(address, slot, out subIndex);
+                }
+
+                batch.Add(stem, subIndex, EvmWordSlot.IsZero(value) ? default : EvmWordSlot.AsReadOnlySpan(in value));
             }
         }
 
