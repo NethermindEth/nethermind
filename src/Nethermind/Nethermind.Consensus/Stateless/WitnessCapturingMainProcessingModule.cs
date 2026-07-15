@@ -10,16 +10,21 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// On EIP-7928 chains, installs the <see cref="WitnessCapturingBlockProcessor"/> selector on the main
+/// When enabled, installs the <see cref="WitnessCapturingBlockProcessor"/> selector on the main
 /// processing pipeline. The selector delegates a witnessed block to the dedicated witness graph held by
 /// <see cref="WitnessCapturingBlockProcessingEnv"/> (registered at the root scope by the merge plugin), leaving the
 /// main world state, code repository and block-access-list manager untouched for every other block.
 /// </summary>
-public sealed class WitnessCapturingMainProcessingModule(ISpecProvider specProvider) : Module, IMainProcessingModule
+public sealed class WitnessCapturingMainProcessingModule(bool enabled) : Module, IMainProcessingModule
 {
+    public WitnessCapturingMainProcessingModule(ISpecProvider specProvider)
+        : this(specProvider.GetFinalSpec().RequestsEnabled)
+    {
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
-        if (!specProvider.GetFinalSpec().IsEip7928Enabled) return;
+        if (!enabled) return;
 
         builder.AddDecorator<IBlockProcessor, WitnessCapturingBlockProcessor>();
     }

@@ -2124,6 +2124,7 @@ public partial class EngineModuleTests
 
             nameof(IEngineRpcModule.engine_getPayloadV4),
             nameof(IEngineRpcModule.engine_newPayloadV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
 
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
@@ -2131,6 +2132,33 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getBlobsV4)
         ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
+    }
+
+    public static IEnumerable<TestCaseData> WitnessJsonRpcCapabilitiesCases()
+    {
+        yield return new TestCaseData(Cancun.Instance, Array.Empty<string>())
+            .SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Cancun");
+        yield return new TestCaseData(Prague.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Prague");
+        yield return new TestCaseData(Amsterdam.Instance, (string[])
+        [
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4),
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5)
+        ]).SetName(nameof(WitnessJsonRpcCapabilitiesAreForkGated) + "_for_Amsterdam");
+    }
+
+    [TestCaseSource(nameof(WitnessJsonRpcCapabilitiesCases))]
+    public void WitnessJsonRpcCapabilitiesAreForkGated(IReleaseSpec releaseSpec, string[] expectedMethods)
+    {
+        EngineRpcCapabilitiesProvider provider = new(new TestSingleReleaseSpecProvider(releaseSpec));
+        string[] methods = [.. provider.GetJsonRpcCapabilities()
+            .Where(static capability => capability.Value.IsEnabled()
+                && capability.Key.StartsWith("engine_newPayloadWithWitness", StringComparison.Ordinal))
+            .Select(static capability => capability.Key)];
+
+        Assert.That(methods, Is.EquivalentTo(expectedMethods));
     }
 
     [Test]
