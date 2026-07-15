@@ -1,0 +1,176 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Numerics;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Pbt;
+
+/// <summary>
+/// One 4-level tile of the stem trie: 31 post-order positions (16 boundary slots and 15 inner
+/// positions), each absent, an internal node holding its cached hash (for a boundary slot, the
+/// child group's root hash), or a stem node holding its stem and 256-leaf subtree root.
+/// </summary>
+/// <remarks>
+/// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c>
+/// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
+/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is
+/// two little-endian 32-bit bitmaps over the positions — presence and stem — followed by one entry
+/// per present position in ascending position order: a 32-byte cached hash for an internal node, or
+/// the 31-byte stem followed by its 32-byte leaf-subtree root for a stem node (the stem node hash
+/// is derived, never stored). Entry offsets and the total length follow from the bitmaps, keeping
+/// the encoding deterministic. A stem position has no present positions below it in the group and
+/// no child groups below it. An empty group encodes to zero bytes, the store's removal marker.
+/// </remarks>
+public sealed class PbtTrieNodeGroup
+{
+    public enum NodeKind : byte
+    {
+        Absent = 0,
+        Internal = 1,
+        Stem = 2,
+    }
+
+    /// <summary>One position's node: absent, internal, or stem.</summary>
+    /// <remarks>
+    /// The payloads are fields, not properties: <see cref="ValueHash256.Bytes"/> over a
+    /// property-returned copy is a span into a dead stack temporary the JIT may reuse.
+    /// </remarks>
+    public struct Slot
+    {
+        public NodeKind Kind;
+        public Stem Stem;
+
+        /// <summary>The cached node hash of an internal node, or the 256-leaf subtree root of a stem node.</summary>
+        public ValueHash256 Hash;
+
+        /// <summary>
+        /// The hash this node contributes to its parent: zero when absent, the cached hash when
+        /// internal, or the derived stem node hash.
+        /// </summary>
+        public readonly ValueHash256 NodeHash() => Kind switch
+        {
+            NodeKind.Absent => default,
+            NodeKind.Internal => Hash,
+            _ => StemLeafBlob.ComputeStemNodeHash(Stem, Hash),
+        };
+    }
+
+    /// <summary>Trie levels covered by one group: a group rooted at depth d has its boundary slots at depth d + 4.</summary>
+    public const int LevelsPerGroup = 4;
+    public const int BoundarySlots = 1 << LevelsPerGroup;
+    public const int PositionCount = 2 * BoundarySlots - 1;
+    public const int RootPosition = 2 * BoundarySlots - 2;
+
+    /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
+    public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
+
+    private const int HeaderLength = 2 * sizeof(uint);
+    private const int HashLength = 32;
+
+    /// <summary>Largest encoding: all 31 positions present, 16 of them stems (each stem terminates a disjoint boundary range).</summary>
+    public const int MaxEncodedLength = HeaderLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
+
+    /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
+    private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
+
+    private readonly Slot[] _slots = new Slot[PositionCount];
+
+    public ref Slot this[int position] => ref _slots[position];
+
+    public static Slot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
+
+    public static Slot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
+        new() { Kind = NodeKind.Stem, Stem = stem, Hash = leafSubtreeRoot };
+
+    /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
+    public static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
+
+    public static bool IsBoundaryPosition(int position) => (BoundaryPositionsMask & (1u << position)) != 0;
+
+    /// <summary>The boundary slot index of boundary <paramref name="position"/>.</summary>
+    public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
+
+    /// <summary>Decodes a non-empty group encoding, validating the bitmaps and the implied length.</summary>
+    public static PbtTrieNodeGroup Decode(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < HeaderLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
+
+        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(data[sizeof(uint)..]);
+        if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
+        {
+            throw new InvalidDataException("Invalid trie node group bitmaps");
+        }
+
+        int expectedLength = HeaderLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
+        if (data.Length != expectedLength)
+        {
+            throw new InvalidDataException($"Trie node group length {data.Length} does not match its bitmaps (expected {expectedLength})");
+        }
+
+        PbtTrieNodeGroup group = new();
+        int offset = HeaderLength;
+        for (uint remaining = presence; remaining != 0; remaining &= remaining - 1)
+        {
+            int position = BitOperations.TrailingZeroCount(remaining);
+            ref Slot slot = ref group._slots[position];
+            if ((stems & (1u << position)) != 0)
+            {
+                slot.Kind = NodeKind.Stem;
+                slot.Stem = new Stem(data.Slice(offset, Stem.Length));
+                offset += Stem.Length;
+            }
+            else
+            {
+                slot.Kind = NodeKind.Internal;
+            }
+
+            slot.Hash = new ValueHash256(data.Slice(offset, HashLength));
+            offset += HashLength;
+        }
+
+        return group;
+    }
+
+    /// <summary>
+    /// Encodes the group into <paramref name="destination"/> (≥ <see cref="MaxEncodedLength"/> bytes)
+    /// and returns the length written; 0 for an empty group, which the caller stores as a removal.
+    /// </summary>
+    public int Encode(Span<byte> destination)
+    {
+        uint presence = 0;
+        uint stems = 0;
+        for (int position = 0; position < PositionCount; position++)
+        {
+            NodeKind kind = _slots[position].Kind;
+            if (kind == NodeKind.Absent) continue;
+
+            presence |= 1u << position;
+            if (kind == NodeKind.Stem) stems |= 1u << position;
+        }
+
+        if (presence == 0) return 0;
+
+        BinaryPrimitives.WriteUInt32LittleEndian(destination, presence);
+        BinaryPrimitives.WriteUInt32LittleEndian(destination[sizeof(uint)..], stems);
+        int offset = HeaderLength;
+        for (uint remaining = presence; remaining != 0; remaining &= remaining - 1)
+        {
+            ref Slot slot = ref _slots[BitOperations.TrailingZeroCount(remaining)];
+            if (slot.Kind == NodeKind.Stem)
+            {
+                slot.Stem.Bytes.CopyTo(destination[offset..]);
+                offset += Stem.Length;
+            }
+
+            Debug.Assert(slot.Kind == NodeKind.Stem || slot.Hash != default, "internal nodes never cache a zero hash");
+            slot.Hash.Bytes.CopyTo(destination[offset..]);
+            offset += HashLength;
+        }
+
+        return offset;
+    }
+}
