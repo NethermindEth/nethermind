@@ -337,10 +337,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // SENDER / DEFAULT: as if calling empty code — perform only the value transfer.
-        if (!frame.Value.IsZero)
+        UInt256 value = frame.Value;
+        if (!value.IsZero)
         {
-            WorldState.SubtractFromBalance(caller, in frame.Value, spec);
-            WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, frame.Value, spec);
+            WorldState.SubtractFromBalance(caller, in value, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, in value, spec);
         }
 
         return DefaultCodeSuccess();
