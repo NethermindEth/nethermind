@@ -160,6 +160,48 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return account;
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
+            Address[] missingAddresses = new Address[addresses.Length];
+            int[] missingIndices = new int[addresses.Length];
+            int missingCount = 0;
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                Address address = addresses[i];
+                if (parent._accounts.TryGetValue(address, out Account? cached))
+                {
+                    accounts[i] = cached;
+                    continue;
+                }
+
+                missingAddresses[missingCount] = address;
+                missingIndices[missingCount] = i;
+                missingCount++;
+            }
+
+            if (missingCount == 0) return;
+
+            Account?[] missingAccounts = new Account?[missingCount];
+            inner.GetAccounts(missingAddresses.AsSpan(0, missingCount), missingAccounts);
+            for (int i = 0; i < missingCount; i++)
+            {
+                Address address = missingAddresses[i];
+                Account? account = missingAccounts[i];
+                accounts[missingIndices[i]] = account;
+                parent.TryCacheAccount(address, account, generation);
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             (Address, UInt256) key = (address, slot);

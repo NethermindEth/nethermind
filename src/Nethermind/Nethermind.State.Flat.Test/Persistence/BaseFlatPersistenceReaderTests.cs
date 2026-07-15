@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
@@ -13,6 +15,24 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class BaseFlatPersistenceReaderTests
 {
+    [Test]
+    public void GetAccounts_UsesSingleMultiGetWithEncodedKeys()
+    {
+        ValueHash256 first = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)i).ToArray());
+        ValueHash256 second = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)(255 - i)).ToArray());
+        TrackingMultiGetStore store = new();
+        BaseFlatPersistence.Reader reader = new(store, store);
+        byte[]?[] accounts = new byte[]?[2];
+
+        reader.GetAccounts([first, second], accounts);
+
+        Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(store.Keys, Has.Length.EqualTo(2));
+        Assert.That(store.Keys![0], Is.EqualTo(first.Bytes[..20].ToArray()));
+        Assert.That(store.Keys[1], Is.EqualTo(second.Bytes[..20].ToArray()));
+        Assert.That(accounts, Is.EqualTo(new byte[]?[] { [1], [2] }));
+    }
+
     // Regression: a slot value longer than SlotValue.ByteCount must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
@@ -74,6 +94,28 @@ public class BaseFlatPersistenceReaderTests
     private sealed class FixedValueStore(byte[] value) : ISortedKeyValueStore
     {
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => value;
+        public byte[]? FirstKey => null;
+        public byte[]? LastKey => null;
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class TrackingMultiGetStore : ISortedKeyValueStore
+    {
+        public int MultiGetCalls { get; private set; }
+        public byte[][]? Keys { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+            throw new AssertionException("Point reads are not expected.");
+
+        public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            MultiGetCalls++;
+            Keys = keys;
+            for (int i = 0; i < values.Length; i++)
+                values[i] = [(byte)(i + 1)];
+        }
+
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>

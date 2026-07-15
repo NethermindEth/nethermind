@@ -28,6 +28,15 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
+
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
