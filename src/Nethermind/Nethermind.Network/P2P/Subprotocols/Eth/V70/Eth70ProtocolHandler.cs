@@ -256,6 +256,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
         using ArrayPoolList<ulong> expectedGasUsed = new(blockHashes.Count);
         using ArrayPoolList<ulong> blockGasLimits = new(blockHashes.Count);
+        using ArrayPoolList<ulong> minimumTransactionGas = new(blockHashes.Count);
         using ArrayPoolList<Transaction[]?> blockTransactions = new(blockHashes.Count);
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
@@ -271,6 +272,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     expectedGasUsed.Add(0);
                     blockGasLimits.Add(0);
+                    minimumTransactionGas.Add(0);
                     blockTransactions.Add(null);
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
@@ -282,6 +284,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 Block? block = SyncServer.Find(blockHash);
                 expectedGasUsed.Add(header.GasUsed);
                 blockGasLimits.Add(header.GasLimit);
+                minimumTransactionGas.Add(spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction);
                 blockTransactions.Add(GetTransactionsForReceiptValidation(block));
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
@@ -334,6 +337,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         TxReceipt[] blockReceipts = txReceipts[i] ?? throw new SubprotocolException("Unexpected null receipt block payload");
                         ulong blockExpectedGasUsed = expectedGasUsed[blockIndex];
                         ulong blockGasLimit = blockGasLimits[blockIndex];
+                        ulong blockMinimumTransactionGas = minimumTransactionGas[blockIndex];
                         Transaction[]? transactions = blockTransactions[blockIndex];
                         RlpBehaviors receiptBehaviors = receiptRlpBehaviors[blockIndex];
                         bool validateGasUpperBound = validateReceiptGasUpperBoundAgainstHeader[blockIndex];
@@ -349,9 +353,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             partialReceiptsGas = partialReceipts[^1].GasUsedTotal;
                             partialReceipts.AddRange(blockReceipts);
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
-                                blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
-                                !response.LastBlockIncomplete || !isLast, partialReceiptsGas, partialReceiptsLogsGas,
-                                partialReceiptsContentSize);
+                                blockGasLimit, blockMinimumTransactionGas, transactions, receiptBehaviors, validateGasUpperBound,
+                                validateGasEqual, firstBlockReceiptIndex, !response.LastBlockIncomplete || !isLast, partialReceiptsGas,
+                                partialReceiptsLogsGas, partialReceiptsContentSize);
                             partialReceiptsLogsGas = validationResult.LogsGas;
                             partialReceiptsContentSize = validationResult.ReceiptsContentSize;
 
@@ -388,8 +392,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             }
 
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
-                                blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
-                                false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);
+                                blockGasLimit, blockMinimumTransactionGas, transactions, receiptBehaviors, validateGasUpperBound,
+                                validateGasEqual, firstBlockReceiptIndex, false, partialReceiptsGas, partialReceiptsLogsGas,
+                                partialReceiptsContentSize);
                             partialReceipts = new ArrayPoolList<TxReceipt>(blockReceipts.Length + firstBlockReceiptIndex);
                             partialReceipts.AddRange(blockReceipts);
                             firstBlockReceiptIndex = partialReceipts.Count;
@@ -401,9 +406,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             continue;
                         }
 
-                        ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed, blockGasLimit, transactions,
-                            receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex, true, partialReceiptsGas,
-                            partialReceiptsLogsGas, partialReceiptsContentSize);
+                        ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed, blockGasLimit, blockMinimumTransactionGas,
+                            transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
+                            true, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);
                         aggregated.Add(blockReceipts);
                         blockIndex++;
                         firstBlockReceiptIndex = 0;
@@ -516,6 +521,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         TxReceipt[] blockReceipts,
         ulong expectedGasUsed,
         ulong blockGasLimit,
+        ulong minimumTransactionGas,
         Transaction[]? transactions,
         RlpBehaviors receiptBehaviors,
         bool validateReceiptGasUpperBoundAgainstHeader,
@@ -536,7 +542,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             return new ReceiptsValidationResult(previousGasUsed, previousLogsGas, previousReceiptsContentSize);
         }
 
-        previousGasUsed = GetPreviousGasUsedForSegment(firstReceiptIndex, previousGasUsed);
+        previousGasUsed = GetPreviousGasUsedForSegment(firstReceiptIndex, previousGasUsed, minimumTransactionGas);
         ulong logsGas = previousLogsGas;
         ulong receiptsContentSize = previousReceiptsContentSize;
 
@@ -548,7 +554,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ValidateReceiptSizeAgainstTransactionGasLimit(receiptSize, transactions, receiptIndex);
             receiptsContentSize = checked(receiptsContentSize + receiptSize);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(receiptsContentSize, blockGasLimit);
-            previousGasUsed = ValidateReceiptGas(receipt, previousGasUsed);
+            previousGasUsed = ValidateReceiptGas(receipt, previousGasUsed, minimumTransactionGas);
             logsGas = AddReceiptLogsGas(logsGas, receipt);
         }
 
@@ -567,9 +573,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         }
     }
 
-    private static ulong GetPreviousGasUsedForSegment(int firstReceiptIndex, ulong previousGasUsed)
+    private static ulong GetPreviousGasUsedForSegment(int firstReceiptIndex, ulong previousGasUsed, ulong minimumTransactionGas)
     {
-        ulong minimalPreviousGasUsed = checked((ulong)firstReceiptIndex * GasCostOf.Transaction);
+        ulong minimalPreviousGasUsed = checked((ulong)firstReceiptIndex * minimumTransactionGas);
         return Math.Max(previousGasUsed, minimalPreviousGasUsed);
     }
 
@@ -579,10 +585,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static ulong GetReceiptSize(TxReceipt receipt, RlpBehaviors behaviors) =>
         (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
 
-    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed)
+    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed, ulong minimumTransactionGas)
     {
         ulong receiptGasUsed = GetReceiptGasUsed(receipt, previousGasUsed);
-        ValidateReceiptGasCoversIntrinsicCost(receiptGasUsed);
+        ValidateReceiptGasCoversIntrinsicCost(receiptGasUsed, minimumTransactionGas);
         return receipt.GasUsedTotal;
     }
 
@@ -596,9 +602,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         return receipt.GasUsedTotal - previousGasUsed;
     }
 
-    private static void ValidateReceiptGasCoversIntrinsicCost(ulong receiptGasUsed)
+    private static void ValidateReceiptGasCoversIntrinsicCost(ulong receiptGasUsed, ulong minimumTransactionGas)
     {
-        if (GasCostOf.Transaction > receiptGasUsed)
+        if (minimumTransactionGas > receiptGasUsed)
         {
             throw new SubprotocolException("Intrinsic gas lower bound exceeds block gas used");
         }

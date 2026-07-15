@@ -236,17 +236,23 @@ public class Eth70ProtocolHandlerTests
             Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
     }
 
-    [Test]
-    public async Task Should_request_additional_pages_until_complete()
+    [TestCase(false, GasCostOf.Transaction)]
+    [TestCase(true, GasCostOf.TransactionEip2780)]
+    public async Task Should_request_additional_pages_until_complete(bool isEip2780Enabled, ulong transactionGas)
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+            new() { GasUsedTotal = transactionGas, Logs = [] },
+            new() { GasUsedTotal = transactionGas * 2, Logs = [] },
+            new() { GasUsedTotal = transactionGas * 3, Logs = [] }
         ];
+        SetupBlockMetadata(Keccak.Zero, 1_000_000, transactionGas * 3, 100_000, 100_000, 100_000);
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip2780Enabled.Returns(isEip2780Enabled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
@@ -480,26 +486,60 @@ public class Eth70ProtocolHandlerTests
         Assert.That(exception?.Message, Does.StartWith("Received partial receipts response below minimum size"));
     }
 
-    [Test]
-    public void Should_reject_when_intrinsic_exceeds_block_gas()
+    [TestCase(false, GasCostOf.Transaction - 1, "Intrinsic gas lower bound exceeds block gas used",
+        TestName = "Rejects_receipt_below_legacy_intrinsic_gas_floor")]
+    [TestCase(true, GasCostOf.TransactionEip2780 - 1, "Intrinsic gas lower bound exceeds block gas used",
+        TestName = "Rejects_receipt_below_Eip2780_intrinsic_gas_floor")]
+    [TestCase(true, GasCostOf.TransactionEip2780, null,
+        TestName = "Accepts_receipt_at_Eip2780_intrinsic_gas_floor")]
+    [TestCase(null, GasCostOf.TransactionEip2780, null,
+        TestName = "Accepts_Eip2780_receipt_when_header_is_unavailable")]
+    public async Task Should_validate_receipt_gas_floor_by_spec(
+        bool? isEip2780Enabled,
+        ulong receiptGasUsed,
+        string? expectedException)
     {
+        Hash256 blockHash = TestItem.KeccakA;
         TxReceipt[] receipts =
         [
-            new() { GasUsedTotal = GasCostOf.Transaction / 2, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+            new() { GasUsedTotal = receiptGasUsed, Logs = [] }
         ];
+        if (isEip2780Enabled is bool enabled)
+        {
+            SetupBlockMetadata(blockHash, 1_000_000, receiptGasUsed, 100_000);
+
+            IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+            spec.IsEip2780Enabled.Returns(enabled);
+            _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        }
+        else
+        {
+            _syncManager.FindHeader(blockHash).Returns((BlockHeader?)null);
+        }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), true);
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
-        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+        async Task Act()
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+            Assert.That(result, Has.Count.EqualTo(1));
+        }
 
-        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        if (expectedException is null)
+        {
+            await Act();
+        }
+        else
+        {
+            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            Assert.That(exception?.Message, Is.EqualTo(expectedException));
+        }
     }
 
     [Test]
