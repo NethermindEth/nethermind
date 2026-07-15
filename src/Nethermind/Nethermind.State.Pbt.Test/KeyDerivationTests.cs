@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -25,7 +26,6 @@ public class KeyDerivationTests
         Assert.That(stem.Bytes.SequenceEqual(expected));
         Assert.That(stem.Zone, Is.EqualTo(0));
         Assert.That(stem.IsStorageZone, Is.False);
-        Assert.That(stem.LeafColumn, Is.EqualTo(PbtColumns.AccountLeaves));
     }
 
     [Test]
@@ -45,7 +45,6 @@ public class KeyDerivationTests
         byte[] expected = SpliceBits([1], (Blake3(Address32(Address)), 60), (Blake3([.. Address32(Address), .. treeIndex]), 187));
         Assert.That(stem.Bytes.SequenceEqual(expected));
         Assert.That(stem.IsStorageZone, Is.True);
-        Assert.That(stem.LeafColumn, Is.EqualTo(PbtColumns.StorageLeaves));
     }
 
     [Test]
@@ -62,7 +61,6 @@ public class KeyDerivationTests
         byte[] expected = SpliceBits([0, 0, 0, 1], (Blake3([.. codeHash.Bytes, .. new byte[32]]), 244));
         Assert.That(stem.Bytes.SequenceEqual(expected));
         Assert.That(stem.Zone, Is.EqualTo(1));
-        Assert.That(stem.LeafColumn, Is.EqualTo(PbtColumns.CodeLeaves));
     }
 
     [Test]

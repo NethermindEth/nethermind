@@ -5,7 +5,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 /// <summary>
 /// The 256-leaf subtree of one stem, manipulated as a single binary blob: a 32-byte presence

@@ -139,6 +139,7 @@
   <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
   <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
+  <Project Path="Nethermind.Pbt/Nethermind.Pbt.csproj" />
   <Project Path="Nethermind.Runner/Nethermind.Runner.csproj" />
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />

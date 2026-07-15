@@ -13,13 +13,11 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\Nethermind.Pbt\Nethermind.Pbt.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Blake3" />
   </ItemGroup>
 
 </Project>

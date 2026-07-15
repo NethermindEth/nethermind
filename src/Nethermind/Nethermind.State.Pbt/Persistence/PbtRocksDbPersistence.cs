@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -21,6 +22,15 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
 
     private const int StorageKeyLength = 64;
+
+    /// <summary>Maps a stem to its leaf-blob column by zone (the tree layer is column-agnostic, so the routing lives here).</summary>
+    private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch
+    {
+        0x0 => PbtColumns.AccountLeaves,
+        0x1 => PbtColumns.CodeLeaves,
+        >= 0x8 => PbtColumns.StorageLeaves,
+        _ => throw new NotSupportedException($"Zone {stem.Zone} is reserved"),
+    };
 
     public IPbtPersistence.IReader CreateReader() => new Reader(db.CreateSnapshot());
 
@@ -79,7 +89,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
             return snapshot.GetColumn(PbtColumns.Storage).Get(key);
         }
 
-        public byte[]? GetLeafBlob(in Stem stem) => snapshot.GetColumn(stem.LeafColumn).Get(stem.Bytes);
+        public byte[]? GetLeafBlob(in Stem stem) => snapshot.GetColumn(LeafColumn(stem)).Get(stem.Bytes);
 
         public byte[]? GetTrieNode(in TrieNodeKey key)
         {
@@ -146,7 +156,7 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
 
         public void SetLeafBlob(in Stem stem, byte[]? blob)
         {
-            IWriteBatch leaves = _batch.GetColumnBatch(stem.LeafColumn);
+            IWriteBatch leaves = _batch.GetColumnBatch(LeafColumn(stem));
             if (blob is null || blob.Length == 0)
             {
                 leaves.Remove(stem.Bytes);

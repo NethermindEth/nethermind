@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.Pbt;
 
 /// <summary>The EIP-8297 hash primitives (draft hash function: BLAKE3).</summary>
 public static class Blake3Hash

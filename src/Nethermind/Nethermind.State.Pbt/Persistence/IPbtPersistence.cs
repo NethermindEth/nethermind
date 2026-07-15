@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
