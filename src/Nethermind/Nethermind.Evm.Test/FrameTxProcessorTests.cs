@@ -408,6 +408,30 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_AtomicBatch_FrameFails_RollsBackBatchAndSkipsRemaining()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Batch frame 1: writes storage, succeeds. Frame 2: reverts. Frame 3 (terminal): would
+        // write storage, must be skipped. On frame 2 failure the whole batch rolls back.
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Observer),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
+            Frame(TxFrame.ModeSender, target: TestItem.AddressD));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "payer set by frame 0 outside the batch");
+        Assert.That(tx.Frames![1].IsAtomicBatch, Is.True);
+        AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
+        AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
+    }
+
+    [Test]
     public void Execute_CodelessSenderSelfVerify_WithoutSignature_TransactionInvalid()
     {
         // Default code requires a canonical-hash SECP256K1 signature at index 0; with no
@@ -468,10 +492,10 @@ public class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
     }
 
-    private void AssertStorage(Address address, int slot, UInt256 expected)
+    private void AssertStorage(Address address, int slot, UInt256 expected, string? message = null)
     {
         UInt256 actual = new(_stateProvider.Get(new StorageCell(address, (UInt256)slot)), isBigEndian: true);
-        Assert.That(actual, Is.EqualTo(expected), $"storage slot {slot} of {address}");
+        Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
     }
 
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);

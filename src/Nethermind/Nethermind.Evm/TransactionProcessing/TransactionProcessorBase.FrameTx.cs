@@ -84,10 +84,25 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         List<LogEntry> allLogs = [];
         ulong totalFrameGasUsed = 0;
 
+        // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
+        // and j does not. On any failure inside the run, state rolls back to before the run began
+        // and the remaining frames are skipped (spec: Behavior, atomic batch).
+        bool inBatch = false;
+        Snapshot batchStartSnapshot = default;
+        int batchStartLogCount = 0;
+
         for (int i = 0; i < frames.Length; i++)
         {
             TxFrame frame = frames[i];
             frameContext.CurrentFrameIndex = i;
+
+            // A batch begins at the first flagged frame; snapshot the state and log count before it.
+            if (!inBatch && frame.IsAtomicBatch)
+            {
+                inBatch = true;
+                batchStartSnapshot = WorldState.TakeSnapshot();
+                batchStartLogCount = allLogs.Count;
+            }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
             // interactions); resetting at frame entry also covers the first frame.
@@ -140,6 +155,39 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // An APPROVE that terminated an inner call can leave a signal behind even though
                 // the enclosing frame reverted; its effects must not apply.
                 frameContext.ApprovalScopeSignal = 0;
+            }
+
+            if (inBatch)
+            {
+                if (!frameSucceeded)
+                {
+                    // Unroll the batch: restore state to before it began, drop its logs, and mark
+                    // every remaining frame in the batch as skipped (status 0x3, gas refunded by
+                    // not being consumed). The failed frame keeps its failure receipt.
+                    // EIP8141-ISSUE: the spec does not state the receipt status of frames that ran
+                    // successfully earlier in the batch before the rollback, nor the fate of an
+                    // APPROVE issued inside a rolled-back batch. The mempool forbids atomic-batched
+                    // VERIFY frames and operation frames do not APPROVE, so this prototype supports
+                    // batches of SENDER/DEFAULT operation frames only; earlier frames keep their
+                    // recorded receipts while their state and logs are rolled back.
+                    WorldState.Restore(batchStartSnapshot);
+                    allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
+
+                    int terminal = i;
+                    while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
+                    for (int s = i + 1; s <= terminal && s < frames.Length; s++)
+                    {
+                        frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []);
+                    }
+
+                    i = terminal;
+                    inBatch = false;
+                }
+                else if (!frame.IsAtomicBatch)
+                {
+                    // Terminal frame reached without failure — the batch committed.
+                    inBatch = false;
+                }
             }
         }
 
