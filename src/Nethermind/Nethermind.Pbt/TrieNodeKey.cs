@@ -4,8 +4,9 @@
 namespace Nethermind.Pbt;
 
 /// <summary>
-/// Position of a stem trie node: its depth (0 at the root, up to 248 at the stem level) and the
-/// path bits leading to it, MSB-first, zero-padded past <see cref="Depth"/> for canonical equality.
+/// Position of a stem trie node group: its depth (0 at the root, a multiple of
+/// <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> up to <see cref="PbtTrieNodeGroup.MaxGroupDepth"/>)
+/// and the path bits leading to it, MSB-first, zero-padded past <see cref="Depth"/> for canonical equality.
 /// </summary>
 public readonly record struct TrieNodeKey(byte Depth, Stem Path)
 {
@@ -13,16 +14,15 @@ public readonly record struct TrieNodeKey(byte Depth, Stem Path)
 
     public static readonly TrieNodeKey Root = default;
 
-    /// <summary>The key of this node's child on the given bit (0 = left, 1 = right).</summary>
-    public TrieNodeKey Child(int bit)
+    /// <summary>The key of the child group under boundary slot <paramref name="slot"/> (0..15).</summary>
+    public TrieNodeKey ChildGroup(int slot)
     {
-        if (bit == 0) return new TrieNodeKey((byte)(Depth + 1), Path);
-
         Stem currentPath = Path;
         Span<byte> path = stackalloc byte[Stem.Length];
         currentPath.Bytes.CopyTo(path);
-        path[Depth >> 3] |= (byte)(1 << (7 - (Depth & 7)));
-        return new TrieNodeKey((byte)(Depth + 1), new Stem(path));
+        // Depth is a multiple of 4, so the four new path bits fill one nibble of the byte at Depth
+        path[Depth >> 3] |= (byte)((Depth & 4) == 0 ? slot << 4 : slot);
+        return new TrieNodeKey((byte)(Depth + PbtTrieNodeGroup.LevelsPerGroup), new Stem(path));
     }
 
     /// <summary>The 32-byte database key: the depth byte followed by the padded path bytes.</summary>
