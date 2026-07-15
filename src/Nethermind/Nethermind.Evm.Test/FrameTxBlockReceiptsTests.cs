@@ -68,7 +68,6 @@ public class FrameTxBlockReceiptsTests
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,
         };
-        tx.Hash = tx.CalculateHash();
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -83,7 +82,7 @@ public class FrameTxBlockReceiptsTests
         receiptsTracer.EndBlockTrace();
 
         Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(receiptsTracer.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
 
         TxReceipt receipt = receiptsTracer.TxReceipts[0];
         Assert.That(receipt.TxType, Is.EqualTo(TxType.FrameTx));
