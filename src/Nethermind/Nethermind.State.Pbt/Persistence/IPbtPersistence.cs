@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Int256;
+
+namespace Nethermind.State.Pbt.Persistence;
+
+/// <summary>
+/// Durable storage of one world state: flat account/slot entries, zone-partitioned stem leaf
+/// blobs, stem trie nodes, and the <see cref="StateId"/> they collectively represent.
+/// </summary>
+public interface IPbtPersistence
+{
+    IReader CreateReader();
+
+    /// <summary>
+    /// Starts an atomic batch advancing the persisted state <paramref name="from"/> →
+    /// <paramref name="to"/>; throws when the currently persisted state is not <paramref name="from"/>.
+    /// Self-destruct range deletes are computed against the pre-batch state, so they must be
+    /// applied before the slot writes of the same batch.
+    /// </summary>
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to);
+
+    public interface IReader : IDisposable
+    {
+        StateId CurrentState { get; }
+        Account? GetAccount(Address address);
+
+        /// <summary>Returns the stored slot value, or null when absent (= zero).</summary>
+        byte[]? GetSlot(Address address, in UInt256 slot);
+
+        byte[]? GetLeafBlob(in Stem stem);
+        byte[]? GetTrieNode(in TrieNodeKey key);
+    }
+
+    public interface IWriteBatch : IDisposable
+    {
+        /// <summary>Null deletes the account entry.</summary>
+        void SetAccount(Address address, Account? account);
+
+        /// <summary>Null (= zero) deletes the slot entry.</summary>
+        void SetSlot(Address address, in UInt256 slot, byte[]? value);
+
+        /// <summary>Deletes every stored slot of the address.</summary>
+        void SelfDestructStorage(Address address);
+
+        /// <summary>Null or empty deletes the blob.</summary>
+        void SetLeafBlob(in Stem stem, byte[]? blob);
+
+        /// <summary>Null deletes the node.</summary>
+        void SetTrieNode(in TrieNodeKey key, byte[]? node);
+    }
+}

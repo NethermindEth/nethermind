@@ -1,0 +1,21 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Evm.State;
+
+namespace Nethermind.State.Pbt.ScopeProvider;
+
+public class PbtScopeProvider(IDb codeDb, IPbtDbManager manager, bool isReadOnly) : IWorldStateScopeProvider
+{
+    private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+
+    public bool HasRoot(BlockHeader? baseBlock) => manager.HasStateForBlock(new StateId(baseBlock));
+
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    {
+        StateId stateId = new(baseBlock);
+        return new PbtWorldStateScope(stateId, manager.GatherBundle(stateId, isReadOnly), _codeDb, manager, isReadOnly);
+    }
+}

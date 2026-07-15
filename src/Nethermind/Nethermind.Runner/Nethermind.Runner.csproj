@@ -83,6 +83,7 @@
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
     <ProjectReference Include="..\Nethermind.StateDiff.Core\Nethermind.StateDiff.Core.csproj" />
     <ProjectReference Include="..\Nethermind.StateDiffsWriter\Nethermind.StateDiffsWriter.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Pbt\Nethermind.State.Pbt.csproj" />
   </ItemGroup>
 
   <ItemGroup>

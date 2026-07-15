@@ -1159,6 +1159,24 @@
           "System.IO.Hashing": "[10.0.9, )"
         }
       },
+      "nethermind.state.pbt": {
+        "type": "Project",
+        "dependencies": {
+          "Blake3": "[3.0.0, )",
+          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[1.40.0-unstable, )",
+          "Nethermind.Config": "[1.40.0-unstable, )",
+          "Nethermind.Core": "[1.40.0-unstable, )",
+          "Nethermind.Db": "[1.40.0-unstable, )",
+          "Nethermind.Evm": "[1.40.0-unstable, )",
+          "Nethermind.Init": "[1.40.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.40.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
+          "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.Synchronization": "[1.40.0-unstable, )",
+          "Nethermind.Trie": "[1.40.0-unstable, )"
+        }
+      },
       "nethermind.statediff.core": {
         "type": "Project",
         "dependencies": {
@@ -1290,6 +1308,12 @@
         "dependencies": {
           "Autofac": "9.1.0"
         }
+      },
+      "Blake3": {
+        "type": "CentralTransitive",
+        "requested": "[3.0.0, )",
+        "resolved": "3.0.0",
+        "contentHash": "b+/aagZA/gzkxTlOvZ48Tpb6bpNydOfFtmtfhWbiDhpOstq1eIn0oBTp1sSSguhbDFgLOi+Q5dHbFlpOPoJuwQ=="
       },
       "BouncyCastle.Cryptography": {
         "type": "CentralTransitive",
