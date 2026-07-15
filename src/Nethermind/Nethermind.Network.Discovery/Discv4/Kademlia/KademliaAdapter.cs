@@ -406,8 +406,7 @@ public sealed class KademliaAdapter(
         } ping &&
             ping.FarPublicKey.Equals(node.Id) &&
             ping.FarAddress.Equals(discoveryEndpoint) &&
-            (enrNode is null ||
-             ping.EnrSequence is { } advertisedSequence && advertisedSequence > enrNode.Enr.EnrSequence);
+            enrNode is null;
         Node peerCandidate;
         if (useSignedPing)
         {

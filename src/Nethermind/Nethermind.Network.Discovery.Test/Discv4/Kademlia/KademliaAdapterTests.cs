@@ -398,6 +398,61 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Ping_should_release_peer_candidate_reservation_when_channel_is_full(CancellationToken token)
+        {
+            const int channelCapacity = 64;
+            Node[] nodes = Enumerable.Range(0, channelCapacity + 1)
+                .Select(index =>
+                {
+                    IPAddress address = IPAddress.Parse($"10.0.0.{index + 1}");
+                    NodeRecord record = TestEnrBuilder.BuildSigned(
+                        TestItem.PrivateKeys[index],
+                        address,
+                        tcpPort: 30303,
+                        udpPort: 30303);
+                    return new Node(TestItem.PublicKeys[index], new IPEndPoint(address, 30303))
+                    {
+                        Enr = record
+                    };
+                })
+                .ToArray();
+            Dictionary<IPEndPoint, PublicKey> nodeIds = nodes.ToDictionary(node => node.DiscoveryAddress, node => node.Id);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(callInfo =>
+            {
+                PingMsg sent = (PingMsg)callInfo[0]!;
+                sent.Mdc = TestItem.KeccakA.ValueHash256;
+                PongMsg pong = new(
+                    nodeIds[sent.FarAddress!],
+                    _timestamper.UnixTime.SecondsLong + 1,
+                    sent.Mdc!.Value)
+                {
+                    FarAddress = sent.FarAddress
+                };
+                return _adapter.OnIncomingMsg(pong);
+            });
+
+            foreach (Node node in nodes)
+            {
+                Assert.That(await _adapter.Ping(node, token), Is.True);
+            }
+
+            await using (IAsyncEnumerator<Node> enumerator = _adapter.ReadPeerCandidates(token).GetAsyncEnumerator(token))
+            {
+                for (int i = 0; i < channelCapacity; i++)
+                {
+                    Assert.That(await enumerator.MoveNextAsync(), Is.True);
+                }
+            }
+
+            await AssertNoPeerCandidate(token);
+
+            Node droppedNode = nodes[^1];
+            Assert.That(await _adapter.Ping(droppedNode, token), Is.True);
+            Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(droppedNode.Id));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task Ping_should_not_bond_requested_endpoint_when_pong_source_differs(CancellationToken token)
         {
             IPEndPoint pongFarAddress = new(IPAddress.Parse("192.168.1.4"), _receiver.Address.Port);
