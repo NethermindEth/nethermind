@@ -145,12 +145,15 @@ public class BaseFlatPersistenceReaderTests
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
             throw new AssertionException("Point reads are not expected.");
 
-        public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        public void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
         {
             MultiGetCalls++;
-            Keys = keys;
+            Keys = new byte[values.Length][];
             for (int i = 0; i < values.Length; i++)
+            {
+                Keys[i] = keys.Slice(i * keyLength, keyLength).ToArray();
                 values[i] = [(byte)(i + 1)];
+            }
         }
 
         public byte[]? FirstKey => null;

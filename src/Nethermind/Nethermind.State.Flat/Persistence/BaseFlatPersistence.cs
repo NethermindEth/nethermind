@@ -96,15 +96,11 @@ public static class BaseFlatPersistence
             if (addresses.Length != accounts.Length)
                 throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
 
-            byte[][] keys = new byte[addresses.Length][];
+            byte[] keys = new byte[addresses.Length * AccountKeyLength];
             for (int i = 0; i < addresses.Length; i++)
-            {
-                byte[] key = new byte[AccountKeyLength];
-                EncodeAccountKeyHashed(key, addresses[i]);
-                keys[i] = key;
-            }
+                EncodeAccountKeyHashed(keys.AsSpan(i * AccountKeyLength, AccountKeyLength), addresses[i]);
 
-            state.MultiGet(keys, accounts);
+            state.MultiGet(keys, AccountKeyLength, accounts);
         }
 
         [SkipLocalsInit]
@@ -129,16 +125,12 @@ public static class BaseFlatPersistence
             if (addresses.Length != slots.Length || addresses.Length != values.Length || addresses.Length != found.Length)
                 throw new ArgumentException("Addresses, slots, values, and found flags must have the same length.", nameof(values));
 
-            byte[][] keys = new byte[addresses.Length][];
+            byte[] keys = new byte[addresses.Length * StorageKeyLength];
             for (int i = 0; i < addresses.Length; i++)
-            {
-                byte[] key = new byte[StorageKeyLength];
-                EncodeStorageKeyHashedWithShortPrefix(key, addresses[i], slots[i]);
-                keys[i] = key;
-            }
+                EncodeStorageKeyHashedWithShortPrefix(keys.AsSpan(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i]);
 
             byte[]?[] encodedValues = new byte[]?[addresses.Length];
-            storage.MultiGet(keys, encodedValues);
+            storage.MultiGet(keys, StorageKeyLength, encodedValues);
             for (int i = 0; i < encodedValues.Length; i++)
             {
                 byte[]? encodedValue = encodedValues[i];
