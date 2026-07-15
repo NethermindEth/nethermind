@@ -765,8 +765,8 @@
         const IFACE_ERC1155 = 'd9b67a26';
         const TRANSFER_SINGLE_TOPIC = '0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62';
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
-        const MAX_NFT_THUMBS = 4;
-        const NFT_ID_CAP = 60;                     // most owned ids we try to discover per collection
+        const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
+        const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -1417,10 +1417,16 @@
             document.body.append(overlay);
         }
 
+        // collections shown in full (thumbsKey) — a Set so the expanded state survives card re-renders
+        const nftExpanded = new Set();
+
         function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
-            for (const thumb of cached.thumbs) {
+            const key = owner + '|' + node.chainId + '|' + collection.address.toLowerCase();
+            const expanded = nftExpanded.has(key);
+            const shown = expanded ? cached.thumbs : cached.thumbs.slice(0, MAX_NFT_THUMBS);
+            for (const thumb of shown) {
                 if (thumb.src) {
                     const img = el('img');
                     img.src = thumb.src;
@@ -1431,29 +1437,22 @@
                     box.append(el('span', 'more number', thumb.title));
                 }
             }
-            const remaining = (cached.ids?.length ?? cached.count) - cached.thumbs.length;
-            if (remaining > 0 && cached.thumbs.length > 0) {
-                const more = el('span', 'more expand', '+' + remaining + ' more');
-                more.title = 'Show more';
-                more.onclick = async () => {
-                    more.textContent = '…';
-                    more.onclick = null;
-                    try {
-                        const start = cached.thumbs.length;
-                        const next = cached.ids.slice(start, start + MAX_NFT_THUMBS * 3);
-                        cached.thumbs.push(...await fetchThumbsForIds(node, collection, next, cached.kind));
-                    } catch { /* keep what we have */ }
-                    fillThumbs(box, cached, node, owner, collection);
-                };
+            // "+N more" / "show less" toggle over the already-loaded thumbs — instant, no fetch on click
+            const hidden = cached.thumbs.length - shown.length;
+            if (!expanded && hidden > 0) {
+                const more = el('span', 'more expand', '+' + hidden + ' more');
+                more.title = 'Show all';
+                more.onclick = () => { nftExpanded.add(key); fillThumbs(box, cached, node, owner, collection); };
                 box.append(more);
-            }
-            if (cached.thumbs.length > MAX_NFT_THUMBS) {
+            } else if (expanded && cached.thumbs.length > MAX_NFT_THUMBS) {
                 const less = el('span', 'more expand', 'show less');
-                less.onclick = () => {
-                    cached.thumbs.length = MAX_NFT_THUMBS;
-                    fillThumbs(box, cached, node, owner, collection);
-                };
+                less.onclick = () => { nftExpanded.delete(key); fillThumbs(box, cached, node, owner, collection); };
                 box.append(less);
+            }
+            // once expanded: show that art is still streaming in, or that holdings exceed what node data revealed
+            if (expanded) {
+                if (cached.thumbs.length < (cached.ids?.length ?? 0)) box.append(el('span', 'more', 'loading…'));
+                else { const missing = (cached.count ?? 0) - cached.thumbs.length; if (missing > 0) box.append(el('span', 'more', missing + ' more not shown')); }
             }
         }
 
@@ -1483,6 +1482,8 @@
                                 ids = await heldTokenIds(node, collection, entry.address, kind, erc721Count || 0);
                             }
                             const count = kind === 'erc1155' ? ids.length : (erc721Count ?? 0);
+                            // load the first row quickly for immediate display, then eagerly load the rest
+                            // in the background so "show all" is instant (art is on-chain data: URIs — no external fetch)
                             const thumbs = ids.length ? await fetchThumbsForIds(node, collection, ids.slice(0, MAX_NFT_THUMBS), kind) : [];
                             nftCache.set(key, { count, ids, thumbs, kind, sig });
 
@@ -1492,6 +1493,16 @@
                                 if (cell) { cell.textContent = String(count); cell.classList.remove('spin'); }
                             }
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
+
+                            if (ids.length > MAX_NFT_THUMBS) {
+                                const rest = await fetchThumbsForIds(node, collection, ids.slice(MAX_NFT_THUMBS), kind);
+                                const c = nftCache.get(key);
+                                if (c && c.sig === sig) {   // holdings unchanged since first paint
+                                    c.thumbs.push(...rest);
+                                    const b = document.querySelector(`[data-thumbs="${key}"]`);
+                                    if (b) fillThumbs(b, c, node, entry.address, collection);
+                                }
+                            }
                         }
                     }
                 }

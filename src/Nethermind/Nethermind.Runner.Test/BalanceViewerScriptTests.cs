@@ -330,6 +330,76 @@ public class BalanceViewerScriptTests
         Assert.That(result, Is.EqualTo("{\"priced\":\"200000000000\",\"rejected\":\"null\"}")); // $2000.00000000, thin rejected
     }
 
+    // Minimal DOM shim so the display-only fillThumbs can run under bare V8: el() needs
+    // document.createElement + className/textContent, and the box needs append/replaceChildren.
+    private const string DomShim = """
+        globalThis.document = {
+            createElement: (tag) => ({
+                tag, className: '', textContent: '', src: null, title: '', onclick: null,
+                children: [],
+                append(...n) { this.children.push(...n); },
+                replaceChildren(...n) { this.children = [...n]; },
+            }),
+        };
+        globalThis.__mkThumbs = (n) => Array.from({ length: n }, (_, i) => ({ src: 'data:image/svg+xml,x', title: '#' + i }));
+        globalThis.__summary = (box) => box.children.map((c) => c.tag === 'img' ? 'img' : c.textContent).join('|');
+        globalThis.__click = (box, label) => box.children.find((c) => c.textContent === label).onclick();
+        """;
+
+    [Test]
+    public void FillThumbs_TogglesBetweenPreviewAndAll()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim);
+        // 10 fully-loaded thumbs: collapsed shows MAX_NFT_THUMBS (4) + "+6 more"; expanding shows all 10 + "show less"
+        object result = engine.Evaluate("""
+            (function () {
+                const node = { chainId: 1 };
+                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
+                const cached = { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(10), kind: 'enum721' };
+                const box = document.createElement('div');
+                fillThumbs(box, cached, node, '0xabc', collection);
+                const collapsed = __summary(box);
+                __click(box, '+6 more');
+                const expanded = __summary(box);
+                __click(box, 'show less');
+                const recollapsed = __summary(box);
+                return JSON.stringify({ collapsed, expanded, recollapsed });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo(
+            "{\"collapsed\":\"img|img|img|img|+6 more\","
+          + "\"expanded\":\"img|img|img|img|img|img|img|img|img|img|show less\","
+          + "\"recollapsed\":\"img|img|img|img|+6 more\"}"));
+    }
+
+    [Test]
+    public void FillThumbs_NotesStillLoadingAndUndiscoverableHoldings()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim);
+        // expanded while art is still streaming (6 of 10 loaded) -> "loading…";
+        // expanded when holdings exceed what node data could discover (5 shown, balanceOf 8) -> "3 more not shown"
+        object result = engine.Evaluate("""
+            (function () {
+                const node = { chainId: 1 };
+                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
+                const loadingBox = document.createElement('div');
+                fillThumbs(loadingBox, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(6), kind: 'enum721' }, node, '0xa', collection);
+                __click(loadingBox, '+2 more');
+                const loading = __summary(loadingBox);
+                const truncBox = document.createElement('div');
+                fillThumbs(truncBox, { count: 8, ids: __mkThumbs(5), thumbs: __mkThumbs(5), kind: 'enum721' }, node, '0xb', collection);
+                __click(truncBox, '+1 more');
+                const truncated = __summary(truncBox);
+                return JSON.stringify({ loading, truncated });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo(
+            "{\"loading\":\"img|img|img|img|img|img|show less|loading…\","
+          + "\"truncated\":\"img|img|img|img|img|show less|3 more not shown\"}"));
+    }
+
     [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
