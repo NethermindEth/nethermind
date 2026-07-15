@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj" />
   </ItemGroup>
 </Project>
