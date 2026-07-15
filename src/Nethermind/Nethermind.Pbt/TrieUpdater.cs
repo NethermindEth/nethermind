@@ -31,9 +31,10 @@ public interface IPbtStore
 /// The stem trie is the canonical binary trie of the stem set: an internal node exists at every
 /// path prefix shared by two or more stems, and each stem node sits at the shortest prefix unique
 /// to it — the EIP's minimal-internal-node rule. The batch is applied bulk-set style (mirroring
-/// <c>PatriciaTree.BulkSet</c>): the write entries are sorted once by key and a single recursive
-/// descent over the groups partitions them into the sixteen boundary slots of each group, so every
-/// shared prefix is walked only once. A range that collapses to a single stem folds that stem's
+/// <c>PatriciaTree.BulkSet</c>): the write entries — one per stem, already grouped by the producer —
+/// are sorted once by stem and a single recursive descent over the groups partitions them into the
+/// sixteen boundary slots of each group, so every shared prefix is walked only once. A range that
+/// collapses to a single stem folds that stem's
 /// leaf blob and hands the stem node up to be placed at its shortest unique prefix by the bottom-up
 /// rebuild of the enclosing groups; hashes are computed on the way back up. Groups and blobs are
 /// read/written through <see cref="IPbtStore"/>; untouched child groups are never read or written.
@@ -51,19 +52,15 @@ public static class TrieUpdater
 
     private sealed class Updater(IPbtStore store)
     {
-        // Reused scratch for one stem's sub-index writes; a base case fully consumes it before the
-        // next (DFS visits stems one at a time), so a single buffer cleared per stem suffices.
-        private readonly Dictionary<byte, ValueHash256> _stemChanges = [];
-
         public ValueHash256 Run(PbtWriteBatch changes)
         {
-            PbtWriteBatch.Entry[] entries = SortedDistinctEntries(changes);
+            PbtWriteBatch.StemEntry[] entries = SortedStems(changes);
             return ApplyGroup(TrieNodeKey.Root, entries, GetGroup(TrieNodeKey.Root), default).NodeHash();
         }
 
         /// <summary>
-        /// Applies <paramref name="entries"/> — a non-empty range of distinct-key writes sharing bits
-        /// <c>[0, key.Depth)</c>, sorted ascending by key — to the group at <paramref name="key"/>,
+        /// Applies <paramref name="entries"/> — a non-empty range of one-per-stem writes sharing bits
+        /// <c>[0, key.Depth)</c>, sorted ascending by stem — to the group at <paramref name="key"/>,
         /// given its current <paramref name="existing"/> content or a stem <paramref name="pushed"/>
         /// down from the parent's boundary slot (mutually exclusive: a boundary stem implies no child
         /// group). Writes or removes every affected group blob at or below <paramref name="key"/> and
@@ -71,7 +68,7 @@ public static class TrieUpdater
         /// A stem result is not written here: it hoists into the parent, cascading across group
         /// boundaries (except at the root group, whose root position may hold a stem).
         /// </summary>
-        private Slot ApplyGroup(in TrieNodeKey key, ReadOnlySpan<PbtWriteBatch.Entry> entries, PbtTrieNodeGroup? existing, in Slot pushed)
+        private Slot ApplyGroup(in TrieNodeKey key, ReadOnlySpan<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup? existing, in Slot pushed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -84,10 +81,10 @@ public static class TrieUpdater
                 // very stem being updated (possibly relocating). Fold the blob and hand the stem
                 // node up without descending; an enclosing fold places it. This also serves depth
                 // 248, where every remaining range is necessarily a single stem.
-                Stem stem = StemOf(entries[0]);
-                if (stem == StemOf(entries[^1]) && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
+                Stem stem = entries[0].Stem;
+                if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
                 {
-                    byte[] blob = ComputeBlob(stem, entries, out ValueHash256 subtreeRoot);
+                    byte[] blob = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
                     return blob.Length == 0 ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
                 }
             }
@@ -130,7 +127,7 @@ public static class TrieUpdater
             changed.Clear();
             for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
             {
-                ReadOnlySpan<PbtWriteBatch.Entry> bucket = entries[bounds[slot]..bounds[slot + 1]];
+                ReadOnlySpan<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
                 if (bucket.IsEmpty)
                 {
                     // untouched: reuse the cached boundary hash / stem, never loading the child group
@@ -200,65 +197,52 @@ public static class TrieUpdater
             return PbtTrieNodeGroup.InternalSlot(hash);
         }
 
-        /// <summary>Folds one stem's writes (<paramref name="stemEntries"/>) into its leaf blob, persists it, and returns it.</summary>
-        private byte[] ComputeBlob(in Stem stem, ReadOnlySpan<PbtWriteBatch.Entry> stemEntries, out ValueHash256 subtreeRoot)
+        /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and returns it.</summary>
+        private byte[] ComputeBlob(in Stem stem, IReadOnlyDictionary<byte, ValueHash256> changes, out ValueHash256 subtreeRoot)
         {
-            _stemChanges.Clear();
-            for (int i = 0; i < stemEntries.Length; i++)
-            {
-                _stemChanges[stemEntries[i].Key.Bytes[Stem.Length]] = stemEntries[i].Value;
-            }
-
             using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
-            byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), _stemChanges, out subtreeRoot);
+            byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, out subtreeRoot);
             store.SetLeafBlob(stem, newBlob);
             return newBlob;
         }
 
         /// <summary>
-        /// Splits <paramref name="entries"/> (sorted ascending by key, sharing bits
+        /// Splits <paramref name="entries"/> (sorted ascending by stem, sharing bits
         /// <c>[0, depth)</c>) into the sixteen boundary buckets of the group at
         /// <paramref name="depth"/>: bucket i is <paramref name="bounds"/>[i]..[i+1].
         /// </summary>
-        private static void Partition(ReadOnlySpan<PbtWriteBatch.Entry> entries, int depth, Span<int> bounds)
+        private static void Partition(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, Span<int> bounds)
         {
             int index = 0;
             bounds[0] = 0;
             for (int bucket = 0; bucket < PbtTrieNodeGroup.BoundarySlots; bucket++)
             {
-                while (index < entries.Length && NibbleOf(entries[index], depth) == bucket) index++;
+                while (index < entries.Length && NibbleOf(entries[index].Stem, depth) == bucket) index++;
                 bounds[bucket + 1] = index;
             }
 
             Debug.Assert(index == entries.Length);
         }
 
-        /// <summary>Collapses duplicate keys (last-write-wins) and returns the entries sorted ascending by key.</summary>
-        private static PbtWriteBatch.Entry[] SortedDistinctEntries(PbtWriteBatch changes)
+        /// <summary>Materializes the batch's per-stem writes and returns them sorted ascending by stem.</summary>
+        private static PbtWriteBatch.StemEntry[] SortedStems(PbtWriteBatch changes)
         {
-            Dictionary<ValueHash256, ValueHash256> byKey = new(changes.Count);
-            ReadOnlySpan<PbtWriteBatch.Entry> entries = changes.Entries;
-            for (int i = 0; i < entries.Length; i++)
-            {
-                byKey[entries[i].Key] = entries[i].Value;
-            }
-
-            PbtWriteBatch.Entry[] sorted = new PbtWriteBatch.Entry[byKey.Count];
+            PbtWriteBatch.StemEntry[] sorted = new PbtWriteBatch.StemEntry[changes.Count];
             int index = 0;
-            foreach ((ValueHash256 key, ValueHash256 value) in byKey)
+            foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in changes.Stems)
             {
-                sorted[index++] = new PbtWriteBatch.Entry(key, value);
+                sorted[index++] = new PbtWriteBatch.StemEntry(stem, stemChanges);
             }
 
-            Array.Sort(sorted, static (a, b) => a.Key.CompareTo(b.Key));
+            // locals, not inline: a span over the by-value Stem temporary of a.Stem/b.Stem dangles
+            Array.Sort(sorted, static (a, b) =>
+            {
+                Stem left = a.Stem;
+                Stem right = b.Stem;
+                return left.Bytes.SequenceCompareTo(right.Bytes);
+            });
             return sorted;
         }
-
-        /// <summary>The 31-byte stem of an entry's 32-byte tree key.</summary>
-        private static Stem StemOf(in PbtWriteBatch.Entry entry) => new(entry.Key.Bytes[..Stem.Length]);
-
-        /// <summary>The entry's four stem bits at <paramref name="depth"/> (a multiple of 4): its boundary slot in the group at that depth.</summary>
-        private static int NibbleOf(in PbtWriteBatch.Entry entry, int depth) => NibbleAt(entry.Key.Bytes[depth >> 3], depth);
 
         private static int NibbleOf(in Stem stem, int depth) => NibbleAt(stem.Bytes[depth >> 3], depth);
 

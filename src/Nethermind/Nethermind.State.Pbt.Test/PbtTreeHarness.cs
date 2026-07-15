@@ -42,10 +42,10 @@ public sealed class PbtTreeHarness : IPbtStore
     /// <summary>Applies key/value writes (empty/zero value = clear) and returns the new root.</summary>
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
-        using PbtWriteBatch batch = new(estimatedEntries: 64);
+        using PbtWriteBatch batch = new(estimatedStems: 64);
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            batch.Add(new ValueHash256(key), value ?? default);
+            batch.Add(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], value ?? default);
         }
 
         _root = TrieUpdater.UpdateRoot(this, _root, batch);
