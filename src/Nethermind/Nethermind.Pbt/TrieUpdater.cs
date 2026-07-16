@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 using Slot = Nethermind.Pbt.PbtTrieNodeGroup.Slot;
@@ -16,9 +16,9 @@ namespace Nethermind.Pbt;
 /// </summary>
 public interface IPbtStore
 {
-    MemoryManager<byte>? GetTrieNode(in TrieNodeKey key);
+    RefCountingMemory? GetTrieNode(in TrieNodeKey key);
     void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node);
-    MemoryManager<byte>? GetLeafBlob(in Stem stem);
+    RefCountingMemory? GetLeafBlob(in Stem stem);
     void SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob);
 }
 
@@ -48,20 +48,20 @@ public static class TrieUpdater
     /// blobs and trie node groups to <paramref name="store"/>, and returns the new root (32 zero
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes) =>
-        changes.Count == 0 ? currentRoot : new Updater(store).Run(changes);
+    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider) =>
+        changes.Count == 0 ? currentRoot : new Updater(store, memoryProvider).Run(changes);
 
-    private sealed class Updater(IPbtStore store)
+    private sealed class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider)
     {
         public ValueHash256 Run(PbtWriteBatch changes)
         {
             // No global sort: each group radix-partitions its own range in place during the descent.
             PbtWriteBatch.StemEntry[] entries = changes.Entries.ToArray();
-            using MemoryManager<byte>? rootData = store.GetTrieNode(TrieNodeKey.Root);
+            using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             return ApplyGroup(TrieNodeKey.Root, entries, Wrap(rootData), default).NodeHash();
         }
 
-        private static PbtTrieNodeGroup Wrap(MemoryManager<byte>? data) =>
+        private static PbtTrieNodeGroup Wrap(RefCountingMemory? data) =>
             data is null ? default : PbtTrieNodeGroup.Decode(data.GetSpan());
 
         /// <summary>
@@ -145,7 +145,7 @@ public static class TrieUpdater
                 TrieNodeKey childKey = key.ChildGroup(slot);
                 if (occupants[slot].Kind == NodeKind.Internal)
                 {
-                    using MemoryManager<byte>? childData = store.GetTrieNode(childKey);
+                    using RefCountingMemory? childData = store.GetTrieNode(childKey);
                     results[slot] = ApplyGroup(childKey, bucket, Wrap(childData), default);
                 }
                 else
@@ -213,8 +213,8 @@ public static class TrieUpdater
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
         private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
         {
-            using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
-            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes);
+            using RefCountingMemory? prior = store.GetLeafBlob(stem);
+            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, memoryProvider);
             subtreeRoot = newBlob.SubtreeRoot;
             store.SetLeafBlob(stem, newBlob.Blob);
             return newBlob.IsEmpty;

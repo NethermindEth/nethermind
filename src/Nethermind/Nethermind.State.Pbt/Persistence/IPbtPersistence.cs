@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 
@@ -31,8 +32,8 @@ public interface IPbtPersistence
         /// <summary>Returns the stored slot value, or zero when absent.</summary>
         EvmWord GetSlot(Address address, in UInt256 slot);
 
-        byte[]? GetLeafBlob(in Stem stem);
-        byte[]? GetTrieNode(in TrieNodeKey key);
+        RefCountingMemory? GetLeafBlob(in Stem stem);
+        RefCountingMemory? GetTrieNode(in TrieNodeKey key);
     }
 
     public interface IWriteBatch : IDisposable

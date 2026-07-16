@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -88,22 +87,22 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         using PbtWriteBatch changes = BuildChanges();
-        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes).ToHash256();
+        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance).ToHash256();
         _rootDirty = false;
     }
 
     // ---- IPbtStore: the updater reads prior state from the per-block overlays (falling back to the bundle)
     // and writes new state back into them, so a fold composes on top of any earlier fold this block ----
 
-    MemoryManager<byte>? IPbtStore.GetTrieNode(in TrieNodeKey key) =>
+    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key) =>
         _nodeOverlay.TryGetValue(key, out byte[]? node)
-            ? ArrayMemoryManager.From(node)
-            : ArrayMemoryManager.From(Bundle.GetTrieNode(key));
+            ? RefCountingMemory.WrappingOrNull(node)
+            : Bundle.GetTrieNode(key);
 
-    MemoryManager<byte>? IPbtStore.GetLeafBlob(in Stem stem) =>
+    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem) =>
         _blobOverlay.TryGetValue(stem, out byte[]? blob)
-            ? ArrayMemoryManager.From(blob)
-            : ArrayMemoryManager.From(Bundle.GetLeafBlob(stem));
+            ? RefCountingMemory.WrappingOrNull(blob)
+            : Bundle.GetLeafBlob(stem);
 
     void IPbtStore.SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node) => _nodeOverlay[key] = node.Length == 0 ? null : node.ToArray();
 
@@ -220,8 +219,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// <summary>Reads the code size preserved in the account's prior <c>BASIC_DATA</c> leaf (0 if the account is new).</summary>
     private uint PriorCodeSize(in Stem headerStem)
     {
-        byte[]? prior = Bundle.GetLeafBlob(headerStem);
-        return prior is not null && StemLeafBlob.TryGetValue(prior, PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
+        using RefCountingMemory? prior = Bundle.GetLeafBlob(headerStem);
+        return prior is not null && StemLeafBlob.TryGetValue(prior.GetSpan(), PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
             ? PbtKeyDerivation.ReadBasicDataCodeSize(basicData)
             : 0;
     }

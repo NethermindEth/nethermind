@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -113,8 +114,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public StateId CurrentState => StateId.PreGenesis;
         public Account? GetAccount(Address address) => null;
         public EvmWord GetSlot(Address address, in UInt256 slot) => default;
-        public byte[]? GetLeafBlob(in Stem stem) => null;
-        public byte[]? GetTrieNode(in TrieNodeKey key) => null;
+        public RefCountingMemory? GetLeafBlob(in Stem stem) => null;
+        public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => null;
 
         public void Dispose()
         {

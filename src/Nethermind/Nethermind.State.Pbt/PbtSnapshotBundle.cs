@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -56,7 +57,9 @@ public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IRea
     }
 
     /// <summary>Returns the complete leaf blob of the stem, or null when the stem does not exist.</summary>
-    public byte[]? GetLeafBlob(in Stem stem)
+    /// <remarks>Layer/write-buffer hits are wrapped without copying (their arrays are owned by the layer);
+    /// the reader fallthrough returns a pooled buffer the caller must dispose.</remarks>
+    public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
         if (_writeBuffer is not null && _writeBuffer.LeafBlobs.TryGetValue(stem, out byte[]? blob)) return AsFound(blob);
 
@@ -68,17 +71,17 @@ public class PbtSnapshotBundle(List<PbtSnapshot> snapshots, IPbtPersistence.IRea
         return reader.GetLeafBlob(stem);
 
         // layers store an empty blob as the "stem deleted" marker, which must stop the walk
-        static byte[]? AsFound(byte[] blob) => blob.Length == 0 ? null : blob;
+        static RefCountingMemory? AsFound(byte[] blob) => blob.Length == 0 ? null : RefCountingMemory.Wrapping(blob);
     }
 
-    public byte[]? GetTrieNode(in TrieNodeKey key)
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
     {
-        if (_writeBuffer is not null && _writeBuffer.TrieNodes.TryGetValue(key, out byte[]? node)) return node;
+        if (_writeBuffer is not null && _writeBuffer.TrieNodes.TryGetValue(key, out byte[]? node)) return RefCountingMemory.WrappingOrNull(node);
 
         foreach (PbtSnapshot snapshot in snapshots)
         {
             // a found null is a tombstone: the node was removed at this layer
-            if (snapshot.Content.TrieNodes.TryGetValue(key, out node)) return node;
+            if (snapshot.Content.TrieNodes.TryGetValue(key, out node)) return RefCountingMemory.WrappingOrNull(node);
         }
 
         return reader.GetTrieNode(key);
