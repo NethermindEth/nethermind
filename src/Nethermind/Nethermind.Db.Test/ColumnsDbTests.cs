@@ -99,10 +99,15 @@ public class ColumnsDbTests
         column.Set([3, 4], [30]);
         byte[] keys = [3, 4, 5, 6, 1, 2];
         byte[]?[] values = new byte[]?[3];
+        long readsBefore = _db.GatherMetric().TotalReads;
 
         column.MultiGet(keys, 2, values);
 
-        Assert.That(values, Is.EqualTo(new byte[]?[] { [30], null, [10] }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values, Is.EqualTo(new byte[]?[] { [30], null, [10] }));
+            Assert.That(_db.GatherMetric().TotalReads - readsBefore, Is.EqualTo(3));
+        }
     }
 
     [Test]

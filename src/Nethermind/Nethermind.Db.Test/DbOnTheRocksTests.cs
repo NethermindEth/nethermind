@@ -448,10 +448,15 @@ namespace Nethermind.Db.Test
             _db[keys[1]] = null;
             _db[keys[2]] = [30];
             byte[]?[] values = new byte[]?[keys.Length];
+            long readsBefore = _db.GatherMetric().TotalReads;
 
             snapshot.MultiGet(keys, values);
 
-            Assert.That(values, Is.EqualTo(new byte[]?[] { [10], [20], null }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(values, Is.EqualTo(new byte[]?[] { [10], [20], null }));
+                Assert.That(_db.GatherMetric().TotalReads - readsBefore, Is.EqualTo(keys.Length));
+            }
         }
 
         [Test]

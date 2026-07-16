@@ -340,7 +340,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
+    protected internal void UpdateReadMetrics(int count = 1) => Interlocked.Add(ref _totalReads.Value, count);
 
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
@@ -900,6 +900,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         get
         {
+            UpdateReadMetrics(keys.Length);
+
             try
             {
                 return _db.MultiGet(keys);
@@ -921,7 +923,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (keys.Length == 0) return;
 
-        UpdateReadMetrics();
+        UpdateReadMetrics(keys.Length);
 
         try
         {
@@ -943,6 +945,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             IntPtr[] valueHandles = new IntPtr[keys.Length];
             IntPtr[] errors = new IntPtr[keys.Length];
 
+            // The pointer arrays only reference the pinned key buffer and remain valid for the native call.
             fixed (byte* keyBytesPtr = keyBytes)
             fixed (IntPtr* keyPointersPtr = keyPointers)
             fixed (UIntPtr* keyLengthsPtr = keyLengths)
@@ -970,56 +973,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     0);
             }
 
-            IntPtr firstError = IntPtr.Zero;
-            for (int i = 0; i < errors.Length; i++)
-            {
-                IntPtr error = errors[i];
-                if (error == IntPtr.Zero) continue;
-
-                if (firstError == IntPtr.Zero)
-                    firstError = error;
-                else
-                    Native.Instance.rocksdb_free(error);
-
-                errors[i] = IntPtr.Zero;
-            }
-
-            try
-            {
-                if (firstError != IntPtr.Zero) ThrowRocksDbException(firstError);
-
-                for (int i = 0; i < valueHandles.Length; i++)
-                {
-                    IntPtr handle = valueHandles[i];
-                    if (handle == IntPtr.Zero)
-                    {
-                        values[i] = null;
-                        continue;
-                    }
-
-                    IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
-                    values[i] = valuePtr == IntPtr.Zero
-                        ? null
-                        : new ReadOnlySpan<byte>((void*)valuePtr, checked((int)valueLength)).ToArray();
-                }
-            }
-            finally
-            {
-                for (int i = 0; i < valueHandles.Length; i++)
-                {
-                    if (valueHandles[i] != IntPtr.Zero)
-                        Native.Instance.rocksdb_pinnableslice_destroy(valueHandles[i]);
-                }
-            }
+            CopyMultiGetResults(valueHandles, errors, values);
         }
         catch (RocksDbSharpException e)
         {
             CreateMarkerIfCorrupt(e);
             throw;
         }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);
     }
 
     internal unsafe void MultiGet(
@@ -1044,7 +1004,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             return;
         }
 
-        UpdateReadMetrics();
+        UpdateReadMetrics(values.Length);
 
         const int StackAllocationLimit = 256;
         Span<RocksDbSlice> keySlices = values.Length <= StackAllocationLimit
@@ -1053,11 +1013,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Span<IntPtr> valueHandles = values.Length <= StackAllocationLimit
             ? stackalloc IntPtr[values.Length]
             : new IntPtr[values.Length];
-        Span<IntPtr> errors = values.Length <= StackAllocationLimit
-            ? stackalloc IntPtr[values.Length]
-            : new IntPtr[values.Length];
+        IntPtr[] errors = new IntPtr[values.Length];
         valueHandles.Clear();
-        errors.Clear();
 
         try
         {
@@ -1065,36 +1022,58 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             fixed (byte* keysPtr = keys)
             fixed (RocksDbSlice* keySlicesPtr = keySlices)
             fixed (IntPtr* valueHandlesPtr = valueHandles)
-            fixed (IntPtr* errorsPtr = errors)
             {
                 for (int i = 0; i < keySlices.Length; i++)
                     keySlices[i] = new RocksDbSlice(keysPtr + (i * keyLength), keyLength);
 
-                RocksDbNativeMethods.BatchedMultiGetColumnFamilySlices(
+                Native.Instance.rocksdb_batched_multi_get_cf_slice(
                     _db.Handle,
                     readOptions.Handle,
                     cf.Handle,
                     (UIntPtr)values.Length,
-                    keySlicesPtr,
-                    valueHandlesPtr,
-                    errorsPtr,
+                    (IntPtr)keySlicesPtr,
+                    (IntPtr)valueHandlesPtr,
+                    errors,
                     0);
             }
 
-            IntPtr firstError = IntPtr.Zero;
-            for (int i = 0; i < errors.Length; i++)
-            {
-                IntPtr error = errors[i];
-                if (error == IntPtr.Zero) continue;
+            CopyMultiGetResults(valueHandles, errors, values);
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
 
-                if (firstError == IntPtr.Zero)
-                    firstError = error;
-                else
-                    Native.Instance.rocksdb_free(error);
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly unsafe struct RocksDbSlice(byte* data, int length)
+    {
+        public readonly byte* Data = data;
+        public readonly UIntPtr Length = (UIntPtr)length;
+    }
 
-                errors[i] = IntPtr.Zero;
-            }
+    private static unsafe void CopyMultiGetResults(
+        Span<IntPtr> valueHandles,
+        Span<IntPtr> errors,
+        Span<byte[]?> values)
+    {
+        IntPtr firstError = IntPtr.Zero;
+        for (int i = 0; i < errors.Length; i++)
+        {
+            IntPtr error = errors[i];
+            if (error == IntPtr.Zero) continue;
 
+            if (firstError == IntPtr.Zero)
+                firstError = error;
+            else
+                Native.Instance.rocksdb_free(error);
+
+            errors[i] = IntPtr.Zero;
+        }
+
+        try
+        {
             if (firstError != IntPtr.Zero) ThrowRocksDbException(firstError);
 
             for (int i = 0; i < valueHandles.Length; i++)
@@ -1107,15 +1086,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 }
 
                 IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(handle, out UIntPtr valueLength);
+                // The PinnableSlice owns this buffer until its handle is destroyed below.
                 values[i] = valuePtr == IntPtr.Zero
                     ? null
                     : new ReadOnlySpan<byte>((void*)valuePtr, checked((int)valueLength)).ToArray();
             }
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
         }
         finally
         {
@@ -1128,27 +1103,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowRocksDbException(nint errPtr) => throw new RocksDbException(errPtr);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly unsafe struct RocksDbSlice(byte* data, int length)
-    {
-        public readonly byte* Data = data;
-        public readonly UIntPtr Length = (UIntPtr)length;
-    }
-
-    private static unsafe class RocksDbNativeMethods
-    {
-        [DllImport("rocksdb", EntryPoint = "rocksdb_batched_multi_get_cf_slice", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void BatchedMultiGetColumnFamilySlices(
-            IntPtr db,
-            IntPtr readOptions,
-            IntPtr columnFamily,
-            UIntPtr keyCount,
-            RocksDbSlice* keys,
-            IntPtr* values,
-            IntPtr* errors,
-            byte sortedInput);
     }
 
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
