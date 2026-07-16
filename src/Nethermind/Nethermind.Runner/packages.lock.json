@@ -1181,6 +1181,7 @@
           "Nethermind.Pbt": "[1.40.0-unstable, )",
           "Nethermind.Serialization.Rlp": "[1.40.0-unstable, )",
           "Nethermind.State": "[1.40.0-unstable, )",
+          "Nethermind.State.Flat": "[1.40.0-unstable, )",
           "Nethermind.Synchronization": "[1.40.0-unstable, )",
           "Nethermind.Trie": "[1.40.0-unstable, )"
         }

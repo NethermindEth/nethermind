@@ -9,4 +9,5 @@ public class PbtConfig : IPbtConfig
     public int CompactSize { get; set; } = 32;
     public int MinReorgDepth { get; set; } = 128;
     public int MaxReorgDepth { get; set; } = 256;
+    public bool ImportFromPreimageFlat { get; set; }
 }

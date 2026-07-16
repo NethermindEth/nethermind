@@ -17,5 +17,5 @@ public class PbtPlugin(IPbtConfig config, IFlatDbConfig flatDbConfig) : INetherm
 
     public IModule? Module => flatDbConfig.Enabled
         ? throw new InvalidConfigurationException($"{nameof(IPbtConfig)}.{nameof(IPbtConfig.Enabled)} and {nameof(IFlatDbConfig)}.{nameof(IFlatDbConfig.Enabled)} are mutually exclusive", -1)
-        : new PbtModule();
+        : new PbtModule(config);
 }
