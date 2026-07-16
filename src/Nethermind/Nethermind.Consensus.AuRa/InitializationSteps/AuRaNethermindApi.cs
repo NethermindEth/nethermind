@@ -26,6 +26,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
     public class AuraStatefulComponents(IAuraConfig auraConfig, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager)
     {
+        internal IReportingValidator MainProcessingReportingValidator { get; set; } = NullReportingValidator.Instance;
+
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,

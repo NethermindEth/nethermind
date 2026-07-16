@@ -140,13 +140,13 @@ public partial class EngineModuleTests
         NewPayloadWithWitnessHandler handler,
         int version,
         Hash256?[]? blobVersionedHashes) => version switch
-    {
-        EngineApiVersions.NewPayload.V4 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
-            new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
-        EngineApiVersions.NewPayload.V5 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
-            new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
-        _ => throw new ArgumentOutOfRangeException(nameof(version)),
-    };
+        {
+            EngineApiVersions.NewPayload.V4 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
+                new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+            EngineApiVersions.NewPayload.V5 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
+                new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+            _ => throw new ArgumentOutOfRangeException(nameof(version)),
+        };
 
     [Test]
     public void Rendezvous_RequestWitness_returns_incomplete_task_until_completed()
