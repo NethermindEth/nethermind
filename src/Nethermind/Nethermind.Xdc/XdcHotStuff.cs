@@ -53,6 +53,8 @@ namespace Nethermind.Xdc
         private volatile bool _running;
         private CancellationTokenSource? _roundCts;
         private Task? _roundTask;
+        private CancellationTokenSource? _shutdownCts;
+        private CancellationToken _shutdownToken;
 
         // Sentinel meaning "no round recorded yet"; TryAdvance treats it specially so the first advance always succeeds.
         private const ulong NoRound = ulong.MaxValue;
@@ -61,6 +63,7 @@ namespace Nethermind.Xdc
         private ulong _highestSelfMinedRound;
         private ulong _highestVotedRound;
         private ulong _lastStartedRound = NoRound;
+        private ulong _scheduledRound = NoRound;
         private ulong _pendingPrevRound;
         private TimeSpan? _pendingLastRoundDuration;
 
@@ -79,6 +82,8 @@ namespace Nethermind.Xdc
                 }
 
                 _running = true;
+                _shutdownCts = new CancellationTokenSource();
+                _shutdownToken = _shutdownCts.Token;
                 _blockTree.NewHeadBlock += OnNewHeadBlock;
                 _xdcContext.NewRoundSetEvent += OnNewRound;
                 _logger.Info("XdcHotStuff consensus runner started");
@@ -113,6 +118,9 @@ namespace Nethermind.Xdc
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
                 _roundCts = null;
+                _shutdownCts?.Cancel();
+                _shutdownCts?.Dispose();
+                _shutdownCts = null;
                 runningTask = _roundTask;
                 _roundTask = null;
             }
@@ -179,6 +187,13 @@ namespace Nethermind.Xdc
             {
                 if (!_running) return;
 
+                // OnNewHeadBlock samples CurrentRound before taking this lock and NewRoundSetEvent
+                // handlers can be delivered out of order, so an older round may arrive here after a
+                // newer one was scheduled; starting it would cancel the newer round's task and
+                // forfeit its proposal.
+                if (_scheduledRound != NoRound && round < _scheduledRound) return;
+                _scheduledRound = round;
+
                 _roundCts?.Cancel();
                 _roundCts?.Dispose();
                 _roundCts = new CancellationTokenSource();
@@ -238,7 +253,10 @@ namespace Nethermind.Xdc
 
             if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
 
-            if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
+            // Read-only early out; the authoritative claim happens after the mine-period wait so
+            // that a task cancelled while waiting does not consume the round without proposing
+            // (the replacement task for the same round re-enters here and waits out the remainder).
+            if (Interlocked.Read(ref _highestSelfMinedRound) >= round) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
             TimeSpan now = TimeSpan.FromSeconds(_timestamper.UnixTime.Seconds);
@@ -246,9 +264,11 @@ namespace Nethermind.Xdc
             if (mineReadyAt > now)
                 await Task.Delay(mineReadyAt - now, ct);
 
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested || _xdcContext.CurrentRound != round) return;
 
-            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, ct);
+            if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
+
+            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, _shutdownToken);
         }
 
         private async Task<bool> EnsureStateForProposalParent(XdcBlockHeader proposalParent, ulong round, CancellationToken ct)
