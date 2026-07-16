@@ -104,9 +104,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             ? RefCountingMemory.WrappingOrNull(blob)
             : Bundle.GetLeafBlob(stem);
 
-    void IPbtStore.SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node) => _nodeOverlay[key] = node.Length == 0 ? null : node.ToArray();
+    void IPbtStore.SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => _nodeOverlay[key] = node.ToArrayAndRelease();
 
-    void IPbtStore.SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob) => _blobOverlay[stem] = blob.ToArray();
+    // an emptied stem is overlaid as an empty blob: the tombstone that shadows the bundle's blob
+    void IPbtStore.SetLeafBlob(in Stem stem, RefCountingMemory? blob) => _blobOverlay[stem] = blob.ToArrayAndRelease() ?? [];
 
     public void Commit(ulong blockNumber)
     {

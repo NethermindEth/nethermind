@@ -215,6 +215,17 @@ public static class StemLeafBlob
             Debug.Assert(_slot * ValueLength + footerLength == _buffer.Length);
         }
 
+        /// <summary>
+        /// Hands the rebuilt blob's memory to the caller along with this state's lease on it, or
+        /// <c>null</c> when <see cref="IsEmpty"/>. <see cref="Blob"/> must not be read afterwards.
+        /// </summary>
+        public RefCountingMemory? Take()
+        {
+            RefCountingMemory? memory = _memory;
+            _memory = null;
+            return memory;
+        }
+
         public void Dispose()
         {
             RefCountingMemory? memory = _memory;
