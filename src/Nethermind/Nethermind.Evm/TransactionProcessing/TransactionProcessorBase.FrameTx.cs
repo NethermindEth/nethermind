@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -42,7 +43,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, out string? signatureError))
+        IPrecompile? p256Precompile = _codeInfoRepository.GetCachedCodeInfo(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec, out _).Precompile;
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
         }
