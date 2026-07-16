@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
