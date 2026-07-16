@@ -19,11 +19,15 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
+    private readonly List<RefCountingMemory> _handedOut = [];
     private ValueHash256 _root;
 
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
-    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key));
+    /// <summary>Every value handed to a reader, to check the leases on them were balanced.</summary>
+    public IReadOnlyList<RefCountingMemory> HandedOut => _handedOut;
+
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
@@ -32,13 +36,19 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
         else _nodes[key] = value;
     }
 
-    public RefCountingMemory? GetLeafBlob(in Stem stem) => RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem));
+    public RefCountingMemory? GetLeafBlob(in Stem stem) => Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
 
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
         byte[]? value = blob.ToArrayAndRelease();
         if (value is null) _blobs.Remove(stem);
         else _blobs[stem] = value;
+    }
+
+    private RefCountingMemory? Track(RefCountingMemory? memory)
+    {
+        if (memory is not null) _handedOut.Add(memory);
+        return memory;
     }
 
     /// <summary>Applies key/value writes (empty/zero value = clear) and returns the new root.</summary>
