@@ -2025,6 +2025,16 @@
             refreshBalances();
         }
 
+        // Drops the assets derived from pinned addresses: resets auto-detected tokens to the chain's
+        // seeded defaults, drops auto-detected NFT collections, and clears the hidden list. Manually-tracked
+        // tokens (state.tokens) and NFT collections (non-auto entries in state.nfts) are left untouched.
+        // Callers re-run detection afterward to re-add whatever the remaining addresses still hold.
+        function resetAutoDetected(state, node) {
+            state.detected = (node.meta.defaults || []).map((t) => ({ ...t, auto: true }));
+            state.nfts = state.nfts.filter((n) => !n.auto);
+            state.ignored = [];
+        }
+
         // restores hidden tokens by moving the stored objects back to the detected list — works
         // regardless of cache/scan state
         function restoreHidden() {
@@ -2058,9 +2068,7 @@
             for (const node of nodes) {
                 const state = stateOf(node.chainId);
                 if (!state) continue;
-                state.detected = (node.meta.defaults || []).map((t) => ({ ...t, auto: true }));
-                state.nfts = state.nfts.filter((n) => !n.auto);
-                state.ignored = [];
+                resetAutoDetected(state, node);
                 node.detectHead = null; // let realtime re-seed
                 store.save(node.chainId);
             }
@@ -2288,12 +2296,11 @@
                     for (const node of enabledNodes()) {
                         const state = stateOf(node.chainId);
                         state.addresses = state.addresses.filter((a) => a.address !== entry.address);
-                        // Auto-detected tokens and hidden spam are derived from the pinned addresses, so drop
-                        // them (reset to the seeded defaults) and clear the hidden list. Detection is then
-                        // re-run below, re-adding whatever any remaining address still holds — so an unpinned
-                        // account's tokens disappear entirely (not left in the hidden tab) and return if re-added.
-                        state.detected = (node.meta.defaults || []).map((t) => ({ ...t, auto: true }));
-                        state.ignored = [];
+                        // Auto-detected tokens/NFTs and hidden spam are derived from the pinned addresses, so
+                        // drop them; detection is re-run below, re-adding whatever any remaining address still
+                        // holds — so an unpinned account's assets disappear entirely (not left behind or in the
+                        // hidden tab) and return if re-added.
+                        resetAutoDetected(state, node);
                         store.save(node.chainId);
                     }
                     detecting = false;

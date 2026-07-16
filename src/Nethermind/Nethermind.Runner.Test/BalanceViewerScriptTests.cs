@@ -420,6 +420,31 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void ResetAutoDetected_DropsAutoAssetsButKeepsManualAndDefaults()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // unpinning must drop auto-detected tokens AND NFTs (the reported bug: auto NFTs were left behind),
+        // reset tokens to the chain defaults, keep manually-tracked NFT collections, and clear the hidden list
+        object result = engine.Evaluate("""
+            (function () {
+                const node = { meta: { defaults: [{ address: '0xdef', ticker: 'DEF' }] } };
+                const state = {
+                    detected: [{ address: '0xauto', ticker: 'AUTO', auto: true }],
+                    nfts: [{ address: '0xnftauto', ticker: 'AUTO', auto: true }, { address: '0xnftman', ticker: 'MAN' }],
+                    ignored: [{ address: '0xspam', ticker: 'SPAM' }],
+                };
+                resetAutoDetected(state, node);
+                return JSON.stringify({
+                    detected: state.detected.map((t) => t.ticker),
+                    nfts: state.nfts.map((t) => t.ticker),
+                    ignored: state.ignored.length,
+                });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"detected\":[\"DEF\"],\"nfts\":[\"MAN\"],\"ignored\":0}"));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
