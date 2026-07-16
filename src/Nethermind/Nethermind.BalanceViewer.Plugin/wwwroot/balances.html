@@ -264,12 +264,15 @@
             border: 1.5px solid var(--border-soft); border-top-color: var(--accent); border-radius: 50%;
             cursor: pointer; animation: bvspin 0.8s linear infinite;
         }
-        .scan-spin.active:hover { border-top-color: var(--danger); } /* hints click-to-cancel */
+        .scan-spin.active:hover { border-top-color: var(--danger); } /* hints click-to-pause */
+        /* paused: show a pause glyph; on hover show a play glyph to hint click-to-resume */
         .scan-spin.paused {
-            display: inline-block; width: 11px; height: 11px; box-sizing: border-box; margin: 0 3px; vertical-align: middle;
-            border: 1.5px dashed var(--border-soft); border-radius: 50%; opacity: 0.6; cursor: pointer;
+            display: inline-block; margin: 0 3px; vertical-align: middle; cursor: pointer;
+            width: auto; height: auto; border: none; animation: none; font-size: 11px; line-height: 1; color: var(--muted);
         }
-        .scan-spin.paused:hover { opacity: 1; border-color: var(--accent); } /* hints click-to-resume */
+        .scan-spin.paused::before { content: '⏸'; }
+        .scan-spin.paused:hover { color: var(--accent); }
+        .scan-spin.paused:hover::before { content: '▶'; }
 
         .thumbs {
             display: flex;
@@ -472,6 +475,37 @@
         }
 
         .spin { color: var(--muted); }
+
+        /* collapsible Watch panel */
+        .panel-collapse { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+        .panel-collapse:hover { color: var(--accent); }
+        .panel.collapsed #watchBody { display: none; }
+        .panel.collapsed .panel-collapse { transform: rotate(-90deg); }
+
+        /* settings modal */
+        .settings-overlay { position: fixed; inset: 0; z-index: 120; background: rgba(0,0,0,0.6); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; animation: fade 0.12s ease-out; }
+        .settings-panel { width: min(94vw, 440px); background: #101012; border: 1px solid var(--border); border-radius: 10px; padding: 4px 18px 18px; }
+        .settings-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 8px; font-size: 15px; color: var(--c-name); border-bottom: 1px solid var(--border); }
+        .settings-x { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+        .settings-x:hover { color: var(--accent); }
+        .settings-section { padding: 14px 0; border-bottom: 1px solid var(--border); }
+        .settings-section:last-child { border-bottom: none; }
+        .settings-subhead { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 8px; }
+        .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--c-name); padding: 4px 0; cursor: pointer; }
+        .setting-note { font-size: 11px; color: var(--muted); line-height: 1.4; margin: 2px 0 6px; }
+        .setting-badge { font-size: 10px; color: var(--muted); }
+        .setting-row.disabled { opacity: 0.5; }
+        #nodesList a { color: var(--accent); text-decoration: none; }
+        #nodesList a:hover { text-decoration: underline; }
+        #nodesList .node-line { padding: 3px 0; color: var(--c-name); }
+        /* toggle switch */
+        .switch { position: relative; display: inline-block; width: 34px; height: 18px; flex: none; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch .slider { position: absolute; inset: 0; background: #333; border-radius: 18px; transition: 0.15s; }
+        .switch .slider::before { content: ''; position: absolute; height: 12px; width: 12px; left: 3px; bottom: 3px; background: #ccc; border-radius: 50%; transition: 0.15s; }
+        .switch input:checked + .slider { background: var(--accent); }
+        .switch input:checked + .slider::before { transform: translateX(16px); }
+        .switch input:disabled + .slider { opacity: 0.4; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -484,8 +518,7 @@
         </div>
         <div id="chainToggles"></div>
         <div class="toggles">
-            <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens"><span class="glyph">🔍</span></button>
-            <button id="ipfsToggle" class="zero-toggle" title="Load off-chain NFT art via a local IPFS node (off by default)"><span class="glyph">🖼️</span></button>
+            <button id="settingsBtn" class="zero-toggle" title="Settings"><span class="glyph">⚙️</span></button>
         </div>
         <div class="total" id="totalBox">
             <span class="net">total ≈</span>
@@ -494,8 +527,9 @@
         </div>
     </header>
 
-    <div class="panel">
-        <div class="title">Watch</div>
+    <div class="panel" id="watchPanel">
+        <div class="title">Watch<button id="watchCollapse" class="panel-collapse" title="Collapse the Watch panel">▾</button></div>
+        <div id="watchBody">
         <div class="row" id="addAddress">
             <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
             <button id="addAddrBtn" title="Pin address">+</button>
@@ -515,6 +549,39 @@
         <div id="tokens"></div>
         <div id="status"></div>
         <div id="feed"></div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="settings-overlay" style="display: none">
+        <div class="settings-panel">
+            <div class="settings-head"><span>Settings</span><button id="settingsClose" class="settings-x" title="Close">×</button></div>
+
+            <div class="settings-section">
+                <label class="setting-row"><span>Auto-detect held tokens</span><span class="switch"><input type="checkbox" id="setDetect"><span class="slider"></span></span></label>
+                <div id="logIndexNotice" class="setting-note"></div>
+            </div>
+
+            <div class="settings-section">
+                <label class="setting-row"><span>Hide spam tokens</span><span class="switch"><input type="checkbox" id="setHideSpam"><span class="slider"></span></span></label>
+                <div class="setting-note">Hides airdrop spam and tokens whose value can't be realized (spoofed prices).</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-subhead">Off-chain NFT art</div>
+                <div class="setting-note">On-chain art always shows. These fetch art stored off-chain — each reduces privacy.</div>
+                <label class="setting-row"><span>HTTPS</span><span class="switch"><input type="checkbox" id="setHttps"><span class="slider"></span></span></label>
+                <div class="setting-note">Fetches directly from the NFT's server, revealing your IP and holdings to it.</div>
+                <label class="setting-row" id="localIpfsRow"><span>Local IPFS <span id="localIpfsState" class="setting-badge"></span></span><span class="switch"><input type="checkbox" id="setLocalIpfs"><span class="slider"></span></span></label>
+                <div class="setting-note">Uses your own IPFS node; content it lacks is fetched from peers, revealing which CIDs you view.</div>
+                <label class="setting-row"><span>IPFS remote gateway</span><span class="switch"><input type="checkbox" id="setRemoteGw"><span class="slider"></span></span></label>
+                <div class="setting-note">Uses a public gateway (ipfs.io), which sees your IP and which NFTs you view.</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-subhead">Nodes</div>
+                <div id="nodesList" class="setting-note">…</div>
+            </div>
+        </div>
     </div>
 
     <div id="cards"></div>
@@ -1390,16 +1457,30 @@
             } catch { return null; }
         }
 
-        // Rewrites an ipfs:// (or gateway-style .../ipfs/<cid>) URI to the node's same-origin IPFS proxy, which
-        // forwards to a local gateway. Only used when the user has opted in; returns null for non-IPFS URIs.
-        function ipfsUrl(uri) {
+        // Extracts the CID+subpath from an ipfs:// (or gateway-style .../ipfs/<cid>) URI, else null.
+        function ipfsPath(uri) {
             if (typeof uri !== 'string') return null;
             let path = null;
             if (uri.startsWith('ipfs://')) path = uri.slice(7);
             else { const m = uri.match(/\/ipfs\/(.+)$/); if (m) path = m[1]; }
             if (!path) return null;
-            if (path.startsWith('ipfs/')) path = path.slice(5); // ipfs://ipfs/<cid> form
-            return 'balances-ipfs/' + path;
+            return path.startsWith('ipfs/') ? path.slice(5) : path; // ipfs://ipfs/<cid> form
+        }
+
+        // Resolves a metadata/art URI to a loadable URL per the enabled art sources. On-chain (data:) art always
+        // resolves; ipfs:// uses the local gateway proxy or a remote gateway; http(s):// only if HTTPS is enabled.
+        // Returns null when no enabled source can serve it (the caller falls back to a placeholder).
+        function resolveArtUri(uri) {
+            if (typeof uri !== 'string') return null;
+            if (uri.startsWith('data:')) return uri;
+            const ip = ipfsPath(uri);
+            if (ip) {
+                if (artSources.localIpfs) return 'balances-ipfs/' + ip;
+                if (artSources.remoteGateway) return IPFS_REMOTE_GATEWAY + ip;
+                return null;
+            }
+            if (/^https?:\/\//i.test(uri)) return artSources.https ? uri : null;
+            return null;
         }
 
         const iface1 = (x) => { try { return BigInt(x) === 1n; } catch { return false; } };
@@ -1464,14 +1545,14 @@
                 // ERC-1155 uri() may template the id as a 64-hex lowercase string
                 if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', id.toString(16).padStart(64, '0'));
                 let metadata = parseOnChainMetadata(uri);
-                // opt-in: fetch off-chain metadata JSON through the node's local-gateway IPFS proxy
-                if (!metadata && ipfsEnabled && uri) {
-                    const murl = ipfsUrl(uri);
-                    if (murl) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
+                // opt-in: fetch off-chain metadata JSON via an enabled art source (IPFS gateway or HTTPS)
+                if (!metadata && uri) {
+                    const murl = resolveArtUri(uri);
+                    if (murl && !murl.startsWith('data:')) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
                 }
                 const name = typeof metadata?.name === 'string' ? metadata.name : null;
-                let src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
-                if (!src && ipfsEnabled && typeof metadata?.image === 'string') src = ipfsUrl(metadata.image); // off-chain art via the proxy
+                // on-chain (data:) art always resolves; off-chain art only via an enabled source
+                const src = typeof metadata?.image === 'string' ? resolveArtUri(metadata.image) : null;
                 // carry the metadata (name / description / traits) so the lightbox can show it even when the art
                 // is off-chain (and IPFS is off) or absent
                 return {
@@ -1504,14 +1585,11 @@
             const info = el('div', 'lightbox-info');
             const heading = thumb.name || (collection.ticker + ' #' + thumb.id);
             info.append(el('div', 'lightbox-title', heading));
-            // subline adds only the context the heading doesn't already carry (collection and/or #id),
-            // so a metadata name like "Anonymice #16" isn't echoed back on the line below it
-            const collName = collection.name || collection.ticker;
-            const idStr = '#' + thumb.id;
-            const sub = [];
-            if (collName && !heading.toLowerCase().includes(collName.toLowerCase())) sub.push(collName);
-            if (!heading.includes(idStr)) sub.push(idStr);
-            if (sub.length) info.append(el('div', 'lightbox-sub', sub.join(' · ')));
+            // A metadata name usually already identifies the token (e.g. "Noun 16"), so a "Collection · #id"
+            // subline just repeats it. Only add the subline for a bare name that doesn't include the token id.
+            if (thumb.name && !thumb.name.includes(String(thumb.id))) {
+                info.append(el('div', 'lightbox-sub', (collection.name || collection.ticker) + ' · #' + thumb.id));
+            }
             if (thumb.description) info.append(el('div', 'lightbox-desc', thumb.description));
 
             if (Array.isArray(thumb.attributes) && thumb.attributes.length) {
@@ -1910,9 +1988,13 @@
         // live balanceOf before it's shown.
         const DETECT_REALTIME_MAX = 900n;   // forward blocks scanned per poll (under the 1000-block getLogs cap)
         const SCAN_DEPTH_ESTIMATE = 2600000; // rough retained-history depth (blocks) for the per-account progress %
-        let detectEnabled = true;           // top-bar toggle, default on
+        let detectEnabled = true;           // settings toggle, default on
         let detecting = false;              // any historical scan still in progress
-        let ipfsEnabled = false;            // off-chain NFT art via local IPFS gateway — opt-in, default off
+        let hideSpam = true;                // hide airdrop/spoofed-price spam tokens, default on
+        // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
+        const artSources = { https: false, localIpfs: false, remoteGateway: false };
+        let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
+        const IPFS_REMOTE_GATEWAY = 'https://ipfs.io/ipfs/';
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
         const scanState = new Map();        // address(lower) -> { pct } while its history scan is in progress
         const detectionCancelled = new Set(); // addresses the user cancelled scanning for (session-only)
@@ -2003,8 +2085,9 @@
                 if (state.detected.some((t) => t.address.toLowerCase() === addr)) continue;
                 if (state.ignored.some((t) => typeof t !== 'string' && t.address.toLowerCase() === addr)) continue;
                 const token = { address: checksum(addr), ticker: meta.ticker, decimals: meta.decimals, name: meta.ticker, auto: true };
-                let hide = looksLikeSpam(meta.ticker, meta.decimals, heldRaw);
-                if (!hide && priceGate) {
+                let hide = false;
+                if (hideSpam) hide = looksLikeSpam(meta.ticker, meta.decimals, heldRaw);
+                if (hideSpam && !hide && priceGate) {
                     const price = prices.get(addr);
                     if (price !== null && price !== undefined) {
                         const value8 = BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals);
@@ -2145,7 +2228,7 @@
                 const paused = detectionCancelled.has(addr);
                 el.classList.toggle('active', !!st);
                 el.classList.toggle('paused', !st && paused);
-                el.title = st ? `Scanning history… ${st.pct}% — click to cancel`
+                el.title = st ? `Scanning history… ${st.pct}% — click to pause`
                     : paused ? 'Scan paused — click to resume' : '';
             }
         }
@@ -2802,6 +2885,7 @@
         // the USD values and pool liquidity populated during the refresh. Moves them to the hidden/spam list
         // (restorable); manual and Chainlink-priced tokens are untouched.
         function pruneSpoofedDetected() {
+            if (!hideSpam) return;
             const addresses = mergedAddresses();
             if (addresses.length === 0) return;
             let changed = false;
@@ -3048,42 +3132,102 @@
             $('tokKind').onchange = () => { $('tokDecimals').style.display = $('tokKind').value === 'nft' ? 'none' : ''; };
 
 
+            // ---- settings ----
             const DETECT_KEY = 'nethermind.balances.detect';
-            const detectBtn = $('detectToggle');
+            const HIDESPAM_KEY = 'nethermind.balances.hidespam';
+            const ART_KEY = 'nethermind.balances.artsources';
+            const WATCH_KEY = 'nethermind.balances.watchcollapsed';
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
-            detectBtn.classList.toggle('on', detectEnabled);
-            detectBtn.onclick = () => {
-                detectEnabled = !detectEnabled;
+            hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
+            try { Object.assign(artSources, JSON.parse(localStorage.getItem(ART_KEY) || '{}')); } catch { }
+
+            const settingsModal = $('settingsModal');
+            const setDetect = $('setDetect'), setHideSpam = $('setHideSpam');
+            const setHttps = $('setHttps'), setLocalIpfs = $('setLocalIpfs'), setRemoteGw = $('setRemoteGw');
+            setDetect.checked = detectEnabled;
+            setHideSpam.checked = hideSpam;
+            setHttps.checked = artSources.https;
+            setLocalIpfs.checked = artSources.localIpfs;
+            setRemoteGw.checked = artSources.remoteGateway;
+
+            $('settingsBtn').onclick = () => { settingsModal.style.display = 'flex'; refreshSettingsUi(); };
+            $('settingsClose').onclick = () => { settingsModal.style.display = 'none'; };
+            settingsModal.onclick = (e) => { if (e.target === settingsModal) settingsModal.style.display = 'none'; };
+
+            setDetect.onchange = () => {
+                detectEnabled = setDetect.checked;
                 localStorage.setItem(DETECT_KEY, detectEnabled ? '1' : '0');
-                detectBtn.classList.toggle('on', detectEnabled);
                 if (detectEnabled) nodeDetect(); else { detecting = false; scanState.clear(); updateScanIndicators(); }
                 setStatus(detectEnabled ? 'Token auto-detection on' : 'Token auto-detection off');
             };
-
-            // IPFS off-chain NFT art — opt-in. Default off; enabling requires an explicit confirmation because
-            // it makes the node's local IPFS daemon fetch content, which announces the requested CIDs to peers.
-            const IPFS_KEY = 'nethermind.balances.ipfs';
-            const ipfsBtn = $('ipfsToggle');
-            ipfsEnabled = localStorage.getItem(IPFS_KEY) === '1'; // default off
-            ipfsBtn.classList.toggle('on', ipfsEnabled);
-            ipfsBtn.onclick = () => {
-                if (!ipfsEnabled) {
-                    const ok = window.confirm(
-                        'Load off-chain NFT art via IPFS?\n\n' +
-                        'This makes your node\'s local IPFS daemon fetch NFT metadata and images. ' +
-                        'Resolving content the node doesn\'t already have queries the IPFS peer-to-peer ' +
-                        'network, which reveals to peers which NFTs you are viewing — reducing your privacy. ' +
-                        'Content is only fetched via a local gateway (127.0.0.1:8080), never a third-party service, ' +
-                        'and requires a running IPFS node.\n\nEnable IPFS art?');
-                    if (!ok) return;
-                }
-                ipfsEnabled = !ipfsEnabled;
-                localStorage.setItem(IPFS_KEY, ipfsEnabled ? '1' : '0');
-                ipfsBtn.classList.toggle('on', ipfsEnabled);
-                setStatus(ipfsEnabled ? 'IPFS art on — re-scanning NFTs' : 'IPFS art off');
-                nftCache.clear(); // re-resolve art so off-chain collections pick up (or drop) IPFS resolution
-                refreshNftThumbs();
+            setHideSpam.onchange = () => {
+                hideSpam = setHideSpam.checked;
+                localStorage.setItem(HIDESPAM_KEY, hideSpam ? '1' : '0');
+                if (hideSpam) nodeDetect(); else restoreHidden();
+                setStatus(hideSpam ? 'Hiding spam tokens' : 'Showing all detected tokens');
             };
+            const onArtChange = () => {
+                localStorage.setItem(ART_KEY, JSON.stringify(artSources));
+                nftCache.clear(); refreshNftThumbs(); // re-resolve art with the new sources
+            };
+            setHttps.onchange = () => { artSources.https = setHttps.checked; onArtChange(); };
+            setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; onArtChange(); };
+            setRemoteGw.onchange = () => { artSources.remoteGateway = setRemoteGw.checked; onArtChange(); };
+
+            // Watch panel collapse
+            const watchPanel = $('watchPanel');
+            if (localStorage.getItem(WATCH_KEY) === '1') watchPanel.classList.add('collapsed');
+            $('watchCollapse').onclick = () => {
+                const collapsed = watchPanel.classList.toggle('collapsed');
+                localStorage.setItem(WATCH_KEY, collapsed ? '1' : '0');
+            };
+
+            // Populates the live parts of the settings panel each time it opens.
+            async function refreshSettingsUi() {
+                // detect a local IPFS gateway: the empty-file CID resolves instantly (no network) if one exists
+                try { localIpfsAvailable = (await fetch('balances-ipfs/bafkqaaa')).ok; }
+                catch { localIpfsAvailable = false; }
+                $('localIpfsState').textContent = localIpfsAvailable ? '(detected)' : '(not detected)';
+                setLocalIpfs.disabled = !localIpfsAvailable;
+                $('localIpfsRow').classList.toggle('disabled', !localIpfsAvailable);
+                if (!localIpfsAvailable && setLocalIpfs.checked) { setLocalIpfs.checked = false; artSources.localIpfs = false; }
+
+                // log-index status on the connected node (recommend / syncing / enabled)
+                const note = $('logIndexNotice');
+                try {
+                    const st = await rpc('logIndex_status', [], ownNode.rpcPath);
+                    const cur = st.current ?? st.Current ?? {}, tgt = st.target ?? st.Target ?? {};
+                    const running = st.isRunning ?? st.IsRunning;
+                    const curTo = cur.toBlock ?? cur.ToBlock, tgtTo = tgt.toBlock ?? tgt.ToBlock;
+                    const synced = tgtTo != null && curTo != null && BigInt(curTo) >= BigInt(tgtTo);
+                    note.textContent = (running || !synced)
+                        ? 'Log index: syncing… — auto-detection gets much faster once it finishes.'
+                        : 'Log index: enabled ✓ — fast auto-detection.';
+                } catch {
+                    note.textContent = 'Tip: run the node with --LogIndex.Enabled true for much faster auto-detection.';
+                }
+
+                // detected Nethermind nodes (this node + siblings), each linking to its dashboard
+                const list = $('nodesList');
+                list.replaceChildren();
+                const addNode = (name, port) => {
+                    const line = el('div', 'node-line');
+                    line.append(document.createTextNode(name + ' · :' + port + ' — '));
+                    const a = el('a', null, 'open ↗');
+                    a.href = '//' + location.hostname + ':' + port + '/balances';
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    line.append(a);
+                    list.append(line);
+                };
+                addNode((CHAINS[ownNode.chainId]?.name || ('chain ' + ownNode.chainId)) + ' (this node)', location.port || '80');
+                try {
+                    for (const s of await (await fetch('balances-nodes')).json()) {
+                        const cid = Number(BigInt(s.chainId));
+                        addNode(CHAINS[cid]?.name || ('chain ' + cid), s.port);
+                    }
+                } catch { /* siblings are best-effort */ }
+            }
 
             try {
                 const ownId = Number(BigInt(await rpc('eth_chainId', [])));

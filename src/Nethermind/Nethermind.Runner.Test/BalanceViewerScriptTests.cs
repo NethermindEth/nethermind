@@ -560,16 +560,27 @@ public class BalanceViewerScriptTests
         Assert.That(result, Is.EqualTo("{\"spoof\":true,\"within\":false,\"noPool\":false}"));
     }
 
-    [TestCase("ipfs://QmABC/1", "balances-ipfs/QmABC/1")]
-    [TestCase("ipfs://ipfs/QmABC", "balances-ipfs/QmABC")]
-    [TestCase("https://gateway.example/ipfs/QmXYZ/2", "balances-ipfs/QmXYZ/2")]
-    [TestCase("https://example.com/api/token/1", "")]
-    [TestCase("data:application/json;base64,ey000", "")]
-    public void IpfsUrl_RewritesOnlyIpfsUrisToTheProxy(string input, string expected)
+    [Test]
+    public void ResolveArtUri_RoutesByEnabledSourcesAndAlwaysAllowsOnChain()
     {
         using V8ScriptEngine engine = CreateEngine();
-        object result = engine.Evaluate($"String(ipfsUrl('{input}') ?? '')");
-        Assert.That(result, Is.EqualTo(expected));
+        object result = engine.Evaluate("""
+            (function () {
+                const R = (u) => String(resolveArtUri(u) ?? '');
+                artSources.https = false; artSources.localIpfs = false; artSources.remoteGateway = false;
+                const allOff = { data: R('data:image/svg+xml,x'), ipfs: R('ipfs://QmABC/1'), https: R('https://x/y') };
+                artSources.localIpfs = true;
+                const local = R('ipfs://ipfs/QmABC');
+                artSources.localIpfs = false; artSources.remoteGateway = true;
+                const remote = R('https://gw/ipfs/QmXYZ/2'); // gateway-style ipfs
+                artSources.https = true;
+                const http = R('https://example.com/api/1');
+                return JSON.stringify({ onchainAlways: allOff.data, ipfsOff: allOff.ipfs, httpsOff: allOff.https, local, remote, http });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo(
+            "{\"onchainAlways\":\"data:image/svg+xml,x\",\"ipfsOff\":\"\",\"httpsOff\":\"\","
+          + "\"local\":\"balances-ipfs/QmABC\",\"remote\":\"https://ipfs.io/ipfs/QmXYZ/2\",\"http\":\"https://example.com/api/1\"}"));
     }
 
     [Test]
