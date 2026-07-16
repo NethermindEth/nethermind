@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -59,10 +59,10 @@ public static class StemLeafBlob
     /// <remarks>
     /// Rebuilds dirty paths in post-order and copies clean subtree entries verbatim. A present leaf
     /// contributes <c>blake3(value)</c>; higher levels use the EIP-8297 pair hash, with empty subtrees
-    /// folding to zero. The blob is backed by a pooled buffer, so the caller must dispose the result once
-    /// its bytes have been consumed.
+    /// folding to zero. The blob is backed by memory from <paramref name="provider"/>, so the caller must
+    /// dispose the result once its bytes have been consumed.
     /// </remarks>
-    internal static RebuildState Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes)
+    internal static RebuildState Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes, IRefCountingMemoryProvider provider)
     {
         ReadOnlySpan<byte> previousBitmap = blob.IsEmpty ? ZeroBitmap : blob[..BitmapLength];
 
@@ -76,7 +76,7 @@ public static class StemLeafBlob
         if (!RangeHasLeaf(bitmap, 0, LeafCount)) return default;
 
         int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
-        RebuildState state = new(blob, previousBitmap, bitmap, changes, GetLiveCount(blob), liveCount);
+        RebuildState state = new(blob, previousBitmap, bitmap, changes, GetLiveCount(blob), liveCount, provider);
         state.Build();
         return state;
     }
@@ -182,12 +182,12 @@ public static class StemLeafBlob
     }
 
     /// <remarks>
-    /// Rebuilds directly into a pooled final blob: the bitmap sits at its front, and each live node is
+    /// Rebuilds directly into a final blob: the bitmap sits at its front, and each live node is
     /// written to its slot in the offset and node regions as the post-order walk reaches it. The recursion
     /// hands each subtree up as a <see cref="NodeRef"/> into that buffer, so a node's hash is materialized
-    /// only where a parent needs it, never copied by value up the stack. The buffer is rented from
-    /// <see cref="ArrayPool{T}"/> and returned on <see cref="Dispose"/>; a <c>default</c> instance owns no
-    /// buffer and represents the empty (no leaves remaining) result.
+    /// only where a parent needs it, never copied by value up the stack. The buffer comes from an
+    /// <see cref="IRefCountingMemoryProvider"/> and is released on <see cref="Dispose"/>; a <c>default</c>
+    /// instance owns no buffer and represents the empty (no leaves remaining) result.
     /// </remarks>
     internal ref struct RebuildState
     {
@@ -198,7 +198,7 @@ public static class StemLeafBlob
         private readonly IPbtStemChanges _changes;
         private readonly Span<byte> _buffer;
         private readonly int _nodeBase;
-        private byte[]? _rented;
+        private RefCountingMemory? _memory;
         private int _previousSlot;
         private int _changeIndex;
         private int _slot;
@@ -207,7 +207,7 @@ public static class StemLeafBlob
         public readonly ReadOnlySpan<byte> Blob => _buffer;
 
         /// <summary>Whether the stem has no leaves remaining, in which case <see cref="Blob"/> is empty.</summary>
-        public readonly bool IsEmpty => _rented is null;
+        public readonly bool IsEmpty => _memory is null;
 
         /// <summary>The merkelized 256-leaf subtree root, populated by <see cref="Build"/>.</summary>
         public ValueHash256 SubtreeRoot { get; private set; }
@@ -218,11 +218,12 @@ public static class StemLeafBlob
             scoped ReadOnlySpan<byte> newBitmap,
             IPbtStemChanges changes,
             int previousLiveCount,
-            int liveCount)
+            int liveCount,
+            IRefCountingMemoryProvider provider)
         {
             int length = BitmapLength + liveCount * (OffsetEntryLength + ValueLength);
-            _rented = ArrayPool<byte>.Shared.Rent(length);
-            _buffer = _rented.AsSpan(0, length);
+            _memory = provider.Rent(length);
+            _buffer = _memory.GetSpan();
             newBitmap.CopyTo(_buffer);
 
             _previousBitmap = previousBitmap;
@@ -247,11 +248,11 @@ public static class StemLeafBlob
 
         public void Dispose()
         {
-            byte[]? rented = _rented;
-            if (rented is not null)
+            RefCountingMemory? memory = _memory;
+            if (memory is not null)
             {
-                _rented = null;
-                ArrayPool<byte>.Shared.Return(rented);
+                _memory = null;
+                ((IDisposable)memory).Dispose();
             }
         }
 

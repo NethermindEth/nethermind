@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
@@ -24,7 +23,7 @@ public sealed class PbtTreeHarness : IPbtStore
 
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
-    public MemoryManager<byte>? GetTrieNode(in TrieNodeKey key) => ArrayMemoryManager.From(_nodes.GetValueOrDefault(key));
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key));
 
     public void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node)
     {
@@ -32,7 +31,7 @@ public sealed class PbtTreeHarness : IPbtStore
         else _nodes[key] = node.ToArray();
     }
 
-    public MemoryManager<byte>? GetLeafBlob(in Stem stem) => ArrayMemoryManager.From(_blobs.GetValueOrDefault(stem));
+    public RefCountingMemory? GetLeafBlob(in Stem stem) => RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem));
 
     public void SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob)
     {
@@ -57,7 +56,7 @@ public sealed class PbtTreeHarness : IPbtStore
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, PooledRefCountingMemoryProvider.Instance);
         return _root;
     }
 }

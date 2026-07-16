@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -23,9 +22,9 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// </remarks>
 internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, IPbtPersistence.IWriteBatch batch) : IPbtStore
 {
-    public MemoryManager<byte>? GetTrieNode(in TrieNodeKey key) => ArrayMemoryManager.From(reader.GetTrieNode(key));
+    public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => reader.GetTrieNode(key);
 
-    public MemoryManager<byte>? GetLeafBlob(in Stem stem) => ArrayMemoryManager.From(reader.GetLeafBlob(stem));
+    public RefCountingMemory? GetLeafBlob(in Stem stem) => reader.GetLeafBlob(stem);
 
     public void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node) => batch.SetTrieNode(key, node.Length == 0 ? null : node.ToArray());
 

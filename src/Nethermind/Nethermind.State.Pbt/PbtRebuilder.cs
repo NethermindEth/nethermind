@@ -4,6 +4,7 @@
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -132,7 +133,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
             // and blobs and writes the new ones into this window's still-open batch
             using IPbtPersistence.IReader reader = target.CreateReader();
             PersistenceBackedPbtStore store = new(reader, writeBatch);
-            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes);
+            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance);
         }
 
         writeBatch.Dispose(); // atomic commit of this window's flat rows and, when non-empty, its leaves and nodes

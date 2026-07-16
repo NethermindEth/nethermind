@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
@@ -174,7 +175,7 @@ public class StemLeafBlobTests
             mapped = mapped.Set(subIndex, leaf);
         }
 
-        using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped);
+        using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped, PooledRefCountingMemoryProvider.Instance);
         subtreeRoot = rebuilt.SubtreeRoot;
         byte[] result = rebuilt.Blob.ToArray();
         PbtStemChanges.Return(mapped);

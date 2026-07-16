@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -91,13 +93,36 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
             return stored is null ? default : EvmWordSlot.FromStripped(stored);
         }
 
-        public byte[]? GetLeafBlob(in Stem stem) => snapshot.GetColumn(LeafColumn(stem)).Get(stem.Bytes);
+        public RefCountingMemory? GetLeafBlob(in Stem stem) => ReadOwned(snapshot.GetColumn(LeafColumn(stem)), stem.Bytes);
 
-        public byte[]? GetTrieNode(in TrieNodeKey key)
+        public RefCountingMemory? GetTrieNode(in TrieNodeKey key)
         {
             Span<byte> dbKey = stackalloc byte[TrieNodeKey.Length];
             key.WriteTo(dbKey);
-            return snapshot.GetColumn(PbtColumns.TrieNodes).Get(dbKey);
+            return ReadOwned(snapshot.GetColumn(PbtColumns.TrieNodes), dbKey);
+        }
+
+        /// <summary>
+        /// Reads a value into a pooled buffer: copies the store's (native) slice into an
+        /// <see cref="ArrayPool{T}.Shared"/> rental that the caller returns to the pool on disposal.
+        /// PBT never stores an empty value, so an empty/absent slice is treated as absent.
+        /// </summary>
+        private static RefCountingMemory? ReadOwned(IReadOnlyKeyValueStore column, scoped ReadOnlySpan<byte> key)
+        {
+            Span<byte> value = column.GetSpan(key);
+            if (value.IsNull()) return null;
+
+            try
+            {
+                int length = value.Length;
+                byte[] rented = ArrayPool<byte>.Shared.Rent(length);
+                value.CopyTo(rented);
+                return RefCountingMemory.Owning(rented, length);
+            }
+            finally
+            {
+                column.DangerousReleaseMemory(value);
+            }
         }
 
         public void Dispose() => snapshot.Dispose();

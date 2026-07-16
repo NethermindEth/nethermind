@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -149,9 +150,9 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
         public EvmWord GetSlot(Address address, in UInt256 slot) => inner.GetSlot(address, slot);
 
-        public byte[]? GetLeafBlob(in Stem stem) => inner.GetLeafBlob(stem);
+        public RefCountingMemory? GetLeafBlob(in Stem stem) => inner.GetLeafBlob(stem);
 
-        public byte[]? GetTrieNode(in TrieNodeKey key) => inner.GetTrieNode(key);
+        public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => inner.GetTrieNode(key);
 
         public void Dispose() => inner.Dispose();
     }
