@@ -21,14 +21,12 @@ public class TxPoolSenderTests
         txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
 
         ITxSigner txSigner = Substitute.For<ITxSigner>();
-        txSigner.TrySign(Arg.Any<Transaction>()).Returns(false);
 
         TxSealer sealer = new(txSigner, Timestamper.Default);
 
         INonceManager nonceManager = Substitute.For<INonceManager>();
 
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
-        ecdsa.RecoverAddress(Arg.Any<Transaction>()).Returns(TestItem.AddressA);
 
         TxPoolSender sender = new(txPool, sealer, nonceManager, ecdsa);
 

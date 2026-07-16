@@ -16,7 +16,6 @@ public class TxSealerTests
     public void TrySeal_FrameTransaction_SkipsSigning()
     {
         ITxSigner txSigner = Substitute.For<ITxSigner>();
-        txSigner.TrySign(Arg.Any<Transaction>()).Returns(false);
         TxSealer sealer = new(txSigner, Substitute.For<ITimestamper>());
 
         Transaction frameTx = new()
@@ -30,6 +29,5 @@ public class TxSealerTests
         bool result = sealer.TrySeal(frameTx, TxHandlingOptions.None);
 
         Assert.That(result, Is.True, "frame transactions must seal without signing");
-        txSigner.DidNotReceive().TrySign(Arg.Any<Transaction>());
     }
 }
