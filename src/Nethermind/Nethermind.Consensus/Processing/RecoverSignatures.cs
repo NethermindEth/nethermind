@@ -43,10 +43,6 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        /// <summary>
-        /// Exact per-tx check (senders and, when enabled, EIP-7702 authorities) so a partially
-        /// recovered block is completed rather than skipped by a first-tx heuristic.
-        /// </summary>
         private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
@@ -86,53 +82,55 @@ namespace Nethermind.Consensus.Processing
             if (txs.Length == 0)
                 return;
 
-            bool useSignatureChainId = !releaseSpec.ValidateChainId;
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+                return;
+
             if (txs.Length > 3)
             {
-                // Recover ecdsa in Parallel
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (recover: this, txs, releaseSpec, useSignatureChainId, skipErrors),
-                    static (i, state) =>
-                {
-                    Transaction tx = state.txs[i];
-                    try
-                    {
-                        // Materialize the lazily-deferred keccak here so the hash is computed on this
-                        // worker rather than later on the (serial) processing path. Typed txs already
-                        // force it via the sender-cache key; this also covers the legacy case.
-                        _ = tx.Hash;
-                        tx.SenderAddress ??= state.recover._ecdsa.RecoverAddress(tx, state.useSignatureChainId);
-                        state.recover.RecoverAuthorities(tx, state.releaseSpec);
-                        if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-                    }
-                    catch (Exception e) when (state.skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
-                    {
-                        if (state.recover._logger.IsTrace) state.recover._logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
-                    }
-
-                    return state;
-                });
+                    (recover: this, txs, releaseSpec, skipErrors),
+                    RecoverSingle);
             }
             else
             {
                 foreach (Transaction tx in txs)
                 {
-                    try
-                    {
-                        _ = tx.Hash;
-                        tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
-                        RecoverAuthorities(tx, releaseSpec);
-                        if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
-                    }
-                    catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
-                    }
+                    TryRecover(tx, releaseSpec, skipErrors);
                 }
             }
+        }
+
+        private static (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) RecoverSingle(
+            int i,
+            (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) state)
+        {
+            state.recover.TryRecover(state.txs[i], state.releaseSpec, state.skipErrors);
+            return state;
+        }
+
+        // FOCIL: when skipErrors is set, an inclusion-list tx with valid RLP but invalid signature
+        // leaves SenderAddress null (treated as not-appendable) rather than throwing.
+        private void TryRecover(Transaction tx, IReleaseSpec releaseSpec, bool skipErrors)
+        {
+            try
+            {
+                Recover(tx, releaseSpec);
+            }
+            catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
+            }
+        }
+
+        private void Recover(Transaction tx, IReleaseSpec releaseSpec)
+        {
+            _ = tx.Hash;
+            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+            RecoverAuthorities(tx, releaseSpec);
+            if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
         }
 
         private void RecoverAuthorities(Transaction tx, IReleaseSpec releaseSpec)

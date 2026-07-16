@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.BalRecorder\Nethermind.BalRecorder.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.CensorshipDetector.Plugin\Nethermind.CensorshipDetector.Plugin.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Flashbots\Nethermind.Flashbots.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
