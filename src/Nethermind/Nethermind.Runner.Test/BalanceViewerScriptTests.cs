@@ -397,15 +397,15 @@ public class BalanceViewerScriptTests
     {
         using V8ScriptEngine engine = CreateEngine();
         engine.Execute(DomShim);
-        // expanded while art is still streaming (6 of 10 loaded) -> "loading…";
+        // expanded while art is still streaming (loading flag set) -> "loading…";
         // expanded when holdings exceed what node data could discover (5 shown, balanceOf 8) -> "3 more not shown"
         object result = engine.Evaluate("""
             (function () {
                 const node = { chainId: 1 };
                 const collection = { address: '0x000000000000000000000000000000000000dEaD' };
                 const loadingBox = document.createElement('div');
-                fillThumbs(loadingBox, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(6), kind: 'enum721' }, node, '0xa', collection);
-                __click(loadingBox, '+6 more'); // affordance is id-based (10 ids - 4 shown), not thumb-based
+                fillThumbs(loadingBox, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(10), kind: 'enum721', loading: true }, node, '0xa', collection);
+                __click(loadingBox, '+6 more'); // affordance is id-based (10 ids - 4 shown)
                 const loading = __summary(loadingBox);
                 const truncBox = document.createElement('div');
                 fillThumbs(truncBox, { count: 8, ids: __mkThumbs(5), thumbs: __mkThumbs(5), kind: 'enum721' }, node, '0xb', collection);
@@ -415,7 +415,7 @@ public class BalanceViewerScriptTests
             })()
             """);
         Assert.That(result, Is.EqualTo(
-            "{\"loading\":\"img|img|img|img|img|img|show less|loading…\","
+            "{\"loading\":\"img|img|img|img|img|img|img|img|img|img|show less|loading…\","
           + "\"truncated\":\"img|img|img|img|img|show less|3 more not shown\"}"));
     }
 

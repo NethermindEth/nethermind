@@ -767,6 +767,7 @@
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
+        const NFT_ART_CHUNK = 12;                  // ids per background art request (keeps each response small)
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -1451,10 +1452,11 @@
                 less.onclick = () => { nftExpanded.delete(key); fillThumbs(box, cached, node, owner, collection); };
                 box.append(less);
             }
-            // once expanded: show that art is still streaming in, or that holdings exceed what node data revealed
+            // once expanded: show that art is still streaming in, and/or that holdings exceed what node data revealed
             if (expanded) {
-                if (cached.thumbs.length < total) box.append(el('span', 'more', 'loading…'));
-                else { const missing = (cached.count ?? 0) - total; if (missing > 0) box.append(el('span', 'more', missing + ' more not shown')); }
+                if (cached.loading) box.append(el('span', 'more', 'loading…'));
+                const missing = (cached.count ?? 0) - total;
+                if (missing > 0) box.append(el('span', 'more', missing + ' more not shown'));
             }
         }
 
@@ -1484,10 +1486,12 @@
                                 ids = await heldTokenIds(node, collection, entry.address, kind, erc721Count || 0);
                             }
                             const count = kind === 'erc1155' ? ids.length : (erc721Count ?? 0);
-                            // load the first row quickly for immediate display, then eagerly load the rest
-                            // in the background so "show all" is instant (art is on-chain data: URIs — no external fetch)
-                            const thumbs = ids.length ? await fetchThumbsForIds(node, collection, ids.slice(0, MAX_NFT_THUMBS), kind) : [];
-                            nftCache.set(key, { count, ids, thumbs, kind, sig });
+                            // Seed a placeholder per held id so the collection expands instantly to its full size,
+                            // then stream the on-chain art in the background (chunked, so a large collection never
+                            // hangs on one huge request); each thumb is replaced in place as it arrives. `loading`
+                            // is cleared when the stream settles (even on error) so the indicator never sticks.
+                            const thumbs = ids.map((id) => ({ src: null, title: '#' + id }));
+                            nftCache.set(key, { count, ids, thumbs, kind, sig, loading: ids.length > 0 });
 
                             // fill in the count cell for ERC-1155 (refreshNode left it blank)
                             if (kind === 'erc1155') {
@@ -1496,20 +1500,27 @@
                             }
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
 
-                            if (ids.length > MAX_NFT_THUMBS) {
-                                // load the remaining art detached, so it never blocks scanning the other
-                                // collections or the empty-collection prune below (both only need the counts
-                                // already set above); the art streams into the box as it arrives
+                            if (ids.length) {
+                                // detached so it never blocks scanning the other collections or the prune below
                                 (async () => {
                                     try {
-                                        const rest = await fetchThumbsForIds(node, collection, ids.slice(MAX_NFT_THUMBS), kind);
-                                        const c = nftCache.get(key);
-                                        if (c && c.sig === sig) {   // holdings unchanged since first paint
-                                            c.thumbs.push(...rest);
+                                        for (let i = 0; i < ids.length; i += NFT_ART_CHUNK) {
+                                            const loaded = await fetchThumbsForIds(node, collection, ids.slice(i, i + NFT_ART_CHUNK), kind);
+                                            const c = nftCache.get(key);
+                                            if (!c || c.sig !== sig) return; // holdings changed since scan — abandon
+                                            for (let j = 0; j < loaded.length; j++) c.thumbs[i + j] = loaded[j];
                                             const b = document.querySelector(`[data-thumbs="${key}"]`);
                                             if (b) fillThumbs(b, c, node, entry.address, collection);
                                         }
                                     } catch { /* art is cosmetic — keep whatever loaded */ }
+                                    finally {
+                                        const c = nftCache.get(key);
+                                        if (c && c.sig === sig) {
+                                            c.loading = false;
+                                            const b = document.querySelector(`[data-thumbs="${key}"]`);
+                                            if (b) fillThumbs(b, c, node, entry.address, collection);
+                                        }
+                                    }
                                 })();
                             }
                         }
