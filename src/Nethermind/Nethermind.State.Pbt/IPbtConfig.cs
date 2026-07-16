@@ -18,4 +18,7 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "The depth, in blocks, past which states are force-persisted even without finality, bounding memory use, in blocks.", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
+    bool ImportFromPreimageFlat { get; set; }
 }
