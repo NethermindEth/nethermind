@@ -495,10 +495,9 @@
         .spin { color: var(--muted); }
 
         /* collapsible Watch panel */
-        .panel-collapse { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+        .panel-collapse { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px; }
         .panel-collapse:hover { color: var(--accent); }
         .panel.collapsed #watchBody { display: none; }
-        .panel.collapsed .panel-collapse { transform: rotate(-90deg); }
 
         /* settings modal */
         .settings-overlay { position: fixed; inset: 0; z-index: 120; background: rgba(0,0,0,0.6); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; animation: fade 0.12s ease-out; }
@@ -551,7 +550,8 @@
     </header>
 
     <div class="panel" id="watchPanel">
-        <div class="title">Watch<button id="watchCollapse" class="panel-collapse" title="Collapse the Watch panel">▾</button></div>
+        <div class="title">Watch</div>
+        <button id="watchCollapse" class="panel-collapse" title="Collapse the Watch panel">⊖</button>
         <div id="watchBody">
         <div class="row" id="addAddress">
             <input id="addrInput" class="number" placeholder="0x address or ENS name (name.eth)" spellcheck="false" />
@@ -1751,8 +1751,19 @@
             document.body.append(overlay);
         }
 
-        // Key on-chain facts for an ERC-20 holding, opened from its balance row. Price and the holder's
-        // value come from the last refresh (cache); name, total supply, and market cap are read on demand.
+        // Any holder's last-good price for a token (price is holder-independent). Lets the token info
+        // lightbox show a price/market cap when opened from a chain-level chip not tied to one account.
+        function tokenPrice8(chainId, addr) {
+            const suffix = '|' + chainId + ':' + addr.toLowerCase();
+            for (const [k, v] of cache) {
+                if (k.endsWith(suffix) && v && v.price8 !== null && v.price8 !== undefined) return v.price8;
+            }
+            return null;
+        }
+
+        // Key on-chain facts for an ERC-20 token, opened from a balance row or a Watch-bar chip. Price
+        // (and, when opened from a holding row, the holder's value) come from the last refresh (cache);
+        // name, total supply, and market cap are read on demand.
         async function openTokenInfo(node, token, cached) {
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'lightbox-panel');
@@ -1768,7 +1779,8 @@
 
             const fxRate = await resolveFxRate();
             const conv = (usd8) => (usd8 === null || usd8 === undefined || !fxRate) ? null : usd8 * PRICE_SCALE / fxRate;
-            const price8 = cached && cached.price8 !== undefined ? cached.price8 : null;
+            const price8 = (cached && cached.price8 !== null && cached.price8 !== undefined)
+                ? cached.price8 : tokenPrice8(node.chainId, token.address);
 
             addFact('Price', formatPrice8(conv(price8)));
             const mcapEl = el('div', 'token-fact-v', '…');
@@ -2650,10 +2662,11 @@
                 const chip = el('span', (isNft ? 'chip nft' : 'chip') + (isAuto ? ' auto' : ''));
                 const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
-                ticker.onclick = () => copyAddress(item.address);
+                // ERC-20 chip opens the token info lightbox (which offers copy-address); NFT chip copies
+                ticker.onclick = isNft ? () => copyAddress(item.address) : () => openTokenInfo(node, item, null);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
-                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? '' : ` · ${item.decimals} decimals`) + ' (click to copy address)';
+                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? ' (click to copy address)' : ` · ${item.decimals} decimals (click for token info)`);
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
                     if (isAuto) { hideDetected(node, item, isNft); return; }
@@ -3452,12 +3465,20 @@
                 if (artSources.remoteGateway) onArtChange(); // re-resolve art with the new gateway
             };
 
-            // Watch panel collapse
+            // Watch panel collapse — a circled +/− in the panel's top-right corner
             const watchPanel = $('watchPanel');
+            const watchCollapse = $('watchCollapse');
+            const syncCollapseIcon = () => {
+                const collapsed = watchPanel.classList.contains('collapsed');
+                watchCollapse.textContent = collapsed ? '⊕' : '⊖';
+                watchCollapse.title = (collapsed ? 'Expand' : 'Collapse') + ' the Watch panel';
+            };
             if (localStorage.getItem(WATCH_KEY) === '1') watchPanel.classList.add('collapsed');
-            $('watchCollapse').onclick = () => {
+            syncCollapseIcon();
+            watchCollapse.onclick = () => {
                 const collapsed = watchPanel.classList.toggle('collapsed');
                 localStorage.setItem(WATCH_KEY, collapsed ? '1' : '0');
+                syncCollapseIcon();
             };
 
             // ---- backup: export/import all persisted state (pinned addresses + settings) ----
