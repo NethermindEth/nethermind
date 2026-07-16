@@ -90,8 +90,8 @@ public static class TrieUpdater
                 Stem stem = entries[0].Stem;
                 if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
                 {
-                    byte[] blob = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
-                    return blob.Length == 0 ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
+                    bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
+                    return isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
                 }
             }
 
@@ -210,13 +210,14 @@ public static class TrieUpdater
             return PbtTrieNodeGroup.InternalSlot(hash);
         }
 
-        /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and returns it.</summary>
-        private byte[] ComputeBlob(in Stem stem, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
+        /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
+        private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
         {
             using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
-            byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, out subtreeRoot);
-            store.SetLeafBlob(stem, newBlob);
-            return newBlob;
+            using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes);
+            subtreeRoot = newBlob.SubtreeRoot;
+            store.SetLeafBlob(stem, newBlob.Blob);
+            return newBlob.IsEmpty;
         }
 
         /// <summary>

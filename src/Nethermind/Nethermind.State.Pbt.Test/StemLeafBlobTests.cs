@@ -174,7 +174,9 @@ public class StemLeafBlobTests
             mapped = mapped.Set(subIndex, leaf);
         }
 
-        byte[] result = StemLeafBlob.Apply(prior, mapped, out subtreeRoot);
+        using StemLeafBlob.RebuildState rebuilt = StemLeafBlob.Apply(prior, mapped);
+        subtreeRoot = rebuilt.SubtreeRoot;
+        byte[] result = rebuilt.Blob.ToArray();
         PbtStemChanges.Return(mapped);
         return result;
     }

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -29,6 +29,8 @@ public static class StemLeafBlob
     private const int OffsetEntryLength = 2;
     private const int RootPosition = 2 * LeafCount - 2;
 
+    private static readonly byte[] ZeroBitmap = new byte[BitmapLength];
+
     public static bool TryGetValue(ReadOnlySpan<byte> blob, byte subIndex, out ReadOnlySpan<byte> value)
     {
         if (!blob.IsEmpty && IsPresent(blob, subIndex))
@@ -49,59 +51,34 @@ public static class StemLeafBlob
     }
 
     /// <summary>
-    /// Applies <paramref name="changes"/> (each a 32-byte leaf value; a zero value clears the leaf)
-    /// to <paramref name="blob"/>, returning the new blob and, via <paramref name="subtreeRoot"/>,
-    /// its merkelized 256-leaf subtree root. Returns an empty array (and a zero root) when no leaves remain.
+    /// Applies <paramref name="changes"/> (each a 32-byte leaf value; a zero value clears the leaf) to
+    /// <paramref name="blob"/>, returning a disposable <see cref="RebuildState"/> whose <see cref="RebuildState.Blob"/>
+    /// is the new blob (empty, with <see cref="RebuildState.IsEmpty"/> set, when no leaves remain) and whose
+    /// <see cref="RebuildState.SubtreeRoot"/> is the merkelized 256-leaf subtree root.
     /// </summary>
     /// <remarks>
     /// Rebuilds dirty paths in post-order and copies clean subtree entries verbatim. A present leaf
-    /// contributes <c>blake3(value)</c>; higher levels use the EIP-8297 pair hash, with empty
-    /// subtrees folding to zero.
+    /// contributes <c>blake3(value)</c>; higher levels use the EIP-8297 pair hash, with empty subtrees
+    /// folding to zero. The blob is backed by a pooled buffer, so the caller must dispose the result once
+    /// its bytes have been consumed.
     /// </remarks>
-    public static byte[] Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
+    internal static RebuildState Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes)
     {
-        Span<byte> previousBitmap = stackalloc byte[BitmapLength];
-        previousBitmap.Clear();
-        if (!blob.IsEmpty) blob[..BitmapLength].CopyTo(previousBitmap);
+        ReadOnlySpan<byte> previousBitmap = blob.IsEmpty ? ZeroBitmap : blob[..BitmapLength];
 
         Span<byte> bitmap = stackalloc byte[BitmapLength];
         previousBitmap.CopyTo(bitmap);
 
         int changeCount = changes.Count;
-        StemLeafWrite[] rented = SafeArrayPool<StemLeafWrite>.Shared.Rent(changeCount);
-        try
-        {
-            // Already ascending by sub-index (the map keeps it so), so no sort is needed here.
-            Span<StemLeafWrite> sortedChanges = rented.AsSpan(0, changeCount);
-            changes.WriteSorted(sortedChanges);
-            foreach (StemLeafWrite change in sortedChanges) SetPresent(bitmap, change.SubIndex, change.Value != default);
+        // The map keeps writes ascending by sub-index, so they can be read back in order without sorting.
+        for (int i = 0; i < changeCount; i++) SetPresent(bitmap, changes.SubIndexAt(i), changes.Get(i) != default);
 
-            if (!RangeHasLeaf(bitmap, 0, LeafCount))
-            {
-                subtreeRoot = default;
-                return [];
-            }
+        if (!RangeHasLeaf(bitmap, 0, LeafCount)) return default;
 
-            int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
-            byte[] result = new byte[BitmapLength + liveCount * (OffsetEntryLength + ValueLength)];
-            bitmap.CopyTo(result);
-
-            RebuildState state = new(
-                blob,
-                previousBitmap,
-                result,
-                sortedChanges,
-                GetLiveCount(blob),
-                liveCount);
-
-            NodeRef rootRef = state.Rebuild(0, LeafCount, RootPosition);
-            subtreeRoot = state.Resolve(rootRef);
-            return result;
-        }
-        finally
-        {
-            SafeArrayPool<StemLeafWrite>.Shared.Return(rented);
-        }
+        int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
+        RebuildState state = new(blob, previousBitmap, bitmap, changes, GetLiveCount(blob), liveCount);
+        state.Build();
+        return state;
     }
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
@@ -205,35 +182,51 @@ public static class StemLeafBlob
     }
 
     /// <remarks>
-    /// Rebuilds directly into the caller-allocated final blob: the bitmap already sits at its front,
-    /// and each live node is written to its slot in the offset and node regions as the post-order walk
-    /// reaches it. The recursion hands each subtree up as a <see cref="NodeRef"/> into that buffer, so
-    /// a node's hash is materialized only where a parent needs it, never copied by value up the stack.
+    /// Rebuilds directly into a pooled final blob: the bitmap sits at its front, and each live node is
+    /// written to its slot in the offset and node regions as the post-order walk reaches it. The recursion
+    /// hands each subtree up as a <see cref="NodeRef"/> into that buffer, so a node's hash is materialized
+    /// only where a parent needs it, never copied by value up the stack. The buffer is rented from
+    /// <see cref="ArrayPool{T}"/> and returned on <see cref="Dispose"/>; a <c>default</c> instance owns no
+    /// buffer and represents the empty (no leaves remaining) result.
     /// </remarks>
-    private ref struct RebuildState
+    internal ref struct RebuildState
     {
         private readonly ReadOnlySpan<byte> _previousBitmap;
         private readonly ReadOnlySpan<byte> _newBitmap;
         private readonly ReadOnlySpan<byte> _previousOffsets;
         private readonly ReadOnlySpan<byte> _previousNodes;
-        private readonly ReadOnlySpan<StemLeafWrite> _changes;
+        private readonly IPbtStemChanges _changes;
         private readonly Span<byte> _buffer;
         private readonly int _nodeBase;
+        private byte[]? _rented;
         private int _previousSlot;
         private int _changeIndex;
         private int _slot;
 
+        /// <summary>The rebuilt blob, valid until <see cref="Dispose"/>; empty when <see cref="IsEmpty"/>.</summary>
+        public readonly ReadOnlySpan<byte> Blob => _buffer;
+
+        /// <summary>Whether the stem has no leaves remaining, in which case <see cref="Blob"/> is empty.</summary>
+        public readonly bool IsEmpty => _rented is null;
+
+        /// <summary>The merkelized 256-leaf subtree root, populated by <see cref="Build"/>.</summary>
+        public ValueHash256 SubtreeRoot { get; private set; }
+
         public RebuildState(
             ReadOnlySpan<byte> blob,
             ReadOnlySpan<byte> previousBitmap,
-            Span<byte> buffer,
-            ReadOnlySpan<StemLeafWrite> changes,
+            scoped ReadOnlySpan<byte> newBitmap,
+            IPbtStemChanges changes,
             int previousLiveCount,
             int liveCount)
         {
+            int length = BitmapLength + liveCount * (OffsetEntryLength + ValueLength);
+            _rented = ArrayPool<byte>.Shared.Rent(length);
+            _buffer = _rented.AsSpan(0, length);
+            newBitmap.CopyTo(_buffer);
+
             _previousBitmap = previousBitmap;
-            _newBitmap = buffer[..BitmapLength];
-            _buffer = buffer;
+            _newBitmap = _buffer[..BitmapLength];
             _nodeBase = BitmapLength + liveCount * OffsetEntryLength;
             _changes = changes;
             _previousSlot = 0;
@@ -249,19 +242,32 @@ public static class StemLeafBlob
                 : blob[(BitmapLength + previousOffsetsLength)..];
         }
 
-        public NodeRef Rebuild(int low, int high, int position)
+        /// <summary>Runs the post-order rebuild into <see cref="Blob"/> and sets <see cref="SubtreeRoot"/>.</summary>
+        public void Build() => SubtreeRoot = Resolve(Rebuild(0, LeafCount, RootPosition));
+
+        public void Dispose()
         {
-            if (_changeIndex >= _changes.Length || _changes[_changeIndex].SubIndex >= high)
+            byte[]? rented = _rented;
+            if (rented is not null)
+            {
+                _rented = null;
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        private NodeRef Rebuild(int low, int high, int position)
+        {
+            if (_changeIndex >= _changes.Count || _changes.SubIndexAt(_changeIndex) >= high)
             {
                 return CopyCleanSubtree(high - low, position);
             }
 
             if (high - low == 1)
             {
-                Debug.Assert(_changes[_changeIndex].SubIndex == low);
+                Debug.Assert(_changes.SubIndexAt(_changeIndex) == low);
                 if (IsPresent(_previousBitmap, (byte)low)) _previousSlot++;
 
-                ValueHash256 value = _changes[_changeIndex++].Value;
+                ValueHash256 value = _changes.Get(_changeIndex++);
                 if (value == default) return NodeRef.Empty;
 
                 return NodeRef.Leaf(Append(position, value.Bytes));
@@ -284,7 +290,7 @@ public static class StemLeafBlob
         /// A leaf entry stores its value, so its contributed hash is <c>blake3(value)</c>; an internal
         /// entry stores its already-cached hash, returned verbatim; an empty subtree folds to zero.
         /// </remarks>
-        public readonly ValueHash256 Resolve(in NodeRef node) => node.Kind switch
+        private readonly ValueHash256 Resolve(in NodeRef node) => node.Kind switch
         {
             NodeKind.Empty => default,
             NodeKind.Leaf => Blake3Hash.Hash(NodeAt(node.Slot)),
