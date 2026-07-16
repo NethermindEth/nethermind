@@ -626,6 +626,19 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void MediaType_UsesFormatHintForExtensionlessUrls()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc', 'MP4') ?? '')"), Is.EqualTo("video"), "arweave mp4 via format");
+            Assert.That(engine.Evaluate("String(mediaType('ipfs://cid', 'WAV') ?? '')"), Is.EqualTo("audio"), "ipfs wav via format");
+            Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc', 'GLB') ?? '')"), Is.EqualTo(""), "glb ignored");
+            Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc') ?? '')"), Is.EqualTo(""), "no ext, no hint");
+        });
+    }
+
+    [Test]
     public void OpenArt_RendersVideoAndAudioMedia()
     {
         using V8ScriptEngine engine = CreateEngine();

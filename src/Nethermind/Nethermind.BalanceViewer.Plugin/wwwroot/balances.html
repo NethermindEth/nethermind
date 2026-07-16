@@ -1516,9 +1516,13 @@
             return null;
         }
 
-        // classifies an animation_url as playable video/audio by extension (else null → ignored)
-        function mediaType(url) {
-            const u = url.toLowerCase().split('?')[0];
+        // classifies an animation_url as playable video/audio, preferring the metadata format hint
+        // (animation_details.format) since arweave/IPFS media URLs often have no file extension
+        function mediaType(url, format) {
+            const f = (format || '').toString().toLowerCase();
+            if (['mp4', 'webm', 'mov', 'm4v', 'ogv'].includes(f)) return 'video';
+            if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'oga'].includes(f)) return 'audio';
+            const u = (url || '').toLowerCase().split('?')[0];
             if (/\.(mp4|webm|ogv|mov|m4v)$/.test(u)) return 'video';
             if (/\.(mp3|wav|oga|flac|m4a|aac)$/.test(u)) return 'audio';
             return null;
@@ -1605,7 +1609,7 @@
                 // richer media (animation_url): video/audio played in the lightbox, resolved via the same sources
                 let anim = null, animType = null;
                 const au = typeof metadata?.animation_url === 'string' ? metadata.animation_url : null;
-                if (au) { const t = mediaType(au); if (t) { const r = resolveArtUri(au); if (r) { anim = r; animType = t; } } }
+                if (au) { const t = mediaType(au, metadata?.animation_details?.format); if (t) { const r = resolveArtUri(au); if (r) { anim = r; animType = t; } } }
                 // where the media lives, for the lightbox badge (image if present, else the animation)
                 const primary = image || (anim ? au : null);
                 const source = !primary ? null : primary.startsWith('data:') ? 'on-chain' : ipfsPath(primary) ? 'IPFS' : /^https?:\/\//i.test(primary) ? 'HTTPS' : null;
