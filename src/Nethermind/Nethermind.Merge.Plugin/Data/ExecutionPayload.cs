@@ -210,6 +210,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
+    // Above this tx count, compute the tx root concurrently with transaction decoding.
+    private const int MinTxsForParallelDecoding = 32;
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>
