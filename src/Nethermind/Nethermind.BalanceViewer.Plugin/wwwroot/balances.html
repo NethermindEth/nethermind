@@ -1501,25 +1501,27 @@
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
 
                             if (ids.length) {
-                                // detached so it never blocks scanning the other collections or the prune below
+                                // stream the art in chunks fired concurrently: fast (≈one round-trip, not one per
+                                // chunk) yet no single huge request; each chunk fills its placeholders as it lands.
+                                // Detached so it never blocks scanning the other collections or the prune below.
                                 (async () => {
-                                    try {
-                                        for (let i = 0; i < ids.length; i += NFT_ART_CHUNK) {
+                                    const offsets = [];
+                                    for (let i = 0; i < ids.length; i += NFT_ART_CHUNK) offsets.push(i);
+                                    await Promise.all(offsets.map(async (i) => {
+                                        try {
                                             const loaded = await fetchThumbsForIds(node, collection, ids.slice(i, i + NFT_ART_CHUNK), kind);
                                             const c = nftCache.get(key);
                                             if (!c || c.sig !== sig) return; // holdings changed since scan — abandon
                                             for (let j = 0; j < loaded.length; j++) c.thumbs[i + j] = loaded[j];
                                             const b = document.querySelector(`[data-thumbs="${key}"]`);
                                             if (b) fillThumbs(b, c, node, entry.address, collection);
-                                        }
-                                    } catch { /* art is cosmetic — keep whatever loaded */ }
-                                    finally {
-                                        const c = nftCache.get(key);
-                                        if (c && c.sig === sig) {
-                                            c.loading = false;
-                                            const b = document.querySelector(`[data-thumbs="${key}"]`);
-                                            if (b) fillThumbs(b, c, node, entry.address, collection);
-                                        }
+                                        } catch { /* art is cosmetic — keep placeholders for this chunk */ }
+                                    }));
+                                    const c = nftCache.get(key);
+                                    if (c && c.sig === sig) {
+                                        c.loading = false;
+                                        const b = document.querySelector(`[data-thumbs="${key}"]`);
+                                        if (b) fillThumbs(b, c, node, entry.address, collection);
                                     }
                                 })();
                             }
