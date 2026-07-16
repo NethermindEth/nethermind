@@ -40,7 +40,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
         Assert.That(executionPayload.Transactions, Is.Empty);
 
-        ResultWrapper<PayloadStatusV1> newPayload = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
             executionPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
@@ -48,6 +48,7 @@ public partial class EngineModuleTests
             inclusionListTransactions: []);
         Assert.That(newPayload.Result.ResultType, Is.EqualTo(ResultType.Success), newPayload.Result.Error);
         Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(newPayload.Data.InclusionListSatisfied, Is.True);
         Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
 
         // Promote the new block to head, finalized, and safe.
@@ -61,7 +62,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV6_should_return_invalid_for_unsatisfied_inclusion_list()
+    public async Task NewPayloadV6_should_report_unsatisfied_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -86,15 +87,17 @@ public partial class EngineModuleTests
             .TestObject;
         byte[][] inclusionList = [Rlp.Encode(censoredTx).Bytes];
 
-        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: baselinePayload.Data!.ExecutionRequests,
             inclusionListTransactions: inclusionList);
 
+        // execution-apis#609: a censoring payload stays VALID and reports inclusionListSatisfied=false.
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied));
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.InclusionListSatisfied, Is.False);
         Assert.That(result.Data.LatestValidHash, Is.EqualTo(emptyPayload.BlockHash));
     }
 
@@ -111,13 +114,14 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
-        ResultWrapper<PayloadStatusV1> first = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: []);
         Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(first.Data.InclusionListSatisfied, Is.True);
 
         // Same block hash, different IL: the cached VALID must not short-circuit the IL check.
         Transaction censoredTx = Build.A.Transaction
@@ -128,13 +132,14 @@ public partial class EngineModuleTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        ResultWrapper<PayloadStatusV1> second = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> second = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
             inclusionListTransactions: [Rlp.Encode(censoredTx).Bytes]);
-        Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied));
+        Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(second.Data.InclusionListSatisfied, Is.False);
     }
 
     [Test]
@@ -149,7 +154,7 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
 
-        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
@@ -192,7 +197,7 @@ public partial class EngineModuleTests
         Assert.That(payload.Transactions[0], Is.EqualTo(txBytes));
 
         // The block-as-built must round-trip through newPayloadV6 with the same IL.
-        ResultWrapper<PayloadStatusV1> verify = await rpc.engine_newPayloadV6(
+        ResultWrapper<PayloadStatusV2> verify = await rpc.engine_newPayloadV6(
             payload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
@@ -200,6 +205,7 @@ public partial class EngineModuleTests
             inclusionListTransactions: [txBytes]);
         Assert.That(verify.Result.ResultType, Is.EqualTo(ResultType.Success), verify.Result.Error);
         Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(verify.Data.InclusionListSatisfied, Is.True);
     }
 
     [Test]

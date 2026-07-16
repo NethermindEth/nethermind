@@ -20,6 +20,7 @@ namespace Nethermind.Merge.Plugin.Data;
 [JsonSerializable(typeof(ExecutionPayloadV3))]
 [JsonSerializable(typeof(ExecutionPayloadV4))]
 [JsonSerializable(typeof(PayloadStatusV1))]
+[JsonSerializable(typeof(PayloadStatusV2))]
 [JsonSerializable(typeof(byte[][]))]
 [JsonSerializable(typeof(PayloadAttributes))]
 [JsonSerializable(typeof(GetBlobsHandlerV2Request))]

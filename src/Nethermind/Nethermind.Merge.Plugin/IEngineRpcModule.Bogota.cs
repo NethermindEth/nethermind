@@ -20,10 +20,10 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256 blockHash);
 
     [JsonRpcMethod(
-        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+        Description = "Verifies the payload according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
+    Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",

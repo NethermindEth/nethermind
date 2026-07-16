@@ -529,6 +529,9 @@ public abstract class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
+            // newPayloadV6 (EIP-7805) returns PayloadStatusV2; it derives from PayloadStatusV1 so the
+            // runtime type is preserved and AssertPayloadStatus can read inclusionListSatisfied.
+            ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
             _ => throw new AssertionException($"engine_newPayloadV{payloadVersion} returned unexpected response type {response.GetType().FullName}")
@@ -542,7 +545,14 @@ public abstract class BlockchainTestBase
         // A fixture-supplied `status` wins (covers INCLUSION_LIST_UNSATISFIED for FOCIL);
         // otherwise fall back to the legacy validation-error → INVALID convention.
         string expectedStatus = explicitStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
-        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+
+        // execution-apis#609: newPayloadV6 reports a censoring payload as VALID with
+        // inclusionListSatisfied=false rather than the legacy INCLUSION_LIST_UNSATISFIED status.
+        // Fixtures authored against the old status still expect it, so normalize for comparison.
+        string actualStatus = payloadStatus is PayloadStatusV2 { Status: PayloadStatus.Valid, InclusionListSatisfied: false }
+            ? PayloadStatus.InclusionListUnsatisfied
+            : payloadStatus.Status;
+        Assert.That(actualStatus, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {actualStatus}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
 
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
