@@ -575,12 +575,15 @@ public class BalanceViewerScriptTests
                 const remote = R('https://gw/ipfs/QmXYZ/2'); // gateway-style ipfs
                 artSources.https = true;
                 const http = R('https://example.com/api/1');
-                return JSON.stringify({ onchainAlways: allOff.data, ipfsOff: allOff.ipfs, httpsOff: allOff.https, local, remote, http });
+                ipfsRemoteGateway = 'https://dweb.link/ipfs/'; // configurable gateway
+                const customGw = R('ipfs://QmABC');
+                return JSON.stringify({ onchainAlways: allOff.data, ipfsOff: allOff.ipfs, httpsOff: allOff.https, local, remote, http, customGw });
             })()
             """);
         Assert.That(result, Is.EqualTo(
             "{\"onchainAlways\":\"data:image/svg+xml,x\",\"ipfsOff\":\"\",\"httpsOff\":\"\","
-          + "\"local\":\"balances-ipfs/QmABC\",\"remote\":\"https://ipfs.io/ipfs/QmXYZ/2\",\"http\":\"https://example.com/api/1\"}"));
+          + "\"local\":\"balances-ipfs/QmABC\",\"remote\":\"https://ipfs.io/ipfs/QmXYZ/2\",\"http\":\"https://example.com/api/1\","
+          + "\"customGw\":\"https://dweb.link/ipfs/QmABC\"}"));
     }
 
     [Test]

@@ -496,6 +496,7 @@
         .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--c-name); padding: 4px 0; cursor: pointer; }
         .setting-note { font-size: 11px; color: var(--muted); line-height: 1.4; margin: 2px 0 6px; }
         .setting-badge { font-size: 10px; color: var(--muted); }
+        .setting-input { width: 100%; box-sizing: border-box; margin: 2px 0 4px; background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 12px; padding: 5px 8px; }
         .setting-row.disabled { opacity: 0.5; }
         #nodesList a { color: var(--accent); text-decoration: none; }
         #nodesList a:hover { text-decoration: underline; }
@@ -576,7 +577,9 @@
                 <label class="setting-row" id="localIpfsRow"><span>Local IPFS <span id="localIpfsState" class="setting-badge"></span></span><span class="switch"><input type="checkbox" id="setLocalIpfs"><span class="slider"></span></span></label>
                 <div class="setting-note">Uses your own IPFS node; content it lacks is fetched from peers, revealing which CIDs you view.</div>
                 <label class="setting-row"><span>IPFS remote gateway</span><span class="switch"><input type="checkbox" id="setRemoteGw"><span class="slider"></span></span></label>
-                <div class="setting-note">Uses a public gateway (ipfs.io), which sees your IP and which NFTs you view.</div>
+                <div class="setting-note">Uses a public gateway, which sees your IP and which NFTs you view.</div>
+                <input id="ipfsGatewayInput" class="setting-input number" placeholder="https://ipfs.io/ipfs/" spellcheck="false" />
+                <div class="setting-note">Gateway URL (must end in <code>/ipfs/</code>). e.g. ipfs.io, dweb.link, cloudflare-ipfs.com.</div>
             </div>
 
             <div class="settings-section">
@@ -1478,7 +1481,7 @@
             const ip = ipfsPath(uri);
             if (ip) {
                 if (artSources.localIpfs) return 'balances-ipfs/' + ip;
-                if (artSources.remoteGateway) return IPFS_REMOTE_GATEWAY + ip;
+                if (artSources.remoteGateway) return ipfsRemoteGateway + ip;
                 return null;
             }
             if (/^https?:\/\//i.test(uri)) return artSources.https ? uri : null;
@@ -2005,7 +2008,8 @@
         // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
         const artSources = { https: false, localIpfs: false, remoteGateway: false };
         let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
-        const IPFS_REMOTE_GATEWAY = 'https://ipfs.io/ipfs/';
+        const IPFS_REMOTE_GATEWAY_DEFAULT = 'https://ipfs.io/ipfs/';
+        let ipfsRemoteGateway = IPFS_REMOTE_GATEWAY_DEFAULT; // configurable in settings
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
         const scanState = new Map();        // address(lower) -> { pct } while its history scan is in progress
         const detectionCancelled = new Set(); // addresses the user cancelled scanning for (session-only)
@@ -3158,10 +3162,12 @@
             const DETECT_KEY = 'nethermind.balances.detect';
             const HIDESPAM_KEY = 'nethermind.balances.hidespam';
             const ART_KEY = 'nethermind.balances.artsources';
+            const GATEWAY_KEY = 'nethermind.balances.ipfsgateway';
             const WATCH_KEY = 'nethermind.balances.watchcollapsed';
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
             hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
             try { Object.assign(artSources, JSON.parse(localStorage.getItem(ART_KEY) || '{}')); } catch { }
+            ipfsRemoteGateway = localStorage.getItem(GATEWAY_KEY) || IPFS_REMOTE_GATEWAY_DEFAULT;
 
             const settingsModal = $('settingsModal');
             const setDetect = $('setDetect'), setHideSpam = $('setHideSpam');
@@ -3195,6 +3201,17 @@
             setHttps.onchange = () => { artSources.https = setHttps.checked; onArtChange(); };
             setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; onArtChange(); };
             setRemoteGw.onchange = () => { artSources.remoteGateway = setRemoteGw.checked; onArtChange(); };
+
+            const gwInput = $('ipfsGatewayInput');
+            gwInput.value = ipfsRemoteGateway;
+            gwInput.onchange = () => {
+                let v = gwInput.value.trim();
+                if (v && !v.endsWith('/')) v += '/';
+                ipfsRemoteGateway = v || IPFS_REMOTE_GATEWAY_DEFAULT;
+                gwInput.value = ipfsRemoteGateway;
+                localStorage.setItem(GATEWAY_KEY, ipfsRemoteGateway);
+                if (artSources.remoteGateway) onArtChange(); // re-resolve art with the new gateway
+            };
 
             // Watch panel collapse
             const watchPanel = $('watchPanel');
