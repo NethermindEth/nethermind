@@ -80,7 +80,7 @@ namespace Nethermind.Xdc
                     _logger.Info("XdcHotStuff already started, ignoring duplicate Start() call");
                     return;
                 }
-
+                _scheduledRound = NoRound;
                 _running = true;
                 _shutdownCts = new CancellationTokenSource();
                 _shutdownToken = _shutdownCts.Token;

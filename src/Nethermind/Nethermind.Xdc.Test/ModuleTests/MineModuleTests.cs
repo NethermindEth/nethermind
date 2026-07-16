@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -183,43 +184,61 @@ internal class MineModuleTests
     [Test]
     public async Task TestSameRoundRestartDuringMineWaitStillProposes()
     {
-        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
         (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
 
         // Simulates the new-head trigger racing with QC formation: a same-round restart while the
         // proposer is parked in the mine-period wait must not permanently consume the round.
         blockchain.ConsensusModule.StartRoundTask(head, round);
 
-        Task finished = await Task.WhenAny(tracker.FirstProposal.Task, Task.Delay(10_000));
-        if (finished != tracker.FirstProposal.Task)
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
             Assert.Fail("No block was proposed after a same-round restart during the mine-period wait");
-
-        await Task.Delay(500);
+        }
         Assert.That(tracker.Count, Is.EqualTo(1));
     }
 
     [Test]
     public async Task TestStaleRoundTriggerDoesNotCancelCurrentRoundProposal()
     {
-        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(useHotStuffModule: true);
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
         (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
 
         // Simulates a stale trigger (racy CurrentRound read or out-of-order round events): an older
         // round must not cancel the in-flight proposal task for the current round.
         blockchain.ConsensusModule.StartRoundTask(head, round - 1);
 
-        Task finished = await Task.WhenAny(tracker.FirstProposal.Task, Task.Delay(10_000));
-        if (finished != tracker.FirstProposal.Task)
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
             Assert.Fail("No block was proposed after a stale-round trigger during the mine-period wait");
+        }
     }
 
+    private static Task<XdcTestBlockchain> CreateChainWithClockSignal() =>
+        XdcTestBlockchain.Create(useHotStuffModule: true, configurer: builder =>
+            builder.AddSingleton<ITimestamper>(ctx => new ClockQueryingTimestamper(ctx.Resolve<ManualTimestamper>())));
+
     /// <summary>
-    /// Makes this node the leader for the current round and starts a round task that is parked in
-    /// the mine-period wait (the clock is frozen at the head timestamp, so the wait is a full
-    /// <c>MinePeriod</c>), giving the test a window to fire a racing trigger.
+    /// Makes this node the leader for the current round and starts a round task, returning once the
+    /// task has reached the mine-period wait (the clock is frozen at the head timestamp, so the wait
+    /// is a full <c>MinePeriod</c>), giving the test a window to fire a racing trigger.
     /// </summary>
+    /// <remarks>
+    /// The wait is detected via <see cref="ClockQueryingTimestamper"/>: the proposer's only clock
+    /// read is the one computing the mine-period wait, so observing it means the round task is at
+    /// the wait — no sleep-based synchronization needed.
+    /// </remarks>
     private static async Task<(XdcBlockHeader Head, ulong Round, ProposalTracker Tracker)> StartLeaderRoundTaskInMineWait(XdcTestBlockchain blockchain)
     {
+        ClockQueryingTimestamper clock = (ClockQueryingTimestamper)blockchain.Container.Resolve<ITimestamper>();
         XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
         ulong round = blockchain.XdcContext.CurrentRound;
         IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
@@ -230,10 +249,10 @@ internal class MineModuleTests
         ProposalTracker tracker = new();
         blockchain.ConsensusModule.BlockProduced += tracker.OnBlockProduced;
 
+        Task mineWaitReached = clock.WaitForNextQuery();
         blockchain.StartHotStuffModule();
         blockchain.ConsensusModule.StartRoundTask(head, round);
-        // Give the round task time to reach the mine-period wait before the test fires its trigger.
-        await Task.Delay(300);
+        await mineWaitReached.WaitAsync(TimeSpan.FromSeconds(10));
         return (head, round, tracker);
     }
 
@@ -246,6 +265,30 @@ internal class MineModuleTests
         {
             Interlocked.Increment(ref _count);
             FirstProposal.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Delegates to the wrapped <see cref="ManualTimestamper"/> while signalling every clock read,
+    /// letting tests await the moment a component observes the time instead of sleeping.
+    /// </summary>
+    private sealed class ClockQueryingTimestamper(ManualTimestamper inner) : ITimestamper
+    {
+        private volatile TaskCompletionSource _nextQuery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public DateTime UtcNow
+        {
+            get
+            {
+                _nextQuery.TrySetResult();
+                return inner.UtcNow;
+            }
+        }
+
+        public Task WaitForNextQuery()
+        {
+            _nextQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _nextQuery.Task;
         }
     }
 
