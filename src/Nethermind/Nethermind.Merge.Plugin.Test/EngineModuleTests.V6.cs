@@ -42,7 +42,7 @@ public partial class EngineModuleTests
         SurplusReads,
     }
 
-    [TestCase("0xfa626c866af6101fff6c41cd7a58eb16d76cb15cd4c4dc3823feeca5427f0cf0", "0xcc8e83383f9e859ea506694937d26f41a428f53672cc6cf22b6418af55b23679", "0x4df9e49a3232355b73d9536ac066c9c4d80e1055216568169a75a6627c7cc050", "0x72ebf00f29826cfe")]
+    [TestCase("0x0d3151b38fb23a6e23f947ee74258c3bfc593dc14c524845ead1c3d91350c845", "0xcc8e83383f9e859ea506694937d26f41a428f53672cc6cf22b6418af55b23679", "0x4df9e49a3232355b73d9536ac066c9c4d80e1055216568169a75a6627c7cc050", "0x0efc464f7f1d8b74")]
     [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
@@ -202,10 +202,10 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase("0x84c83e92f2371447eda6b51eb468c73bee71856e8dcb091e485cf2013accd206", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false)]
+    [TestCase("0xd1dbebebeabb6a59f6e48abec672a0d47f7274bacbad36cccda6741ef85afba3", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0xb763c7e4bc10c30086f57cf8a939fe656688b5497432f6e96fec3edd11512998", false, false)]
     [TestCase(null, null, null, false, true)]
-    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false)]
-    [TestCase("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true)]
+    [TestCase("0x18629eac4239a4f8bc1e9644780e3c36abe0e0e5680c38ff5c75463a0876e182", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0x04bac7d40ac965b44745995f962c3b4323ea948fa65060af2c826a5af0fa4aa1", true, false)]
+    [TestCase("0x18629eac4239a4f8bc1e9644780e3c36abe0e0e5680c38ff5c75463a0876e182", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0x04bac7d40ac965b44745995f962c3b4323ea948fa65060af2c826a5af0fa4aa1", true, true)]
     public virtual Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline) =>
         !eip8037Enabled && !useEnginePipeline
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot)
@@ -238,10 +238,10 @@ public partial class EngineModuleTests
     }
 
     [TestCase(
-        "0x6630d687c81f6598232481490d2aba430cfa816f7a9db23417985bfa63a08bfb",
+        "0x234ede94e4d6c9042d36d09f6cfb50782458f4886a3f026446f3e9c1872efc2d",
         "0xb7cd7ecf731166baf69674234dc243d3f8931976b0f1a379beafe0981d01bd2e",
-        "0x67b5f79a0e90f1556f7ae999e1eff579b52d7a91a776928bd3612c2e754a2862",
-        "0xe1063f68d3ec957490f73e8c96b499be23912355d081d904e1eb51400f2d5c24",
+        "0xa7bd6d453ad1e7aeae6fa5f8eee777c13cda172a41e9d4e0015c3bbc4bfeab47",
+        "0x494b3d20f7a0030d7ec4a47ca5704466d724842435d351eb1e334abb5e8df87e",
         null)]
     public virtual async Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
     {
@@ -309,18 +309,18 @@ public partial class EngineModuleTests
     {
         (string blockHash, BalErrorKind errorKind)[] perKindCases =
         [
-            ("0x369faa043546e569c349c3188e58104235fe34c03464a2e773c77f5794228a54", BalErrorKind.IncorrectChange),
-            ("0x2942f19ee2060543fd2fe78a05972a62f10909e556ebf0f14a87dbb2486c5798", BalErrorKind.MissingChange),
-            ("0xcc482860b5e9ebd75e2ae25c89e1c03b2f4a5eb11e1b26c2b1e08bcd596b5b81", BalErrorKind.SurplusChange),
-            ("0x8468677394d659a226a4bc5daf290f65fb3526ad21580550c1eb0b9295afc8e5", BalErrorKind.SurplusReads),
+            ("0x9b7625573686c948c6ae6ed670c7fe48ee52bb782127cae80b2d977d49897f38", BalErrorKind.IncorrectChange),
+            ("0x41933b6eea200ef74a5be22d8eb9aa8dd5eacca8d325be495d657c10a6818370", BalErrorKind.MissingChange),
+            ("0x8ce65fdd1e02be98b9526d42a4e4ead3e91d1c8798ce1eaf6684975f84553a78", BalErrorKind.SurplusChange),
+            ("0x22b803b1b309285306454dd6ac4063f176d6b264afbf32f84c3996b571433298", BalErrorKind.SurplusReads),
         ];
 
         foreach ((string blockHash, BalErrorKind errorKind) in perKindCases)
         {
-            yield return new TestCaseData(blockHash, "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x8dc51d96c73b47dc7ff8e1d9ad2a31af0353da03d501842b2378bb7825de86bf", false, false, errorKind);
+            yield return new TestCaseData(blockHash, "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0xb763c7e4bc10c30086f57cf8a939fe656688b5497432f6e96fec3edd11512998", false, false, errorKind);
             yield return new TestCaseData(null, null, null, false, true, errorKind);
-            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, false, errorKind);
-            yield return new TestCaseData("0x85da871160aa3297191717c506c2406bb951cd351e861d7bf14396bcccbbd676", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0xe5774a8f79a0b470ba1d4c3fb35f4f0c6d02d90f8f61ef7a8217f162ef875bd6", true, true, errorKind);
+            yield return new TestCaseData("0x18629eac4239a4f8bc1e9644780e3c36abe0e0e5680c38ff5c75463a0876e182", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0x04bac7d40ac965b44745995f962c3b4323ea948fa65060af2c826a5af0fa4aa1", true, false, errorKind);
+            yield return new TestCaseData("0x18629eac4239a4f8bc1e9644780e3c36abe0e0e5680c38ff5c75463a0876e182", "0xf880c9727e212da101e6c451dd68387c68d771bf96ebe38ca2c68593b6c30a25", "0x04bac7d40ac965b44745995f962c3b4323ea948fa65060af2c826a5af0fa4aa1", true, true, errorKind);
         }
     }
 
