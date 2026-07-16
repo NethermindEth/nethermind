@@ -587,6 +587,33 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void RunPool_RunsAllWithBoundedConcurrency()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        System.Threading.Tasks.Task<object> task = (System.Threading.Tasks.Task<object>)engine.Evaluate("""
+            (async function () {
+                let active = 0, maxActive = 0, count = 0;
+                await runPool([1,2,3,4,5,6,7,8], 3, async () => {
+                    active++; if (active > maxActive) maxActive = active;
+                    await Promise.resolve(); await Promise.resolve();
+                    active--; count++;
+                });
+                return JSON.stringify({ maxActive, count });
+            })()
+            """);
+        Assert.That((string)task.Result, Is.EqualTo("{\"maxActive\":3,\"count\":8}"));
+    }
+
+    [Test]
+    public void Chains_IncludeOptimism()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        object result = engine.Evaluate(
+            "JSON.stringify({ name: CHAINS[10].name, v3: !!CHAINS[10].dex.v3, quotes: CHAINS[10].dex.quotes.length, nativeFeed: !!CHAINS[10].feeds.native })");
+        Assert.That(result, Is.EqualTo("{\"name\":\"Optimism\",\"v3\":true,\"quotes\":2,\"nativeFeed\":true}"));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();

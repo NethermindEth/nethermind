@@ -771,6 +771,19 @@
             { address: '0x8e5bBbb09Ed1ebdE8674Cda39A0c169401db4252', ticker: 'WBTC', decimals: 8, name: 'Wrapped BTC on Gnosis' },
         ];
 
+        // Standalone Chainlink aggregators on Optimism (no Feed Registry there). Canonical addresses;
+        // config-only — Optimism support activates if an OP Nethermind node is detected as a sibling.
+        const OP_FEEDS = {
+            native: '0x13e3Ee699D1909E989722E753853AE30b17e08c5',                         // ETH/USD
+            '0x4200000000000000000000000000000000000006': '0x13e3Ee699D1909E989722E753853AE30b17e08c5', // WETH → ETH/USD
+            '0x0b2c639c533813f4aa9d7837caf62653d097ff85': '0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3', // USDC
+            '0x7f5c764cbc14f9669b88837ca1490cca17c31607': '0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3', // USDC.e → USDC/USD
+            '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': '0xECef79E109e997bCA29c1c0897ec9d7b03647F5E', // USDT
+            '0x68f180fcce6836688e9084f035309e29bf0a2095': '0x718A5788b89454aAE3A028AE9c111A29Be6c2a6F', // WBTC → BTC/USD
+            '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': '0x8dBa75e83DA73cc766A7e5a0ee71F656BAb470d6', // DAI
+            '0x4200000000000000000000000000000000000042': '0x0D276FC14719f9292D5C1eA2198673d1f4269246', // OP
+        };
+
         const CHAINS = {
             1: {
                 name: 'Ethereum', ticker: 'ETH', ens: true, tag: '', logo: 'logos/ethereum-logo.svg',
@@ -837,6 +850,19 @@
                 },
             },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false, tag: 'CHI', logo: 'logos/gnosis.png' },
+            10: {
+                name: 'Optimism', ticker: 'ETH', ens: false, tag: 'OP', logo: 'logos/ethereum-logo.svg',
+                feeds: OP_FEEDS,
+                currencies: ['USD', 'EUR'],
+                // Uniswap V3 (canonical factory, also deployed on Optimism) for tokens without a standalone feed
+                dex: {
+                    v3: { factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984', fees: [500, 3000, 10000] },
+                    quotes: [
+                        { addr: '0x4200000000000000000000000000000000000006', decimals: 18 }, // WETH
+                        { addr: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC
+                    ],
+                },
+            },
         };
         const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
         const SEL_RESOLVER = '0x0178b8bf';         // resolver(bytes32)
@@ -876,6 +902,7 @@
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
         const NFT_ART_CHUNK = 12;                  // ids per background art request (keeps each response small)
+        const NFT_ART_CONCURRENCY = 3;             // max art chunks in flight at once (gentle on off-chain servers)
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -1540,6 +1567,13 @@
             return ids.filter((id, i) => { try { return BigInt(bals[i]) > 0n; } catch { return false; } });
         }
 
+        // runs an async worker over items with at most `limit` in flight at once (bounded concurrency)
+        async function runPool(items, limit, worker) {
+            let next = 0;
+            const run = async () => { while (next < items.length) { const i = next++; await worker(items[i], i); } };
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+        }
+
         // decodes token metadata for a slice of ids into thumbnails. On-chain (data:) metadata is used always;
         // off-chain (ipfs://) metadata + art is resolved via the local IPFS gateway only when the user opted in.
         async function fetchThumbsForIds(node, collection, ids, kind) {
@@ -1727,7 +1761,9 @@
                                 (async () => {
                                     const offsets = [];
                                     for (let i = 0; i < ids.length; i += NFT_ART_CHUNK) offsets.push(i);
-                                    await Promise.all(offsets.map(async (i) => {
+                                    // bounded concurrency so off-chain (HTTPS/gateway) servers aren't flooded with
+                                    // every request at once (which dropped some — e.g. CloneX); loads more gradually
+                                    await runPool(offsets, NFT_ART_CONCURRENCY, async (i) => {
                                         try {
                                             const loaded = await fetchThumbsForIds(node, collection, ids.slice(i, i + NFT_ART_CHUNK), kind);
                                             const c = nftCache.get(key);
@@ -1736,7 +1772,7 @@
                                             const b = document.querySelector(`[data-thumbs="${key}"]`);
                                             if (b) fillThumbs(b, c, node, entry.address, collection);
                                         } catch { /* art is cosmetic — keep placeholders for this chunk */ }
-                                    }));
+                                    });
                                     const c = nftCache.get(key);
                                     if (c && c.sig === sig) {
                                         c.loading = false;
