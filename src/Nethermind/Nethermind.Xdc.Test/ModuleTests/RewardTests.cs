@@ -610,8 +610,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract)
-            );
+            CreateXdcTransactionProcessor(specProvider, masternodeVotingContract));
 
         UInt256 totalReward = UInt256.Parse("171000000000000000000");
         ulong totalSigner = 177, sign = 59;

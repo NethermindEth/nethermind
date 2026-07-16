@@ -3,7 +3,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Consensus.Processing.CensorshipDetector;
+namespace Nethermind.CensorshipDetector.Plugin;
 
 public interface ICensorshipDetectorConfig : IConfig
 {

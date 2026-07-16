@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
@@ -54,5 +55,21 @@ public class AuRaBlockStoreDecoderTests
         BlockStore baseStore = new(db);
 
         Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpLimitException>());
+    }
+
+    [Test]
+    public void Bad_block_store_preserves_aura_header_when_decoder_is_injected()
+    {
+        Block block = AuRaGenesisShapedBlock();
+
+        TestMemDb db = new();
+        BadBlockStore store = new(db, maxSize: 100, headerDecoder: new AuRaHeaderDecoder());
+        store.Insert(block);
+
+        Block retrieved = store.GetAll().Single();
+
+        Assert.That(retrieved.Header, Is.InstanceOf<AuRaBlockHeader>());
+        Assert.That(((AuRaBlockHeader)retrieved.Header).AuRaSignature, Is.EqualTo(new byte[65]));
+        Assert.That(retrieved.Hash, Is.EqualTo(block.Hash));
     }
 }

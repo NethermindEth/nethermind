@@ -14,6 +14,10 @@
     <Project Path="Nethermind.Flashbots.Test/Nethermind.Flashbots.Test.csproj" />
     <Project Path="Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   </Folder>
+  <Folder Name="/Plugins/CensorshipDetector/">
+    <Project Path="Nethermind.CensorshipDetector.Plugin.Test/Nethermind.CensorshipDetector.Plugin.Test.csproj" />
+    <Project Path="Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/OpcodeTracing/">
     <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   </Folder>
@@ -101,6 +105,7 @@
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
+  <Project Path="Nethermind.BlockProfiler/Nethermind.BlockProfiler.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
