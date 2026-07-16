@@ -25,28 +25,32 @@ public class PbtResourcePool : IPbtResourcePool
             // PersistSegment prunes CompactSize canonical layers in one go (everything older went with
             // the previous segment), plus the fork siblings pruned alongside them. Catch-up drains and
             // the finality-stall backstop overflow this by design and refill over the next segment.
-            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, config.CompactSize + 8) },
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, config.CompactSize + 8, 2) },
 
             // read-only here means never committed to the repository; the scope may still commit locally
-            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4) },
+            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
             // one compaction runs at a time per width, and its content is dropped as soon as it is written
-            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2) },
-            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2) },
-            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2) },
-            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2) },
-            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2) },
-            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2) },
-            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2) },
-            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2) },
-            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2) },
-            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2) },
-            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2) },
+            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 0) },
+            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 0) },
+            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 0) },
+            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 0) },
+            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 0) },
+            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 0) },
+            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 0) },
+            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 0) },
+            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 0) },
+            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 0) },
+            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 0) },
         };
 
     public PbtSnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
+
+    public PbtTransientResource GetTransientResource(Usage usage) => _categories[usage].GetTransientResource();
+
+    public void ReturnTransientResource(Usage usage, PbtTransientResource transient) => _categories[usage].ReturnTransientResource(transient);
 
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
@@ -112,10 +116,14 @@ public class PbtResourcePool : IPbtResourcePool
         }
     }
 
-    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int transientPoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        // one scope holds one transient at a time, and only main processing and the read-only envs
+        // ever open scopes, so the layer sizing does not apply here
+        private readonly ConcurrentStackPool<PbtTransientResource> _transientPool = new(transientPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
+        private readonly PooledResourceLabel _transientLabel = new(usage.ToString(), nameof(PbtTransientResource));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -136,6 +144,26 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.ActivePooledResource.AddBy(_snapshotLabel, -1);
             _snapshotPool.Return(content);
             Metrics.CachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
+        }
+
+        public PbtTransientResource GetTransientResource()
+        {
+            Metrics.ActivePooledResource.AddBy(_transientLabel, 1);
+            if (_transientPool.TryGet(out PbtTransientResource? transient))
+            {
+                Metrics.CachedPooledResource[_transientLabel] = _transientPool.PooledItemCount;
+                return transient;
+            }
+
+            Metrics.CreatedPooledResource.AddBy(_transientLabel, 1);
+            return new PbtTransientResource();
+        }
+
+        public void ReturnTransientResource(PbtTransientResource transient)
+        {
+            Metrics.ActivePooledResource.AddBy(_transientLabel, -1);
+            _transientPool.Return(transient);
+            Metrics.CachedPooledResource[_transientLabel] = _transientPool.PooledItemCount;
         }
     }
 

@@ -117,7 +117,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
         {
             StateId stateId = new(baseBlock);
-            return new PbtWorldStateScope(stateId, outer.GatherBundle(stateId), _codeDb, outer, isReadOnly: false);
+            return new PbtWorldStateScope(stateId, outer.GatherBundle(stateId), _codeDb, outer, outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false);
         }
     }
 

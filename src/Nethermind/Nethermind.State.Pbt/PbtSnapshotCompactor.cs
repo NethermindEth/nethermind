@@ -25,8 +25,22 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool)
         // size would mis-charge the pool on both
         PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
-        // oldest to newest, so a later layer's write overwrites an earlier one: reversing this
-        // inverts precedence and writes stale values to disk without any error
+
+        // First pass: the newest layer that self-destructs each address. A slot written strictly
+        // before that layer is wiped by the destruct, so it is filtered out of the merge below rather
+        // than added and then hunted down — which is what the whole segment's slots used to be
+        // re-scanned for, once per self-destruct in every layer.
+        Dictionary<AddressAsKey, int> slotClearBoundary = [];
+        for (int i = 0; i < chainOldestFirst.Count; i++)
+        {
+            foreach ((AddressAsKey address, _) in chainOldestFirst[i].Content.SelfDestructs)
+            {
+                slotClearBoundary[address] = i;
+            }
+        }
+
+        // Second pass, oldest to newest, so a later layer's write overwrites an earlier one:
+        // reversing this inverts precedence and writes stale values to disk without any error.
         for (int i = 0; i < chainOldestFirst.Count; i++)
         {
             PbtSnapshotContent content = chainOldestFirst[i].Content;
@@ -36,19 +50,16 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool)
                 merged.Accounts[address] = account;
             }
 
-            // a newer self-destruct hides every older slot write for the address; the marker itself
-            // is kept so persistence still range-deletes the on-disk storage
+            // the markers are kept so persistence still range-deletes the on-disk storage
             foreach ((AddressAsKey address, _) in content.SelfDestructs)
             {
                 merged.SelfDestructs[address] = true;
-                foreach (((AddressAsKey Address, UInt256 Slot) slotKey, _) in merged.Slots)
-                {
-                    if (slotKey.Address.Equals(address)) merged.Slots.TryRemove(slotKey, out _);
-                }
             }
 
-            foreach (((AddressAsKey, UInt256) slotKey, EvmWord value) in content.Slots)
+            foreach (((AddressAsKey Address, UInt256 Slot) slotKey, EvmWord value) in content.Slots)
             {
+                // a slot written in the destructing layer itself is a post-destruct write and survives
+                if (slotClearBoundary.TryGetValue(slotKey.Address, out int boundary) && i < boundary) continue;
                 merged.Slots[slotKey] = value;
             }
 

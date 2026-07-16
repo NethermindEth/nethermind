@@ -13,11 +13,12 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 
 public class PbtWorldStateManager(
     IPbtDbManager manager,
+    IPbtResourcePool resourcePool,
     PbtStateReader stateReader,
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -27,7 +28,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

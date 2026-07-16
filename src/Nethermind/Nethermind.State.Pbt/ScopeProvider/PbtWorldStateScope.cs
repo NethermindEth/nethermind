@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -26,15 +24,18 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
     private readonly IPbtCommitTarget _commitTarget;
+    private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtResourcePool.Usage _usage;
     private readonly bool _isReadOnly;
 
-    // stem leaves dirtied since the last root update, keyed by their EIP-8297 stem and grouped at
-    // write time: storage slots from the parallel storage batches and account/code header leaves from
-    // the single-threaded account flush both land here (their sub-index bands never overlap). The outer
-    // map is concurrent because parallel storage workers add new stems, but each stem is
-    // address-derived and written by a single worker, so its per-stem change map is single-writer.
-    // UpdateRootHash drains this into the write batch, which returns the pooled maps to the pool.
-    private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
+    // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
+    // and account/code header leaves from the single-threaded account flush both land here (their
+    // sub-index bands never overlap). UpdateRootHash drains it into the write batch.
+    private readonly PbtTransientResource _transient;
+
+    // deliberately not pooled: PbtCodeDb captures this by reference and StateProvider.CommitCodeAsync
+    // ends in a Task.Run joined only on the success paths, so a writer orphaned by a failed block
+    // would bleed code into whichever block rented the map next
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
@@ -43,11 +44,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private bool _rootDirty;
     private bool _isDisposed;
 
-    public PbtWorldStateScope(in StateId currentStateId, PbtSnapshotBundle bundle, IWorldStateScopeProvider.ICodeDb codeDb, IPbtCommitTarget commitTarget, bool isReadOnly)
+    public PbtWorldStateScope(
+        in StateId currentStateId,
+        PbtSnapshotBundle bundle,
+        IWorldStateScopeProvider.ICodeDb codeDb,
+        IPbtCommitTarget commitTarget,
+        IPbtResourcePool resourcePool,
+        PbtResourcePool.Usage usage,
+        bool isReadOnly)
     {
         _currentStateId = currentStateId;
         Bundle = bundle;
         _commitTarget = commitTarget;
+        _resourcePool = resourcePool;
+        _usage = usage;
+        _transient = resourcePool.GetTransientResource(usage);
         _isReadOnly = isReadOnly;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
@@ -85,7 +96,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     {
         if (!_rootDirty) return;
 
-        using PbtWriteBatch changes = BuildChanges();
+        using PbtWriteBatch changes = _transient.DrainToWriteBatch();
         _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance).ToHash256();
         _rootDirty = false;
     }
@@ -124,19 +135,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
-        // _dirtyStems was already drained (and its maps returned) by UpdateRootHash, and the blob and
-        // node results left with the buffer CollectSnapshot sealed
+        // the dirty stems were already drained (and their maps returned) by UpdateRootHash, and the
+        // blob and node results left with the buffer CollectSnapshot sealed
         _pendingCode.Clear();
         _storages.Clear();
         _rootDirty = false;
     }
 
     /// <remarks>
-    /// Returns the stem-change maps still held by <see cref="_dirtyStems"/>: a scope abandoned with
-    /// pending writes (an exception mid-block, or a branch dropped before its final
-    /// <see cref="UpdateRootHash"/>) never reaches <see cref="BuildChanges"/>, and the maps would
-    /// otherwise be lost to the GC rather than returned — a silent drain of the shared pool.
-    /// Idempotent, so a double dispose cannot return a map twice.
+    /// Returns the transient, whose reset hands back the stem-change maps no fold claimed: a scope
+    /// abandoned with pending writes — an exception mid-block, or a branch dropped before its final
+    /// <see cref="UpdateRootHash"/> — would otherwise lose them to the GC rather than the pool.
+    /// Idempotent, so a double dispose cannot return anything twice.
     /// </remarks>
     public void Dispose()
     {
@@ -144,22 +154,19 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         try
         {
-            // only maps BuildChanges did not already hand to a write batch are still here: it drains
-            // and clears in one step, so ownership is never held in both places
-            foreach ((_, IPbtStemChanges changes) in _dirtyStems)
-            {
-                PbtStemChanges.Return(changes);
-            }
+            // reset here rather than leaning on the pool doing it: the drain is the fix, not an
+            // incidental property of how the pool happens to recycle
+            _transient.Reset();
         }
         finally
         {
-            _dirtyStems.NoLockClear();
+            _resourcePool.ReturnTransientResource(_usage, _transient);
             Bundle.Dispose();
         }
     }
 
     /// <summary>
-    /// Folds an account's EIP-8297 header leaves straight into <see cref="_dirtyStems"/>: BASIC_DATA,
+    /// Folds an account's EIP-8297 header leaves straight into the dirty stems: BASIC_DATA,
     /// CODE_HASH and the header code chunks on its header stem, plus any overflow chunks on their
     /// content-addressed code-zone stems. Runs on the single-threaded account flush, after the storage
     /// batches, so it merges with any header-region slots already present on the header stem (their
@@ -182,7 +189,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         // Set may promote the pooled map to a larger variant, returning the old one to the pool, so
         // this account's leaves accumulate on a local and the store-back happens in the finally:
         // leaving a promoted-away map in the dictionary would hand a pooled map two owners.
-        IPbtStemChanges header = _dirtyStems.GetOrAdd(headerStem, static _ => PbtStemChanges.Rent());
+        IPbtStemChanges header = _transient.RentStemChanges(headerStem);
         try
         {
             Span<byte> basicData = stackalloc byte[32];
@@ -200,46 +207,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
         finally
         {
-            _dirtyStems[headerStem] = header;
+            _transient.StoreStemChanges(headerStem, header);
         }
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
+            _transient.SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
         }
     }
 
-    /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
-    /// <remarks>
-    /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old
-    /// one to the pool, so its result must always be stored back; routing single-leaf writes through
-    /// here makes forgetting that unrepresentable. Safe only while at most one thread writes a given
-    /// stem: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> may
-    /// run the factory and discard its result, which would leak the rented map. That holds because
-    /// <c>PersistentStorageProvider</c> partitions its parallel batches by address, and code-overflow
-    /// stems are reached only from the single-threaded account flush.
-    /// </remarks>
-    private void SetLeaf(in Stem stem, byte subIndex, in ValueHash256 value)
-    {
-        IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
-        _dirtyStems[stem] = changes.Set(subIndex, value);
-    }
 
-    /// <summary>Drains the dirty stem leaves accumulated since the last root update into a <see cref="PbtWriteBatch"/>.</summary>
-    /// <remarks>
-    /// Ownership of the per-stem maps passes to the batch, which returns them to the pool on dispose, so
-    /// <see cref="_dirtyStems"/> is emptied here: <see cref="UpdateRootHash"/> folds them into the overlays
-    /// once and does not revisit them.
-    /// </remarks>
-    private PbtWriteBatch BuildChanges()
-    {
-        PbtWriteBatch batch = new(estimatedStems: _dirtyStems.Count);
-        foreach ((Stem stem, IPbtStemChanges leaves) in _dirtyStems) batch.Add(stem, leaves);
-        _dirtyStems.Clear();
-        return batch;
-    }
 
     private static ValueHash256 ToLeaf(ReadOnlySpan<byte> value)
     {
@@ -331,7 +310,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             }
 
             // single-writer per stem: this address's storage is flushed by one worker
-            scope.SetLeaf(stem, subIndex, SlotLeaf(word));
+            scope._transient.SetLeaf(stem, subIndex, SlotLeaf(word));
             scope.SetSlot(address, index, word);
         }
 
