@@ -96,6 +96,8 @@ public class FrameTxBlockReceiptsTests
             "spec gas includes the frame tx intrinsic cost");
         Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsedTotal),
             "block header GasUsed must equal the cumulative receipt gas (production/processing parity)");
+        Assert.That(tx.BlockGasUsed, Is.EqualTo((ulong)receipt.GasUsed),
+            "frame tx must report block gas via Transaction.BlockGasUsed for parallel block validation");
 
         // The frame-aware wire encoding must produce a computable receipts root.
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());

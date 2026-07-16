@@ -200,6 +200,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // EIP8141: EIP-3529-style refund netting inside frames is not applied yet; spent gas is
         // intrinsic plus the gas each frame consumed.
         ulong spentGas = intrinsicGas + totalFrameGasUsed;
+        // Block-level gas accounting reads Transaction.BlockGasUsed (its getter falls back to the
+        // tx GasLimit, which is 0 for a frame tx). Set it like the regular path so parallel block
+        // validation (BlockAccessListManager) accumulates the frame tx's gas into the header.
+        tx.BlockGasUsed = spentGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -220,7 +224,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (commit)
         {
             WorldState.Commit(spec, commitRoots: false);
-            header.GasUsed += spentGas;
         }
 
         if (opts.HasFlag(ExecutionOptions.Restore))
