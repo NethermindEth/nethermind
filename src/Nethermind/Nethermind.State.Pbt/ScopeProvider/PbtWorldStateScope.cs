@@ -92,11 +92,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _rootDirty = false;
     }
 
-    // ---- IPbtStore: the updater reads prior state from the bundle and writes into the per-block overlays ----
+    // ---- IPbtStore: the updater reads prior state from the per-block overlays (falling back to the bundle)
+    // and writes new state back into them, so a fold composes on top of any earlier fold this block ----
 
-    MemoryManager<byte>? IPbtStore.GetTrieNode(in TrieNodeKey key) => ArrayMemoryManager.From(Bundle.GetTrieNode(key));
+    MemoryManager<byte>? IPbtStore.GetTrieNode(in TrieNodeKey key) =>
+        _nodeOverlay.TryGetValue(key, out byte[]? node)
+            ? ArrayMemoryManager.From(node)
+            : ArrayMemoryManager.From(Bundle.GetTrieNode(key));
 
-    MemoryManager<byte>? IPbtStore.GetLeafBlob(in Stem stem) => ArrayMemoryManager.From(Bundle.GetLeafBlob(stem));
+    MemoryManager<byte>? IPbtStore.GetLeafBlob(in Stem stem) =>
+        _blobOverlay.TryGetValue(stem, out byte[]? blob)
+            ? ArrayMemoryManager.From(blob)
+            : ArrayMemoryManager.From(Bundle.GetLeafBlob(stem));
 
     void IPbtStore.SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node) => _nodeOverlay[key] = node.Length == 0 ? null : node.ToArray();
 

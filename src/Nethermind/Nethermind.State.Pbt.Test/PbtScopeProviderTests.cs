@@ -117,4 +117,39 @@ public class PbtScopeProviderTests
         PbtReferenceModel.SetSlot(model, address, 500, 0x99);
         Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
     }
+
+    [Test]
+    public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold()
+    {
+        await using PbtTestContext ctx = new();
+        PbtScopeProvider provider = ctx.CreateScopeProvider();
+        Address address = TestItem.AddressC;
+
+        Dictionary<string, byte[]> model = [];
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+
+        // first writes then an explicit fold, which flushes the dirty stems into the overlays
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(3, [0x11]);    // header-region slot on the account header stem
+            storageBatch.Set(500, [0x11]);  // storage-zone slot on its own stem
+        }
+        scope.UpdateRootHash();
+
+        // more writes after the fold: slot 4 shares the header stem with slot 3 (so its blob must be
+        // read back from the overlay, not the empty bundle) and slot 500 is overwritten
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(4, [0x22]);
+            storageBatch.Set(500, [0x22]);
+        }
+        scope.Commit(1);
+
+        PbtReferenceModel.SetSlot(model, address, 3, 0x11);
+        PbtReferenceModel.SetSlot(model, address, 4, 0x22);
+        PbtReferenceModel.SetSlot(model, address, 500, 0x22);
+        Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+    }
 }
