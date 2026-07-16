@@ -24,7 +24,10 @@ public class TxPoolSenderTests
 
         TxSealer sealer = new(txSigner, Timestamper.Default);
 
-        INonceManager nonceManager = Substitute.For<INonceManager>();
+        // NonceLocker is a ref struct, so INonceManager cannot be substituted; use the real one.
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        INonceManager nonceManager = new NonceManager(accountStateProvider);
 
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
 
