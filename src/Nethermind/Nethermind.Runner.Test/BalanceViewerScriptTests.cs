@@ -490,8 +490,7 @@ public class BalanceViewerScriptTests
                 const thumb = { id: '7', src: null, name: 'Mouse #7', description: 'a mouse',
                     attributes: [{ trait_type: 'hat', value: 'No Hat' }, { trait_type: 'neck', value: 'Plain' }] };
                 const collection = { address: '0x000000000000000000000000000000000000dEaD', ticker: 'MICE', name: 'Anonymice' };
-                const node = { meta: { explorer: 'https://etherscan.io' } };
-                openArt(thumb, collection, node);
+                openArt(thumb, collection, { meta: {} });
                 const overlay = document.body.children[document.body.children.length - 1];
                 const flat = __texts(overlay);
                 return JSON.stringify({
@@ -499,11 +498,11 @@ public class BalanceViewerScriptTests
                     title: flat.includes('Mouse #7'),
                     desc: flat.includes('a mouse'),
                     traitParts: flat.filter((t) => ['hat', 'No Hat', 'neck', 'Plain'].includes(t)).length,
-                    hasExplorerLink: flat.some((t) => t.includes('0x0000') && t.includes('↗')),
+                    copyAddr: flat.some((t) => t.includes('0x0000') && t.includes('dEaD') && !t.includes('↗')),
                 });
             })()
             """);
-        Assert.That(result, Is.EqualTo("{\"noArt\":true,\"title\":true,\"desc\":true,\"traitParts\":4,\"hasExplorerLink\":true}"));
+        Assert.That(result, Is.EqualTo("{\"noArt\":true,\"title\":true,\"desc\":true,\"traitParts\":4,\"copyAddr\":true}"));
     }
 
     [Test]
@@ -537,6 +536,40 @@ public class BalanceViewerScriptTests
             })()
             """);
         Assert.That(result, Is.EqualTo("{\"fullHasName\":true,\"fullHasRedundantSub\":false,\"bareHasSub\":true}"));
+    }
+
+    [Test]
+    public void ExceedsPoolLiquidity_FlagsHoldingsBiggerThanTheExitPool()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        // a DEX-priced holding worth more than the pool's exit liquidity is a spoof (VITALIK-style airdrop +
+        // shallow manipulated pool); one within the pool's liquidity is fine; a token with no pool entry
+        // (Chainlink-priced) is never flagged
+        object result = engine.Evaluate("""
+            (function () {
+                const usd = (n) => BigInt(n) * (10n ** 8n);
+                dexLiquidity8.set('0xspoof', usd(7268));
+                dexLiquidity8.set('0xthin', usd(8000));
+                return JSON.stringify({
+                    spoof: exceedsPoolLiquidity('0xspoof', usd(192428)),
+                    within: exceedsPoolLiquidity('0xthin', usd(5000)),
+                    noPool: exceedsPoolLiquidity('0xchainlink', usd(1000000)),
+                });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"spoof\":true,\"within\":false,\"noPool\":false}"));
+    }
+
+    [TestCase("ipfs://QmABC/1", "balances-ipfs/QmABC/1")]
+    [TestCase("ipfs://ipfs/QmABC", "balances-ipfs/QmABC")]
+    [TestCase("https://gateway.example/ipfs/QmXYZ/2", "balances-ipfs/QmXYZ/2")]
+    [TestCase("https://example.com/api/token/1", "")]
+    [TestCase("data:application/json;base64,ey000", "")]
+    public void IpfsUrl_RewritesOnlyIpfsUrisToTheProxy(string input, string expected)
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        object result = engine.Evaluate($"String(ipfsUrl('{input}') ?? '')");
+        Assert.That(result, Is.EqualTo(expected));
     }
 
     [Test]

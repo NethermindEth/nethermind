@@ -225,7 +225,7 @@
 
         #tokens { margin-top: 12px; }
 
-        body.hideZero tr.zero { display: none; }
+        tr.zero { display: none; } /* zero balances are always hidden */
 
         header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: baseline; }
         button.zero-toggle {
@@ -349,8 +349,8 @@
         .lightbox-traits .trait-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lightbox-traits .trait-val { font-size: 12px; color: var(--c-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lightbox-meta { font-size: 11px; font-family: 'DM Mono', ui-monospace, monospace; margin-top: 2px; }
-        .lightbox-link { color: var(--accent); text-decoration: none; }
-        .lightbox-link:hover { text-decoration: underline; }
+        .lightbox-copy { color: var(--accent); cursor: pointer; width: fit-content; }
+        .lightbox-copy:hover { text-decoration: underline; }
 
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -485,7 +485,7 @@
         <div id="chainToggles"></div>
         <div class="toggles">
             <button id="detectToggle" class="zero-toggle" title="Auto-detect held tokens"><span class="glyph">🔍</span></button>
-            <button id="hideZero" class="zero-toggle" title="Hide zero balances">∅</button>
+            <button id="ipfsToggle" class="zero-toggle" title="Load off-chain NFT art via a local IPFS node (off by default)"><span class="glyph">🖼️</span></button>
         </div>
         <div class="total" id="totalBox">
             <span class="net">total ≈</span>
@@ -702,7 +702,6 @@
         const CHAINS = {
             1: {
                 name: 'Ethereum', ticker: 'ETH', ens: true, tag: '', logo: 'logos/ethereum-logo.svg',
-                explorer: 'https://etherscan.io',
                 registry: FEED_REGISTRY,
                 strictValueGate: true, // deep Uniswap coverage: an auto-detected token with no price is spam
 
@@ -751,7 +750,6 @@
             560048: { name: 'Hoodi', ticker: 'ETH', ens: true, tag: 'HOO', logo: 'logos/ethereum-logo.svg' },
             100: {
                 name: 'Gnosis', ticker: 'xDAI', ens: false, tag: 'GNO', logo: 'logos/gnosis.png',
-                explorer: 'https://gnosisscan.io',
                 feeds: GNOSIS_FEEDS,
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
@@ -1044,6 +1042,9 @@
         // Addresses learned NOT to be ERC-4626 vaults (asset() reverts), so the vault-pricing fallback
         // doesn't re-probe them every refresh.
         const notVault = new Set();
+        // token addr -> exit liquidity (quote side, USD at PRICE_DECIMALS) of the DEX pool it was priced from.
+        // Used to reject spoofed spam: a holding worth more than the pool could ever pay out isn't realizable.
+        const dexLiquidity8 = new Map();
 
         // Unified price probe for one asset: the calls needed and how to combine their results into a
         // USD price (PRICE_DECIMALS scale), or null if the asset has no discoverable price. Handles a
@@ -1153,6 +1154,9 @@
         async function resolvePrices8(node, items) {
             const meta = node.meta;
             const prices = new Map();
+            // exit liquidity applies only to the DEX-priced tokens set below; clear any stale entry so a token
+            // now priced by Chainlink (real feed) isn't wrongly capped by an old pool reading
+            for (const it of items) dexLiquidity8.delete(it.addr);
             // 1) Chainlink registry / standalone / derived
             const clCalls = [];
             const clProbes = items.map(({ addr }) => {
@@ -1205,7 +1209,17 @@
                             const { it, qi } = found[i];
                             if (prices.get(it.addr)) continue; // priced by an earlier quote
                             const price = computeV2Price8(rRes[i * 2], rRes[i * 2 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], floor);
-                            if (price !== null && price > 0n) prices.set(it.addr, price);
+                            if (price !== null && price > 0n) {
+                                prices.set(it.addr, price);
+                                // record the pool's quote-side reserve in USD (the most it could ever pay out)
+                                try {
+                                    const rHex = rRes[i * 2].slice(2);
+                                    const r0 = BigInt('0x' + rHex.slice(0, 64)), r1 = BigInt('0x' + rHex.slice(64, 128));
+                                    const tokenIsToken0 = ('0x' + rRes[i * 2 + 1].slice(-40)).toLowerCase() === it.addr.toLowerCase();
+                                    const reserveQuote = tokenIsToken0 ? r1 : r0;
+                                    dexLiquidity8.set(it.addr, reserveQuote * quoteUsd[qi] / 10n ** BigInt(meta.dex.quotes[qi].decimals));
+                                } catch { /* leave uncapped if reserves can't be parsed */ }
+                            }
                         }
                     }
                 }
@@ -1234,7 +1248,12 @@
                             const { it, qi } = pools[i];
                             if (prices.get(it.addr)) continue; // priced by an earlier pool/quote
                             const price = computeV3Price8(dRes[i * 3], dRes[i * 3 + 1], it.addr, it.decimals, meta.dex.quotes[qi], quoteUsd[qi], dRes[i * 3 + 2], floor);
-                            if (price !== null && price > 0n) prices.set(it.addr, price);
+                            if (price !== null && price > 0n) {
+                                prices.set(it.addr, price);
+                                // the quote token's balance in the pool is its exit liquidity
+                                try { dexLiquidity8.set(it.addr, BigInt(dRes[i * 3 + 2]) * quoteUsd[qi] / 10n ** BigInt(meta.dex.quotes[qi].decimals)); }
+                                catch { /* leave uncapped */ }
+                            }
                         }
                     }
                 }
@@ -1371,6 +1390,18 @@
             } catch { return null; }
         }
 
+        // Rewrites an ipfs:// (or gateway-style .../ipfs/<cid>) URI to the node's same-origin IPFS proxy, which
+        // forwards to a local gateway. Only used when the user has opted in; returns null for non-IPFS URIs.
+        function ipfsUrl(uri) {
+            if (typeof uri !== 'string') return null;
+            let path = null;
+            if (uri.startsWith('ipfs://')) path = uri.slice(7);
+            else { const m = uri.match(/\/ipfs\/(.+)$/); if (m) path = m[1]; }
+            if (!path) return null;
+            if (path.startsWith('ipfs/')) path = path.slice(5); // ipfs://ipfs/<cid> form
+            return 'balances-ipfs/' + path;
+        }
+
         const iface1 = (x) => { try { return BigInt(x) === 1n; } catch { return false; } };
 
         async function detectKind(node, collection) {
@@ -1423,35 +1454,37 @@
             return ids.filter((id, i) => { try { return BigInt(bals[i]) > 0n; } catch { return false; } });
         }
 
-        // decodes on-chain metadata for a slice of ids into thumbnails
+        // decodes token metadata for a slice of ids into thumbnails. On-chain (data:) metadata is used always;
+        // off-chain (ipfs://) metadata + art is resolved via the local IPFS gateway only when the user opted in.
         async function fetchThumbsForIds(node, collection, ids, kind) {
             const sel = kind === 'erc1155' ? SEL_ERC1155_URI : SEL_TOKEN_URI;
             const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: sel + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
-            const thumbs = [];
-            for (let i = 0; i < ids.length; i++) {
+            return Promise.all(ids.map(async (id, i) => {
                 let uri = decodeAbiString(uris[i]);
                 // ERC-1155 uri() may template the id as a 64-hex lowercase string
-                if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', ids[i].toString(16).padStart(64, '0'));
-                const metadata = parseOnChainMetadata(uri);
+                if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', id.toString(16).padStart(64, '0'));
+                let metadata = parseOnChainMetadata(uri);
+                // opt-in: fetch off-chain metadata JSON through the node's local-gateway IPFS proxy
+                if (!metadata && ipfsEnabled && uri) {
+                    const murl = ipfsUrl(uri);
+                    if (murl) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
+                }
                 const name = typeof metadata?.name === 'string' ? metadata.name : null;
-                const src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
-                // carry the on-chain metadata (name / description / traits) so the lightbox can show it even
-                // when the art itself is off-chain (image is an external URI we don't fetch) or absent
-                thumbs.push({
-                    id: ids[i].toString(),
+                let src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
+                if (!src && ipfsEnabled && typeof metadata?.image === 'string') src = ipfsUrl(metadata.image); // off-chain art via the proxy
+                // carry the metadata (name / description / traits) so the lightbox can show it even when the art
+                // is off-chain (and IPFS is off) or absent
+                return {
+                    id: id.toString(),
                     src,
-                    title: src ? (name || collection.ticker + ' #' + ids[i]) : '#' + ids[i],
+                    title: src ? (name || collection.ticker + ' #' + id) : '#' + id,
                     name,
                     description: typeof metadata?.description === 'string' ? metadata.description : null,
                     attributes: Array.isArray(metadata?.attributes) ? metadata.attributes : null,
-                });
-            }
-            return thumbs;
+                };
+            }));
         }
 
-        // Full-size view in an in-page lightbox. The art is rendered via <img>, which puts
-        // SVG in the browser's secure static mode — embedded scripts/external refs never
-        // run — so a malicious on-chain NFT can't execute code (unlike opening it as a tab).
         // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
         // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
         // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
@@ -1495,23 +1528,16 @@
                 if (grid.children.length) info.append(grid);
             }
 
-            const meta = el('div', 'lightbox-meta');
             const shortAddr = collection.address.slice(0, 6) + '…' + collection.address.slice(-4);
-            if (node?.meta?.explorer) {
-                const link = el('a', 'lightbox-link', shortAddr + ' ↗');
-                link.href = node.meta.explorer + '/token/' + collection.address;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                meta.append(link);
-            } else {
-                meta.append(el('span', null, shortAddr));
-            }
+            const meta = el('div', 'lightbox-meta lightbox-copy', shortAddr);
+            meta.title = 'Copy contract address';
+            meta.onclick = () => copyAddress(collection.address);
             info.append(meta);
             panel.append(info);
 
             overlay.append(panel);
             overlay.onclick = () => overlay.remove();
-            panel.onclick = (e) => e.stopPropagation(); // keep clicks inside (e.g. the explorer link) from closing
+            panel.onclick = (e) => e.stopPropagation(); // keep clicks inside (e.g. the copy-address control) from closing
             const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
             document.addEventListener('keydown', onKey);
             document.body.append(overlay);
@@ -1886,6 +1912,7 @@
         const SCAN_DEPTH_ESTIMATE = 2600000; // rough retained-history depth (blocks) for the per-account progress %
         let detectEnabled = true;           // top-bar toggle, default on
         let detecting = false;              // any historical scan still in progress
+        let ipfsEnabled = false;            // off-chain NFT art via local IPFS gateway — opt-in, default off
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
         const scanState = new Map();        // address(lower) -> { pct } while its history scan is in progress
         const detectionCancelled = new Set(); // addresses the user cancelled scanning for (session-only)
@@ -1980,7 +2007,9 @@
                 if (!hide && priceGate) {
                     const price = prices.get(addr);
                     if (price !== null && price !== undefined) {
-                        if (BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals) < DETECT_MIN_VALUE_USD * PRICE_SCALE) hide = true; // priced dust
+                        const value8 = BigInt(heldRaw) * price / 10n ** BigInt(meta.decimals);
+                        if (value8 < DETECT_MIN_VALUE_USD * PRICE_SCALE) hide = true; // priced dust
+                        else if (exceedsPoolLiquidity(addr, value8)) hide = true; // value exceeds pool exit liquidity — spoofed price
                     } else if (node.meta.strictValueGate) {
                         // unpriceable: only treat as spam on chains with deep price coverage (mainnet), where
                         // a legit token would have been priced. On sparsely-covered chains (e.g. Gnosis, where
@@ -2678,8 +2707,10 @@
                     const balText = syncing ? null : formatUnits(raw, asset.decimals);
                     const price = prices.get(asset.key);
                     let value8 = null;
+                    let usd8 = null; // pre-FX USD value, compared against pool liquidity (also USD) for the spoof check
                     if (fiat && !asset.isNft && balText !== null && price && fxRate) {
                         try { value8 = BigInt(raw) * price / 10n ** BigInt(asset.decimals); } catch { value8 = null; }
+                        usd8 = value8;
                         if (value8 !== null && currency !== 'USD') value8 = value8 * PRICE_SCALE / fxRate;
                     }
                     const rowKey = node.chainId + ':' + asset.key;
@@ -2690,8 +2721,9 @@
                     const prev = cache.get(cacheKey);
                     const keepPrev = value8 === null && prev && prev.value8 !== null && prev.value8 !== undefined;
                     const finalValue8 = keepPrev ? prev.value8 : value8;
+                    const finalUsd8 = keepPrev ? prev.usd8 : usd8;
                     const fiatText = finalValue8 !== null && finalValue8 !== undefined ? formatFiat(finalValue8) : '';
-                    cache.set(cacheKey, { bal: balText, fiat: fiatText, value8: finalValue8 });
+                    cache.set(cacheKey, { bal: balText, fiat: fiatText, value8: finalValue8, usd8: finalUsd8 });
 
                     const balCell = card?.querySelector(`td[data-key="${rowKey}"]`);
                     if (balCell) {
@@ -2723,6 +2755,7 @@
                     refreshNode(node, addresses, fxRate).catch((e) => setStatus(`${node.meta.name} refresh failed: ` + e.message, true))));
                 recomputeTotals();
                 pruneEmptyDetected();
+                pruneSpoofedDetected();
                 refreshNftThumbs();
                 resolveReverseNames();
             } finally {
@@ -2752,6 +2785,46 @@
                     return held || !allKnown; // drop only when every account confirms a zero balance
                 });
                 if (kept.length !== state.detected.length) { state.detected = kept; store.save(node.chainId); changed = true; }
+            }
+            if (changed) { renderTokens(); renderCards(); }
+        }
+
+        // A DEX-priced holding worth more than the pool's exit liquidity can't be realized — the price is a
+        // spoof (a shallow pool with a manipulated ratio against a huge airdropped balance). Chainlink-priced
+        // tokens have no liquidity entry and are never flagged.
+        function exceedsPoolLiquidity(addr, value8) {
+            const liq = dexLiquidity8.get(addr);
+            return liq !== undefined && value8 > liq;
+        }
+
+        // Drop already-detected tokens whose total holding value exceeds their DEX pool's exit liquidity —
+        // spoofed prices that would otherwise show a large fake value (the VITALIK-style airdrop spam). Uses
+        // the USD values and pool liquidity populated during the refresh. Moves them to the hidden/spam list
+        // (restorable); manual and Chainlink-priced tokens are untouched.
+        function pruneSpoofedDetected() {
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) return;
+            let changed = false;
+            for (const node of enabledNodes()) {
+                const state = stateOf(node.chainId);
+                const kept = [];
+                for (const token of state.detected) {
+                    const key = token.address.toLowerCase();
+                    const liq = dexLiquidity8.get(key);
+                    if (liq === undefined) { kept.push(token); continue; }
+                    let total = 0n, known = false;
+                    for (const a of addresses) {
+                        const c = cache.get(a.address + '|' + node.chainId + ':' + key);
+                        if (c && c.usd8 !== null && c.usd8 !== undefined) { total += c.usd8; known = true; }
+                    }
+                    if (known && total > liq) {
+                        state.ignored.push({ address: token.address, ticker: token.ticker, decimals: token.decimals, name: token.name, spam: true });
+                        changed = true;
+                    } else {
+                        kept.push(token);
+                    }
+                }
+                if (kept.length !== state.detected.length) { state.detected = kept; store.save(node.chainId); }
             }
             if (changed) { renderTokens(); renderCards(); }
         }
@@ -2974,18 +3047,6 @@
             $('tokAddr').onchange = () => prefillTokenMeta().catch(() => { });
             $('tokKind').onchange = () => { $('tokDecimals').style.display = $('tokKind').value === 'nft' ? 'none' : ''; };
 
-            const HIDE_ZERO_KEY = 'nethermind.balances.hidezero';
-            const hideZero = $('hideZero');
-            const applyHideZero = (on) => {
-                hideZero.classList.toggle('on', on);
-                document.body.classList.toggle('hideZero', on);
-            };
-            applyHideZero(localStorage.getItem(HIDE_ZERO_KEY) === '1');
-            hideZero.onclick = () => {
-                const on = !hideZero.classList.contains('on');
-                localStorage.setItem(HIDE_ZERO_KEY, on ? '1' : '0');
-                applyHideZero(on);
-            };
 
             const DETECT_KEY = 'nethermind.balances.detect';
             const detectBtn = $('detectToggle');
@@ -2997,6 +3058,31 @@
                 detectBtn.classList.toggle('on', detectEnabled);
                 if (detectEnabled) nodeDetect(); else { detecting = false; scanState.clear(); updateScanIndicators(); }
                 setStatus(detectEnabled ? 'Token auto-detection on' : 'Token auto-detection off');
+            };
+
+            // IPFS off-chain NFT art — opt-in. Default off; enabling requires an explicit confirmation because
+            // it makes the node's local IPFS daemon fetch content, which announces the requested CIDs to peers.
+            const IPFS_KEY = 'nethermind.balances.ipfs';
+            const ipfsBtn = $('ipfsToggle');
+            ipfsEnabled = localStorage.getItem(IPFS_KEY) === '1'; // default off
+            ipfsBtn.classList.toggle('on', ipfsEnabled);
+            ipfsBtn.onclick = () => {
+                if (!ipfsEnabled) {
+                    const ok = window.confirm(
+                        'Load off-chain NFT art via IPFS?\n\n' +
+                        'This makes your node\'s local IPFS daemon fetch NFT metadata and images. ' +
+                        'Resolving content the node doesn\'t already have queries the IPFS peer-to-peer ' +
+                        'network, which reveals to peers which NFTs you are viewing — reducing your privacy. ' +
+                        'Content is only fetched via a local gateway (127.0.0.1:8080), never a third-party service, ' +
+                        'and requires a running IPFS node.\n\nEnable IPFS art?');
+                    if (!ok) return;
+                }
+                ipfsEnabled = !ipfsEnabled;
+                localStorage.setItem(IPFS_KEY, ipfsEnabled ? '1' : '0');
+                ipfsBtn.classList.toggle('on', ipfsEnabled);
+                setStatus(ipfsEnabled ? 'IPFS art on — re-scanning NFTs' : 'IPFS art off');
+                nftCache.clear(); // re-resolve art so off-chain collections pick up (or drop) IPFS resolution
+                refreshNftThumbs();
             };
 
             try {

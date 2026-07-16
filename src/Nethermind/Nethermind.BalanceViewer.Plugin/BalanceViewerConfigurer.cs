@@ -63,6 +63,12 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     private static readonly PathString ProxyPathPrefix = new("/balances-rpc");
     private static readonly PathString DetectProxyPathPrefix = new("/balances-detect-rpc");
     private static readonly PathString DetectPath = new("/balances-detect");
+    private static readonly PathString IpfsPathPrefix = new("/balances-ipfs");
+
+    // Opt-in only: the UI calls this exclusively after the user enables IPFS (with a privacy prompt). Forwards
+    // to a local Kubo gateway so off-chain NFT art can be rendered without the browser talking to a third party.
+    private const string IpfsGateway = "http://127.0.0.1:8080";
+    private static readonly HttpClient IpfsClient = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
@@ -88,7 +94,8 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         bool isDetectGet = HttpMethods.IsGet(context.Request.Method) && path == DetectPath;
         bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
         bool isDetectDelete = HttpMethods.IsDelete(context.Request.Method) && path == DetectPath;
-        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete)
+        bool isIpfs = HttpMethods.IsGet(context.Request.Method) && path.StartsWithSegments(IpfsPathPrefix);
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete && !isIpfs)
         {
             return next(context);
         }
@@ -100,6 +107,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
+        if (isIpfs) return ServeIpfsAsync(context);
         if (isNodesList) return ServeNodesAsync(context);
         if (isProxy) return ProxyAsync(context);
         if (isDetectProxy) return ProxyDetectAsync(context);
@@ -135,6 +143,34 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             context.Response.Body,
             nodes.Select(n => new { port = n.Port, chainId = n.ChainId }),
             cancellationToken: context.RequestAborted);
+    }
+
+    // GET /balances-ipfs/{cid}/{path} — forwards to the local IPFS gateway's /ipfs/ path so the browser can
+    // render off-chain NFT art same-origin (never contacting a third-party gateway). Opt-in from the UI only.
+    private async Task ServeIpfsAsync(HttpContext context)
+    {
+        context.Request.Path.StartsWithSegments(IpfsPathPrefix, out PathString remaining);
+        string rel = remaining.Value?.TrimStart('/') ?? string.Empty;
+        if (rel.Length == 0)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        try
+        {
+            using HttpResponseMessage resp = await IpfsClient.GetAsync(
+                $"{IpfsGateway}/ipfs/{rel}", HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+            context.Response.StatusCode = (int)resp.StatusCode;
+            if (resp.Content.Headers.ContentType is not null)
+                context.Response.ContentType = resp.Content.Headers.ContentType.ToString();
+            await resp.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+        }
+        catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            // no local gateway, or it couldn't resolve the CID — the UI falls back to a placeholder
+            if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
+        }
     }
 
     private async Task ProxyAsync(HttpContext context)
