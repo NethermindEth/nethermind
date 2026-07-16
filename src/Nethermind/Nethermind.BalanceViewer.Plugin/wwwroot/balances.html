@@ -1508,6 +1508,7 @@
                         }
                     }
                 }
+                pruneEmptyNfts(); // drop auto collections that no account holds anymore (counts now known)
             } catch { /* thumbnails are cosmetic — leave whatever is displayed */ }
             finally { nftRefreshing = false; }
         }
@@ -1891,15 +1892,21 @@
                 try { meta = await rpcBatch([['eth_call', [{ to: c, data: SEL_SYMBOL }, 'latest']], ['eth_call', [{ to: c, data: SEL_NAME }, 'latest']]], node.rpcPath); } catch { continue; }
                 const ticker = decodeAbiString(meta[0]) || decodeAbiString(meta[1]) || 'NFT';
                 const name = decodeAbiString(meta[1]) || ticker;
-                // ERC-721 exposes balanceOf(owner); ERC-1155 does not (holdings are per-id, resolved by the NFT view)
+                // Confirm current holdings before adding, so a collection the address merely received once
+                // (then sold/transferred) doesn't linger at zero. ERC-721 via balanceOf(owner); ERC-1155 has
+                // no balanceOf(owner), so look for at least one currently-held id (balance>0) across the addresses.
+                let held = false;
                 if (kind !== 'erc1155') {
-                    let held = false;
                     try {
                         const bals = await rpcBatch(addrList.map((a) => ['eth_call', [{ to: c, data: SEL_BALANCE_OF + pad32(a) }, 'latest']]), node.rpcPath);
                         held = bals.some((r) => { try { return r && r !== '0x' && BigInt(r) > 0n; } catch { return false; } });
                     } catch { }
-                    if (!held) continue;
+                } else {
+                    for (const a of addrList) {
+                        try { if ((await heldTokenIds(node, { address: c }, a, 'erc1155', 0)).length) { held = true; break; } } catch { }
+                    }
                 }
+                if (!held) continue;
                 // re-check synchronously (no await before the push) so concurrent passes can't double-add
                 if (state.nfts.some((t) => t.address.toLowerCase() === c) || ignoredAddrs(node.chainId).has(c)) continue;
                 const entry = { address: checksum(c), ticker, name };
@@ -2622,6 +2629,31 @@
                     return held || !allKnown; // drop only when every account confirms a zero balance
                 });
                 if (kept.length !== state.detected.length) { state.detected = kept; store.save(node.chainId); changed = true; }
+            }
+            if (changed) { renderTokens(); renderCards(); }
+        }
+
+        // NFT analog of pruneEmptyDetected: drop auto-detected collections that no pinned account holds
+        // anymore (held count 0 across all accounts — e.g. an ERC-1155 received once then sold). Uses the
+        // counts populated by refreshNftThumbs; manually-tracked collections are always kept.
+        function pruneEmptyNfts() {
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) return;
+            let changed = false;
+            for (const node of enabledNodes()) {
+                const state = stateOf(node.chainId);
+                const kept = state.nfts.filter((coll) => {
+                    if (!coll.auto) return true; // manually-tracked collections always kept
+                    const colKey = coll.address.toLowerCase();
+                    let allKnown = true, held = false;
+                    for (const a of addresses) {
+                        const c = nftCache.get(a.address + '|' + node.chainId + '|' + colKey);
+                        if (!c) { allKnown = false; break; }
+                        if (c.count > 0) { held = true; break; }
+                    }
+                    return held || !allKnown; // drop only when every account confirms zero holdings
+                });
+                if (kept.length !== state.nfts.length) { state.nfts = kept; store.save(node.chainId); changed = true; }
             }
             if (changed) { renderTokens(); renderCards(); }
         }

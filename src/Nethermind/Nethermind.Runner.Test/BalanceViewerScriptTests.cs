@@ -445,6 +445,36 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void PruneEmptyNfts_DropsAutoCollectionsNoAccountHolds()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute("""
+            nodes = [{ chainId: 1, enabled: true, meta: {} }];
+            globalThis.mergedAddresses = () => [{ address: '0xowner' }];
+            globalThis.renderTokens = () => {};
+            globalThis.renderCards = () => {};
+            """);
+        // an auto ERC-1155 the account no longer holds (count 0, e.g. Unisocks received once then sold) is
+        // dropped; a held auto collection, a manual one, and one whose holdings aren't cached yet are kept
+        object result = engine.Evaluate("""
+            (function () {
+                const state = { nfts: [
+                    { address: '0xMANUAL',  ticker: 'MAN' },
+                    { address: '0xHELD',    ticker: 'HELD', auto: true },
+                    { address: '0xEMPTY',   ticker: 'EMPTY', auto: true },
+                    { address: '0xUNKNOWN', ticker: 'UNK', auto: true },
+                ] };
+                states.set(1, state);
+                nftCache.set('0xowner|1|0xheld',  { count: 3, ids: [], thumbs: [], kind: 'erc1155' });
+                nftCache.set('0xowner|1|0xempty', { count: 0, ids: [], thumbs: [], kind: 'erc1155' });
+                pruneEmptyNfts();
+                return state.nfts.map((n) => n.ticker).join(',');
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("MAN,HELD,UNK"));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
