@@ -1497,13 +1497,20 @@
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
 
                             if (ids.length > MAX_NFT_THUMBS) {
-                                const rest = await fetchThumbsForIds(node, collection, ids.slice(MAX_NFT_THUMBS), kind);
-                                const c = nftCache.get(key);
-                                if (c && c.sig === sig) {   // holdings unchanged since first paint
-                                    c.thumbs.push(...rest);
-                                    const b = document.querySelector(`[data-thumbs="${key}"]`);
-                                    if (b) fillThumbs(b, c, node, entry.address, collection);
-                                }
+                                // load the remaining art detached, so it never blocks scanning the other
+                                // collections or the empty-collection prune below (both only need the counts
+                                // already set above); the art streams into the box as it arrives
+                                (async () => {
+                                    try {
+                                        const rest = await fetchThumbsForIds(node, collection, ids.slice(MAX_NFT_THUMBS), kind);
+                                        const c = nftCache.get(key);
+                                        if (c && c.sig === sig) {   // holdings unchanged since first paint
+                                            c.thumbs.push(...rest);
+                                            const b = document.querySelector(`[data-thumbs="${key}"]`);
+                                            if (b) fillThumbs(b, c, node, entry.address, collection);
+                                        }
+                                    } catch { /* art is cosmetic — keep whatever loaded */ }
+                                })();
                             }
                         }
                     }
