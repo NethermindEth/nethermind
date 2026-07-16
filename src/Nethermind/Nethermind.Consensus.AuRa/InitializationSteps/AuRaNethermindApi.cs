@@ -22,7 +22,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         public IValidatorStore ValidatorStore => Context.Resolve<IValidatorStore>();
         public AuraStatefulComponents AuraStatefulComponents => Context.Resolve<AuraStatefulComponents>();
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache => Context.Resolve<ReportingContractBasedValidator.Cache>();
-        public StartBlockProducerAuRa CreateStartBlockProducer() => Context.Resolve<StartBlockProducerAuRa>();
     }
 
     public class AuraStatefulComponents(IAuraConfig auraConfig, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager)

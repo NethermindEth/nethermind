@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -16,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
@@ -34,10 +37,52 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
+
+        private readonly IDeferredBlockDataWriter? _deferredWriter;
+
+        // Read-through overlay of receipts whose write is still queued. Payload = recovered receipts (served
+        // to reads) + the RLP behaviors the deferred write encodes with. Encoding runs on the consumer, off
+        // the processing path, since reads use the receipts objects and never the bytes. Null when deferral is off.
+        private readonly DeferredWriteOverlay<(TxReceipt[] Receipts, RlpBehaviors Behaviors)>? _pendingReceipts;
+        // Block-level canonical overlay served to FindBlockHash until the write lands: set on BlockAddedToMain,
+        // cleared by the write. A tx lookup scans these lazily, so processing pays nothing per transaction, and
+        // this also doubles as the cancellation ledger - RemoveReceipts clears a block's entry so the write skips.
+        private readonly ConcurrentDictionary<ValueHash256, PendingCanonicalEntry> _pendingCanonical = new();
+        private long _nextCanonicalSequence;
+
+        private sealed class PendingCanonicalEntry(
+            PersistentReceiptStorage owner,
+            Block block,
+            ulong lastBlockNumber,
+            PendingTxIndexValue txIndexValue,
+            long publicationSequence) : IDeferredWriteOperation
+        {
+            public Block Block { get; } = block;
+            public ulong LastBlockNumber { get; } = lastBlockNumber;
+            public PendingTxIndexValue TxIndexValue { get; } = txIndexValue;
+            public long PublicationSequence { get; } = publicationSequence;
+
+            public void Execute() => owner.PersistDeferredCanonical(this);
+        }
+
+        private sealed class PruneTxIndexOperation(PersistentReceiptStorage owner, Block block) : IDeferredWriteOperation
+        {
+            public void Execute() => owner.PruneOldTxIndex(block);
+        }
+
+        // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
+        private readonly Lock _writeLock = new();
+
+        /// <summary>
+        /// Mirrors the deferred tx-index write: block number under <see cref="IReceiptConfig.CompactTxIndex"/>
+        /// (resolved canonically on read, so a reorged-out block self-heals like the persisted form), else block hash.
+        /// </summary>
+        private readonly record struct PendingTxIndexValue(ulong BlockNumber, Hash256? BlockHash);
 
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
@@ -49,8 +94,12 @@ namespace Nethermind.Blockchain.Receipts
             IBlockTree blockTree,
             IBlockStore blockStore,
             IReceiptConfig receiptConfig,
-            ReceiptArrayStorageDecoder? storageDecoder = null)
+            ReceiptArrayStorageDecoder? storageDecoder = null,
+            IDeferredBlockDataWriter? deferredWriter = null,
+            IStatePersistenceBarrier? persistenceBarrier = null,
+            ILogManager? logManager = null)
         {
+            _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
             ulong Get(Hash256 key, ulong defaultValue) => _defaultColumn.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
@@ -63,6 +112,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
+            _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PersistentReceiptStorage>();
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
 
@@ -70,32 +120,181 @@ namespace Nethermind.Blockchain.Receipts
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+
+            if (_deferredWriter is not null)
+            {
+                _pendingReceipts = new DeferredWriteOverlay<(TxReceipt[] Receipts, RlpBehaviors Behaviors)>(_deferredWriter, WriteReceipts, _writeLock);
+                // Fsync the whole receipts DB WAL (receipts + transaction columns) after the barrier drains the writer.
+                (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _database.Flush(onlyWal: true));
+            }
         }
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            EnsureCanonical(e.Block);
-            NewCanonicalReceipts?.Invoke(this, e);
-
-            // Don't block the main loop
-            Task.Run(() =>
+            if (_deferredWriter is null)
             {
-                Block newMain = e.Block;
+                EnsureCanonical(e.Block);
+                NewCanonicalReceipts?.Invoke(this, e);
 
-                // Delete old tx index
-                if (_receiptConfig.TxLookupLimit > 0ul && newMain.Number > _receiptConfig.TxLookupLimit.Value)
+                // Don't block the main loop
+                Task.Run(() =>
                 {
-                    Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
-                    if (newOldTx is not null)
-                    {
-                        RemoveBlockTx(newOldTx);
-                    }
+                    PruneOldTxIndex(e.Block);
+                });
+                return;
+            }
+
+            Block block = e.Block;
+
+            // Capture the lookup-limit horizon now; at dequeue time queue lag would skip near-horizon indexes.
+            ulong lastBlockNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
+
+            bool shouldIndex = ShouldIndexTxs(block.Number, lastBlockNumber);
+            if (shouldIndex)
+            {
+                PendingTxIndexValue pending = _receiptConfig.CompactTxIndex
+                    ? new PendingTxIndexValue(block.Number, null)
+                    : new PendingTxIndexValue(0, block.Hash);
+
+                // Publish the block-level entry and enqueue BEFORE the event, so a state persist that observes
+                // the block always drains this. FIFO order keeps a reorg remap and the prune correct.
+                PendingCanonicalEntry canonical = new(
+                    this,
+                    block,
+                    lastBlockNumber,
+                    pending,
+                    Interlocked.Increment(ref _nextCanonicalSequence));
+                _pendingCanonical[block.Hash!.ValueHash256] = canonical;
+                _deferredWriter.Enqueue(canonical);
+            }
+            else
+            {
+                _deferredWriter.Enqueue(new PruneTxIndexOperation(this, block));
+            }
+
+            NewCanonicalReceipts?.Invoke(this, e);
+        }
+
+        private void PersistDeferredCanonical(PendingCanonicalEntry entry)
+        {
+            lock (_writeLock)
+            {
+                // Skip if RemoveReceipts cancelled this block; writing would resurrect its tx-index. Reference-conditional.
+                ValueHash256 key = entry.Block.Hash!.ValueHash256;
+                if (!_pendingCanonical.TryGetValue(key, out PendingCanonicalEntry? current) || !ReferenceEquals(current, entry))
+                {
+                    return;
                 }
-            });
+
+                bool hasOldBlock = TryGetOldTxIndexBlock(entry.Block, out ReceiptRecoveryBlock oldBlock);
+                try
+                {
+                    WriteDeferredCanonicalBatch(entry, hasOldBlock, ref oldBlock);
+                }
+                finally
+                {
+                    if (hasOldBlock) oldBlock.Dispose();
+                }
+
+                // Removing the block-level entry drops all its txs from the lazy scan; the durable write above now serves them.
+                _pendingCanonical.TryRemove(new KeyValuePair<ValueHash256, PendingCanonicalEntry>(key, entry));
+            }
+        }
+
+        private void WriteDeferredCanonicalBatch(PendingCanonicalEntry entry, bool hasOldBlock, ref ReceiptRecoveryBlock oldBlock)
+        {
+            using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
+            IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
+            EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch);
+            if (hasOldBlock && !TryRemoveBlockTx(ref oldBlock, transactionBatch))
+            {
+                // RemoveBlockTx clears the shared batch on failure, so restore the durability-critical insert.
+                EnsureCanonical(entry.Block, entry.LastBlockNumber, transactionBatch);
+            }
+        }
+
+        private void PruneOldTxIndex(Block newMain)
+        {
+            if (!TryGetOldTxIndexBlock(newMain, out ReceiptRecoveryBlock oldBlock)) return;
+
+            try
+            {
+                using IColumnsWriteBatch<ReceiptsColumns> batch = _database.StartWriteBatch();
+                IWriteBatch transactionBatch = batch.GetColumnBatch(ReceiptsColumns.Transactions);
+                TryRemoveBlockTx(ref oldBlock, transactionBatch);
+            }
+            finally
+            {
+                oldBlock.Dispose();
+            }
+        }
+
+        private bool TryGetOldTxIndexBlock(Block newMain, out ReceiptRecoveryBlock oldBlock)
+        {
+            oldBlock = default;
+            if (_receiptConfig.TxLookupLimit is not > 0ul || newMain.Number <= _receiptConfig.TxLookupLimit.Value)
+            {
+                return false;
+            }
+
+            ulong oldBlockNumber = newMain.Number - _receiptConfig.TxLookupLimit.Value;
+            Hash256? oldBlockHash = _blockTree.FindBlockHash(oldBlockNumber);
+            if (oldBlockHash is null) return false;
+
+            ReceiptRecoveryBlock? candidate;
+            try
+            {
+                candidate = _blockStore.GetReceiptRecoveryBlock(oldBlockNumber, oldBlockHash);
+            }
+            catch (RlpException exception)
+            {
+                WarnMalformedTxIndexPrune(oldBlockNumber, exception);
+                return false;
+            }
+
+            if (candidate is not { } block) return false;
+
+            oldBlock = block;
+            return true;
+        }
+
+        private bool TryRemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch)
+        {
+            try
+            {
+                RemoveBlockTx(ref block, writeBatch);
+                return true;
+            }
+            catch (RlpException exception)
+            {
+                WarnMalformedTxIndexPrune(block.Number, exception);
+                return false;
+            }
+        }
+
+        private void WarnMalformedTxIndexPrune(ulong blockNumber, RlpException exception)
+        {
+            if (_logger.IsWarn)
+            {
+                _logger.Warn($"Skipping transaction-index pruning for block {blockNumber} because its body RLP is malformed: {exception.Message}");
+            }
+        }
+
+        /// <summary>Mirrors the skip conditions of <see cref="EnsureCanonical(Block, ulong?)"/>.</summary>
+        private bool ShouldIndexTxs(ulong blockNumber, ulong lastBlockNumber)
+        {
+            if (_receiptConfig.TxLookupLimit == ulong.MaxValue) return false;
+            if (_receiptConfig.TxLookupLimit != 0ul && lastBlockNumber >= _receiptConfig.TxLookupLimit.Value && blockNumber <= lastBlockNumber - _receiptConfig.TxLookupLimit.Value) return false;
+            return true;
         }
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
+            if (!_pendingCanonical.IsEmpty && TryFindPendingBlockHash(txHash, out Hash256? pendingHash))
+            {
+                return pendingHash;
+            }
+
             byte[] blockHashData = _transactionDb.Get(txHash);
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
@@ -103,6 +302,43 @@ namespace Nethermind.Blockchain.Receipts
 
             ulong blockNum = new RlpReader(blockHashData).DecodeULong();
             return _blockTree.FindBlockHash(blockNum);
+        }
+
+        /// <summary>
+        /// Lazily scans the block-level pending overlay for a transaction, so the per-tx cost moves off the
+        /// processing path onto the rare tx-hash lookup. The highest block number wins, then the latest
+        /// publication at the same height, matching FIFO last-writer-wins of the durable index.
+        /// </summary>
+        private bool TryFindPendingBlockHash(Hash256 txHash, out Hash256? blockHash)
+        {
+            PendingCanonicalEntry? best = null;
+            foreach (KeyValuePair<ValueHash256, PendingCanonicalEntry> kvp in _pendingCanonical)
+            {
+                PendingCanonicalEntry entry = kvp.Value;
+                if (best is not null
+                    && (entry.Block.Number < best.Block.Number
+                        || (entry.Block.Number == best.Block.Number
+                            && entry.PublicationSequence <= best.PublicationSequence))) continue;
+
+                foreach (Transaction tx in entry.Block.Transactions)
+                {
+                    if ((tx.Hash ?? tx.CalculateHash()) == txHash)
+                    {
+                        best = entry;
+                        break;
+                    }
+                }
+            }
+
+            if (best is null)
+            {
+                blockHash = null;
+                return false;
+            }
+
+            // Number-valued entries re-resolve canonically like the persisted form, so a reorged-out block misses here too.
+            blockHash = best.TxIndexValue.BlockHash ?? _blockTree.FindBlockHash(best.TxIndexValue.BlockNumber);
+            return true;
         }
 
         // Find receipt stored with old - obsolete format.
@@ -140,6 +376,12 @@ namespace Nethermind.Blockchain.Receipts
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
                 return receipts ?? [];
+            }
+
+            // Pending entries are already sender-recovered; served until the deferred write lands.
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
+            {
+                return pending.Receipts;
             }
 
             Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
@@ -224,6 +466,13 @@ namespace Nethermind.Blockchain.Receipts
                 return true;
             }
 
+            // eth_getLogs reads receipts through this iterator; without this arm an evicted, unflushed block returns no logs.
+            if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
+            {
+                iterator = new ReceiptsIterator(pending.Receipts);
+                return true;
+            }
+
             if (!CanGetReceiptsByHash(blockNumber))
             {
                 iterator = new ReceiptsIterator();
@@ -271,6 +520,52 @@ namespace Nethermind.Blockchain.Receipts
 
         void IReceiptMigrationStore.InsertForMigration(Block block, TxReceipt[] receipts)
             => InsertCore(block, receipts, _specProvider.GetSpec(block.Header), ensureCanonical: true, WriteFlags.None, lastBlockNumber: null);
+
+        public void InsertDeferred(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec)
+        {
+            if (_pendingReceipts is null)
+            {
+                Insert(block, txReceipts, spec, ensureCanonical: false);
+                return;
+            }
+
+            txReceipts ??= [];
+            if (block.Transactions.Length != txReceipts.Length)
+            {
+                throw new InvalidDataException(
+                    $"Block {block.ToString(Block.Format.FullHashAndNumber)} has different numbers " +
+                    $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
+            }
+
+            // Everything visibility-relevant is synchronous (recovery, cache, overlay, watermark, event). Encoding
+            // and the DB write both defer: reads serve the receipts objects, never the bytes, so the RLP is only
+            // needed by the queued write and is produced on the consumer instead of on the processing path.
+            _receiptsRecovery.TryRecover(block, txReceipts, false);
+
+            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
+
+            Hash256 blockHash = block.Hash!;
+            _receiptsCache.Set(blockHash, txReceipts);
+            _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
+
+            if (block.Number < MigratedBlockNumber)
+            {
+                MigratedBlockNumber = block.Number;
+            }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        [SkipLocalsInit]
+        private void WriteReceipts(ulong blockNumber, Hash256 blockHash, (TxReceipt[] Receipts, RlpBehaviors Behaviors) payload)
+        {
+            // Runs on the deferred-writer consumer: encode here, off the processing path. The receipts array is
+            // immutable after the synchronous recovery in InsertDeferred, so encoding it later is safe.
+            using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(payload.Receipts, payload.Behaviors);
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+        }
 
         [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
@@ -322,6 +617,7 @@ namespace Nethermind.Blockchain.Receipts
         public bool HasBlock(ulong blockNumber, Hash256 blockHash)
         {
             if (_receiptsCache.Contains(blockHash)) return true;
+            if (_pendingReceipts?.Contains(blockHash) == true) return true;
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
@@ -342,6 +638,25 @@ namespace Nethermind.Blockchain.Receipts
 
         public void RemoveReceipts(Block block)
         {
+            // Only production caller is ancient-history pruning. Under deferral the removal runs under the
+            // shared lock (via the overlay) so a queued write cannot interleave and resurrect the data.
+            if (_pendingReceipts is not null)
+            {
+                _pendingReceipts.Remove(block.Hash!, () => RemoveReceiptsCore(block));
+            }
+            else
+            {
+                RemoveReceiptsCore(block);
+            }
+        }
+
+        [SkipLocalsInit]
+        private void RemoveReceiptsCore(Block block)
+        {
+            // Cancel any queued canonical write for this block so it cannot resurrect the tx-index below. The
+            // block-level entry is the only overlay state, so one removal drops all its txs from the lazy scan.
+            _pendingCanonical.TryRemove(block.Hash!.ValueHash256, out _);
+
             _receiptsCache.Delete(block.Hash);
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
@@ -360,14 +675,34 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        private static void RemoveBlockTx(ref ReceiptRecoveryBlock block, IWriteBatch writeBatch)
+        {
+            try
+            {
+                for (int i = 0; i < block.TransactionCount; i++)
+                {
+                    Hash256 txHash = block.GetNextTransactionHash();
+                    writeBatch[txHash.Bytes] = null;
+                }
+            }
+            catch
+            {
+                writeBatch.Clear();
+                throw;
+            }
+        }
+
         private void EnsureCanonical(Block block, ulong? lastBlockNumber)
         {
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            EnsureCanonical(block, lastBlockNumber, writeBatch);
+        }
 
+        private void EnsureCanonical(Block block, ulong? lastBlockNumber, IWriteBatch writeBatch)
+        {
             lastBlockNumber ??= _blockTree.FindBestSuggestedHeader()?.Number ?? 0UL;
 
-            if (_receiptConfig.TxLookupLimit == ulong.MaxValue) return;
-            if (_receiptConfig.TxLookupLimit != 0ul && lastBlockNumber.Value >= _receiptConfig.TxLookupLimit.Value && block.Number <= lastBlockNumber.Value - _receiptConfig.TxLookupLimit.Value) return;
+            if (!ShouldIndexTxs(block.Number, lastBlockNumber.Value)) return;
             if (_receiptConfig.CompactTxIndex)
             {
                 byte[] blockNumber = Rlp.Encode(block.Number).Bytes;

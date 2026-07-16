@@ -33,6 +33,7 @@ public class PersistenceManager(
     IFinalizedStateProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
+    IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager,
     IPersistedSnapshotCompactor compactor,
     IPersistedSnapshotLoader loader,
@@ -55,7 +56,6 @@ public class PersistenceManager(
         configuration.MinReorgDepth + configuration.CompactSize);
     private readonly ulong _compactSize = configuration.CompactSize;
     private readonly bool _enableLongFinality = configuration.EnableLongFinality;
-    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
@@ -454,6 +454,19 @@ public class PersistenceManager(
 
     internal void PersistSnapshot(Snapshot snapshot)
     {
+        // Make this block's deferred block-data durable before its state (see IStatePersistenceBarrier).
+        // A throw must abort the persist (state not yet written, so the invariant holds); log first because
+        // the background persistence loop that unwinds this does not otherwise report it.
+        try
+        {
+            persistenceBarrier.FlushDeferred();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Block-data flush failed before persisting state {snapshot.To}; aborting this persist.", e);
+            throw;
+        }
+
         // From == PreGenesis (ulong.MaxValue) wraps so the span is To.BlockNumber + 1 (a genesis-spanning snapshot).
         ulong compactLength = snapshot.To.BlockNumber - snapshot.From.BlockNumber;
 
@@ -485,21 +498,15 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            _trieNodesSortBuffer.Clear();
-            foreach (TreePath path in snapshot.StateNodeKeys)
-            {
-                _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
-            }
-            _trieNodesSortBuffer.Sort();
-
+            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
+            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
             long stateNodesSize = 0;
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
             {
-                (_, TreePath path) = k;
+                TreePath path = kvp.Key.Key;
+                TrieNode node = kvp.Value;
 
-                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
+                if (node.FullRlp.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)
@@ -516,18 +523,13 @@ public class PersistenceManager(
                 node.PrunePersistedRecursively(1);
             }
 
-            _trieNodesSortBuffer.Clear();
-            _trieNodesSortBuffer.AddRange(snapshot.StorageTrieNodeKeys);
-            _trieNodesSortBuffer.Sort();
-
             long storageNodesSize = 0;
-            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
             {
-                (Hash256 address, TreePath path) = k;
+                (Hash256 address, TreePath path) = kvp.Key.Key;
+                TrieNode node = kvp.Value;
 
-                snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
-
-                if (node!.FullRlp.Length == 0)
+                if (node.FullRlp.Length == 0)
                 {
                     // TODO: Need to double check this case. Does it need a rewrite or not?
                     if (node.NodeType == NodeType.Unknown)

@@ -68,6 +68,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcHeaderStore, XdcHeaderStore>()
             .AddSingleton<IBlockStore, XdcBlockStore>()
             .AddSingleton<IBlockTree, XdcBlockTree>()
+            .AddDecorator<IBlockhashStore, XdcBlockhashStore>()
 
             // Sys contracts
             //TODO this might not be wired correctly
@@ -137,7 +138,8 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
-            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
+            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>();
 
         RegisterRewardCalculatorSource(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();

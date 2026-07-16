@@ -142,6 +142,10 @@ internal class Program
         string input = parseResult.GetValue(Options.Input);
         if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
 
+        // Rlp's and the decoders' static initializers reach into each other via RegisterDecoders;
+        // racing the first RLP use across parse workers can deadlock class init. Warm it up here.
+        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Nethermind.Serialization.Rlp.Rlp).TypeHandle);
+
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
@@ -364,6 +368,23 @@ internal class Program
             }
         }
 
+        int completedTests = 0;
+        // Keeps stderr alive for CI idle watchdogs; also streams failures as they happen.
+        void ReportProgress(EthereumTestResult result)
+        {
+            int completed = Interlocked.Increment(ref completedTests);
+            if (!result.Pass)
+            {
+                Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{completed}/{testCases.Count}] {result.Name} - {result.Error}");
+                Console.Error.Flush();
+            }
+            else if (completed % ProgressReportTestInterval == 0 || completed == testCases.Count)
+            {
+                Console.Error.WriteLine($"PROGRESS [{completed}/{testCases.Count}]");
+                Console.Error.Flush();
+            }
+        }
+
         if (workers <= 1 || whenTrace != WhenTrace.Never || enableWarmup)
         {
             List<EthereumTestResult> allResults = [];
@@ -371,6 +392,7 @@ internal class Program
             {
                 StateTestsRunner runner = new(whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(test);
+                ReportProgress(result);
                 allResults.Add(result);
             }
             return allResults;
@@ -385,6 +407,7 @@ internal class Program
                 StateTestsRunner runner = new(WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
                 EthereumTestResult result = runner.RunSingleTest(item.test);
                 results[item.index] = result;
+                ReportProgress(result);
             });
 
         return [.. results];
@@ -448,7 +471,51 @@ internal class Program
     {
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
-        int completedFiles = 0;
+        int CountFile(int index)
+        {
+            try
+            {
+                int count = 0;
+                TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), files[index]);
+                foreach (BlockchainTest test in source.LoadTests<BlockchainTest>())
+                {
+                    if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                        continue;
+
+                    count += ZkEvmTestsRunner.CountCases(test);
+                }
+
+                return count;
+            }
+            catch (Exception)
+            {
+                return 1;
+            }
+        }
+
+        int[] casesPerFile = new int[files.Count];
+        if (workers <= 1)
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                casesPerFile[i] = CountFile(i);
+            }
+        }
+        else
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
+            {
+                casesPerFile[i] = CountFile(i);
+            });
+        }
+
+        int totalCases = 0;
+        foreach (int cases in casesPerFile)
+        {
+            totalCases += cases;
+        }
+
+        int completedCases = 0;
         List<EthereumTestResult>[] resultsByFile = new List<EthereumTestResult>[files.Count];
 
         // Witness fixtures are large, so each file is parsed, executed, and released before
@@ -477,19 +544,23 @@ internal class Program
 
             resultsByFile[index] = fileResults;
 
-            int done = Interlocked.Increment(ref completedFiles);
+            if (fileResults.Count == 0)
+                return;
+
+            int done = Interlocked.Add(ref completedCases, fileResults.Count);
             foreach (EthereumTestResult result in fileResults)
             {
                 if (!result.Pass)
                 {
-                    Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{done}/{files.Count}] {result.Name} - {result.Error}");
+                    Console.Error.WriteLine($"\x1b[31mFAIL\x1b[0m [{done}/{totalCases}] {result.Name} - {result.Error}");
                     Console.Error.Flush();
                 }
             }
 
-            if (done % 10 == 0 || done == files.Count)
+            int previousDone = done - fileResults.Count;
+            if (done == totalCases || done / ProgressReportTestInterval != previousDone / ProgressReportTestInterval)
             {
-                Console.Error.WriteLine($"PROGRESS [{done}/{files.Count}]");
+                Console.Error.WriteLine($"PROGRESS [{done}/{totalCases}]");
                 Console.Error.Flush();
             }
         }

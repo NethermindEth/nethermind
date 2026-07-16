@@ -3,15 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -39,7 +37,6 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Trie.Pruning;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -49,13 +46,6 @@ namespace Nethermind.Merge.Plugin;
 
 public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethermindPlugin
 {
-    protected INethermindApi _api = null!;
-    private ILogger _logger;
-    private ISyncConfig _syncConfig = null!;
-    protected IBlocksConfig _blocksConfig = null!;
-    protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
-    private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
-
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
@@ -64,43 +54,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
                                            chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
 
     public bool Enabled => MergeEnabled;
-
-    public virtual Task Init(INethermindApi nethermindApi)
-    {
-        _api = nethermindApi;
-        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
-        _syncConfig = nethermindApi.Config<ISyncConfig>();
-        _blocksConfig = nethermindApi.Config<IBlocksConfig>();
-
-        MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
-
-        _logger = _api.LogManager.GetClassLogger<MergePlugin>();
-
-        EnsureNotConflictingSettings();
-
-        if (MergeEnabled)
-        {
-            if (_api.DbProvider is null) throw new ArgumentException(nameof(_api.DbProvider));
-            if (_api.SpecProvider is null) throw new ArgumentException(nameof(_api.SpecProvider));
-
-            EnsureJsonRpcUrl();
-
-            _poSSwitcher = _api.Context.Resolve<IPoSSwitcher>();
-            _invalidChainTracker = _api.Context.Resolve<InvalidChainTracker.InvalidChainTracker>();
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private void EnsureNotConflictingSettings()
-    {
-        if (!mergeConfig.Enabled && mergeConfig.TerminalTotalDifficulty is not null)
-        {
-            throw new InvalidConfigurationException(
-                $"{nameof(MergeConfig)}.{nameof(MergeConfig.TerminalTotalDifficulty)} cannot be set when {nameof(MergeConfig)}.{nameof(MergeConfig.Enabled)} is false.",
-                ExitCodes.ConflictingConfigurations);
-        }
-    }
 
     internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
     {
@@ -124,54 +77,6 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
         }
     }
 
-    private void EnsureJsonRpcUrl()
-    {
-        if (!HasTtd()) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
-            return;
-
-        IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-        if (!jsonRpcConfig.Enabled)
-        {
-            if (_logger.IsInfo)
-                _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
-
-            jsonRpcConfig.Enabled = true;
-
-            EnsureEngineModuleIsConfigured();
-
-            if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
-            {
-                // Disable it
-                jsonRpcConfig.EnabledModules = [];
-            }
-
-            jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
-                .Where(static (url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-        }
-        else
-        {
-            EnsureEngineModuleIsConfigured();
-        }
-    }
-
-    private void EnsureEngineModuleIsConfigured()
-    {
-        JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
-        bool hasEngineApiConfigured = urlCollection
-            .Values
-            .Any(static rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
-
-        if (!hasEngineApiConfigured)
-        {
-            throw new InvalidConfigurationException(
-                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/interacting/json-rpc-server/#engine-api",
-                ExitCodes.NoEngineModule);
-        }
-    }
-
-    private bool HasTtd() => _api.SpecProvider?.TerminalTotalDifficulty is not null || mergeConfig.TerminalTotalDifficulty is not null;
-
     public bool MustInitialize { get => true; }
 
     public virtual IModule Module => new MergePluginModule();
@@ -184,6 +89,8 @@ public class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) : INethe
 public class MergePluginModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
+            .AddStep(typeof(InitializeMergePlugin))
+
             .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
             .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
 
@@ -261,6 +168,7 @@ public class BaseMergePluginModule : Module
             .AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator())
 
             // Engine rpc related
+            .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
                     .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)

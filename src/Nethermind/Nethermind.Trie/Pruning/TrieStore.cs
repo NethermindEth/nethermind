@@ -500,7 +500,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (rlp is not null)
         {
-            Metrics.LoadedFromDbNodesCount++;
+            Metrics.IncrementLoadedFromDbNodesCount();
         }
 
         return rlp;
@@ -582,7 +582,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             // Skip triggering GC while pruning so they don't fight each other causing pruning to take longer
             GCScheduler.Instance.SkipNextGC();
-            SyncPruneNonLocked();
+            using (GCScheduler.Instance.ExcludeForcedGC())
+            {
+                SyncPruneNonLocked();
+            }
         }
 
         TryExitCommitBufferMode();

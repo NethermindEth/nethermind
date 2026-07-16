@@ -209,7 +209,7 @@ public class EthRpcSimulateTestsBase
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
-        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
+        SignableTransactionForRpc transactionForRpc = (SignableTransactionForRpc)TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
         ResultWrapper<HexBytes> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
         return ParseECRecoverAddress(mainChainResult.Data.Bytes.ToArray());
