@@ -322,13 +322,14 @@
             padding: 16px;
         }
 
-        .lightbox img {
+        .lightbox img, .lightbox video {
             max-width: min(80vw, 480px);
             max-height: 58vh;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #0a0a0a;
         }
+        .lightbox-audio { width: 100%; margin-top: 4px; }
 
         .lightbox-noart {
             width: min(70vw, 320px);
@@ -1515,6 +1516,14 @@
             return null;
         }
 
+        // classifies an animation_url as playable video/audio by extension (else null → ignored)
+        function mediaType(url) {
+            const u = url.toLowerCase().split('?')[0];
+            if (/\.(mp4|webm|ogv|mov|m4v)$/.test(u)) return 'video';
+            if (/\.(mp3|wav|oga|flac|m4a|aac)$/.test(u)) return 'audio';
+            return null;
+        }
+
         const iface1 = (x) => { try { return BigInt(x) === 1n; } catch { return false; } };
 
         async function detectKind(node, collection) {
@@ -1593,14 +1602,21 @@
                 const image = typeof metadata?.image === 'string' ? metadata.image : null;
                 // on-chain (data:) art always resolves; off-chain art only via an enabled source
                 const src = image ? resolveArtUri(image) : null;
-                // where the art lives, for the lightbox badge (independent of whether it loaded)
-                const source = !image ? null : image.startsWith('data:') ? 'on-chain' : ipfsPath(image) ? 'IPFS' : /^https?:\/\//i.test(image) ? 'HTTPS' : null;
+                // richer media (animation_url): video/audio played in the lightbox, resolved via the same sources
+                let anim = null, animType = null;
+                const au = typeof metadata?.animation_url === 'string' ? metadata.animation_url : null;
+                if (au) { const t = mediaType(au); if (t) { const r = resolveArtUri(au); if (r) { anim = r; animType = t; } } }
+                // where the media lives, for the lightbox badge (image if present, else the animation)
+                const primary = image || (anim ? au : null);
+                const source = !primary ? null : primary.startsWith('data:') ? 'on-chain' : ipfsPath(primary) ? 'IPFS' : /^https?:\/\//i.test(primary) ? 'HTTPS' : null;
                 // carry the metadata (name / description / traits) so the lightbox can show it even when the art
                 // is off-chain (and its source is off) or absent
                 return {
                     id: id.toString(),
                     src,
                     source,
+                    anim,
+                    animType,
                     title: src ? (name || collection.ticker + ' #' + id) : '#' + id,
                     name,
                     description: typeof metadata?.description === 'string' ? metadata.description : null,
@@ -1616,13 +1632,26 @@
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'lightbox-panel');
 
-            if (thumb.src) {
+            // video replaces the still image; audio plays under the cover art (or a placeholder)
+            if (thumb.animType === 'video' && thumb.anim) {
+                const v = el('video');
+                v.src = thumb.anim;
+                v.controls = true; v.autoplay = true; v.loop = true; v.muted = true;
+                v.setAttribute('playsinline', '');
+                if (thumb.src) v.poster = thumb.src;
+                panel.append(v);
+            } else if (thumb.src) {
                 const img = el('img');
                 img.src = thumb.src;
                 img.alt = thumb.name || '';
                 panel.append(img);
             } else {
-                panel.append(el('div', 'lightbox-noart', 'no on-chain image'));
+                panel.append(el('div', 'lightbox-noart', thumb.animType === 'audio' ? '♪ audio' : 'no on-chain image'));
+            }
+            if (thumb.animType === 'audio' && thumb.anim) {
+                const a = el('audio');
+                a.src = thumb.anim; a.controls = true; a.className = 'lightbox-audio';
+                panel.append(a);
             }
 
             const info = el('div', 'lightbox-info');

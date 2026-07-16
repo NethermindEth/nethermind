@@ -339,6 +339,7 @@ public class BalanceViewerScriptTests
                 children: [],
                 append(...n) { this.children.push(...n); },
                 replaceChildren(...n) { this.children = [...n]; },
+                setAttribute(k, v) { this[k] = v; },
             }),
         };
         globalThis.__mkThumbs = (n) => Array.from({ length: n }, (_, i) => ({ src: 'data:image/svg+xml,x', title: '#' + i }));
@@ -611,6 +612,40 @@ public class BalanceViewerScriptTests
         object result = engine.Evaluate(
             "JSON.stringify({ name: CHAINS[10].name, v3: !!CHAINS[10].dex.v3, quotes: CHAINS[10].dex.quotes.length, nativeFeed: !!CHAINS[10].feeds.native })");
         Assert.That(result, Is.EqualTo("{\"name\":\"Optimism\",\"v3\":true,\"quotes\":2,\"nativeFeed\":true}"));
+    }
+
+    [TestCase("ipfs://cid/clip.mp4", "video")]
+    [TestCase("https://x/a.webm?ext=1", "video")]
+    [TestCase("https://x/song.mp3", "audio")]
+    [TestCase("https://x/model.glb", "")]
+    [TestCase("https://x/pic.png", "")]
+    public void MediaType_ClassifiesVideoAudioByExtension(string url, string expected)
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.That(engine.Evaluate($"String(mediaType('{url}') ?? '')"), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void OpenArt_RendersVideoAndAudioMedia()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim + """
+            globalThis.document.body = document.createElement('body');
+            globalThis.document.addEventListener = () => {};
+            globalThis.document.removeEventListener = () => {};
+            """);
+        // video replaces the still image; audio plays alongside the cover image
+        object result = engine.Evaluate("""
+            (function () {
+                const coll = { address: '0x00000000000000000000000000000000000000AA', ticker: 'X', name: 'X' };
+                const tags = (p) => (p.children || []).map((c) => c.tag);
+                const open = (thumb) => { document.body.children.length = 0; openArt(thumb, coll, { meta: {} }); return document.body.children[0].children[0]; };
+                const v = tags(open({ id: '1', src: 'data:image/png,x', anim: 'https://x/v.mp4', animType: 'video', name: 'V' }));
+                const a = tags(open({ id: '2', src: 'data:image/png,x', anim: 'https://x/s.mp3', animType: 'audio', name: 'A' }));
+                return JSON.stringify({ video: v.includes('video'), videoReplacesImg: !v.includes('img'), audio: a.includes('audio'), audioKeepsImg: a.includes('img') });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"video\":true,\"videoReplacesImg\":true,\"audio\":true,\"audioKeepsImg\":true}"));
     }
 
     [Test]
