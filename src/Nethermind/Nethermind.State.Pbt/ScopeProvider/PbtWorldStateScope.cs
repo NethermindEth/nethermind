@@ -27,11 +27,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly IPbtCommitTarget _commitTarget;
     private readonly bool _isReadOnly;
 
-    // cumulative per-block dirty state; slot maps and destruct markers are concurrent because the
-    // world state flushes storage write batches from parallel workers
-    private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [];
-    private readonly ConcurrentDictionary<AddressAsKey, ConcurrentDictionary<UInt256, EvmWord>> _dirtySlots = new();
-    private readonly ConcurrentDictionary<AddressAsKey, bool> _selfDestructed = new();
+    // cumulative per-block stem leaves, keyed by their EIP-8297 stem and grouped at write time:
+    // storage slots from the parallel storage batches and account/code header leaves from the
+    // single-threaded account flush both land here (their sub-index bands never overlap). The outer
+    // map is concurrent because parallel storage workers add new stems, but each stem is
+    // address-derived and written by a single worker, so its inner map is single-writer.
+    private readonly ConcurrentDictionary<Stem, Dictionary<byte, ValueHash256>> _dirtyStems = new();
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
@@ -126,9 +127,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
-        _dirtyAccounts.Clear();
-        _dirtySlots.Clear();
-        _selfDestructed.Clear();
+        _dirtyStems.Clear();
         _pendingCode.Clear();
         _blobOverlay.Clear();
         _nodeOverlay.Clear();
@@ -139,130 +138,60 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     public void Dispose() => Bundle.Dispose();
 
     /// <summary>
-    /// Derives the EIP-8297 tree-key writes of the block into a <see cref="PbtWriteBatch"/>: header
-    /// stems from dirty accounts (with code mirrored as chunks), storage stems from dirty slots, and
-    /// clears from self-destructs. Values are fed as spans; the batch owns the copied blob.
+    /// Folds an account's EIP-8297 header leaves straight into <see cref="_dirtyStems"/>: BASIC_DATA,
+    /// CODE_HASH and the header code chunks on its header stem, plus any overflow chunks on their
+    /// content-addressed code-zone stems. Runs on the single-threaded account flush, after the storage
+    /// batches, so it merges with any header-region slots already present on the header stem (their
+    /// sub-index bands never overlap).
     /// </summary>
+    private void ApplyAccountHeader(Address address, Account account)
+    {
+        Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
+        Dictionary<byte, ValueHash256> header = _dirtyStems.GetOrAdd(headerStem, static _ => []);
+
+        // Code (immutable after creation) is only chunked when it was written this block; its hash
+        // then identifies the pending bytes. For an unchanged-code account whose balance or nonce
+        // changed we still rewrite BASIC_DATA, so its code size is read back from the prior BASIC_DATA
+        // leaf rather than fetching the whole code.
+        byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
+        uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
+            : !account.HasCode ? 0
+            : PriorCodeSize(headerStem);
+
+        Span<byte> basicData = stackalloc byte[32];
+        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+        header[PbtKeyDerivation.BasicDataLeafKey] = ToLeaf(basicData);
+        header[PbtKeyDerivation.CodeHashLeafKey] = ToLeaf(account.CodeHash.Bytes);
+
+        if (updatedCode is null) return;
+
+        byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
+        int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
+        for (int i = 0; i < headerChunks; i++)
+        {
+            header[PbtKeyDerivation.HeaderCodeChunkSubIndex(i)] = ToLeaf(chunks[i]);
+        }
+
+        // overflow chunks (index 128+) live on their own content-addressed code-zone stems
+        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
+        {
+            Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
+            _dirtyStems.GetOrAdd(overflowStem, static _ => [])[subIndex] = ToLeaf(chunks[i]);
+        }
+    }
+
+    /// <summary>Emits every dirty stem leaf accumulated this block into a <see cref="PbtWriteBatch"/>.</summary>
     private PbtWriteBatch BuildChanges()
     {
-        PbtWriteBatch batch = new(estimatedStems: _dirtyAccounts.Count + 16);
-        HashSet<ValueHash256> overflowCodes = [];
-        Span<byte> basicData = stackalloc byte[32];
-
-        // One pass per touched address so every stem is built completely before it is added — the
-        // header stem gathers self-destruct clears, account data, code chunks and header slots, and
-        // storage slots are grouped by their storage stem. Content-addressed overflow code stems are
-        // shared across accounts, so they are emitted once per code hash.
-        foreach (AddressAsKey address in TouchedAddresses())
+        PbtWriteBatch batch = new(estimatedStems: _dirtyStems.Count);
+        foreach ((Stem stem, Dictionary<byte, ValueHash256> leaves) in _dirtyStems)
         {
-            Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
-            _dirtyAccounts.TryGetValue(address, out Account? account);
-            bool deleted = account is null && _dirtyAccounts.ContainsKey(address);
-            _dirtySlots.TryGetValue(address, out ConcurrentDictionary<UInt256, EvmWord>? slots);
-
-            IPbtStemChanges header = PbtStemChanges.Rent();
-
-            // self-destructed (including deleted) accounts drop every prior header leaf; the
-            // storage-zone stems of pre-existing storage are left stale (an accepted divergence).
-            // Written before the account data so a same-block re-create wins per sub-index.
-            if (_selfDestructed.ContainsKey(address))
-            {
-                byte[]? prior = Bundle.GetLeafBlob(headerStem);
-                if (prior is not null)
-                {
-                    for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
-                    {
-                        if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _)) header = header.Set((byte)subIndex, default);
-                    }
-                }
-            }
-
-            if (account is not null)
-            {
-                // Code (immutable after creation) is only chunked when it was written this block; its
-                // hash then identifies the pending bytes. For an unchanged-code account whose balance
-                // or nonce changed we still rewrite BASIC_DATA, so its code size is read back from the
-                // prior BASIC_DATA leaf rather than fetching the whole code.
-                byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
-                uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
-                    : !account.HasCode ? 0
-                    : PriorCodeSize(headerStem);
-
-                PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-                header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
-                header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
-
-                if (updatedCode is not null)
-                {
-                    byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
-                    int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
-                    for (int i = 0; i < headerChunks; i++)
-                    {
-                        header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
-                    }
-
-                    // overflow chunks are content-addressed and shared; emit each code's once
-                    if (chunks.Length > PbtKeyDerivation.HeaderCodeChunks && overflowCodes.Add(account.CodeHash))
-                    {
-                        AddOverflowChunks(batch, account.CodeHash, chunks);
-                    }
-                }
-            }
-
-            // header storage slots (0..63); a deleted account's slots never reach the tree
-            if (!deleted && slots is not null)
-            {
-                foreach ((UInt256 slot, EvmWord value) in slots)
-                {
-                    if (PbtKeyDerivation.IsHeaderSlot(slot)) header = header.Set(PbtKeyDerivation.HeaderSlotSubIndex(slot), SlotLeaf(value));
-                }
-            }
-
-            if (header.Count > 0) batch.Add(headerStem, header);
-            else PbtStemChanges.Return(header);
-
-            // storage-zone slots (64+), grouped by their storage stem
-            if (!deleted && slots is not null)
-            {
-                Dictionary<Stem, IPbtStemChanges> storage = [];
-                foreach ((UInt256 slot, EvmWord value) in slots)
-                {
-                    if (PbtKeyDerivation.IsHeaderSlot(slot)) continue;
-
-                    Stem stem = PbtKeyDerivation.StorageStem(address, slot, out byte subIndex);
-                    ref IPbtStemChanges? stemChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, stem, out _);
-                    stemChanges = (stemChanges ?? PbtStemChanges.Rent()).Set(subIndex, SlotLeaf(value));
-                }
-
-                foreach ((Stem stem, IPbtStemChanges stemChanges) in storage) batch.Add(stem, stemChanges);
-            }
+            IPbtStemChanges stemChanges = PbtStemChanges.Rent();
+            foreach ((byte subIndex, ValueHash256 leaf) in leaves) stemChanges = stemChanges.Set(subIndex, leaf);
+            batch.Add(stem, stemChanges);
         }
 
         return batch;
-    }
-
-    /// <summary>The distinct addresses touched this block: dirty accounts, self-destructs and dirty storage.</summary>
-    private HashSet<AddressAsKey> TouchedAddresses()
-    {
-        HashSet<AddressAsKey> addresses = new(_dirtyAccounts.Count + _dirtySlots.Count);
-        foreach ((AddressAsKey address, _) in _dirtyAccounts) addresses.Add(address);
-        foreach ((AddressAsKey address, _) in _selfDestructed) addresses.Add(address);
-        foreach ((AddressAsKey address, _) in _dirtySlots) addresses.Add(address);
-        return addresses;
-    }
-
-    /// <summary>Adds a code's overflow chunks (index 128+), grouped by their content-addressed code-zone stem.</summary>
-    private static void AddOverflowChunks(PbtWriteBatch batch, in ValueHash256 codeHash, byte[][] chunks)
-    {
-        Dictionary<Stem, IPbtStemChanges> overflow = [];
-        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
-        {
-            Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, i, out byte subIndex);
-            ref IPbtStemChanges? stemChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(overflow, stem, out _);
-            stemChanges = (stemChanges ?? PbtStemChanges.Rent()).Set(subIndex, ToLeaf(chunks[i]));
-        }
-
-        foreach ((Stem stem, IPbtStemChanges stemChanges) in overflow) batch.Add(stem, stemChanges);
     }
 
     private static ValueHash256 ToLeaf(ReadOnlySpan<byte> value)
@@ -290,10 +219,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _rootDirty = true;
     }
 
+    // PBT does not support self-destruct; this keeps only the read-side new-account optimization,
+    // where the bundle marker makes storage reads for a new or cleared account return a clean zero.
     private void SelfDestructStorage(Address address)
     {
-        _selfDestructed[address] = true;
-        _dirtySlots.TryRemove(address, out _);
         Bundle.SelfDestruct(address);
         _rootDirty = true;
     }
@@ -313,39 +242,64 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         public void Set(Address key, Account? account)
         {
-            scope._dirtyAccounts[key] = account;
             scope.Bundle.SetAccount(key, account);
             scope._rootDirty = true;
 
             // the world state skips the storage write batch entirely for removed accounts, so the
             // storage clear must happen here
             if (account is null) scope.SelfDestructStorage(key);
+            else scope.ApplyAccountHeader(key, account);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-            new StorageWriteBatch(scope, key, scope._dirtySlots.GetOrAdd(key, static _ => new ConcurrentDictionary<UInt256, EvmWord>()));
+            new StorageWriteBatch(scope, key);
 
         public void Dispose()
         {
         }
     }
 
-    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address, ConcurrentDictionary<UInt256, EvmWord> slots) : IWorldStateScopeProvider.IStorageWriteBatch
+    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private Stem _headerStem;
+        private bool _headerStemComputed;
+
         public void Set(in UInt256 index, byte[] value)
         {
             // the world state passes a stripped (leading-zeros-removed) value; canonicalize to 32 bytes
             EvmWord word = EvmWordSlot.FromStripped(value);
-            slots[index] = word;
+
+            // route the slot to its EIP-8297 stem: the first 64 slots live in the account header,
+            // the rest in their own storage-zone stem
+            Stem stem;
+            byte subIndex;
+            if (PbtKeyDerivation.IsHeaderSlot(index))
+            {
+                stem = HeaderStem();
+                subIndex = PbtKeyDerivation.HeaderSlotSubIndex(index);
+            }
+            else
+            {
+                stem = PbtKeyDerivation.StorageStem(address, index, out subIndex);
+            }
+
+            // single-writer per stem: this address's storage is flushed by one worker
+            scope._dirtyStems.GetOrAdd(stem, static _ => [])[subIndex] = SlotLeaf(word);
             scope.SetSlot(address, index, word);
         }
 
-        public void Clear()
+        public void Clear() => scope.SelfDestructStorage(address);
+
+        // the header stem is constant per address; derive it lazily and reuse it across header slots
+        private Stem HeaderStem()
         {
-            slots.Clear();
-            scope.SelfDestructStorage(address);
-            // reattach the (now empty) map so writes after the clear still register
-            scope._dirtySlots[address] = slots;
+            if (!_headerStemComputed)
+            {
+                _headerStem = PbtKeyDerivation.AccountHeaderStem(address);
+                _headerStemComputed = true;
+            }
+
+            return _headerStem;
         }
 
         public void Dispose()
