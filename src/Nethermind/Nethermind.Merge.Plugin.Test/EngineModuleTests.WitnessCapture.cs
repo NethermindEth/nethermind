@@ -25,6 +25,7 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
+using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -68,9 +69,18 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase(EngineApiVersions.NewPayload.V4)]
-    [TestCase(EngineApiVersions.NewPayload.V5)]
-    public async Task Handler_delegates_to_matching_newPayload_version(int version)
+    private static IEnumerable<TestCaseData> WitnessPayloadVersionCases()
+    {
+        yield return new TestCaseData(
+            EngineApiVersions.NewPayload.V4,
+            nameof(IEngineRpcModule.engine_newPayloadV4));
+        yield return new TestCaseData(
+            EngineApiVersions.NewPayload.V5,
+            nameof(IEngineRpcModule.engine_newPayloadV5));
+    }
+
+    [TestCaseSource(nameof(WitnessPayloadVersionCases))]
+    public async Task Handler_delegates_to_matching_newPayload_version(int version, string expectedMethod)
     {
         IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
         ResultWrapper<PayloadStatusV1> status = ResultWrapper<PayloadStatusV1>.Success(
@@ -81,34 +91,24 @@ public partial class EngineModuleTests
         module.engine_newPayloadV5(
                 Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(status);
+        module.ClearReceivedCalls();
 
         NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
 
-        if (version == EngineApiVersions.NewPayload.V4)
-        {
-            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
-                new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakB, []));
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await HandleWitnessPayloadAsync(handler, version, []);
 
-            await module.Received(1).engine_newPayloadV4(
-                Arg.Any<ExecutionPayloadV3>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-            await module.DidNotReceive().engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        }
-        else
+        ICall[] calls = [.. module.ReceivedCalls()];
+        Assert.That(calls, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
         {
-            await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
-                new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, [], TestItem.KeccakB, []));
-
-            await module.Received(1).engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-            await module.DidNotReceive().engine_newPayloadV4(
-                Arg.Any<ExecutionPayloadV3>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
+            Assert.That(calls[0].GetMethodInfo().Name, Is.EqualTo(expectedMethod));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
         }
     }
 
-    [TestCase(EngineApiVersions.NewPayload.V4)]
-    [TestCase(EngineApiVersions.NewPayload.V5)]
-    public async Task Handler_preserves_null_blobVersionedHashes_for_validation(int version)
+    [TestCaseSource(nameof(WitnessPayloadVersionCases))]
+    public async Task Handler_preserves_null_blobVersionedHashes_for_validation(int version, string expectedMethod)
     {
         IEngineRpcModule module = Substitute.For<IEngineRpcModule>();
         ResultWrapper<PayloadStatusV1> status = ResultWrapper<PayloadStatusV1>.Fail(
@@ -119,27 +119,34 @@ public partial class EngineModuleTests
         module.engine_newPayloadV5(
                 Arg.Any<ExecutionPayloadV4>(), null!, Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
             .Returns(status);
+        module.ClearReceivedCalls();
 
         NewPayloadWithWitnessHandler handler = new(new Lazy<IEngineRpcModule>(() => module), new WitnessRendezvous());
 
-        using ResultWrapper<NewPayloadWithWitnessV1Result> result = version == EngineApiVersions.NewPayload.V4
-            ? await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
-                new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, null, TestItem.KeccakB, []))
-            : await handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
-                new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, null, TestItem.KeccakB, []));
+        using ResultWrapper<NewPayloadWithWitnessV1Result> result =
+            await HandleWitnessPayloadAsync(handler, version, null);
 
+        ICall[] calls = [.. module.ReceivedCalls()];
+        Assert.That(calls, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].GetMethodInfo().Name, Is.EqualTo(expectedMethod));
+            Assert.That(calls[0].GetArguments()[1], Is.Null);
+        }
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-        if (version == EngineApiVersions.NewPayload.V4)
-        {
-            await module.Received(1).engine_newPayloadV4(
-                Arg.Any<ExecutionPayloadV3>(), null!, Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        }
-        else
-        {
-            await module.Received(1).engine_newPayloadV5(
-                Arg.Any<ExecutionPayloadV4>(), null!, Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        }
     }
+
+    private static Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleWitnessPayloadAsync(
+        NewPayloadWithWitnessHandler handler,
+        int version,
+        Hash256?[]? blobVersionedHashes) => version switch
+    {
+        EngineApiVersions.NewPayload.V4 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV3>(
+            new ExecutionPayloadV3 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+        EngineApiVersions.NewPayload.V5 => handler.HandleAsync(new ExecutionPayloadParams<ExecutionPayloadV4>(
+            new ExecutionPayloadV4 { BlockHash = TestItem.KeccakA }, blobVersionedHashes, TestItem.KeccakB, [])),
+        _ => throw new ArgumentOutOfRangeException(nameof(version)),
+    };
 
     [Test]
     public void Rendezvous_RequestWitness_returns_incomplete_task_until_completed()

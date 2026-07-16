@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Stateless;
 public sealed class WitnessCapturingMainProcessingModule(bool enabled) : Module, IMainProcessingModule
 {
     public WitnessCapturingMainProcessingModule(ISpecProvider specProvider)
-        : this(specProvider.GetFinalSpec().RequestsEnabled)
+        : this(specProvider.GetFinalSpec().IsEip7928Enabled)
     {
     }
 

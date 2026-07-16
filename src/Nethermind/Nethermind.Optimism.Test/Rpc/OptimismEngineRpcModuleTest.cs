@@ -134,8 +134,12 @@ public class OptimismEngineRpcModuleTest
 
         Assert.Multiple(() =>
         {
-            Assert.That(provider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)].IsEnabled(), Is.True);
-            Assert.That(provider.GetSszRestPaths()[SszRestPaths.PostPayloadsWitness].IsEnabled(), Is.False);
+            Assert.That(
+                provider.GetJsonRpcCapabilities()[nameof(IEngineRpcModule.engine_newPayloadWithWitnessV4)].IsEnabled(),
+                Is.True);
+            Assert.That(
+                provider.GetSszRestPaths()[SszRestPaths.PostPayloadsWitness].IsEnabled(),
+                Is.False);
         });
     }
 
