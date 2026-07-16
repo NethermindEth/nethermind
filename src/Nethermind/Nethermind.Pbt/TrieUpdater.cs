@@ -6,7 +6,7 @@ using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
-using Slot = Nethermind.Pbt.PbtTrieNodeGroup.Slot;
+using ValueSlot = Nethermind.Pbt.PbtTrieNodeGroup.ValueSlot;
 
 namespace Nethermind.Pbt;
 
@@ -91,93 +91,74 @@ public static class TrieUpdater
         /// cascading across group boundaries (except at the root group, whose root may hold a stem).
         /// </summary>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private Slot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, out bool changed)
+        private ValueSlot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
             Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
 
-            Span<Slot> occupants = stackalloc Slot[PbtTrieNodeGroup.BoundarySlots];
+            // Route the existing occupants to their boundary slots for the rebuild: a stem anywhere in
+            // the group goes to the slot its path passes through at `depth` (the rebuild recomputes its
+            // position), and a boundary internal — the cached pointer to a child group — to its own slot.
+            // Inner internals are recomputed or copied by the rebuild and are skipped. An empty group
+            // reads as all-absent, seeding nothing.
+            Span<ValueSlot> occupants = stackalloc ValueSlot[PbtTrieNodeGroup.BoundarySlots];
             occupants.Clear();
-            if (!existing.IsEmpty) SeedOccupants(existing, depth, occupants);
+            for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+            {
+                PbtTrieNodeGroup.Slot slot = existing[position];
+                if (slot.Kind == NodeKind.Stem)
+                {
+                    int bucket = NibbleOf(slot.Stem, depth);
+                    Debug.Assert(occupants[bucket].Kind == NodeKind.Absent, "two occupants routed to one boundary slot");
+                    occupants[bucket] = slot.ToValue();
+                }
+                else if (slot.Kind == NodeKind.Internal && PbtTrieNodeGroup.IsBoundaryPosition(position))
+                {
+                    occupants[PbtTrieNodeGroup.BoundarySlot(position)] = slot.ToValue();
+                }
+            }
 
-            Slot before = existing.IsEmpty ? default : existing[PbtTrieNodeGroup.RootPosition];
-            return ApplyToOccupants(key, entries, existing, occupants, before, out changed);
+            return ApplyToOccupants(key, entries, existing, occupants, existing[PbtTrieNodeGroup.RootPosition].ToValue(), out changed);
         }
 
         /// <summary>
         /// Applies <paramref name="entries"/> to a subtree with no stored group at <paramref name="key"/>:
         /// either empty, or holding a single stem <paramref name="pushed"/> down from the parent's
         /// boundary slot. When the range reaches the shortest prefix no other stem shares it folds that
-        /// stem in place without descending (<see cref="TryFoldSingleStem"/>); otherwise the pushed stem
-        /// and the writes are routed on down together.
+        /// stem in place without descending; otherwise the pushed stem and the writes are routed on down
+        /// together.
         /// </summary>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private Slot ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in Slot pushed, out bool changed)
+        private ValueSlot ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in ValueSlot pushed, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
             Debug.Assert(pushed.Kind != NodeKind.Internal);
 
-            if (TryFoldSingleStem(entries, pushed, out Slot folded, out changed)) return folded;
-
-            Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
-
-            Span<Slot> occupants = stackalloc Slot[PbtTrieNodeGroup.BoundarySlots];
-            occupants.Clear();
-            if (pushed.Kind == NodeKind.Stem) occupants[NibbleOf(pushed.Stem, depth)] = pushed;
-
-            return ApplyToOccupants(key, entries, default, occupants, pushed, out changed);
-        }
-
-        /// <summary>
-        /// The shortest-unique-prefix fold. When <paramref name="entries"/> holds a single stem that no
-        /// pushed stem contends — either none was pushed (an empty subtree, or the updated stem relocating
-        /// in) or the same stem is re-folding in place — folds that stem's leaf blob and returns its stem
-        /// node in <paramref name="folded"/> (default when the stem emptied) without descending, for an
-        /// enclosing rebuild to place at its shortest unique prefix. Returns <c>false</c> — leaving the
-        /// range to be routed deeper — for multiple writes, or a <em>different</em> pushed stem, which
-        /// diverges from the write further down and would be dropped if folded here. Also serves depth
-        /// 248, where every remaining range is necessarily a single stem.
-        /// </summary>
-        private bool TryFoldSingleStem(Span<PbtWriteBatch.StemEntry> entries, in Slot pushed, out Slot folded, out bool changed)
-        {
+            // The shortest-unique-prefix fold: a lone write that no pushed stem contends — either none
+            // was pushed (an empty subtree, or the updated stem relocating in) or the same stem is
+            // re-folding in place — folds its leaf blob here, without descending, for an enclosing
+            // rebuild to place at its shortest unique prefix (default when the stem emptied). Multiple
+            // writes, or a *different* pushed stem — which diverges from the write further down and
+            // would be dropped if folded here — are routed deeper instead. This also serves depth 248,
+            // where every remaining range is necessarily a single stem.
             Stem stem = entries[0].Stem;
             if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
             {
                 bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
-                folded = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
+                ValueSlot folded = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
                 changed = folded.NodeHash() != pushed.NodeHash();
-                return true;
+                return folded;
             }
 
-            folded = default;
-            changed = false;
-            return false;
-        }
+            Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
 
-        /// <summary>
-        /// Routes <paramref name="existing"/>'s occupants to their boundary slots for the rebuild: a stem
-        /// anywhere in the group goes to the slot its path passes through at <paramref name="depth"/> (the
-        /// rebuild recomputes its position), and a boundary internal — the cached pointer to a child group
-        /// — to its own slot. Inner internals are recomputed or copied by the rebuild and are skipped here.
-        /// </summary>
-        private static void SeedOccupants(PbtTrieNodeGroup existing, int depth, Span<Slot> occupants)
-        {
-            for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
-            {
-                Slot slot = existing[position];
-                if (slot.Kind == NodeKind.Stem)
-                {
-                    int bucket = NibbleOf(slot.Stem, depth);
-                    Debug.Assert(occupants[bucket].Kind == NodeKind.Absent, "two occupants routed to one boundary slot");
-                    occupants[bucket] = slot;
-                }
-                else if (slot.Kind == NodeKind.Internal && PbtTrieNodeGroup.IsBoundaryPosition(position))
-                {
-                    occupants[PbtTrieNodeGroup.BoundarySlot(position)] = slot;
-                }
-            }
+            Span<ValueSlot> occupants = stackalloc ValueSlot[PbtTrieNodeGroup.BoundarySlots];
+            occupants.Clear();
+            if (pushed.Kind == NodeKind.Stem) occupants[NibbleOf(pushed.Stem, depth)] = pushed;
+
+            return ApplyToOccupants(key, entries, default, occupants, pushed, out changed);
         }
 
         /// <summary>
@@ -198,9 +179,9 @@ public static class TrieUpdater
         /// (all writes were no-ops), letting the parent reuse its cached hash and skip its own rewrite;
         /// <c>true</c> otherwise.
         /// </param>
-        private Slot ApplyToOccupants(
+        private ValueSlot ApplyToOccupants(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing,
-            Span<Slot> occupants, in Slot before, out bool changed)
+            Span<ValueSlot> occupants, in ValueSlot before, out bool changed)
         {
             int depth = key.Depth;
 
@@ -210,7 +191,7 @@ public static class TrieUpdater
             // The boundary results drive both the rebuild and its shape: `occupied` and `stems` fix
             // every node's kind (see GroupRebuild), and `changedMask` folds to a range's
             // subtree-changed flag by masking.
-            Span<Slot> results = stackalloc Slot[PbtTrieNodeGroup.BoundarySlots];
+            Span<ValueSlot> results = stackalloc ValueSlot[PbtTrieNodeGroup.BoundarySlots];
             uint occupied = 0;
             uint stems = 0;
             uint changedMask = 0;
@@ -249,7 +230,7 @@ public static class TrieUpdater
             NodeKind rootKind = KindOf(occupied, stems);
             if (rootKind != NodeKind.Internal && !(isRoot && rootKind == NodeKind.Stem))
             {
-                Slot hoisted = rootKind == NodeKind.Absent ? default : results[BitOperations.TrailingZeroCount(occupied)];
+                ValueSlot hoisted = rootKind == NodeKind.Absent ? default : results[BitOperations.TrailingZeroCount(occupied)];
                 changed = hoisted.NodeHash() != before.NodeHash();
                 if (!existing.IsEmpty) store.SetTrieNode(key, null);
                 return hoisted;
@@ -279,9 +260,9 @@ public static class TrieUpdater
         /// unless the writes leave its root identical to <paramref name="before"/>, and returns the
         /// node now occupying the group's root position.
         /// </summary>
-        private Slot RebuildGroup(
-            in TrieNodeKey key, ReadOnlySpan<Slot> results, PbtTrieNodeGroup existing,
-            uint occupied, uint stems, uint changedMask, in Slot before, out bool changed)
+        private ValueSlot RebuildGroup(
+            in TrieNodeKey key, ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing,
+            uint occupied, uint stems, uint changedMask, in ValueSlot before, out bool changed)
         {
             (uint presence, uint stemMask) = PredictShape(occupied, stems, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
@@ -295,8 +276,8 @@ public static class TrieUpdater
             // whose hash matches implies the group already existed); skip the rewrite.
             changed = rebuild.Resolve(root) != before.NodeHash();
 
-            // Read the root back out before the buffer leaves our hands: the write takes the lease with it.
-            Slot slot = rebuild.SlotAt(root);
+            // Copy the root back out before the buffer leaves our hands: the write takes the lease with it.
+            ValueSlot slot = rebuild.SlotAt(root).ToValue();
             if (changed) store.SetTrieNode(key, memory);
             else ((IDisposable)memory).Dispose();
             return slot;
@@ -358,10 +339,10 @@ public static class TrieUpdater
         /// </para>
         /// </remarks>
         private ref struct GroupRebuild(
-            ReadOnlySpan<Slot> results, PbtTrieNodeGroup existing,
+            ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing,
             uint occupied, uint stems, uint changed, Span<byte> destination)
         {
-            private readonly ReadOnlySpan<Slot> _results = results;
+            private readonly ReadOnlySpan<ValueSlot> _results = results;
             private readonly PbtTrieNodeGroup _existing = existing;
             private readonly uint _occupied = occupied;
             private readonly uint _stems = stems;
@@ -383,7 +364,7 @@ public static class TrieUpdater
                     case NodeKind.Stem:
                         // the topmost frame whose range holds only this stem — its shortest unique
                         // prefix, so it lands here rather than anywhere below
-                        ref readonly Slot stem = ref _results[BitOperations.TrailingZeroCount(occupied)];
+                        ref readonly ValueSlot stem = ref _results[BitOperations.TrailingZeroCount(occupied)];
                         return new NodeRef(NodeKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
                 }
 
@@ -403,10 +384,10 @@ public static class TrieUpdater
             }
 
             /// <summary>The hash <paramref name="node"/> contributes to its parent.</summary>
-            public readonly ValueHash256 Resolve(in NodeRef node) => _builder.NodeHashAt(node.Kind, node.Offset);
+            public readonly ValueHash256 Resolve(in NodeRef node) => SlotAt(node).NodeHash();
 
             /// <summary>Reads <paramref name="node"/> back out of the blob.</summary>
-            public readonly Slot SlotAt(in NodeRef node) => _builder.SlotAt(node.Kind, node.Offset);
+            public readonly PbtTrieNodeGroup.Slot SlotAt(in NodeRef node) => _builder.SlotAt(node.Kind, node.Offset);
 
             /// <inheritdoc cref="PbtTrieNodeGroup.Builder.Finish"/>
             public readonly int Finish() => _builder.Finish();

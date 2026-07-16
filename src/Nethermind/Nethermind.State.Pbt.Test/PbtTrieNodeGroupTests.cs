@@ -40,7 +40,7 @@ public class PbtTrieNodeGroupTests
         ValueHash256 rootA = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
-        PbtTrieNodeGroup.Slot[] slots = new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount];
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
         slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hashA);
         slots[14] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
@@ -52,10 +52,10 @@ public class PbtTrieNodeGroupTests
         Assert.That(length, Is.EqualTo(8 + 5 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
-        PbtTrieNodeGroup.Slot[] roundTripped = new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount];
+        PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
-            PbtTrieNodeGroup.Slot slot = decoded[position];
+            PbtTrieNodeGroup.ValueSlot slot = decoded[position].ToValue();
             Assert.That(slot.Kind, Is.EqualTo(slots[position].Kind), $"kind at {position}");
             Assert.That(slot.Stem, Is.EqualTo(slots[position].Stem), $"stem at {position}");
             Assert.That(slot.Hash, Is.EqualTo(slots[position].Hash), $"hash at {position}");
@@ -89,12 +89,12 @@ public class PbtTrieNodeGroupTests
     /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
     /// the ascending order it requires — the order the updater's post-order rebuild appends in.
     /// </summary>
-    private static int Encode(ReadOnlySpan<PbtTrieNodeGroup.Slot> slots, Span<byte> destination)
+    private static int Encode(ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, Span<byte> destination)
     {
         PbtTrieNodeGroup.Builder builder = new(destination);
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
-            PbtTrieNodeGroup.Slot slot = slots[position];
+            PbtTrieNodeGroup.ValueSlot slot = slots[position];
             switch (slot.Kind)
             {
                 case PbtTrieNodeGroup.NodeKind.Internal:
