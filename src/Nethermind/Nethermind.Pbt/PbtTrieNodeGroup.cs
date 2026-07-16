@@ -180,6 +180,15 @@ public readonly ref struct PbtTrieNodeGroup
         }
     }
 
+    /// <summary>
+    /// Reads the node of kind <paramref name="kind"/> whose entry starts at <paramref name="offset"/>
+    /// out of the encoding <paramref name="data"/>, for a producer holding an entry offset rather than
+    /// a position.
+    /// </summary>
+    internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind, int offset) => kind == NodeKind.Absent
+        ? default
+        : new Slot(data.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
+
     public static ValueSlot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
     public static ValueSlot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
@@ -255,9 +264,7 @@ public readonly ref struct PbtTrieNodeGroup
         }
 
         /// <summary>Reads the node of kind <paramref name="kind"/> appended at <paramref name="offset"/> back out of the buffer.</summary>
-        public readonly Slot SlotAt(NodeKind kind, int offset) => kind == NodeKind.Absent
-            ? default
-            : new Slot(_destination.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
+        public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
 
         /// <summary>
         /// Writes the bitmap header and returns the encoded length; 0 when nothing was appended,
