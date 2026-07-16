@@ -20,7 +20,8 @@ public class StemLeafBlobTests
         byte[] value200 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
         byte[] blob = Apply([], new Dictionary<byte, byte[]?> { [5] = value5, [200] = value200 }, out _);
-        Assert.That(blob, Has.Length.EqualTo(32 + 17 * (2 + 32)));
+        // L=17 live nodes, groups {0, 12} occupied => entries + subwords(G=2) + top + format byte
+        Assert.That(blob, Has.Length.EqualTo(17 * 32 + 2 * 2 + 2 + 1));
         Assert.That(StemLeafBlob.TryGetValue(blob, 5, out ReadOnlySpan<byte> read5) && read5.SequenceEqual(value5));
         Assert.That(StemLeafBlob.TryGetValue(blob, 200, out ReadOnlySpan<byte> read200) && read200.SequenceEqual(value200));
         Assert.That(StemLeafBlob.TryGetValue(blob, 6, out _), Is.False);
