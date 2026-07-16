@@ -27,12 +27,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly IPbtCommitTarget _commitTarget;
     private readonly bool _isReadOnly;
 
-    // cumulative per-block stem leaves, keyed by their EIP-8297 stem and grouped at write time:
-    // storage slots from the parallel storage batches and account/code header leaves from the
-    // single-threaded account flush both land here (their sub-index bands never overlap). The outer
+    // stem leaves dirtied since the last root update, keyed by their EIP-8297 stem and grouped at
+    // write time: storage slots from the parallel storage batches and account/code header leaves from
+    // the single-threaded account flush both land here (their sub-index bands never overlap). The outer
     // map is concurrent because parallel storage workers add new stems, but each stem is
     // address-derived and written by a single worker, so its per-stem change map is single-writer.
-    // The pooled per-stem maps are returned to the pool when the block commits.
+    // UpdateRootHash drains this into the write batch, which returns the pooled maps to the pool.
     private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
@@ -79,17 +79,13 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
 
     /// <summary>
-    /// Recomputes the root from the block's cumulative dirty state. Idempotent: every call
-    /// rebuilds the blob and node overlays from scratch against the pre-block state, so repeated
-    /// calls (and calls interleaved with further writes) converge on the same result.
+    /// Folds the stems dirtied since the last update into the tree on top of the pre-block state,
+    /// recording the new blobs and nodes in the per-block overlays and flushing the dirty set. A
+    /// repeated call with no intervening writes is a no-op; <see cref="Commit"/> seals the overlays.
     /// </summary>
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
-
-        // idempotent: rebuild the overlays from scratch against the pre-block state each call
-        _blobOverlay.Clear();
-        _nodeOverlay.Clear();
 
         using PbtWriteBatch changes = BuildChanges();
         _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes).ToHash256();
@@ -128,8 +124,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
-        foreach ((Stem _, IPbtStemChanges changes) in _dirtyStems) PbtStemChanges.Return(changes);
-        _dirtyStems.Clear();
+        // _dirtyStems was already drained (and its maps returned) by UpdateRootHash
         _pendingCode.Clear();
         _blobOverlay.Clear();
         _nodeOverlay.Clear();
@@ -191,27 +186,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-    /// <summary>Emits every dirty stem leaf accumulated this block into a <see cref="PbtWriteBatch"/>.</summary>
+    /// <summary>Drains the dirty stem leaves accumulated since the last root update into a <see cref="PbtWriteBatch"/>.</summary>
     /// <remarks>
-    /// The batch owns its per-stem maps and returns them to the pool on dispose, but <see cref="_dirtyStems"/>
-    /// must survive repeated (idempotent) <see cref="UpdateRootHash"/> calls, so each stem's writes are copied
-    /// into a fresh pooled map rather than handing over the accumulator's own.
+    /// Ownership of the per-stem maps passes to the batch, which returns them to the pool on dispose, so
+    /// <see cref="_dirtyStems"/> is emptied here: <see cref="UpdateRootHash"/> folds them into the overlays
+    /// once and does not revisit them.
     /// </remarks>
     private PbtWriteBatch BuildChanges()
     {
         PbtWriteBatch batch = new(estimatedStems: _dirtyStems.Count);
-        // one sub-index (a byte) per leaf, so a stem holds at most 256 writes
-        Span<StemLeafWrite> scratch = new StemLeafWrite[256];
-        foreach ((Stem stem, IPbtStemChanges leaves) in _dirtyStems)
-        {
-            Span<StemLeafWrite> writes = scratch[..leaves.Count];
-            leaves.WriteSorted(writes);
-
-            IPbtStemChanges copy = PbtStemChanges.Rent();
-            foreach (StemLeafWrite write in writes) copy = copy.Set(write.SubIndex, write.Value);
-            batch.Add(stem, copy);
-        }
-
+        foreach ((Stem stem, IPbtStemChanges leaves) in _dirtyStems) batch.Add(stem, leaves);
+        _dirtyStems.Clear();
         return batch;
     }
 

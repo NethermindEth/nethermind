@@ -12,7 +12,7 @@ namespace Nethermind.Pbt;
 /// sub-index → 32-byte value map. Grouping is the caller's job — every stem must be added exactly
 /// once (<see cref="Add"/> throws otherwise), so the caller merges all writes to a stem beforehand.
 /// </summary>
-/// <remarks>A zero value clears the leaf. <see cref="Dispose"/> returns the pooled entry list.</remarks>
+/// <remarks>A zero value clears the leaf. <see cref="Dispose"/> returns the pooled entry list and the per-stem change maps.</remarks>
 public sealed class PbtWriteBatch(int estimatedStems) : IDisposable
 {
     /// <param name="Stem">The 31-byte stem shared by every write in <paramref name="Changes"/>.</param>
