@@ -193,7 +193,7 @@ public class FrameTxSignatureValidatorTests
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
 
-        byte[] rs = key.SignHash(sigHash.Bytes.ToArray()); // IEEE P1363: r || s
+        byte[] rs = key.SignHash(sigHash.Bytes); // IEEE P1363: r || s
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
         rs.CopyTo(raw.AsSpan(0));
         qx.CopyTo(raw.AsSpan(64));
