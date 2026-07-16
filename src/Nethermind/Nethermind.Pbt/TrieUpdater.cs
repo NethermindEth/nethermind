@@ -211,7 +211,7 @@ public static class TrieUpdater
         }
 
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and returns it.</summary>
-        private byte[] ComputeBlob(in Stem stem, IReadOnlyDictionary<byte, ValueHash256> changes, out ValueHash256 subtreeRoot)
+        private byte[] ComputeBlob(in Stem stem, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
         {
             using MemoryManager<byte>? prior = store.GetLeafBlob(stem);
             byte[] newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, out subtreeRoot);

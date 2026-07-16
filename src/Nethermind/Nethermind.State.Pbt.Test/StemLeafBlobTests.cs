@@ -166,14 +166,16 @@ public class StemLeafBlobTests
     /// <summary>Maps the byte[] changes to 32-byte leaf values (null/empty = clear) and applies them.</summary>
     private static byte[] Apply(ReadOnlySpan<byte> prior, Dictionary<byte, byte[]?> changes, out ValueHash256 subtreeRoot)
     {
-        Dictionary<byte, ValueHash256> mapped = [];
+        IPbtStemChanges mapped = PbtStemChanges.Rent();
         foreach ((byte subIndex, byte[]? value) in changes)
         {
             ValueHash256 leaf = default;
             value?.CopyTo(leaf.BytesAsSpan);
-            mapped[subIndex] = leaf;
+            mapped = mapped.Set(subIndex, leaf);
         }
 
-        return StemLeafBlob.Apply(prior, mapped, out subtreeRoot);
+        byte[] result = StemLeafBlob.Apply(prior, mapped, out subtreeRoot);
+        PbtStemChanges.Return(mapped);
+        return result;
     }
 }
