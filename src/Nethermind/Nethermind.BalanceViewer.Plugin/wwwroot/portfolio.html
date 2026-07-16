@@ -226,7 +226,9 @@
         #tokens { margin-top: 12px; }
 
         tr.zero { display: none; } /* zero balances are always hidden */
-        body.nft-only .bal-row, body.nft-only .cardTotal, body.nft-only #totalBox { display: none; } /* NFT-only mode */
+        body.mode-nfts .bal-row, body.mode-nfts .cardTotal { display: none; } /* NFTs-only view */
+        body.mode-nfts #totalBox { display: none !important; } /* beats the inline display:flex set on refresh */
+        body.mode-tokens .nft-row { display: none; } /* tokens-only view */
 
         header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: baseline; }
         button.zero-toggle {
@@ -367,6 +369,9 @@
         .lightbox-copy { color: var(--accent); cursor: pointer; }
         .lightbox-copy:hover { text-decoration: underline; }
         .art-source { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+        .token-facts { display: grid; grid-template-columns: max-content 1fr; gap: 7px 16px; margin-top: 2px; }
+        .token-fact-k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); align-self: center; }
+        .token-fact-v { font-size: 13px; color: var(--c-name); font-family: 'DM Mono', ui-monospace, monospace; text-align: right; word-break: break-word; }
 
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -508,6 +513,10 @@
         .setting-note { font-size: 11px; color: var(--muted); line-height: 1.4; margin: 2px 0 6px; }
         .setting-badge { font-size: 10px; color: var(--muted); }
         .setting-input { width: 100%; box-sizing: border-box; margin: 2px 0 4px; background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 12px; padding: 5px 8px; }
+        .setting-select { background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 12px; padding: 4px 6px; cursor: pointer; }
+        .setting-actions { display: flex; gap: 8px; margin-top: 6px; }
+        .setting-btn { flex: 1; background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 12px; padding: 6px 8px; cursor: pointer; }
+        .setting-btn:hover { border-color: var(--accent); color: var(--accent); }
         .setting-row.disabled { opacity: 0.5; }
         #nodesList a { color: var(--accent); text-decoration: none; }
         #nodesList a:hover { text-decoration: underline; }
@@ -578,8 +587,14 @@
             <div class="settings-section">
                 <label class="setting-row"><span>Hide spam tokens</span><span class="switch"><input type="checkbox" id="setHideSpam"><span class="slider"></span></span></label>
                 <div class="setting-note">Hides airdrop spam and tokens whose value can't be realized (spoofed prices).</div>
-                <label class="setting-row"><span>NFTs only</span><span class="switch"><input type="checkbox" id="setNftOnly"><span class="slider"></span></span></label>
-                <div class="setting-note">Hides token balances and totals — shows only NFT collections.</div>
+                <label class="setting-row"><span>Show</span>
+                    <select id="setDisplayMode" class="setting-select">
+                        <option value="all">Tokens &amp; NFTs</option>
+                        <option value="tokens">Tokens only</option>
+                        <option value="nfts">NFTs only</option>
+                    </select>
+                </label>
+                <div class="setting-note">Choose whether to show token balances, NFT collections, or both.</div>
             </div>
 
             <div class="settings-section">
@@ -598,6 +613,16 @@
             <div class="settings-section">
                 <div class="settings-subhead">Nodes</div>
                 <div id="nodesList" class="setting-note">…</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-subhead">Backup</div>
+                <div class="setting-note">Save your pinned addresses and settings to a file, or restore them here (e.g. on another device). Watch-only — no private keys are stored.</div>
+                <div class="setting-actions">
+                    <button id="exportBtn" class="setting-btn">Export to file</button>
+                    <button id="importBtn" class="setting-btn">Import from file</button>
+                </div>
+                <input id="importFile" type="file" accept="application/json,.json" style="display: none" />
             </div>
         </div>
     </div>
@@ -885,6 +910,7 @@
         const SEL_SYMBOL = '0x95d89b41';           // symbol()
         const SEL_NAME = '0x06fdde03';             // name()
         const SEL_DECIMALS = '0x313ce567';         // decimals()
+        const SEL_TOTAL_SUPPLY = '0x18160ddd';     // totalSupply()
         const SEL_LATEST_ROUND = '0xfeaf968c';     // latestRoundData()
         const SEL_LATEST_ROUND_REG = '0xbcfd032d'; // latestRoundData(address,address)
         const SEL_FEED_DECIMALS_REG = '0x58e2d3a8'; // decimals(address,address)
@@ -1451,6 +1477,27 @@
             return currencySymbol(full) + (cents / 100n).toLocaleString('en-US') + '.' + (cents % 100n).toString().padStart(2, '0');
         }
 
+        // Per-unit token price: normal 2dp above 1.00, otherwise up to 3 significant
+        // sub-unit digits so cheap tokens don't collapse to "0.00". `cur8` is PRICE_SCALE-scaled.
+        function formatPrice8(cur8) {
+            if (cur8 === null || cur8 === undefined) return '—';
+            if (cur8 >= PRICE_SCALE) return formatFiat(cur8);
+            const n = Number(cur8) / Number(PRICE_SCALE);
+            return currencySymbol(false) + (n === 0 ? '0' : n.toPrecision(3));
+        }
+
+        // Compact fiat for large aggregates (market cap): $1.23B etc. `cur8` is PRICE_SCALE-scaled.
+        function formatFiatCompact(cur8) {
+            if (cur8 === null || cur8 === undefined) return '—';
+            const n = Number(cur8) / Number(PRICE_SCALE);
+            const sym = currencySymbol(false);
+            if (n >= 1e12) return sym + (n / 1e12).toFixed(2) + 'T';
+            if (n >= 1e9) return sym + (n / 1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return sym + (n / 1e6).toFixed(2) + 'M';
+            if (n >= 1e3) return sym + (n / 1e3).toFixed(2) + 'K';
+            return formatFiat(cur8);
+        }
+
         function setTotal(text) {
             $('totalFiat').textContent = text;
         }
@@ -1702,6 +1749,75 @@
             const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
             document.addEventListener('keydown', onKey);
             document.body.append(overlay);
+        }
+
+        // Key on-chain facts for an ERC-20 holding, opened from its balance row. Price and the holder's
+        // value come from the last refresh (cache); name, total supply, and market cap are read on demand.
+        async function openTokenInfo(node, token, cached) {
+            const overlay = el('div', 'lightbox');
+            const panel = el('div', 'lightbox-panel');
+            const info = el('div', 'lightbox-info');
+
+            info.append(el('div', 'lightbox-title', token.ticker));
+            const subEl = el('div', 'lightbox-sub', '');
+            info.append(subEl);
+
+            const facts = el('div', 'token-facts');
+            info.append(facts);
+            const addFact = (k, v) => { facts.append(el('div', 'token-fact-k', k)); facts.append(el('div', 'token-fact-v', v ?? '—')); };
+
+            const fxRate = await resolveFxRate();
+            const conv = (usd8) => (usd8 === null || usd8 === undefined || !fxRate) ? null : usd8 * PRICE_SCALE / fxRate;
+            const price8 = cached && cached.price8 !== undefined ? cached.price8 : null;
+
+            addFact('Price', formatPrice8(conv(price8)));
+            const mcapEl = el('div', 'token-fact-v', '…');
+            facts.append(el('div', 'token-fact-k', 'Market cap'));
+            facts.append(mcapEl);
+            const supplyEl = el('div', 'token-fact-v', '…');
+            facts.append(el('div', 'token-fact-k', 'Total supply'));
+            facts.append(supplyEl);
+            if (cached && cached.bal !== null && cached.bal !== undefined) addFact('Your balance', cached.bal + ' ' + token.ticker);
+            if (cached && cached.fiat) addFact('Your value', cached.fiat);
+            addFact('Decimals', String(token.decimals));
+
+            const meta = el('div', 'lightbox-meta');
+            const copy = el('span', 'lightbox-copy', token.address.slice(0, 6) + '…' + token.address.slice(-4));
+            copy.title = 'Copy contract address';
+            copy.onclick = () => copyAddress(token.address);
+            meta.append(copy);
+            meta.append(el('span', 'art-source', node.meta.name));
+            info.append(meta);
+
+            panel.append(info);
+            overlay.append(panel);
+            overlay.onclick = () => overlay.remove();
+            panel.onclick = (e) => e.stopPropagation();
+            const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
+            document.addEventListener('keydown', onKey);
+            document.body.append(overlay);
+
+            try {
+                const [nameHex, supplyHex] = await rpcBatch([
+                    ['eth_call', [{ to: token.address, data: SEL_NAME }, 'latest']],
+                    ['eth_call', [{ to: token.address, data: SEL_TOTAL_SUPPLY }, 'latest']],
+                ], node.rpcPath);
+                const name = decodeAbiString(nameHex);
+                if (name && name !== token.ticker) subEl.textContent = name;
+                const hasSupply = supplyHex && supplyHex !== '0x';
+                supplyEl.textContent = hasSupply ? formatUnits(supplyHex, token.decimals) : '—';
+                let mcap = '—';
+                if (price8 !== null && price8 !== undefined && hasSupply) {
+                    try {
+                        const mcapCur8 = conv(BigInt(supplyHex) * price8 / 10n ** BigInt(token.decimals));
+                        if (mcapCur8 !== null) mcap = formatFiatCompact(mcapCur8);
+                    } catch { /* overflow or bad supply — leave as — */ }
+                }
+                mcapEl.textContent = mcap;
+            } catch {
+                supplyEl.textContent = '—';
+                mcapEl.textContent = '—';
+            }
         }
 
         // makes a clickable NFT thumbnail element (image, or a #id placeholder), opening the item lightbox
@@ -2104,7 +2220,7 @@
         let detectEnabled = true;           // settings toggle, default on
         let detecting = false;              // any historical scan still in progress
         let hideSpam = true;                // hide airdrop/spoofed-price spam tokens, default on
-        let nftOnly = false;                // NFT-only mode: hide token balances/totals, default off
+        let displayMode = 'all';            // 'all' | 'tokens' | 'nfts' — which asset classes to show
         // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
         const artSources = { https: false, localIpfs: false, remoteGateway: false };
         let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
@@ -2685,7 +2801,7 @@
                 for (const node of enabledNodes()) {
                     const chainState = stateOf(node.chainId);
                     const rows = [{ ticker: node.meta.ticker, key: node.chainId + ':native' }].concat(
-                        tokensOf(node.chainId).map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address, auto: t.auto })));
+                        tokensOf(node.chainId).map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address, auto: t.auto, token: t })));
                     for (const row of rows) {
                         const cached = cache.get(entry.address + '|' + row.key);
                         const tr = el('tr', 'bal-row'); // token/native balance row (hidden in NFT-only mode)
@@ -2693,7 +2809,12 @@
                         const tick = el('td', 'tick');
                         tick.append(tickerLabel(row.ticker, node));
                         if (row.color) tick.style.setProperty('--tcol', row.color);
-                        if (row.contract) {
+                        if (row.token) {
+                            // ERC-20 row: open the token info lightbox (which itself offers copy-address)
+                            tick.classList.add('copyable');
+                            tick.title = 'Token info';
+                            tick.onclick = () => openTokenInfo(node, row.token, cache.get(entry.address + '|' + row.key));
+                        } else if (row.contract) {
                             tick.classList.add('copyable');
                             tick.title = row.contract + ' (click to copy)';
                             tick.onclick = () => copyAddress(row.contract);
@@ -2712,7 +2833,7 @@
                     for (const collection of chainState.nfts) {
                         const colKey = collection.address.toLowerCase();
                         const cached = cache.get(entry.address + '|' + node.chainId + ':nft:' + colKey);
-                        const tr = el('tr');
+                        const tr = el('tr', 'nft-row');
                         if (cached?.bal === '0') tr.classList.add('zero');
                         const tick = el('td', 'tick copyable');
                         tick.append(tickerLabel(collection.ticker, node));
@@ -2727,7 +2848,7 @@
                         table.append(tr);
 
                         const thumbsKey = entry.address + '|' + node.chainId + '|' + colKey;
-                        const thumbsTr = el('tr');
+                        const thumbsTr = el('tr', 'nft-row');
                         if (cached?.bal === '0') thumbsTr.classList.add('zero');
                         const thumbsTd = el('td');
                         thumbsTd.colSpan = showFiat ? 3 : 2;
@@ -2931,8 +3052,10 @@
                     const keepPrev = value8 === null && prev && prev.value8 !== null && prev.value8 !== undefined;
                     const finalValue8 = keepPrev ? prev.value8 : value8;
                     const finalUsd8 = keepPrev ? prev.usd8 : usd8;
+                    // price is holder-independent; keep the last good one through a transient miss (for the token info lightbox)
+                    const finalPrice8 = (price !== null && price !== undefined) ? price : (prev ? prev.price8 ?? null : null);
                     const fiatText = finalValue8 !== null && finalValue8 !== undefined ? formatFiat(finalValue8) : '';
-                    cache.set(cacheKey, { bal: balText, fiat: fiatText, value8: finalValue8, usd8: finalUsd8 });
+                    cache.set(cacheKey, { bal: balText, fiat: fiatText, value8: finalValue8, usd8: finalUsd8, price8: finalPrice8 });
 
                     const balCell = card?.querySelector(`td[data-key="${rowKey}"]`);
                     if (balCell) {
@@ -3261,23 +3384,29 @@
             // ---- settings ----
             const DETECT_KEY = 'nethermind.portfolio.detect';
             const HIDESPAM_KEY = 'nethermind.portfolio.hidespam';
-            const NFTONLY_KEY = 'nethermind.portfolio.nftonly';
+            const NFTONLY_KEY = 'nethermind.portfolio.nftonly'; // legacy; migrated to DISPLAYMODE_KEY
+            const DISPLAYMODE_KEY = 'nethermind.portfolio.displaymode';
             const ART_KEY = 'nethermind.portfolio.artsources';
             const GATEWAY_KEY = 'nethermind.portfolio.ipfsgateway';
             const WATCH_KEY = 'nethermind.portfolio.watchcollapsed';
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
             hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
-            nftOnly = localStorage.getItem(NFTONLY_KEY) === '1';      // default off
-            document.body.classList.toggle('nft-only', nftOnly);
+            displayMode = localStorage.getItem(DISPLAYMODE_KEY)
+                || (localStorage.getItem(NFTONLY_KEY) === '1' ? 'nfts' : 'all'); // migrate old NFTs-only toggle
+            const applyDisplayMode = () => {
+                document.body.classList.toggle('mode-nfts', displayMode === 'nfts');
+                document.body.classList.toggle('mode-tokens', displayMode === 'tokens');
+            };
+            applyDisplayMode();
             try { Object.assign(artSources, JSON.parse(localStorage.getItem(ART_KEY) || '{}')); } catch { }
             ipfsRemoteGateway = localStorage.getItem(GATEWAY_KEY) || IPFS_REMOTE_GATEWAY_DEFAULT;
 
             const settingsModal = $('settingsModal');
-            const setDetect = $('setDetect'), setHideSpam = $('setHideSpam'), setNftOnly = $('setNftOnly');
+            const setDetect = $('setDetect'), setHideSpam = $('setHideSpam'), setDisplayMode = $('setDisplayMode');
             const setHttps = $('setHttps'), setLocalIpfs = $('setLocalIpfs'), setRemoteGw = $('setRemoteGw');
             setDetect.checked = detectEnabled;
             setHideSpam.checked = hideSpam;
-            setNftOnly.checked = nftOnly;
+            setDisplayMode.value = displayMode;
             setHttps.checked = artSources.https;
             setLocalIpfs.checked = artSources.localIpfs;
             setRemoteGw.checked = artSources.remoteGateway;
@@ -3298,10 +3427,11 @@
                 if (hideSpam) nodeDetect(); else restoreHidden();
                 setStatus(hideSpam ? 'Hiding spam tokens' : 'Showing all detected tokens');
             };
-            setNftOnly.onchange = () => {
-                nftOnly = setNftOnly.checked;
-                localStorage.setItem(NFTONLY_KEY, nftOnly ? '1' : '0');
-                document.body.classList.toggle('nft-only', nftOnly);
+            setDisplayMode.onchange = () => {
+                displayMode = setDisplayMode.value;
+                localStorage.setItem(DISPLAYMODE_KEY, displayMode);
+                localStorage.removeItem(NFTONLY_KEY); // superseded
+                applyDisplayMode();
             };
             const onArtChange = () => {
                 localStorage.setItem(ART_KEY, JSON.stringify(artSources));
@@ -3328,6 +3458,47 @@
             $('watchCollapse').onclick = () => {
                 const collapsed = watchPanel.classList.toggle('collapsed');
                 localStorage.setItem(WATCH_KEY, collapsed ? '1' : '0');
+            };
+
+            // ---- backup: export/import all persisted state (pinned addresses + settings) ----
+            const STORE_PREFIX = 'nethermind.portfolio.';
+            const BACKUP_APP = 'nethermind-portfolio';
+            $('exportBtn').onclick = () => {
+                const data = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith(STORE_PREFIX)) data[k] = localStorage.getItem(k);
+                }
+                const blob = new Blob([JSON.stringify({ app: BACKUP_APP, version: 1, data }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = el('a');
+                a.href = url;
+                a.download = 'nethermind-portfolio-settings.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                setStatus('Settings exported');
+            };
+            $('importBtn').onclick = () => $('importFile').click();
+            $('importFile').onchange = async () => {
+                const file = $('importFile').files[0];
+                $('importFile').value = ''; // allow re-importing the same filename later
+                if (!file) return;
+                let payload;
+                try { payload = JSON.parse(await file.text()); }
+                catch { setStatus('Import failed: not a valid settings file', true); return; }
+                if (!payload || payload.app !== BACKUP_APP || typeof payload.data !== 'object' || payload.data === null) {
+                    setStatus('Import failed: not a Nethermind Portfolio export', true);
+                    return;
+                }
+                if (!confirm('Replace your current pinned addresses and settings with the imported file?')) return;
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith(STORE_PREFIX)) localStorage.removeItem(k);
+                }
+                for (const [k, v] of Object.entries(payload.data)) {
+                    if (k.startsWith(STORE_PREFIX) && typeof v === 'string') localStorage.setItem(k, v);
+                }
+                location.reload();
             };
 
             // Populates the live parts of the settings panel each time it opens.

@@ -607,4 +607,33 @@ public class BalanceViewerScriptTests
                 Is.True, "stale head is behind the tip");
         });
     }
+
+    // token-info lightbox per-unit price: 2dp at/above 1.00, extra precision below so cheap tokens aren't "0.00"
+    [TestCase("150000000", "$1.50")]
+    [TestCase("250000000", "$2.50")]
+    [TestCase("5000000", "$0.0500")]
+    [TestCase("12300", "$0.000123")]
+    [TestCase("0", "$0")]
+    public void FormatPrice8_KeepsSubDollarPrecision(string cur8, string expected)
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.That(engine.Evaluate($"formatPrice8({cur8}n)"), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void FormatPrice8_ReturnsDashForMissingPrice()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.That(engine.Evaluate("formatPrice8(null)"), Is.EqualTo("—"));
+    }
+
+    // market cap uses compact suffixes; sub-thousand values fall through to the plain fiat format
+    [TestCase("123000000000000000", "$1.23B")]
+    [TestCase("250000000000000", "$2.50M")]
+    [TestCase("50000000000", "$500.00")]
+    public void FormatFiatCompact_AbbreviatesLargeAggregates(string cur8, string expected)
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        Assert.That(engine.Evaluate($"formatFiatCompact({cur8}n)"), Is.EqualTo(expected));
+    }
 }
