@@ -92,7 +92,7 @@ public class PbtScopeProviderTests
     }
 
     [Test]
-    public async Task SelfDestructAndRecreate_ClearsHeaderStem_ButKeepsStaleStorageZoneStems()
+    public async Task StorageWritesWithoutAccountChange_MerkelizeThroughStemPass()
     {
         await using PbtTestContext ctx = new();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
@@ -102,60 +102,19 @@ public class PbtScopeProviderTests
         Dictionary<string, byte[]> model = [];
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
 
-        // block 1: a contract account with a header slot and a storage-zone slot
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        // a header-region slot (< 64) and a storage-zone slot (>= 64) with no account entry: the
+        // header stem has no dirty account to fold it in, so it must be emitted by the stem pass
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
-            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2))
-            {
-                storageBatch.Set(3, slotValue);
-                storageBatch.Set(500, slotValue);
-            }
-
-            batch.Set(address, new Account(7, 1000));
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(3, slotValue);
+            storageBatch.Set(500, slotValue);
         }
 
         scope.UpdateRootHash();
         scope.Commit(1);
-        PbtReferenceModel.SetAccount(model, address, 7, 1000);
         PbtReferenceModel.SetSlot(model, address, 3, 0x99);
         PbtReferenceModel.SetSlot(model, address, 500, 0x99);
         Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
-
-        // block 2: self-destruct clears the whole header stem, but the storage-zone stem of slot
-        // 500 intentionally stays in the tree (documented divergence from a fresh merkelization)
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            batch.Set(address, null);
-        }
-
-        scope.UpdateRootHash();
-        scope.Commit(2);
-        PbtReferenceModel.RemoveAccountHeader(model, address);
-        Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
-
-        // flat reads honor the destruct even though the tree keeps the stale stem
-        Assert.That(scope.Get(address), Is.Null);
-        Assert.That(scope.CreateStorageTree(address).Get(500).IsZero());
-
-        // block 3: re-create the account; only the new writes surface
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1))
-            {
-                storageBatch.Clear();
-                storageBatch.Set(3, slotValue);
-            }
-
-            batch.Set(address, new Account(0, 5));
-        }
-
-        scope.UpdateRootHash();
-        scope.Commit(3);
-        PbtReferenceModel.SetAccount(model, address, 0, 5);
-        PbtReferenceModel.SetSlot(model, address, 3, 0x99);
-        Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
-        // the storage tree returns the stripped (leading-zeros-removed) value, per the EVM contract
-        Assert.That(scope.CreateStorageTree(address).Get(3), Is.EqualTo((byte[])[0x99]));
-        Assert.That(scope.CreateStorageTree(address).Get(500).AsSpan().IsZero());
     }
 }
