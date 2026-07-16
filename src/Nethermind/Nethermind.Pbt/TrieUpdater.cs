@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using NodeKind = Nethermind.Pbt.PbtTrieNodeGroup.NodeKind;
 using ValueSlot = Nethermind.Pbt.PbtTrieNodeGroup.ValueSlot;
@@ -77,8 +78,9 @@ public static class TrieUpdater
         {
             // No global sort: each group radix-partitions its own range in place during the descent.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
-            return ApplyGroup(TrieNodeKey.Root, changes.Entries,
-                rootData is null ? default : PbtTrieNodeGroup.Decode(rootData.GetSpan()), out _).NodeHash();
+            using NodeResult root = ApplyGroup(TrieNodeKey.Root, changes.Entries,
+                rootData is null ? default : PbtTrieNodeGroup.Decode(rootData.GetSpan()), out _);
+            return root.NodeHash();
         }
 
         /// <summary>
@@ -89,9 +91,10 @@ public static class TrieUpdater
         /// <paramref name="key"/> and returns the node now occupying the group's root position for the
         /// parent's boundary slot. A stem result is not written here: it hoists into the parent,
         /// cascading across group boundaries (except at the root group, whose root may hold a stem).
+        /// The caller disposes the result.
         /// </summary>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private ValueSlot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, out bool changed)
+        private NodeResult ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -130,7 +133,7 @@ public static class TrieUpdater
         /// together.
         /// </summary>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private ValueSlot ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in ValueSlot pushed, out bool changed)
+        private NodeResult ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in ValueSlot pushed, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -149,7 +152,7 @@ public static class TrieUpdater
                 bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
                 ValueSlot folded = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
                 changed = folded.NodeHash() != pushed.NodeHash();
-                return folded;
+                return new NodeResult(folded);
             }
 
             Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
@@ -179,7 +182,7 @@ public static class TrieUpdater
         /// (all writes were no-ops), letting the parent reuse its cached hash and skip its own rewrite;
         /// <c>true</c> otherwise.
         /// </param>
-        private ValueSlot ApplyToOccupants(
+        private NodeResult ApplyToOccupants(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing,
             Span<ValueSlot> occupants, in ValueSlot before, out bool changed)
         {
@@ -190,8 +193,10 @@ public static class TrieUpdater
 
             // The boundary results drive both the rebuild and its shape: `occupied` and `stems` fix
             // every node's kind (see GroupRebuild), and `changedMask` folds to a range's
-            // subtree-changed flag by masking.
-            Span<ValueSlot> results = stackalloc ValueSlot[PbtTrieNodeGroup.BoundarySlots];
+            // subtree-changed flag by masking. Each result leases the encoding its node lives in, so
+            // every one of them is released before this frame returns, bar the node handed up.
+            RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
+            Span<NodeResult> results = resultBuffer.AsSpan();
             uint occupied = 0;
             uint stems = 0;
             uint changedMask = 0;
@@ -201,7 +206,7 @@ public static class TrieUpdater
                 if (bucket.IsEmpty)
                 {
                     // untouched: reuse the cached boundary hash / stem, never loading the child group
-                    results[slot] = occupants[slot];
+                    results[slot] = new NodeResult(occupants[slot]);
                 }
                 else if (occupants[slot].Kind == NodeKind.Internal)
                 {
@@ -225,29 +230,48 @@ public static class TrieUpdater
             }
 
             // A group that folds to nothing, or to a lone stem hoisting into the parent, encodes to
-            // nothing: there is no blob to rebuild, only one to remove.
+            // nothing: there is no blob to rebuild, only one to remove. The hoisted result is handed
+            // straight up, taking its lease with it.
             bool isRoot = depth == 0;
             NodeKind rootKind = KindOf(occupied, stems);
             if (rootKind != NodeKind.Internal && !(isRoot && rootKind == NodeKind.Stem))
             {
-                ValueSlot hoisted = rootKind == NodeKind.Absent ? default : results[BitOperations.TrailingZeroCount(occupied)];
+                int hoistedSlot = rootKind == NodeKind.Absent ? -1 : BitOperations.TrailingZeroCount(occupied);
+                NodeResult hoisted = hoistedSlot < 0 ? default : results[hoistedSlot];
                 changed = hoisted.NodeHash() != before.NodeHash();
                 if (!existing.IsEmpty) store.SetTrieNode(key, null);
+                ReleaseResults(results, hoistedSlot);
                 return hoisted;
             }
 
             (NodeRef root, RefCountingMemory memory) = RebuildGroup(results, existing, occupied, stems, changedMask);
-            PbtTrieNodeGroup.Slot rebuilt = PbtTrieNodeGroup.SlotAt(memory.GetSpan(), root.Kind, root.Offset);
+            ReleaseResults(results, handedUp: -1);
 
             // Unchanged root => the encoding is byte-identical to what is stored (an internal root
             // whose hash matches implies the group already existed); skip the rewrite.
-            changed = rebuilt.NodeHash() != before.NodeHash();
+            changed = PbtTrieNodeGroup.SlotAt(memory.GetSpan(), root.Kind, root.Offset).NodeHash() != before.NodeHash();
 
-            // Copy the root back out before the buffer leaves our hands: the write takes the lease with it.
-            ValueSlot rebuiltRoot = rebuilt.ToValue();
-            if (changed) store.SetTrieNode(key, memory);
-            else ((IDisposable)memory).Dispose();
-            return rebuiltRoot;
+            // The write takes a lease with it; the result keeps its own, to read the root back from.
+            if (changed)
+            {
+                memory.AcquireLease();
+                store.SetTrieNode(key, memory);
+            }
+
+            return new NodeResult(root, memory);
+        }
+
+        /// <summary>
+        /// Releases the boundary <paramref name="results"/>' leases once the group is settled, bar
+        /// slot <paramref name="handedUp"/> — the node this frame returns, whose lease goes with it
+        /// (<c>-1</c> when the frame returns a node of its own).
+        /// </summary>
+        private static void ReleaseResults(Span<NodeResult> results, int handedUp)
+        {
+            for (int slot = 0; slot < results.Length; slot++)
+            {
+                if (slot != handedUp) results[slot].Dispose();
+            }
         }
 
         /// <summary>
@@ -276,7 +300,7 @@ public static class TrieUpdater
         /// lease on the memory with it.
         /// </returns>
         private (NodeRef Root, RefCountingMemory Memory) RebuildGroup(
-            ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask)
+            ReadOnlySpan<NodeResult> results, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask)
         {
             (uint presence, uint stemMask) = PredictShape(occupied, stems, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
@@ -325,6 +349,48 @@ public static class TrieUpdater
         private readonly record struct NodeRef(NodeKind Kind, int Offset);
 
         /// <summary>
+        /// A node handed up the descent, with a lease on whatever holds its bytes.
+        /// </summary>
+        /// <remarks>
+        /// A rebuilt group's root lives in that group's encoding, so the result points at it and keeps
+        /// the encoding alive — the parent reads the node straight out of it, and disposing the result
+        /// releases it. The nodes that no encoding holds — an absent node, and a stem folded at its
+        /// shortest unique prefix, which is synthesized from its blob's subtree root — are carried by
+        /// value instead, and dispose to nothing.
+        /// </remarks>
+        private readonly struct NodeResult : IDisposable
+        {
+            private readonly ValueSlot _synthesized;
+            private readonly RefCountingMemory? _memory;
+            private readonly NodeRef _node;
+
+            /// <summary>A node no encoding holds: absent, or a stem folded in place.</summary>
+            public NodeResult(in ValueSlot slot) => _synthesized = slot;
+
+            /// <summary>The node <paramref name="node"/> of <paramref name="memory"/>, taking its lease.</summary>
+            public NodeResult(in NodeRef node, RefCountingMemory memory)
+            {
+                _node = node;
+                _memory = memory;
+            }
+
+            public NodeKind Kind => _memory is null ? _synthesized.Kind : _node.Kind;
+
+            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.Stem"/>
+            public Stem Stem => _memory is null ? _synthesized.Stem : Slot.Stem;
+
+            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.Hash"/>
+            public ValueHash256 Hash => _memory is null ? _synthesized.Hash : Slot.Hash;
+
+            /// <inheritdoc cref="PbtTrieNodeGroup.Slot.NodeHash"/>
+            public ValueHash256 NodeHash() => _memory is null ? _synthesized.NodeHash() : Slot.NodeHash();
+
+            private PbtTrieNodeGroup.Slot Slot => PbtTrieNodeGroup.SlotAt(_memory!.GetSpan(), _node.Kind, _node.Offset);
+
+            public void Dispose() => ((IDisposable?)_memory)?.Dispose();
+        }
+
+        /// <summary>
         /// Rebuilds a group's nodes from its sixteen boundary results directly into the group's final
         /// encoding.
         /// </summary>
@@ -345,10 +411,10 @@ public static class TrieUpdater
         /// </para>
         /// </remarks>
         private ref struct GroupRebuild(
-            ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing,
+            ReadOnlySpan<NodeResult> results, PbtTrieNodeGroup existing,
             uint occupied, uint stems, uint changed, Span<byte> destination)
         {
-            private readonly ReadOnlySpan<ValueSlot> _results = results;
+            private readonly ReadOnlySpan<NodeResult> _results = results;
             private readonly PbtTrieNodeGroup _existing = existing;
             private readonly uint _occupied = occupied;
             private readonly uint _stems = stems;
@@ -370,7 +436,7 @@ public static class TrieUpdater
                     case NodeKind.Stem:
                         // the topmost frame whose range holds only this stem — its shortest unique
                         // prefix, so it lands here rather than anywhere below
-                        ref readonly ValueSlot stem = ref _results[BitOperations.TrailingZeroCount(occupied)];
+                        ref readonly NodeResult stem = ref _results[BitOperations.TrailingZeroCount(occupied)];
                         return new NodeRef(NodeKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
                 }
 

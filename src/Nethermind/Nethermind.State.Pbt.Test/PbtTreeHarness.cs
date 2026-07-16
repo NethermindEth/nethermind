@@ -15,7 +15,7 @@ namespace Nethermind.State.Pbt.Test;
 /// key/value writes are packed into a <see cref="PbtWriteBatch"/> and applied over dictionary-backed
 /// node/blob stores that persist across batches.
 /// </summary>
-public sealed class PbtTreeHarness : IPbtStore
+public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : IPbtStore
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
@@ -58,7 +58,7 @@ public sealed class PbtTreeHarness : IPbtStore
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, PooledRefCountingMemoryProvider.Instance);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider);
         return _root;
     }
 }
