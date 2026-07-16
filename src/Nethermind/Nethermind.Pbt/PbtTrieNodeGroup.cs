@@ -33,7 +33,10 @@ public readonly ref struct PbtTrieNodeGroup
         Stem = 2,
     }
 
-    /// <summary>One position's node — absent, internal, or stem — borrowing its entry.</summary>
+    /// <summary>
+    /// A zero-copy, read-only view of one node — absent, internal, or stem — reading its kind and
+    /// payloads straight from the group's encoding without copying them out.
+    /// </summary>
     /// <remarks>
     /// Wraps the node's entry exactly as the group stores it, so its length alone gives its kind and
     /// the payloads are slices rather than copies. The view borrows the group's buffer: a node that
@@ -62,7 +65,7 @@ public readonly ref struct PbtTrieNodeGroup
             _ => NodeKind.Stem,
         };
 
-        /// <summary>A stem node's stem.</summary>
+        /// <summary>This node's 31-byte stem, sliced from the entry; valid only when <see cref="Kind"/> is <see cref="NodeKind.Stem"/>.</summary>
         public Stem Stem
         {
             get
