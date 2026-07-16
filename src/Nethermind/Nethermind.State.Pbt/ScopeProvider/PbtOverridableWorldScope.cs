@@ -24,11 +24,13 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ConcurrentDictionary<StateId, PbtSnapshot> _snapshots = new();
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly IPbtDbManager _manager;
+    private readonly IPbtResourcePool _resourcePool;
     private bool _isDisposed;
 
-    public PbtOverridableWorldScope([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager)
+    public PbtOverridableWorldScope([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool)
     {
         _manager = manager;
+        _resourcePool = resourcePool;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         WorldState = new OverridableScopeProvider(this);
@@ -73,7 +75,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     /// <summary>Stacks the local layers reachable from <paramref name="stateId"/> above a bundle gathered from the main state.</summary>
     private PbtSnapshotBundle GatherBundle(in StateId stateId, bool isReadOnly)
     {
-        List<PbtSnapshot> localChain = [];
+        PbtSnapshotPooledList localChain = new(1);
         StateId current = stateId;
         while (_snapshots.TryGetValue(current, out PbtSnapshot? snapshot) && snapshot.TryLease())
         {
@@ -82,17 +84,23 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             current = snapshot.From;
         }
 
+        // the walk runs head-down; the bundle expects its chain oldest first
+        localChain.Reverse();
+
         try
         {
-            return new PbtSnapshotBundle(localChain, new BundleBackedReader(_manager.GatherBundle(current, isReadOnly: true), current), isReadOnly);
+            // an override scope never commits to the repository, so its layers come from the
+            // read-only pool however the caller flagged the scope itself
+            return new PbtSnapshotBundle(
+                localChain,
+                new BundleBackedReader(_manager.GatherBundle(current, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true), current),
+                _resourcePool,
+                PbtResourcePool.Usage.ReadOnlyProcessingEnv,
+                isReadOnly);
         }
         catch
         {
-            foreach (PbtSnapshot snapshot in localChain)
-            {
-                snapshot.Dispose();
-            }
-
+            localChain.Dispose();
             throw;
         }
     }

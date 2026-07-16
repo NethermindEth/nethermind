@@ -26,6 +26,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtConfig Config { get; }
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new();
+    public IPbtResourcePool ResourcePool { get; }
     public PbtRocksDbPersistence Persistence { get; }
     public PbtPersistenceCoordinator Coordinator { get; }
     public PbtDbManager Manager { get; }
@@ -37,13 +38,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         Config = config ?? new PbtConfig();
         Persistence = new PbtRocksDbPersistence(Db);
-        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, new TestProcessExitSource(_cts), LimboLogs.Instance);
+        ResourcePool = new PbtResourcePool(Config);
+        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, new PbtSnapshotCompactor(ResourcePool), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager), CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool), CodeDb);
     }
 
-    public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) => new(CodeDb, Manager, isReadOnly);
+    public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
+        new(CodeDb, Manager, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly);
 
     public async ValueTask DisposeAsync()
     {

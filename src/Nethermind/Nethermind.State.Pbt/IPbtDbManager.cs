@@ -15,12 +15,17 @@ public interface IPbtCommitTarget
 public interface IPbtDbManager : IPbtCommitTarget
 {
     /// <summary>Assembles a bundle able to serve reads at <paramref name="stateId"/>, or null when that state is not available.</summary>
-    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, bool isReadOnly);
+    /// <param name="usage">
+    /// Pool category for the bundle's layers. Chosen by the caller rather than derived from
+    /// <paramref name="isReadOnly"/>: an override scope gathers a writable bundle that is still not
+    /// main block processing, so the two are not interchangeable.
+    /// </param>
+    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly);
 
     /// <inheritdoc cref="TryGatherBundle"/>
     /// <exception cref="InvalidOperationException">The state is not available.</exception>
-    PbtSnapshotBundle GatherBundle(in StateId stateId, bool isReadOnly) =>
-        TryGatherBundle(stateId, isReadOnly) ?? throw new InvalidOperationException($"State {stateId} is not available");
+    PbtSnapshotBundle GatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly) =>
+        TryGatherBundle(stateId, usage, isReadOnly) ?? throw new InvalidOperationException($"State {stateId} is not available");
 
     bool HasStateForBlock(in StateId stateId);
 

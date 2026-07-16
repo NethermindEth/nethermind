@@ -35,7 +35,10 @@ public class PbtModule(IPbtConfig config) : Module
             // the pbt components
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
             .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
+            // singleton: a second pool would silently halve every hit rate
+            .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtSnapshotRepository>()
+            .AddSingleton<PbtSnapshotCompactor>()
             .AddSingleton<PbtPersistenceCoordinator>()
             .AddSingleton<IPbtDbManager, PbtDbManager>()
             .AddSingleton<PbtStateReader>()

@@ -17,7 +17,7 @@ public class PbtWorldStateManager(
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, isReadOnly: false);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -27,7 +27,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, isReadOnly: true);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

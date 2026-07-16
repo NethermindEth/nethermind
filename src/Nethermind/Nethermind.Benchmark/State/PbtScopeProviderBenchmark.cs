@@ -95,12 +95,13 @@ public class PbtScopeProviderBenchmark
         PbtConfig config = new();
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb);
+        PbtResourcePool resourcePool = new(config);
         PbtPersistenceCoordinator coordinator = new(
-            config, new BenchFinalizedStateProvider(), persistence, repository,
+            config, new BenchFinalizedStateProvider(), persistence, repository, new PbtSnapshotCompactor(resourcePool),
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, new BenchProcessExitSource(_cts), LimboLogs.Instance);
-        return new PbtScopeProvider(new MemDb(), _pbtManager, isReadOnly: false);
+            repository, coordinator, persistence, resourcePool, new BenchProcessExitSource(_cts), LimboLogs.Instance);
+        return new PbtScopeProvider(new MemDb(), _pbtManager, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
     }
 
     private static IWorldStateScopeProvider CreateTrieProvider() =>

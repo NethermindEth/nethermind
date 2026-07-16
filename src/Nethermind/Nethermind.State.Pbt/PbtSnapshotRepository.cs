@@ -48,11 +48,14 @@ public class PbtSnapshotRepository
 
     /// <summary>
     /// Leases the chain of snapshots from <paramref name="head"/> (inclusive) down to
-    /// <paramref name="persistedFloor"/> (exclusive), newest first. Returns false — releasing any
-    /// acquired leases — when the chain is broken, e.g. pruned concurrently; the caller should
-    /// re-read the persisted floor and retry.
+    /// <paramref name="persistedFloor"/> (exclusive), oldest first. Returns false when the chain is
+    /// broken, e.g. pruned concurrently; the caller should re-read the persisted floor and retry.
     /// </summary>
-    public bool TryLeaseChain(in StateId head, in StateId persistedFloor, List<PbtSnapshot> chain)
+    /// <remarks>
+    /// <paramref name="chain"/> is owned by the caller either way: on failure it is left holding the
+    /// leases taken before the walk broke, which disposing it releases.
+    /// </remarks>
+    public bool TryLeaseChain(in StateId head, in StateId persistedFloor, PbtSnapshotPooledList chain)
     {
         lock (_lock)
         {
@@ -63,12 +66,6 @@ public class PbtSnapshotRepository
                     || !_snapshots.TryGetValue(current, out PbtSnapshot? snapshot)
                     || !snapshot.TryLease())
                 {
-                    foreach (PbtSnapshot leased in chain)
-                    {
-                        leased.Dispose();
-                    }
-
-                    chain.Clear();
                     return false;
                 }
 
@@ -76,6 +73,8 @@ public class PbtSnapshotRepository
                 current = snapshot.From;
             }
 
+            // the walk runs head-down, so the accumulated chain is newest first
+            chain.Reverse();
             return true;
         }
     }
