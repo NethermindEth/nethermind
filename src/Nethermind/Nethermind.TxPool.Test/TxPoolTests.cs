@@ -1889,7 +1889,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
         {
-            _txPool = CreatePool(null, new TestSpecProvider(Heze.Instance));
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
             Transaction frameTx = new()
             {
                 Type = TxType.FrameTx,
