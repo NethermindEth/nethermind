@@ -253,9 +253,6 @@ namespace Nethermind.Xdc
 
             if (!await EnsureStateForProposalParent(proposalParent, round, ct)) return;
 
-            // Read-only early out; the authoritative claim happens after the mine-period wait so
-            // that a task cancelled while waiting does not consume the round without proposing
-            // (the replacement task for the same round re-enters here and waits out the remainder).
             if (Interlocked.Read(ref _highestSelfMinedRound) >= round) return;
 
             // Gate 1: enforce minimum mine period since parent block was produced
