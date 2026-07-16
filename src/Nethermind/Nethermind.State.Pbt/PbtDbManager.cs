@@ -43,10 +43,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _persistenceWorker = Task.Run(RunPersistenceWorker);
     }
 
-    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly)
+    public PbtReadOnlySnapshotBundle? TryGatherReadOnlyBundle(in StateId stateId)
     {
         // the pre-genesis state is empty by definition, whatever is on disk
-        if (stateId == StateId.PreGenesis) return new PbtSnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _resourcePool, usage, isReadOnly);
+        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance);
 
         // reader first, chain second: if persistence advances in between, the chain walk to the
         // reader's (stale) floor fails and we retry with a fresh reader; leased layers pruned
@@ -58,7 +58,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             if (_repository.TryLeaseChain(stateId, reader.CurrentState, chain))
             {
                 // ownership of the chain and the reader passes to the bundle
-                return new PbtSnapshotBundle(chain, reader, _resourcePool, usage, isReadOnly);
+                return new PbtReadOnlySnapshotBundle(chain, reader);
             }
 
             // a broken walk leaves the partial leases on the chain: disposing it releases them
@@ -67,6 +67,22 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
 
         return null;
+    }
+
+    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage)
+    {
+        if (TryGatherReadOnlyBundle(stateId) is not { } readOnlyBundle) return null;
+
+        try
+        {
+            // ownership of the shared bundle's lease passes to the writable one
+            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage);
+        }
+        catch
+        {
+            readOnlyBundle.Dispose();
+            throw;
+        }
     }
 
     public void AddSnapshot(PbtSnapshot snapshot)

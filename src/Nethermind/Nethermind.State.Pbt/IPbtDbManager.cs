@@ -14,18 +14,27 @@ public interface IPbtCommitTarget
 /// <summary>Top-level orchestrator of the PBT state: hands out bundles, receives committed snapshots and drives background persistence.</summary>
 public interface IPbtDbManager : IPbtCommitTarget
 {
-    /// <summary>Assembles a bundle able to serve reads at <paramref name="stateId"/>, or null when that state is not available.</summary>
+    /// <summary>Assembles the shared, immutable view of <paramref name="stateId"/>, or null when that state is not available.</summary>
+    /// <remarks>Rents nothing from the pool: a caller that only reads should prefer this.</remarks>
+    PbtReadOnlySnapshotBundle? TryGatherReadOnlyBundle(in StateId stateId);
+
+    /// <inheritdoc cref="TryGatherReadOnlyBundle"/>
+    /// <exception cref="InvalidOperationException">The state is not available.</exception>
+    PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId) =>
+        TryGatherReadOnlyBundle(stateId) ?? throw new InvalidOperationException($"State {stateId} is not available");
+
+    /// <summary>Assembles a writable bundle able to serve reads at <paramref name="stateId"/>, or null when that state is not available.</summary>
     /// <param name="usage">
-    /// Pool category for the bundle's layers. Chosen by the caller rather than derived from
-    /// <paramref name="isReadOnly"/>: an override scope gathers a writable bundle that is still not
-    /// main block processing, so the two are not interchangeable.
+    /// Pool category for the bundle's write buffer and the layers it seals. Chosen by the caller
+    /// rather than inferred: an override scope gathers a writable bundle that is still not main block
+    /// processing, so there is nothing about the bundle itself to infer it from.
     /// </param>
-    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly);
+    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage);
 
     /// <inheritdoc cref="TryGatherBundle"/>
     /// <exception cref="InvalidOperationException">The state is not available.</exception>
-    PbtSnapshotBundle GatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly) =>
-        TryGatherBundle(stateId, usage, isReadOnly) ?? throw new InvalidOperationException($"State {stateId} is not available");
+    PbtSnapshotBundle GatherBundle(in StateId stateId, PbtResourcePool.Usage usage) =>
+        TryGatherBundle(stateId, usage) ?? throw new InvalidOperationException($"State {stateId} is not available");
 
     bool HasStateForBlock(in StateId stateId);
 

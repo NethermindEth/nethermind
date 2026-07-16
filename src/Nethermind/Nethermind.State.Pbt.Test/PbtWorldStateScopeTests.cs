@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -72,6 +73,31 @@ public class PbtWorldStateScopeTests
 
         Assert.That(StaticPool<SingleStemChanges>.Rent(), Is.SameAs(seeded), "the one rented map must come back exactly once");
         Assert.That(StaticPool<SingleStemChanges>.Rent(), Is.Not.SameAs(seeded), "a second dispose must not re-return it");
+    }
+
+    /// <summary>
+    /// A read-only scope is read-only with respect to the repository, not to itself: it processes and
+    /// commits locally like any other, and only keeps the result to itself. Before the bundle split
+    /// its write buffer was null and the first write threw, which made the whole resettable world
+    /// state unusable.
+    /// </summary>
+    [Test]
+    public async Task ReadOnlyScope_CommitsLocally_WithoutPublishingToTheRepository()
+    {
+        await using PbtTestContext ctx = new();
+        IWorldStateScopeProvider provider = ctx.WorldStateManager.CreateResettableWorldState();
+
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(1);
+
+        Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
+        Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
     }
 
     /// <summary>

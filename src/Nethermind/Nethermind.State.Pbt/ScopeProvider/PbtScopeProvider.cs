@@ -16,6 +16,6 @@ public class PbtScopeProvider(IDb codeDb, IPbtDbManager manager, PbtResourcePool
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId stateId = new(baseBlock);
-        return new PbtWorldStateScope(stateId, manager.GatherBundle(stateId, usage, isReadOnly), _codeDb, manager, isReadOnly);
+        return new PbtWorldStateScope(stateId, manager.GatherBundle(stateId, usage), _codeDb, manager, isReadOnly);
     }
 }
