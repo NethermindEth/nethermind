@@ -60,6 +60,13 @@ public class PbtScopeProviderBenchmark
     [Params(0, 20)]
     public int StorageSlotsPerAccount { get; set; }
 
+    // How many uncommitted diff layers sit between the scope's base state and the persisted state.
+    // A read walks them newest-first, so this is the axis a layer-count change shows up on; at depth
+    // 1 there is nothing to walk and any such change is invisible. The trie backend has no layer
+    // chain and is flat in this parameter, which is itself the comparison.
+    [Params(1, 32)]
+    public int ChainDepth { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
@@ -76,17 +83,23 @@ public class PbtScopeProviderBenchmark
             _addresses[i] = DeriveAddress(i + 1);
         }
 
-        // Build a base committed state once so scopes have a non-trivial base and reads have data.
+        // Build the base state as ChainDepth committed blocks, so scopes have a non-trivial base, reads
+        // have data, and the layer chain under them is as deep as the parameter asks. Nothing is ever
+        // finalized here, so nothing persists and the layers all stay in memory.
         Hash256 baseRoot;
         using (IWorldStateScopeProvider.IScope scope = _provider.BeginScope(null, new LocalMetrics()))
         {
-            WriteState(scope);
-            scope.UpdateRootHash();
-            scope.Commit(1);
+            for (int block = 1; block <= ChainDepth; block++)
+            {
+                WriteState(scope, nonceOffset: block);
+                scope.UpdateRootHash();
+                scope.Commit((ulong)block);
+            }
+
             baseRoot = scope.RootHash;
         }
 
-        _baseHeader = Build.A.BlockHeader.WithNumber(1).WithStateRoot(baseRoot).TestObject;
+        _baseHeader = Build.A.BlockHeader.WithNumber((ulong)ChainDepth).WithStateRoot(baseRoot).TestObject;
     }
 
     private IWorldStateScopeProvider CreatePbtProvider()
@@ -129,12 +142,12 @@ public class PbtScopeProviderBenchmark
         return last;
     }
 
-    private void WriteState(IWorldStateScopeProvider.IScope scope)
+    private void WriteState(IWorldStateScopeProvider.IScope scope, int nonceOffset = 0)
     {
         using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(AccountCount);
         for (int i = 0; i < AccountCount; i++)
         {
-            batch.Set(_addresses[i], new Account((ulong)(i + 1), (UInt256)(ulong)(i + 1)));
+            batch.Set(_addresses[i], new Account((ulong)(i + 1 + nonceOffset), (UInt256)(ulong)(i + 1)));
 
             if (StorageSlotsPerAccount > 0)
             {
