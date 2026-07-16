@@ -84,7 +84,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IHasAccessList[]? systemAccessLists = null)
     {
         _systemAccessLists = systemAccessLists ?? [];
-        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 20) : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);

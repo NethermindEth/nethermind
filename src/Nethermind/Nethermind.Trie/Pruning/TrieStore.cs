@@ -922,7 +922,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         ParallelUnbalancedWork.For(
             0,
             _dirtyNodes.Length,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo20,
             (prunePersisted, forceRemovePersistedNodes, dirtyNodes: _dirtyNodes, persistedHashes: _persistedHashes, nodeStorage),
             static (index, state) =>
             {
@@ -966,7 +966,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ParallelUnbalancedWork.For(
                 0,
                 shardCountToPrune,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo20,
                 (dirtyNodes: _dirtyNodes, shardedCount: _shardedDirtyNodeCount, startShardIdx),
                 static (i, state) =>
                 {
