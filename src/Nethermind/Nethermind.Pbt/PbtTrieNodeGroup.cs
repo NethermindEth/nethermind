@@ -33,23 +33,82 @@ public readonly ref struct PbtTrieNodeGroup
         Stem = 2,
     }
 
-    /// <summary>One position's node: absent, internal, or stem.</summary>
+    /// <summary>One position's node — absent, internal, or stem — borrowing its entry.</summary>
     /// <remarks>
-    /// The payloads are fields, not properties: <see cref="ValueHash256.Bytes"/> over a
-    /// property-returned copy is a span into a dead stack temporary the JIT may reuse.
+    /// Wraps the node's entry exactly as the group stores it, so its length alone gives its kind and
+    /// the payloads are slices rather than copies. The view borrows the group's buffer: a node that
+    /// must outlive it is copied out with <see cref="ToValue"/>.
     /// </remarks>
-    public struct Slot
+    public readonly ref struct Slot
     {
-        public NodeKind Kind;
-        public Stem Stem;
+        /// <summary>An internal node's entry: its cached hash.</summary>
+        internal const int InternalLength = HashLength;
+
+        /// <summary>A stem node's entry: its stem followed by its 256-leaf subtree root.</summary>
+        internal const int StemLength = Stem.Length + HashLength;
+
+        private readonly ReadOnlySpan<byte> _data;
+
+        internal Slot(ReadOnlySpan<byte> data)
+        {
+            Debug.Assert(data.Length is 0 or InternalLength or StemLength);
+            _data = data;
+        }
+
+        public NodeKind Kind => _data.Length switch
+        {
+            0 => NodeKind.Absent,
+            InternalLength => NodeKind.Internal,
+            _ => NodeKind.Stem,
+        };
+
+        /// <summary>A stem node's stem.</summary>
+        public Stem Stem
+        {
+            get
+            {
+                Debug.Assert(Kind == NodeKind.Stem, "only a stem node carries a stem");
+                return new Stem(_data[..Stem.Length]);
+            }
+        }
 
         /// <summary>The cached node hash of an internal node, or the 256-leaf subtree root of a stem node.</summary>
-        public ValueHash256 Hash;
+        public ValueHash256 Hash => new(_data[^HashLength..]);
 
         /// <summary>
         /// The hash this node contributes to its parent: zero when absent, the cached hash when
         /// internal, or the derived stem node hash.
         /// </summary>
+        public ValueHash256 NodeHash() => Kind switch
+        {
+            NodeKind.Absent => default,
+            NodeKind.Internal => Hash,
+            _ => StemLeafBlob.ComputeStemNodeHash(Stem, Hash),
+        };
+
+        /// <summary>Copies this node out of the buffer it borrows.</summary>
+        public ValueSlot ToValue() => Kind switch
+        {
+            NodeKind.Absent => default,
+            NodeKind.Internal => InternalSlot(Hash),
+            _ => StemSlot(Stem, Hash),
+        };
+    }
+
+    /// <summary>An owned copy of a <see cref="Slot"/>, for a node that outlives the buffer it came from.</summary>
+    /// <remarks>
+    /// The payloads are fields, not properties: <see cref="ValueHash256.Bytes"/> over a
+    /// property-returned copy is a span into a dead stack temporary the JIT may reuse.
+    /// </remarks>
+    public struct ValueSlot
+    {
+        public NodeKind Kind;
+        public Stem Stem;
+
+        /// <inheritdoc cref="Slot.Hash"/>
+        public ValueHash256 Hash;
+
+        /// <inheritdoc cref="Slot.NodeHash"/>
         public readonly ValueHash256 NodeHash() => Kind switch
         {
             NodeKind.Absent => default,
@@ -117,26 +176,13 @@ public readonly ref struct PbtTrieNodeGroup
                 + BitOperations.PopCount(_presence & below) * HashLength
                 + BitOperations.PopCount(_stems & below) * Stem.Length;
 
-            Slot slot = default;
-            if ((_stems & bit) != 0)
-            {
-                slot.Kind = NodeKind.Stem;
-                slot.Stem = new Stem(_data.Slice(offset, Stem.Length));
-                offset += Stem.Length;
-            }
-            else
-            {
-                slot.Kind = NodeKind.Internal;
-            }
-
-            slot.Hash = new ValueHash256(_data.Slice(offset, HashLength));
-            return slot;
+            return new Slot(_data.Slice(offset, (_stems & bit) != 0 ? Slot.StemLength : Slot.InternalLength));
         }
     }
 
-    public static Slot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
+    public static ValueSlot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
-    public static Slot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
+    public static ValueSlot StemSlot(in Stem stem, in ValueHash256 leafSubtreeRoot) =>
         new() { Kind = NodeKind.Stem, Stem = stem, Hash = leafSubtreeRoot };
 
     /// <summary>The post-order position of boundary slot <paramref name="slot"/>.</summary>
@@ -180,8 +226,8 @@ public readonly ref struct PbtTrieNodeGroup
     /// visits them, and the order the encoding stores them in — which makes each entry's offset
     /// implicit in the append cursor: no offset math is needed while building, and the bitmap header
     /// is backfilled by <see cref="Finish"/> once the walk is done. An appended entry keeps a stable
-    /// offset, so a producer can read a node back through <see cref="NodeHashAt"/> instead of
-    /// carrying hashes up its walk by value.
+    /// offset, so a producer can read a node back through <see cref="SlotAt"/> instead of carrying
+    /// hashes up its walk by value.
     /// </remarks>
     public ref struct Builder(Span<byte> destination)
     {
@@ -208,23 +254,10 @@ public readonly ref struct PbtTrieNodeGroup
             return offset;
         }
 
-        /// <summary>The hash the node appended at <paramref name="offset"/> contributes to its parent.</summary>
-        /// <remarks>Mirrors <see cref="Slot.NodeHash"/>, reading the entry back out of the buffer.</remarks>
-        public readonly ValueHash256 NodeHashAt(NodeKind kind, int offset) => kind switch
-        {
-            NodeKind.Absent => default,
-            NodeKind.Internal => new ValueHash256(_destination.Slice(offset, HashLength)),
-            _ => StemLeafBlob.ComputeStemNodeHash(
-                new Stem(_destination.Slice(offset, Stem.Length)),
-                new ValueHash256(_destination.Slice(offset + Stem.Length, HashLength))),
-        };
-
-        /// <summary>Reads the node appended at <paramref name="offset"/> back as a <see cref="Slot"/>.</summary>
-        public readonly Slot SlotAt(NodeKind kind, int offset) => kind == NodeKind.Stem
-            ? StemSlot(
-                new Stem(_destination.Slice(offset, Stem.Length)),
-                new ValueHash256(_destination.Slice(offset + Stem.Length, HashLength)))
-            : InternalSlot(new ValueHash256(_destination.Slice(offset, HashLength)));
+        /// <summary>Reads the node of kind <paramref name="kind"/> appended at <paramref name="offset"/> back out of the buffer.</summary>
+        public readonly Slot SlotAt(NodeKind kind, int offset) => kind == NodeKind.Absent
+            ? default
+            : new Slot(_destination.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
 
         /// <summary>
         /// Writes the bitmap header and returns the encoded length; 0 when nothing was appended,
