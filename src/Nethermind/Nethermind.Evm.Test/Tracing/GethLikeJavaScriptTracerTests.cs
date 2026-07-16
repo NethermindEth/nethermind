@@ -129,6 +129,36 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void log_contract_is_restored_after_inner_call_returns()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var entry = log.getDepth() + ':' + toHex(log.contract.getAddress());
+                        if (this.retVal.length == 0 || this.retVal[this.retVal.length - 1] != entry) {
+                            this.retVal.push(entry);
+                        }
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
+        string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
+    }
+
+    [Test]
     public void Js_traces_simple_filter()
     {
         string userTracer = @"{
