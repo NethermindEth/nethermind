@@ -195,8 +195,21 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
+            RecoverSenderBeforeIntrinsicGas(tx, spec);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
+        }
+
+        // EIP-2780 self-transfer pricing depends on the signer, so resolve it before computing intrinsic gas.
+        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
+        {
+            if (spec.IsEip2780Enabled
+                && tx.IsMessageCall
+                && tx.Signature is not null
+                && (tx.SenderAddress is null || !WorldState.AccountExists(tx.SenderAddress)))
+            {
+                tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            }
         }
 
         [SkipLocalsInit]
@@ -1013,8 +1026,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                // hacky fix for the potential recovery issue
-                if (tx.Signature is not null)
+                // EIP-2780 message calls were already recovered before intrinsic gas.
+                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)
