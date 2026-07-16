@@ -58,11 +58,9 @@ public static class TrieUpdater
             // No global sort: each group radix-partitions its own range in place during the descent.
             PbtWriteBatch.StemEntry[] entries = changes.Entries.ToArray();
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
-            return ApplyGroup(TrieNodeKey.Root, entries, Wrap(rootData), default).NodeHash();
+            return ApplyGroup(TrieNodeKey.Root, entries,
+                rootData is null ? default : PbtTrieNodeGroup.Decode(rootData.GetSpan()), default, out _).NodeHash();
         }
-
-        private static PbtTrieNodeGroup Wrap(RefCountingMemory? data) =>
-            data is null ? default : PbtTrieNodeGroup.Decode(data.GetSpan());
 
         /// <summary>
         /// Applies <paramref name="entries"/> — a non-empty range of one-per-stem writes sharing bits
@@ -74,7 +72,12 @@ public static class TrieUpdater
         /// A stem result is not written here: it hoists into the parent, cascading across group
         /// boundaries (except at the root group, whose root position may hold a stem).
         /// </summary>
-        private Slot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, in Slot pushed)
+        /// <param name="changed">
+        /// Set to <c>false</c> when the writes leave this group's root node identical to its prior
+        /// state (all writes were no-ops), letting the parent reuse its cached hash and skip its own
+        /// rewrite; <c>true</c> otherwise.
+        /// </param>
+        private Slot ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, in Slot pushed, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -83,15 +86,20 @@ public static class TrieUpdater
             bool isRoot = depth == 0;
             if (existing.IsEmpty && !isRoot)
             {
-                // Shortest unique prefix reached at or above this group: an empty subtree, or the
-                // very stem being updated (possibly relocating). Fold the blob and hand the stem
-                // node up without descending; an enclosing fold places it. This also serves depth
-                // 248, where every remaining range is necessarily a single stem.
+                // Shortest unique prefix reached at or above this group. Fold a single write without
+                // descending only when nothing else shares this range: either no stem was pushed down
+                // (an empty subtree, or the updated stem relocating in), or the pushed stem is this
+                // very stem — an in-place re-fold. A *different* pushed stem is not folded here: it and
+                // the write diverge deeper, so we fall through and route both (dropping it here would
+                // lose it). Hand the stem node up without descending; an enclosing fold places it. This
+                // also serves depth 248, where every remaining range is necessarily a single stem.
                 Stem stem = entries[0].Stem;
                 if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
                 {
                     bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
-                    return isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
+                    Slot folded = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
+                    changed = folded.NodeHash() != pushed.NodeHash();
+                    return folded;
                 }
             }
 
@@ -129,8 +137,8 @@ public static class TrieUpdater
             Partition(entries, depth, bounds);
 
             Span<Slot> results = stackalloc Slot[PbtTrieNodeGroup.BoundarySlots];
-            Span<bool> changed = stackalloc bool[PbtTrieNodeGroup.BoundarySlots];
-            changed.Clear();
+            Span<bool> slotChanged = stackalloc bool[PbtTrieNodeGroup.BoundarySlots];
+            slotChanged.Clear();
             for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
             {
                 Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
@@ -141,27 +149,39 @@ public static class TrieUpdater
                     continue;
                 }
 
-                changed[slot] = true;
                 TrieNodeKey childKey = key.ChildGroup(slot);
+                bool childChanged;
                 if (occupants[slot].Kind == NodeKind.Internal)
                 {
                     using RefCountingMemory? childData = store.GetTrieNode(childKey);
-                    results[slot] = ApplyGroup(childKey, bucket, Wrap(childData), default);
+                    results[slot] = ApplyGroup(childKey, bucket,
+                        childData is null ? default : PbtTrieNodeGroup.Decode(childData.GetSpan()), default, out childChanged);
                 }
                 else
                 {
-                    results[slot] = ApplyGroup(childKey, bucket, default, occupants[slot]);
+                    results[slot] = ApplyGroup(childKey, bucket, default, occupants[slot], out childChanged);
                 }
+
+                slotChanged[slot] = childChanged;
             }
 
             Span<Slot> output = stackalloc Slot[PbtTrieNodeGroup.PositionCount];
             output.Clear();
-            Slot root = Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, results, changed, existing, output, out _);
+            Slot root = Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, results, slotChanged, existing, output, out _);
+
+            // Unchanged root => the encoding is byte-identical to what is stored (an internal root
+            // whose hash matches implies the group already existed); skip the rewrite. A collapse to
+            // empty or to a hoisting stem always changes the root, so the removal below never hits it.
+            Slot before = existing.IsEmpty ? pushed : existing[PbtTrieNodeGroup.RootPosition];
+            changed = root.NodeHash() != before.NodeHash();
 
             if (root.Kind == NodeKind.Internal || (isRoot && root.Kind == NodeKind.Stem))
             {
-                output[PbtTrieNodeGroup.RootPosition] = root;
-                WriteGroup(key, output);
+                if (changed)
+                {
+                    output[PbtTrieNodeGroup.RootPosition] = root;
+                    WriteGroup(key, output);
+                }
             }
             else if (!existing.IsEmpty)
             {
