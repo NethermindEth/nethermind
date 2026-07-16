@@ -31,8 +31,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     // storage slots from the parallel storage batches and account/code header leaves from the
     // single-threaded account flush both land here (their sub-index bands never overlap). The outer
     // map is concurrent because parallel storage workers add new stems, but each stem is
-    // address-derived and written by a single worker, so its inner map is single-writer.
-    private readonly ConcurrentDictionary<Stem, Dictionary<byte, ValueHash256>> _dirtyStems = new();
+    // address-derived and written by a single worker, so its per-stem change map is single-writer.
+    // The pooled per-stem maps are returned to the pool when the block commits.
+    private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
@@ -127,6 +128,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
+        foreach ((Stem _, IPbtStemChanges changes) in _dirtyStems) PbtStemChanges.Return(changes);
         _dirtyStems.Clear();
         _pendingCode.Clear();
         _blobOverlay.Clear();
@@ -147,7 +149,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private void ApplyAccountHeader(Address address, Account account)
     {
         Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
-        Dictionary<byte, ValueHash256> header = _dirtyStems.GetOrAdd(headerStem, static _ => []);
+        // Set may promote the pooled map to a larger variant and return it, so the returned reference
+        // is captured locally and stored back once all this account's header leaves are folded in.
+        IPbtStemChanges header = _dirtyStems.GetOrAdd(headerStem, static _ => PbtStemChanges.Rent());
 
         // Code (immutable after creation) is only chunked when it was written this block; its hash
         // then identifies the pending bytes. For an unchanged-code account whose balance or nonce
@@ -160,35 +164,52 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         Span<byte> basicData = stackalloc byte[32];
         PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-        header[PbtKeyDerivation.BasicDataLeafKey] = ToLeaf(basicData);
-        header[PbtKeyDerivation.CodeHashLeafKey] = ToLeaf(account.CodeHash.Bytes);
+        header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
+        header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
 
-        if (updatedCode is null) return;
+        if (updatedCode is null)
+        {
+            _dirtyStems[headerStem] = header;
+            return;
+        }
 
         byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
         int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
         for (int i = 0; i < headerChunks; i++)
         {
-            header[PbtKeyDerivation.HeaderCodeChunkSubIndex(i)] = ToLeaf(chunks[i]);
+            header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
         }
+
+        _dirtyStems[headerStem] = header;
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            _dirtyStems.GetOrAdd(overflowStem, static _ => [])[subIndex] = ToLeaf(chunks[i]);
+            IPbtStemChanges overflow = _dirtyStems.GetOrAdd(overflowStem, static _ => PbtStemChanges.Rent());
+            _dirtyStems[overflowStem] = overflow.Set(subIndex, ToLeaf(chunks[i]));
         }
     }
 
     /// <summary>Emits every dirty stem leaf accumulated this block into a <see cref="PbtWriteBatch"/>.</summary>
+    /// <remarks>
+    /// The batch owns its per-stem maps and returns them to the pool on dispose, but <see cref="_dirtyStems"/>
+    /// must survive repeated (idempotent) <see cref="UpdateRootHash"/> calls, so each stem's writes are copied
+    /// into a fresh pooled map rather than handing over the accumulator's own.
+    /// </remarks>
     private PbtWriteBatch BuildChanges()
     {
         PbtWriteBatch batch = new(estimatedStems: _dirtyStems.Count);
-        foreach ((Stem stem, Dictionary<byte, ValueHash256> leaves) in _dirtyStems)
+        // one sub-index (a byte) per leaf, so a stem holds at most 256 writes
+        Span<StemLeafWrite> scratch = new StemLeafWrite[256];
+        foreach ((Stem stem, IPbtStemChanges leaves) in _dirtyStems)
         {
-            IPbtStemChanges stemChanges = PbtStemChanges.Rent();
-            foreach ((byte subIndex, ValueHash256 leaf) in leaves) stemChanges = stemChanges.Set(subIndex, leaf);
-            batch.Add(stem, stemChanges);
+            Span<StemLeafWrite> writes = scratch[..leaves.Count];
+            leaves.WriteSorted(writes);
+
+            IPbtStemChanges copy = PbtStemChanges.Rent();
+            foreach (StemLeafWrite write in writes) copy = copy.Set(write.SubIndex, write.Value);
+            batch.Add(stem, copy);
         }
 
         return batch;
@@ -284,7 +305,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             }
 
             // single-writer per stem: this address's storage is flushed by one worker
-            scope._dirtyStems.GetOrAdd(stem, static _ => [])[subIndex] = SlotLeaf(word);
+            IPbtStemChanges changes = scope._dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
+            scope._dirtyStems[stem] = changes.Set(subIndex, SlotLeaf(word));
             scope.SetSlot(address, index, word);
         }
 
