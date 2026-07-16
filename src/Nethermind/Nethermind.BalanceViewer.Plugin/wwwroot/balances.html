@@ -1469,8 +1469,16 @@
             }
 
             const info = el('div', 'lightbox-info');
-            info.append(el('div', 'lightbox-title', thumb.name || (collection.ticker + ' #' + thumb.id)));
-            info.append(el('div', 'lightbox-sub', (collection.name || collection.ticker) + ' · #' + thumb.id));
+            const heading = thumb.name || (collection.ticker + ' #' + thumb.id);
+            info.append(el('div', 'lightbox-title', heading));
+            // subline adds only the context the heading doesn't already carry (collection and/or #id),
+            // so a metadata name like "Anonymice #16" isn't echoed back on the line below it
+            const collName = collection.name || collection.ticker;
+            const idStr = '#' + thumb.id;
+            const sub = [];
+            if (collName && !heading.toLowerCase().includes(collName.toLowerCase())) sub.push(collName);
+            if (!heading.includes(idStr)) sub.push(idStr);
+            if (sub.length) info.append(el('div', 'lightbox-sub', sub.join(' · ')));
             if (thumb.description) info.append(el('div', 'lightbox-desc', thumb.description));
 
             if (Array.isArray(thumb.attributes) && thumb.attributes.length) {

@@ -507,6 +507,39 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void OpenArt_DoesNotEchoNameInSubline()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim + """
+            globalThis.document.body = document.createElement('body');
+            globalThis.document.addEventListener = () => {};
+            globalThis.document.removeEventListener = () => {};
+            globalThis.__texts = (n) => { let o = []; for (const c of (n.children || [])) { if (c.textContent) o.push(c.textContent); o = o.concat(__texts(c)); } return o; };
+            """);
+        // when the metadata name already carries the collection + id ("Anonymice #16"), the subline
+        // must not repeat it as "Anonymice · #16"; a bare name ("Stuart") still gets the context line
+        object result = engine.Evaluate("""
+            (function () {
+                const collection = { address: '0x00000000000000000000000000000000000000AA', ticker: 'MICE', name: 'Anonymice' };
+                const node = { meta: {} };
+                function subOf(name) {
+                    document.body.children.length = 0;
+                    openArt({ id: '16', src: null, name }, collection, node);
+                    return __texts(document.body.children[0]);
+                }
+                const full = subOf('Anonymice #16');
+                const bare = subOf('Stuart');
+                return JSON.stringify({
+                    fullHasName: full.includes('Anonymice #16'),
+                    fullHasRedundantSub: full.includes('Anonymice · #16'),
+                    bareHasSub: bare.includes('Anonymice · #16'),
+                });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"fullHasName\":true,\"fullHasRedundantSub\":false,\"bareHasSub\":true}"));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
