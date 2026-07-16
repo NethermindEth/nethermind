@@ -44,12 +44,15 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
             LimboLogs.Instance);
-        il.Set([TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes], Bogota.Instance);
+        byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
+        il.Set(ilBytes, Bogota.Instance);
+        // The IL is scoped to the build via its PayloadAttributes (review r3595551678).
+        PayloadAttributes payloadAttributes = new() { InclusionListTransactions = ilBytes };
 
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL)];
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL, payloadAttributes)];
 
         using (Assert.EnterMultipleScope())
         {

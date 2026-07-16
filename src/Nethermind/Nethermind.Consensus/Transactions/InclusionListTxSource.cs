@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -19,14 +19,21 @@ public class InclusionListTxSource(
 {
     // Lazy<T> defaults to ExecutionAndPublication — once-only construction even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
-    private IEnumerable<Transaction> _inclusionListTransactions = [];
+
+    // EIP-7805 (FOCIL): the decoded IL is scoped to the build that supplied it, keyed by the exact
+    // PayloadAttributes.InclusionListTransactions array. Replaces a shared last-write-wins singleton
+    // where a concurrent FCU could hand a running build another build's IL. Weak keys let entries be
+    // collected once the build's PayloadAttributes is gone.
+    private readonly ConditionalWeakTable<byte[][], Transaction[]> _decodedByAttributes = [];
 
     // gasLimit is ignored — the downstream producer-side tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
-        => Volatile.Read(ref _inclusionListTransactions);
+        => payloadAttributes?.InclusionListTransactions is { } il && _decodedByAttributes.TryGetValue(il, out Transaction[]? txs)
+            ? txs
+            : [];
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => Volatile.Write(ref _inclusionListTransactions, _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec));
+        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec));
 
     public bool SupportsBlobs => false;
 }

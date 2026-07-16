@@ -23,8 +23,10 @@ public static class InclusionListValidator
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
 
-        // No gas left for even a base-cost transfer → nothing is appendable.
-        if (block.GasUsed + Transaction.BaseTxGasCost > block.GasLimit) return true;
+        // No gas left for even the cheapest possible tx → nothing is appendable.
+        // EIP-2780 lowers the base cost to 12000 (data-free self-transfer); pre-2780 it is 21000.
+        ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
 
         Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
             ? stackalloc bool[il.Length]
@@ -72,7 +74,11 @@ public static class InclusionListValidator
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
 
-        UInt256 txCost = tx.Value + (UInt256)tx.GasLimit * tx.MaxFeePerGas;
+        // Mirror TransactionProcessor.BuyGas: a required balance exceeding 256 bits can never be met,
+        // so the tx is not appendable. Blocks an adversarial huge MaxFeePerGas from wrapping the cost.
+        if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
+            || UInt256.AddOverflow(txCost, tx.Value, out txCost))
+            return false;
         return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
 }
