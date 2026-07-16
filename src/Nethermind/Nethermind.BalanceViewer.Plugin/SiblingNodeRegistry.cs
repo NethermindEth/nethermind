@@ -36,7 +36,11 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     private static readonly byte[] ChainIdRequest = Encoding.UTF8.GetBytes(
         """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}""");
 
-    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(2) };
+    // Proxied JSON-RPC can be slow (e.g. a batch of on-chain NFT tokenURIs that render SVGs), and with
+    // ResponseHeadersRead the sibling computes the whole batch before headers arrive — so the client timeout
+    // must cover that. Probes bound themselves to ProbeTimeout via a linked token instead.
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
+    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(100) };
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private readonly int[] _probePorts;
     private readonly ILogger _logger;
@@ -120,7 +124,9 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
             using HttpRequestMessage request = new(HttpMethod.Post, $"http://127.0.0.1:{port}/");
             request.Content = new ByteArrayContent(ChainIdRequest);
             request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
-            using HttpResponseMessage response = await _client.SendAsync(request, cancellationToken);
+            using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            probeCts.CancelAfter(ProbeTimeout);
+            using HttpResponseMessage response = await _client.SendAsync(request, probeCts.Token);
             if (!response.IsSuccessStatusCode) return null;
 
             await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -129,6 +135,11 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
 
             string? chainId = result.GetString();
             return chainId is not null && chainId.StartsWith("0x") ? new SiblingNode(port, chainId) : null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // probe timed out (ProbeTimeout) — treat as no sibling, don't fault the refresh
+            return null;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
