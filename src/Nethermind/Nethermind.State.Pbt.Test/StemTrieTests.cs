@@ -245,43 +245,42 @@ public class StemTrieTests
         harness.ApplyBatch([([.. stemB, 7], valueB)]);
         harness.ApplyBatch([([.. stemA, 5], null)]);
 
-        Assert.That(provider.RentedCount, Is.Not.Zero, "the batches must have rented something to check");
-        Assert.That(provider.UnreleasedCount, Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(provider.Rented, Is.Not.Empty, "the batches must have rented something to check");
+        Assert.That(CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
     }
 
     /// <summary>
-    /// Hands out pooled memory and keeps a handle on each buffer, so a test can check the updater
-    /// balanced its leases: a fully released buffer refuses a fresh lease, an outstanding one takes it.
+    /// How many of <paramref name="memories"/> still hold a lease — none should, once the updater has
+    /// returned. A fully released buffer refuses a fresh lease, an outstanding one takes it.
     /// </summary>
+    private static int CountUnreleased(IEnumerable<RefCountingMemory> memories)
+    {
+        int unreleased = 0;
+        foreach (RefCountingMemory memory in memories)
+        {
+            try
+            {
+                memory.AcquireLease();
+            }
+            catch (InvalidOperationException)
+            {
+                continue; // refused: fully released, which is what we want to see
+            }
+
+            ((IDisposable)memory).Dispose();
+            unreleased++;
+        }
+
+        return unreleased;
+    }
+
+    /// <summary>Hands out pooled memory and keeps a handle on each buffer, for <see cref="CountUnreleased"/>.</summary>
     private sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
     {
         private readonly List<RefCountingMemory> _rented = [];
 
-        public int RentedCount => _rented.Count;
-
-        public int UnreleasedCount
-        {
-            get
-            {
-                int unreleased = 0;
-                foreach (RefCountingMemory memory in _rented)
-                {
-                    try
-                    {
-                        memory.AcquireLease();
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        continue; // refused: fully released, which is what we want to see
-                    }
-
-                    ((IDisposable)memory).Dispose();
-                    unreleased++;
-                }
-
-                return unreleased;
-            }
-        }
+        public IReadOnlyList<RefCountingMemory> Rented => _rented;
 
         public RefCountingMemory Rent(int length)
         {

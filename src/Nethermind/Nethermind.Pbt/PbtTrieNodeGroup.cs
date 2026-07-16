@@ -168,16 +168,32 @@ public readonly ref struct PbtTrieNodeGroup
     {
         get
         {
-            uint bit = 1u << position;
-            if ((_presence & bit) == 0) return default;
-
-            uint below = bit - 1;
-            int offset = HeaderLength
-                + BitOperations.PopCount(_presence & below) * HashLength
-                + BitOperations.PopCount(_stems & below) * Stem.Length;
-
-            return new Slot(_data.Slice(offset, (_stems & bit) != 0 ? Slot.StemLength : Slot.InternalLength));
+            NodeKind kind = KindAt(position);
+            return kind == NodeKind.Absent ? default : SlotAt(_data, kind, EntryOffset(position));
         }
+    }
+
+    /// <summary>The kind of the node at <paramref name="position"/>.</summary>
+    /// <param name="position"><inheritdoc cref="this[int]" path="/param[@name='position']"/></param>
+    public NodeKind KindAt(int position)
+    {
+        uint bit = 1u << position;
+        return (_presence & bit) == 0 ? NodeKind.Absent
+            : (_stems & bit) != 0 ? NodeKind.Stem
+            : NodeKind.Internal;
+    }
+
+    /// <summary>
+    /// The offset of the entry of the node at <paramref name="position"/>, for a consumer that holds
+    /// on to a node rather than reading it out; meaningful only where a node is present.
+    /// </summary>
+    /// <remarks>Every entry below it contributes its hash, and a stem entry its stem as well.</remarks>
+    internal int EntryOffset(int position)
+    {
+        uint below = (1u << position) - 1;
+        return HeaderLength
+            + BitOperations.PopCount(_presence & below) * HashLength
+            + BitOperations.PopCount(_stems & below) * Stem.Length;
     }
 
     /// <summary>
@@ -188,6 +204,16 @@ public readonly ref struct PbtTrieNodeGroup
     internal static Slot SlotAt(ReadOnlySpan<byte> data, NodeKind kind, int offset) => kind == NodeKind.Absent
         ? default
         : new Slot(data.Slice(offset, kind == NodeKind.Stem ? Slot.StemLength : Slot.InternalLength));
+
+    /// <summary>
+    /// Writes a stem node's entry into <paramref name="destination"/>, for a producer holding a stem
+    /// node that no group encodes yet.
+    /// </summary>
+    internal static void WriteStem(Span<byte> destination, in Stem stem, in ValueHash256 leafSubtreeRoot)
+    {
+        stem.Bytes.CopyTo(destination);
+        leafSubtreeRoot.Bytes.CopyTo(destination[Stem.Length..]);
+    }
 
     public static ValueSlot InternalSlot(in ValueHash256 hash) => new() { Kind = NodeKind.Internal, Hash = hash };
 
@@ -258,8 +284,9 @@ public readonly ref struct PbtTrieNodeGroup
         {
             MarkPresent(position);
             _stems |= 1u << position;
-            int offset = Write(stem.Bytes);
-            Write(leafSubtreeRoot.Bytes);
+            int offset = _offset;
+            WriteStem(_destination[offset..], stem, leafSubtreeRoot);
+            _offset = offset + Slot.StemLength;
             return offset;
         }
 
