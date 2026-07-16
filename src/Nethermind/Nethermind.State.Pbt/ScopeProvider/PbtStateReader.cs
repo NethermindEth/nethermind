@@ -14,7 +14,7 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using PbtSnapshotBundle? bundle = manager.TryGatherBundle(new StateId(baseBlock), PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true);
+        using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
         if (bundle?.GetAccount(address) is { } accountClass)
         {
             account = accountClass.ToStruct();
@@ -27,7 +27,7 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
 
     public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
     {
-        using PbtSnapshotBundle? bundle = manager.TryGatherBundle(new StateId(baseBlock), PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true);
+        using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
         if (bundle is null) return [];
 
         EvmWord value = bundle.GetSlot(address, index);
