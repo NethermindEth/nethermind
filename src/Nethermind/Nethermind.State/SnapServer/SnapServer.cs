@@ -48,9 +48,6 @@ public class SnapServer : ISnapServer
     private readonly ILastNStateRootTracker? _lastNStateRootTracker;
     private readonly SnapCodeServer _codeServer;
 
-    private const long HardResponseByteLimit = 2000000;
-    private const int HardResponseNodeLimit = 100000;
-
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager, ILastNStateRootTracker? lastNStateRootTracker = null)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -74,7 +71,7 @@ public class SnapServer : ISnapServer
 
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
-        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+        byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
         int pathLength = pathSet.Count;
         using DeferredRlpItemList.Builder builder = new(pathLength);
         DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -147,7 +144,7 @@ public class SnapServer : ISnapServer
         CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
-        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+        byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
         AccountCollector accounts = new();
         (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
@@ -173,7 +170,7 @@ public class SnapServer : ISnapServer
         CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
-        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+        byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
         ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
@@ -249,7 +246,7 @@ public class SnapServer : ISnapServer
         CancellationToken cancellationToken)
     {
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 

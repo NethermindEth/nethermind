@@ -25,9 +25,6 @@ public class FlatSnapServer(
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapServer>();
     private readonly SnapCodeServer _codeServer = new(codeDb);
 
-    private const long HardResponseByteLimit = 2000000;
-    private const int HardResponseNodeLimit = 100000;
-
     // Flat state uses HintCacheMiss since it has different I/O patterns than Patricia
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
@@ -55,7 +52,7 @@ public class FlatSnapServer(
         {
             if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
 
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
             int pathLength = pathSet.Count;
             using DeferredRlpItemList.Builder builder = new(pathLength);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -132,7 +129,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
             AccountCollector accounts = new();
             (long _, IByteArrayList proofs, _) = GetNodesFromTrieVisitor(
@@ -164,7 +161,7 @@ public class FlatSnapServer(
 
         using (bundle)
         {
-            byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
+            byteLimit = Math.Max(Math.Min(byteLimit, ISnapServer.HardResponseByteLimit), 1);
 
             ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
             ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
@@ -245,7 +242,7 @@ public class FlatSnapServer(
     {
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
         PatriciaTree tree = new(trieStore, logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 

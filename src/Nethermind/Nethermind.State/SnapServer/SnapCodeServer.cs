@@ -13,12 +13,10 @@ namespace Nethermind.State.SnapServer;
 
 public sealed class SnapCodeServer(IReadOnlyKeyValueStore codeDb)
 {
-    private const long HardResponseByteLimit = 2000000;
-
     public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
-        if (byteLimit > HardResponseByteLimit)
-            byteLimit = HardResponseByteLimit;
+        if (byteLimit > ISnapServer.HardResponseByteLimit)
+            byteLimit = ISnapServer.HardResponseByteLimit;
 
         long currentByteCount = 0;
         using DeferredRlpItemList.Builder builder = new(requestedHashes.Count);
