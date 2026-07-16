@@ -58,7 +58,7 @@ public static class StemLeafBlob
     /// contributes <c>blake3(value)</c>; higher levels use the EIP-8297 pair hash, with empty
     /// subtrees folding to zero.
     /// </remarks>
-    public static byte[] Apply(ReadOnlySpan<byte> blob, IReadOnlyDictionary<byte, ValueHash256> changes, out ValueHash256 subtreeRoot)
+    public static byte[] Apply(ReadOnlySpan<byte> blob, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
     {
         Span<byte> previousBitmap = stackalloc byte[BitmapLength];
         previousBitmap.Clear();
@@ -67,36 +67,41 @@ public static class StemLeafBlob
         Span<byte> bitmap = stackalloc byte[BitmapLength];
         previousBitmap.CopyTo(bitmap);
 
-        using ArrayPoolListRef<LeafChange> sortedChanges = new(changes.Count);
-        foreach ((byte subIndex, ValueHash256 value) in changes)
+        int changeCount = changes.Count;
+        StemLeafWrite[] rented = SafeArrayPool<StemLeafWrite>.Shared.Rent(changeCount);
+        try
         {
-            sortedChanges.Add(new LeafChange(subIndex, value));
-            SetPresent(bitmap, subIndex, value != default);
-        }
+            // Already ascending by sub-index (the map keeps it so), so no sort is needed here.
+            Span<StemLeafWrite> sortedChanges = rented.AsSpan(0, changeCount);
+            changes.WriteSorted(sortedChanges);
+            foreach (StemLeafWrite change in sortedChanges) SetPresent(bitmap, change.SubIndex, change.Value != default);
 
-        if (!RangeHasLeaf(bitmap, 0, LeafCount))
+            if (!RangeHasLeaf(bitmap, 0, LeafCount))
+            {
+                subtreeRoot = default;
+                return [];
+            }
+
+            int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
+            byte[] result = new byte[BitmapLength + liveCount * (OffsetEntryLength + ValueLength)];
+            bitmap.CopyTo(result);
+
+            RebuildState state = new(
+                blob,
+                previousBitmap,
+                result,
+                sortedChanges,
+                GetLiveCount(blob),
+                liveCount);
+
+            NodeRef rootRef = state.Rebuild(0, LeafCount, RootPosition);
+            subtreeRoot = state.Resolve(rootRef);
+            return result;
+        }
+        finally
         {
-            subtreeRoot = default;
-            return [];
+            SafeArrayPool<StemLeafWrite>.Shared.Return(rented);
         }
-
-        sortedChanges.Sort(static (left, right) => left.SubIndex.CompareTo(right.SubIndex));
-
-        int liveCount = CountLiveNodes(bitmap, 0, LeafCount);
-        byte[] result = new byte[BitmapLength + liveCount * (OffsetEntryLength + ValueLength)];
-        bitmap.CopyTo(result);
-
-        RebuildState state = new(
-            blob,
-            previousBitmap,
-            result,
-            sortedChanges.AsSpan(),
-            GetLiveCount(blob),
-            liveCount);
-
-        NodeRef rootRef = state.Rebuild(0, LeafCount, RootPosition);
-        subtreeRoot = state.Resolve(rootRef);
-        return result;
     }
 
     /// <summary>The stem node hash: <c>blake3(stem || 0x00 || subtreeRoot)</c>.</summary>
@@ -189,8 +194,6 @@ public static class StemLeafBlob
         return -1;
     }
 
-    private readonly record struct LeafChange(byte SubIndex, ValueHash256 Value);
-
     private enum NodeKind : byte { Empty, Leaf, Internal }
 
     /// <summary>A reference to a rebuilt node: its kind and, for a leaf or internal node, its slot in the new blob.</summary>
@@ -213,7 +216,7 @@ public static class StemLeafBlob
         private readonly ReadOnlySpan<byte> _newBitmap;
         private readonly ReadOnlySpan<byte> _previousOffsets;
         private readonly ReadOnlySpan<byte> _previousNodes;
-        private readonly ReadOnlySpan<LeafChange> _changes;
+        private readonly ReadOnlySpan<StemLeafWrite> _changes;
         private readonly Span<byte> _buffer;
         private readonly int _nodeBase;
         private int _previousSlot;
@@ -224,7 +227,7 @@ public static class StemLeafBlob
             ReadOnlySpan<byte> blob,
             ReadOnlySpan<byte> previousBitmap,
             Span<byte> buffer,
-            ReadOnlySpan<LeafChange> changes,
+            ReadOnlySpan<StemLeafWrite> changes,
             int previousLiveCount,
             int liveCount)
         {

@@ -160,7 +160,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             bool deleted = account is null && _dirtyAccounts.ContainsKey(address);
             _dirtySlots.TryGetValue(address, out ConcurrentDictionary<UInt256, EvmWord>? slots);
 
-            Dictionary<byte, ValueHash256> header = [];
+            IPbtStemChanges header = PbtStemChanges.Rent();
 
             // self-destructed (including deleted) accounts drop every prior header leaf; the
             // storage-zone stems of pre-existing storage are left stale (an accepted divergence).
@@ -172,7 +172,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                 {
                     for (int subIndex = 0; subIndex < PbtKeyDerivation.StemSubtreeWidth; subIndex++)
                     {
-                        if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _)) header[(byte)subIndex] = default;
+                        if (StemLeafBlob.TryGetValue(prior, (byte)subIndex, out _)) header = header.Set((byte)subIndex, default);
                     }
                 }
             }
@@ -189,8 +189,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                     : PriorCodeSize(headerStem);
 
                 PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-                header[PbtKeyDerivation.BasicDataLeafKey] = ToLeaf(basicData);
-                header[PbtKeyDerivation.CodeHashLeafKey] = ToLeaf(account.CodeHash.Bytes);
+                header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
+                header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
 
                 if (updatedCode is not null)
                 {
@@ -198,7 +198,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
                     int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
                     for (int i = 0; i < headerChunks; i++)
                     {
-                        header[PbtKeyDerivation.HeaderCodeChunkSubIndex(i)] = ToLeaf(chunks[i]);
+                        header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
                     }
 
                     // overflow chunks are content-addressed and shared; emit each code's once
@@ -214,26 +214,27 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             {
                 foreach ((UInt256 slot, EvmWord value) in slots)
                 {
-                    if (PbtKeyDerivation.IsHeaderSlot(slot)) header[PbtKeyDerivation.HeaderSlotSubIndex(slot)] = SlotLeaf(value);
+                    if (PbtKeyDerivation.IsHeaderSlot(slot)) header = header.Set(PbtKeyDerivation.HeaderSlotSubIndex(slot), SlotLeaf(value));
                 }
             }
 
             if (header.Count > 0) batch.Add(headerStem, header);
+            else PbtStemChanges.Return(header);
 
             // storage-zone slots (64+), grouped by their storage stem
             if (!deleted && slots is not null)
             {
-                Dictionary<Stem, Dictionary<byte, ValueHash256>> storage = [];
+                Dictionary<Stem, IPbtStemChanges> storage = [];
                 foreach ((UInt256 slot, EvmWord value) in slots)
                 {
                     if (PbtKeyDerivation.IsHeaderSlot(slot)) continue;
 
                     Stem stem = PbtKeyDerivation.StorageStem(address, slot, out byte subIndex);
-                    if (!storage.TryGetValue(stem, out Dictionary<byte, ValueHash256>? stemChanges)) storage[stem] = stemChanges = [];
-                    stemChanges[subIndex] = SlotLeaf(value);
+                    ref IPbtStemChanges? stemChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, stem, out _);
+                    stemChanges = (stemChanges ?? PbtStemChanges.Rent()).Set(subIndex, SlotLeaf(value));
                 }
 
-                foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in storage) batch.Add(stem, stemChanges);
+                foreach ((Stem stem, IPbtStemChanges stemChanges) in storage) batch.Add(stem, stemChanges);
             }
         }
 
@@ -253,15 +254,15 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     /// <summary>Adds a code's overflow chunks (index 128+), grouped by their content-addressed code-zone stem.</summary>
     private static void AddOverflowChunks(PbtWriteBatch batch, in ValueHash256 codeHash, byte[][] chunks)
     {
-        Dictionary<Stem, Dictionary<byte, ValueHash256>> overflow = [];
+        Dictionary<Stem, IPbtStemChanges> overflow = [];
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
         {
             Stem stem = PbtKeyDerivation.CodeOverflowStem(codeHash, i, out byte subIndex);
-            if (!overflow.TryGetValue(stem, out Dictionary<byte, ValueHash256>? stemChanges)) overflow[stem] = stemChanges = [];
-            stemChanges[subIndex] = ToLeaf(chunks[i]);
+            ref IPbtStemChanges? stemChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(overflow, stem, out _);
+            stemChanges = (stemChanges ?? PbtStemChanges.Rent()).Set(subIndex, ToLeaf(chunks[i]));
         }
 
-        foreach ((Stem stem, Dictionary<byte, ValueHash256> stemChanges) in overflow) batch.Add(stem, stemChanges);
+        foreach ((Stem stem, IPbtStemChanges stemChanges) in overflow) batch.Add(stem, stemChanges);
     }
 
     private static ValueHash256 ToLeaf(ReadOnlySpan<byte> value)

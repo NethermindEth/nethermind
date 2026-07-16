@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -43,18 +44,18 @@ public sealed class PbtTreeHarness : IPbtStore
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
         // group by stem first — the write batch requires each stem exactly once
-        Dictionary<Stem, Dictionary<byte, ValueHash256>> grouped = [];
+        Dictionary<Stem, IPbtStemChanges> grouped = [];
         foreach ((byte[] key, byte[]? value) in writes)
         {
             Stem stem = new(key.AsSpan(0, Stem.Length));
-            if (!grouped.TryGetValue(stem, out Dictionary<byte, ValueHash256>? changes)) grouped[stem] = changes = [];
             ValueHash256 leaf = default;
             value?.CopyTo(leaf.BytesAsSpan);
-            changes[key[Stem.Length]] = leaf;
+            ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(grouped, stem, out _);
+            changes = (changes ?? PbtStemChanges.Rent()).Set(key[Stem.Length], leaf);
         }
 
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count);
-        foreach ((Stem stem, Dictionary<byte, ValueHash256> changes) in grouped) batch.Add(stem, changes);
+        foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
         _root = TrieUpdater.UpdateRoot(this, _root, batch);
         return _root;
