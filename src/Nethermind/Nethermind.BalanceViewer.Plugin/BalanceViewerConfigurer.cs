@@ -27,7 +27,7 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
 public sealed class BalanceViewerConfigurer(
-    IBalanceViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
+    IPortfolioConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
     ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
@@ -53,17 +53,17 @@ internal sealed class BalanceViewerStartupFilter : IStartupFilter
 }
 
 /// <summary>
-/// Serves the embedded balance viewer page at <c>/balances</c> (plus its service worker), the
-/// sibling-node discovery list at <c>/balances-nodes</c>, and proxies JSON-RPC to discovered
-/// siblings via <c>/balances-rpc/{port}</c> so the multi-chain view works through a single port.
+/// Serves the embedded balance viewer page at <c>/portfolio</c> (plus its service worker), the
+/// sibling-node discovery list at <c>/portfolio-nodes</c>, and proxies JSON-RPC to discovered
+/// siblings via <c>/portfolio-rpc/{port}</c> so the multi-chain view works through a single port.
 /// </summary>
 public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner)
 {
-    private static readonly PathString NodesPath = new("/balances-nodes");
-    private static readonly PathString ProxyPathPrefix = new("/balances-rpc");
-    private static readonly PathString DetectProxyPathPrefix = new("/balances-detect-rpc");
-    private static readonly PathString DetectPath = new("/balances-detect");
-    private static readonly PathString IpfsPathPrefix = new("/balances-ipfs");
+    private static readonly PathString NodesPath = new("/portfolio-nodes");
+    private static readonly PathString ProxyPathPrefix = new("/portfolio-rpc");
+    private static readonly PathString DetectProxyPathPrefix = new("/portfolio-detect-rpc");
+    private static readonly PathString DetectPath = new("/portfolio-detect");
+    private static readonly PathString IpfsPathPrefix = new("/portfolio-ipfs");
 
     // Opt-in only: the UI calls this exclusively after the user enables IPFS (with a privacy prompt). Forwards
     // to a local Kubo gateway so off-chain NFT art can be rendered without the browser talking to a third party.
@@ -78,10 +78,10 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
 
     private static readonly Dictionary<PathString, (IFileInfo File, string ContentType)> Routes = new()
     {
-        [new PathString("/balances")] = (FileProvider.GetFileInfo("balances.html"), "text/html; charset=utf-8"),
-        [new PathString("/balances-sw.js")] = (FileProvider.GetFileInfo("balances-sw.js"), "text/javascript; charset=utf-8"),
-        [new PathString("/balances.webmanifest")] = (FileProvider.GetFileInfo("balances.webmanifest"), "application/manifest+json"),
-        [new PathString("/balances-icon.svg")] = (FileProvider.GetFileInfo("balances-icon.svg"), "image/svg+xml"),
+        [new PathString("/portfolio")] = (FileProvider.GetFileInfo("portfolio.html"), "text/html; charset=utf-8"),
+        [new PathString("/portfolio-sw.js")] = (FileProvider.GetFileInfo("portfolio-sw.js"), "text/javascript; charset=utf-8"),
+        [new PathString("/portfolio.webmanifest")] = (FileProvider.GetFileInfo("portfolio.webmanifest"), "application/manifest+json"),
+        [new PathString("/portfolio-icon.svg")] = (FileProvider.GetFileInfo("portfolio-icon.svg"), "image/svg+xml"),
     };
 
     public Task InvokeAsync(HttpContext context)
@@ -145,7 +145,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             cancellationToken: context.RequestAborted);
     }
 
-    // GET /balances-ipfs/{cid}/{path} — forwards to the local IPFS gateway's /ipfs/ path so the browser can
+    // GET /portfolio-ipfs/{cid}/{path} — forwards to the local IPFS gateway's /ipfs/ path so the browser can
     // render off-chain NFT art same-origin (never contacting a third-party gateway). Opt-in from the UI only.
     private async Task ServeIpfsAsync(HttpContext context)
     {
@@ -186,7 +186,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
-    // POST /balances-detect-rpc/{port} — forwards a detection request to a sibling node's /balances-detect,
+    // POST /portfolio-detect-rpc/{port} — forwards a detection request to a sibling node's /portfolio-detect,
     // so the multi-chain view drives historical detection on sibling chains too (not only the connected one).
     private async Task ProxyDetectAsync(HttpContext context)
     {
@@ -201,7 +201,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await siblings.ProxyDetectAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
-    // GET /balances-detect?chainId=<id>&address=<0x…> — the cached detection entry, or null.
+    // GET /portfolio-detect?chainId=<id>&address=<0x…> — the cached detection entry, or null.
     private async Task ServeDetectGetAsync(HttpContext context)
     {
         long chainId = long.TryParse(context.Request.Query["chainId"], out long parsed) ? parsed : 0;
@@ -211,7 +211,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
     }
 
-    // POST /balances-detect — trigger (or resume) an in-process detection scan for one account,
+    // POST /portfolio-detect — trigger (or resume) an in-process detection scan for one account,
     // then return the current cached progress so the client can start polling.
     private async Task ServeDetectPostAsync(HttpContext context)
     {

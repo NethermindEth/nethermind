@@ -14,7 +14,7 @@ namespace Nethermind.Runner.Test;
 /// <summary>
 /// Exercises the pure JavaScript logic embedded in the balance viewer page (keccak-256,
 /// ENS namehash, EIP-55 checksums, ABI decoding, unit/fiat formatting, sync detection)
-/// by loading the actual shipped balances.html into a V8 engine and asserting on its
+/// by loading the actual shipped portfolio.html into a V8 engine and asserting on its
 /// functions — so the browser-side crypto and parsing are covered like any other code.
 /// </summary>
 [TestFixture]
@@ -42,8 +42,8 @@ public class BalanceViewerScriptTests
 
     private static V8ScriptEngine CreateEngine()
     {
-        IFileInfo page = new ManifestEmbeddedFileProvider(typeof(BalanceViewerPlugin).Assembly, "wwwroot").GetFileInfo("balances.html");
-        Assert.That(page.Exists, Is.True, "balances.html is not embedded in the plugin assembly");
+        IFileInfo page = new ManifestEmbeddedFileProvider(typeof(BalanceViewerPlugin).Assembly, "wwwroot").GetFileInfo("portfolio.html");
+        Assert.That(page.Exists, Is.True, "portfolio.html is not embedded in the plugin assembly");
 
         using Stream stream = page.CreateReadStream();
         using StreamReader reader = new(stream);
@@ -348,76 +348,27 @@ public class BalanceViewerScriptTests
         """;
 
     [Test]
-    public void FillThumbs_TogglesBetweenPreviewAndAll()
+    public void FillThumbs_ShowsPreviewAndViewAllLink()
     {
         using V8ScriptEngine engine = CreateEngine();
         engine.Execute(DomShim);
-        // 10 fully-loaded thumbs: collapsed shows MAX_NFT_THUMBS (4) + "+6 more"; expanding shows all 10 + "show less"
+        // inline shows up to MAX_NFT_THUMBS (4) thumbs + a "view all N" link (N from the total count); a small
+        // collection (<= 4) shows no link; the loading flag adds a "loading…" note
         object result = engine.Evaluate("""
             (function () {
                 const node = { chainId: 1 };
-                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
-                const cached = { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(10), kind: 'enum721' };
-                const box = document.createElement('div');
-                fillThumbs(box, cached, node, '0xabc', collection);
-                const collapsed = __summary(box);
-                __click(box, '+6 more');
-                const expanded = __summary(box);
-                __click(box, 'show less');
-                const recollapsed = __summary(box);
-                return JSON.stringify({ collapsed, expanded, recollapsed });
+                const coll = { address: '0x000000000000000000000000000000000000dEaD' };
+                const fill = (cached) => { const b = document.createElement('div'); fillThumbs(b, cached, node, '0xa', coll); return __summary(b); };
+                const big = fill({ count: 579, ids: __mkThumbs(200), thumbs: __mkThumbs(4), kind: 'enum721' });
+                const loading = fill({ count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(10), kind: 'enum721', loading: true });
+                const small = fill({ count: 3, ids: __mkThumbs(3), thumbs: __mkThumbs(3), kind: 'enum721' });
+                return JSON.stringify({ big, loading, small });
             })()
             """);
         Assert.That(result, Is.EqualTo(
-            "{\"collapsed\":\"img|img|img|img|+6 more\","
-          + "\"expanded\":\"img|img|img|img|img|img|img|img|img|img|show less\","
-          + "\"recollapsed\":\"img|img|img|img|+6 more\"}"));
-    }
-
-    [Test]
-    public void FillThumbs_ShowsExpandBeforeBackgroundArtFinishesLoading()
-    {
-        using V8ScriptEngine engine = CreateEngine();
-        engine.Execute(DomShim);
-        // regression: only the first row of art has loaded (thumbs == MAX_NFT_THUMBS) but 10 ids are known.
-        // The "+N more" affordance must still appear (id-based), not wait for the background art to finish.
-        object result = engine.Evaluate("""
-            (function () {
-                const node = { chainId: 1 };
-                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
-                const box = document.createElement('div');
-                fillThumbs(box, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(4), kind: 'enum721' }, node, '0xa', collection);
-                return __summary(box);
-            })()
-            """);
-        Assert.That(result, Is.EqualTo("img|img|img|img|+6 more"));
-    }
-
-    [Test]
-    public void FillThumbs_NotesStillLoadingAndUndiscoverableHoldings()
-    {
-        using V8ScriptEngine engine = CreateEngine();
-        engine.Execute(DomShim);
-        // expanded while art is still streaming (loading flag set) -> "loading…";
-        // expanded when holdings exceed what node data could discover (5 shown, balanceOf 8) -> "3 more not shown"
-        object result = engine.Evaluate("""
-            (function () {
-                const node = { chainId: 1 };
-                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
-                const loadingBox = document.createElement('div');
-                fillThumbs(loadingBox, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(10), kind: 'enum721', loading: true }, node, '0xa', collection);
-                __click(loadingBox, '+6 more'); // affordance is id-based (10 ids - 4 shown)
-                const loading = __summary(loadingBox);
-                const truncBox = document.createElement('div');
-                fillThumbs(truncBox, { count: 8, ids: __mkThumbs(5), thumbs: __mkThumbs(5), kind: 'enum721' }, node, '0xb', collection);
-                __click(truncBox, '+1 more');
-                const truncated = __summary(truncBox);
-                return JSON.stringify({ loading, truncated });
-            })()
-            """);
-        Assert.That(result, Is.EqualTo(
-            "{\"loading\":\"img|img|img|img|img|img|img|img|img|img|show less|loading…\","
-          + "\"truncated\":\"img|img|img|img|img|show less|3 more not shown\"}"));
+            "{\"big\":\"img|img|img|img|view all 579\","
+          + "\"loading\":\"img|img|img|img|view all 10|loading…\","
+          + "\"small\":\"img|img|img\"}"));
     }
 
     [Test]
@@ -583,26 +534,8 @@ public class BalanceViewerScriptTests
             """);
         Assert.That(result, Is.EqualTo(
             "{\"onchainAlways\":\"data:image/svg+xml,x\",\"ipfsOff\":\"\",\"httpsOff\":\"\","
-          + "\"local\":\"balances-ipfs/QmABC\",\"remote\":\"https://ipfs.io/ipfs/QmXYZ/2\",\"http\":\"https://example.com/api/1\","
+          + "\"local\":\"portfolio-ipfs/QmABC\",\"remote\":\"https://ipfs.io/ipfs/QmXYZ/2\",\"http\":\"https://example.com/api/1\","
           + "\"customGw\":\"https://dweb.link/ipfs/QmABC\"}"));
-    }
-
-    [Test]
-    public void RunPool_RunsAllWithBoundedConcurrency()
-    {
-        using V8ScriptEngine engine = CreateEngine();
-        System.Threading.Tasks.Task<object> task = (System.Threading.Tasks.Task<object>)engine.Evaluate("""
-            (async function () {
-                let active = 0, maxActive = 0, count = 0;
-                await runPool([1,2,3,4,5,6,7,8], 3, async () => {
-                    active++; if (active > maxActive) maxActive = active;
-                    await Promise.resolve(); await Promise.resolve();
-                    active--; count++;
-                });
-                return JSON.stringify({ maxActive, count });
-            })()
-            """);
-        Assert.That((string)task.Result, Is.EqualTo("{\"maxActive\":3,\"count\":8}"));
     }
 
     [Test]

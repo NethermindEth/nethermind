@@ -3,9 +3,9 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Nethermind Balances</title>
+    <title>Nethermind Portfolio</title>
     <link rel="icon" href="favicon.webp" type="image/webp">
-    <link rel="manifest" href="balances.webmanifest">
+    <link rel="manifest" href="portfolio.webmanifest">
     <meta name="theme-color" content="#000000">
     <style>
         @font-face {
@@ -226,6 +226,7 @@
         #tokens { margin-top: 12px; }
 
         tr.zero { display: none; } /* zero balances are always hidden */
+        body.nft-only .bal-row, body.nft-only .cardTotal, body.nft-only #totalBox { display: none; } /* NFT-only mode */
 
         header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: baseline; }
         button.zero-toggle {
@@ -330,6 +331,15 @@
             background: #0a0a0a;
         }
         .lightbox-audio { width: 100%; margin-top: 4px; }
+
+        /* scrollable collection lightbox */
+        .collection-panel { display: flex; flex-direction: column; width: min(94vw, 640px); max-height: 88vh; background: #101012; border: 1px solid var(--border); border-radius: 10px; cursor: default; overflow: hidden; }
+        .collection-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .collection-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 14px; color: var(--c-name); }
+        .collection-grid { overflow-y: auto; padding: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+        .collection-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #0a0a0a; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+        .collection-cell img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        .collection-cell .more.number { font-size: 11px; }
 
         .lightbox-noart {
             width: min(70vw, 320px);
@@ -514,7 +524,7 @@
 </head>
 <body>
     <header>
-        <div class="brand"><img src="nethermind.svg" alt="NETHERMIND" onerror="this.replaceWith('NETHERMIND')"><span>/ BALANCES</span></div>
+        <div class="brand"><img src="nethermind.svg" alt="NETHERMIND" onerror="this.replaceWith('NETHERMIND')"><span>/ PORTFOLIO</span></div>
         <div id="singleNet" style="display: contents">
             <div class="net">network <span id="netName" class="number">…</span></div>
             <div class="net">chain <span id="chainId" class="number">…</span></div>
@@ -568,6 +578,8 @@
             <div class="settings-section">
                 <label class="setting-row"><span>Hide spam tokens</span><span class="switch"><input type="checkbox" id="setHideSpam"><span class="slider"></span></span></label>
                 <div class="setting-note">Hides airdrop spam and tokens whose value can't be realized (spoofed prices).</div>
+                <label class="setting-row"><span>NFTs only</span><span class="switch"><input type="checkbox" id="setNftOnly"><span class="slider"></span></span></label>
+                <div class="setting-note">Hides token balances and totals — shows only NFT collections.</div>
             </div>
 
             <div class="settings-section">
@@ -672,7 +684,7 @@
 
         // ---------- JSON-RPC ----------
         // rpcPath '/' talks to the node serving this page; sibling nodes discovered by the
-        // plugin are reached through its same-origin proxy at /balances-rpc/{port}, so all
+        // plugin are reached through its same-origin proxy at /portfolio-rpc/{port}, so all
         // data still flows exclusively through local Nethermind nodes.
         let rpcId = 1;
 
@@ -902,8 +914,7 @@
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
-        const NFT_ART_CHUNK = 12;                  // ids per background art request (keeps each response small)
-        const NFT_ART_CONCURRENCY = 3;             // max art chunks in flight at once (gentle on off-chain servers)
+        const NFT_ART_CHUNK = 12;                  // ids per art request (also the collection view's lazy-load batch)
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
         const PRICE_SCALE = 10n ** PRICE_DECIMALS;
@@ -933,9 +944,9 @@
         const sortNodes = () => nodes.sort((a, b) => chainOrder(a.chainId) - chainOrder(b.chainId) || a.chainId - b.chainId);
 
         function makeNode(rpcPath, chainId) {
-            // historical detection runs against each node's own /balances-detect: directly for the connected
+            // historical detection runs against each node's own /portfolio-detect: directly for the connected
             // node, and through the same-origin proxy for siblings (so sibling chains get scanned too)
-            const detectPath = rpcPath === '/' ? 'balances-detect' : 'balances-detect-rpc/' + rpcPath.slice('balances-rpc/'.length);
+            const detectPath = rpcPath === '/' ? 'portfolio-detect' : 'portfolio-detect-rpc/' + rpcPath.slice('portfolio-rpc/'.length);
             return { rpcPath, detectPath, chainId, meta: chainMeta(chainId), enabled: true, ens: false, head: null, syncing: false, lastScanned: null, scanning: false, detectHead: null, button: null };
         }
 
@@ -950,7 +961,7 @@
 
         // ---------- persistence (per chain) ----------
         const store = {
-            key: (chainId) => 'nethermind.balances.' + chainId,
+            key: (chainId) => 'nethermind.portfolio.' + chainId,
             load(node) {
                 try {
                     const raw = localStorage.getItem(this.key(node.chainId));
@@ -967,9 +978,9 @@
             save(chainId) { localStorage.setItem(this.key(chainId), JSON.stringify(states.get(chainId))); }
         };
 
-        const CURRENCY_KEY = 'nethermind.balances.currency';
+        const CURRENCY_KEY = 'nethermind.portfolio.currency';
         // disabled ids are stored (not enabled ones) so newly discovered chains default to visible
-        const DISABLED_KEY = 'nethermind.balances.disabledChains';
+        const DISABLED_KEY = 'nethermind.portfolio.disabledChains';
         const states = new Map(); // chainId -> { addresses, tokens, nfts, watched, detected, ignored }
         const stateOf = (chainId) => states.get(chainId);
         let currency = 'USD';
@@ -1508,7 +1519,7 @@
             if (uri.startsWith('data:')) return uri;
             const ip = ipfsPath(uri);
             if (ip) {
-                if (artSources.localIpfs) return 'balances-ipfs/' + ip;
+                if (artSources.localIpfs) return 'portfolio-ipfs/' + ip;
                 if (artSources.remoteGateway) return ipfsRemoteGateway + ip;
                 return null;
             }
@@ -1578,13 +1589,6 @@
             const ids = [...candidates].slice(0, NFT_ID_CAP);
             const bals = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_ERC1155_BALANCE + pad32(owner) + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
             return ids.filter((id, i) => { try { return BigInt(bals[i]) > 0n; } catch { return false; } });
-        }
-
-        // runs an async worker over items with at most `limit` in flight at once (bounded concurrency)
-        async function runPool(items, limit, worker) {
-            let next = 0;
-            const run = async () => { while (next < items.length) { const i = next++; await worker(items[i], i); } };
-            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
         }
 
         // decodes token metadata for a slice of ids into thumbnails. On-chain (data:) metadata is used always;
@@ -1700,50 +1704,87 @@
             document.body.append(overlay);
         }
 
-        // collections shown in full (thumbsKey) — a Set so the expanded state survives card re-renders
-        const nftExpanded = new Set();
+        // makes a clickable NFT thumbnail element (image, or a #id placeholder), opening the item lightbox
+        function thumbEl(thumb, collection, node) {
+            if (thumb && thumb.src) {
+                const img = el('img');
+                img.src = thumb.src;
+                img.title = (thumb.title || '') + ' (click for details)';
+                img.onclick = () => openArt(thumb, collection, node);
+                return img;
+            }
+            const span = el('span', 'more number', thumb ? thumb.title : '…');
+            if (thumb) { span.title = 'Details'; span.onclick = () => openArt(thumb, collection, node); }
+            return span;
+        }
 
+        // inline preview: the first few thumbnails plus a "view all N" link opening the scrollable collection
+        // lightbox (the full set lazy-loads there, so a big collection never renders a huge inline grid)
         function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
-            const key = owner + '|' + node.chainId + '|' + collection.address.toLowerCase();
-            const expanded = nftExpanded.has(key);
-            const shown = expanded ? cached.thumbs : cached.thumbs.slice(0, MAX_NFT_THUMBS);
-            for (const thumb of shown) {
-                if (thumb.src) {
-                    const img = el('img');
-                    img.src = thumb.src;
-                    img.title = thumb.title + ' (click for details)';
-                    img.onclick = () => openArt(thumb, collection, node);
-                    box.append(img);
-                } else {
-                    // no on-chain art — still clickable to show any on-chain metadata (name/traits) + token info
-                    const span = el('span', 'more number', thumb.title);
-                    span.title = 'Details';
-                    span.onclick = () => openArt(thumb, collection, node);
-                    box.append(span);
-                }
-            }
-            // "+N more" / "show less" toggle — keyed off the discovered id count (known at first paint),
-            // not the loaded-thumb count, so the affordance shows immediately while art streams in the background
-            const total = cached.ids?.length ?? cached.thumbs.length;
-            const hidden = total - shown.length;
-            if (!expanded && hidden > 0) {
-                const more = el('span', 'more expand', '+' + hidden + ' more');
-                more.title = 'Show all';
-                more.onclick = () => { nftExpanded.add(key); fillThumbs(box, cached, node, owner, collection); };
+            for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node));
+            const total = cached.count ?? cached.ids?.length ?? cached.thumbs.length;
+            if (total > MAX_NFT_THUMBS) {
+                const more = el('span', 'more expand', 'view all ' + total);
+                more.title = 'Open the full collection';
+                more.onclick = () => openCollection(node, owner, collection, cached);
                 box.append(more);
-            } else if (expanded && total > MAX_NFT_THUMBS) {
-                const less = el('span', 'more expand', 'show less');
-                less.onclick = () => { nftExpanded.delete(key); fillThumbs(box, cached, node, owner, collection); };
-                box.append(less);
             }
-            // once expanded: show that art is still streaming in, and/or that holdings exceed what node data revealed
-            if (expanded) {
-                if (cached.loading) box.append(el('span', 'more', 'loading…'));
-                const missing = (cached.count ?? 0) - total;
-                if (missing > 0) box.append(el('span', 'more', missing + ' more not shown'));
-            }
+            if (cached.loading) box.append(el('span', 'more', 'loading…'));
+        }
+
+        // scrollable lightbox of every NFT in a collection; each cell's art lazy-loads as it scrolls into view
+        function openCollection(node, owner, collection, cached) {
+            const ids = cached.ids || [];
+            const overlay = el('div', 'lightbox');
+            const panel = el('div', 'collection-panel');
+            const head = el('div', 'collection-head');
+            head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + (cached.count ?? ids.length)));
+            const x = el('button', 'settings-x', '×');
+            x.onclick = () => close();
+            head.append(x);
+            panel.append(head);
+
+            const grid = el('div', 'collection-grid');
+            const cells = ids.map((_, i) => {
+                const cell = el('div', 'collection-cell');
+                cell.dataset.idx = String(i);
+                cell.append(thumbEl(cached.thumbs[i], collection, node));
+                grid.append(cell);
+                return cell;
+            });
+            panel.append(grid);
+
+            const pending = new Set();
+            let timer = null;
+            const flush = async () => {
+                timer = null;
+                const idxs = [...pending].filter((i) => !(cached.thumbs[i] && cached.thumbs[i].src));
+                pending.clear();
+                for (let k = 0; k < idxs.length; k += NFT_ART_CHUNK) {
+                    const batch = idxs.slice(k, k + NFT_ART_CHUNK);
+                    let thumbs;
+                    try { thumbs = await fetchThumbsForIds(node, collection, batch.map((i) => ids[i]), cached.kind); } catch { continue; }
+                    for (let j = 0; j < batch.length; j++) {
+                        cached.thumbs[batch[j]] = thumbs[j];
+                        cells[batch[j]].replaceChildren(thumbEl(thumbs[j], collection, node));
+                    }
+                }
+            };
+            const io = new IntersectionObserver((entries) => {
+                for (const e of entries) if (e.isIntersecting) { pending.add(Number(e.target.dataset.idx)); io.unobserve(e.target); }
+                if (pending.size && !timer) timer = setTimeout(flush, 80);
+            }, { root: grid, rootMargin: '300px' });
+            for (const cell of cells) if (!(cached.thumbs[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+
+            const onKey = (e) => { if (e.key === 'Escape') close(); };
+            function close() { io.disconnect(); overlay.remove(); document.removeEventListener('keydown', onKey); }
+            overlay.append(panel);
+            overlay.onclick = () => close();
+            panel.onclick = (e) => e.stopPropagation();
+            document.addEventListener('keydown', onKey);
+            document.body.append(overlay);
         }
 
         async function refreshNftThumbs() {
@@ -1772,13 +1813,12 @@
                                 ids = await heldTokenIds(node, collection, entry.address, kind, erc721Count || 0);
                             }
                             const count = kind === 'erc1155' ? ids.length : (erc721Count ?? 0);
-                            // Seed a placeholder per held id so the collection expands instantly to its full size,
-                            // then stream the on-chain art in the background (chunked, so a large collection never
-                            // hangs on one huge request); each thumb is replaced in place as it arrives. `loading`
-                            // is cleared when the stream settles (even on error) so the indicator never sticks.
+                            // Seed a placeholder per held id (so the count + collection view know every id), then
+                            // load only the inline PREVIEW (first row). The rest load on the fly in the scrollable
+                            // collection lightbox, so a big collection (e.g. Nouns) never fetches hundreds up front.
                             const thumbs = ids.map((id) => ({ src: null, title: '#' + id, id: id.toString() }));
                             nftCache.set(key, { count, ids, thumbs, kind, sig, loading: ids.length > 0 });
-                            if (ids.length) updateScanIndicators(); // keep the account spinner up while art streams
+                            if (ids.length) updateScanIndicators(); // spinner up until the preview loads
 
                             // fill in the count cell for ERC-1155 (refreshNode left it blank)
                             if (kind === 'erc1155') {
@@ -1788,30 +1828,20 @@
                             if (box) fillThumbs(box, nftCache.get(key), node, entry.address, collection);
 
                             if (ids.length) {
-                                // stream the art in chunks fired concurrently: fast (≈one round-trip, not one per
-                                // chunk) yet no single huge request; each chunk fills its placeholders as it lands.
-                                // Detached so it never blocks scanning the other collections or the prune below.
                                 (async () => {
-                                    const offsets = [];
-                                    for (let i = 0; i < ids.length; i += NFT_ART_CHUNK) offsets.push(i);
-                                    // bounded concurrency so off-chain (HTTPS/gateway) servers aren't flooded with
-                                    // every request at once (which dropped some — e.g. CloneX); loads more gradually
-                                    await runPool(offsets, NFT_ART_CONCURRENCY, async (i) => {
-                                        try {
-                                            const loaded = await fetchThumbsForIds(node, collection, ids.slice(i, i + NFT_ART_CHUNK), kind);
-                                            const c = nftCache.get(key);
-                                            if (!c || c.sig !== sig) return; // holdings changed since scan — abandon
-                                            for (let j = 0; j < loaded.length; j++) c.thumbs[i + j] = loaded[j];
+                                    try {
+                                        const loaded = await fetchThumbsForIds(node, collection, ids.slice(0, MAX_NFT_THUMBS), kind);
+                                        const c = nftCache.get(key);
+                                        if (c && c.sig === sig) for (let j = 0; j < loaded.length; j++) c.thumbs[j] = loaded[j];
+                                    } catch { /* preview art is cosmetic */ }
+                                    finally {
+                                        const c = nftCache.get(key);
+                                        if (c && c.sig === sig) {
+                                            c.loading = false;
                                             const b = document.querySelector(`[data-thumbs="${key}"]`);
                                             if (b) fillThumbs(b, c, node, entry.address, collection);
-                                        } catch { /* art is cosmetic — keep placeholders for this chunk */ }
-                                    });
-                                    const c = nftCache.get(key);
-                                    if (c && c.sig === sig) {
-                                        c.loading = false;
-                                        const b = document.querySelector(`[data-thumbs="${key}"]`);
-                                        if (b) fillThumbs(b, c, node, entry.address, collection);
-                                        updateScanIndicators(); // art finished — drop the spinner if nothing else is loading
+                                            updateScanIndicators();
+                                        }
                                     }
                                 })();
                             }
@@ -1883,7 +1913,7 @@
                 return false;
             }
             try {
-                await navigator.serviceWorker.register('balances-sw.js');
+                await navigator.serviceWorker.register('portfolio-sw.js');
                 await navigator.serviceWorker.ready;
                 return true;
             } catch { if (report) setStatus('Service worker registration failed — activity will only show in this line', true); return false; }
@@ -1913,7 +1943,7 @@
         }
 
         // ---------- in-page notification feed (persisted, dismissable) ----------
-        const FEED_KEY = 'nethermind.balances.feed';
+        const FEED_KEY = 'nethermind.portfolio.feed';
         const FEED_LIMIT = 30;
         let feed = [];
         try { feed = JSON.parse(localStorage.getItem(FEED_KEY) || '[]'); } catch { }
@@ -2066,7 +2096,7 @@
         //    finder (see DetectionScanner), which avoids the RPC range/result caps and thousands of
         //    round-trips, and is throttled/cancellable so it can't starve validator duties. Results are
         //    cached on the node, so the scan runs once and reloads/other devices load instantly.
-        // Historical detection covers the chain of the node you're connected to (its /balances-detect
+        // Historical detection covers the chain of the node you're connected to (its /portfolio-detect
         // endpoint); sibling chains get real-time detection only. Every candidate is confirmed with a
         // live balanceOf before it's shown.
         const DETECT_REALTIME_MAX = 900n;   // forward blocks scanned per poll (under the 1000-block getLogs cap)
@@ -2074,6 +2104,7 @@
         let detectEnabled = true;           // settings toggle, default on
         let detecting = false;              // any historical scan still in progress
         let hideSpam = true;                // hide airdrop/spoofed-price spam tokens, default on
+        let nftOnly = false;                // NFT-only mode: hide token balances/totals, default off
         // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
         const artSources = { https: false, localIpfs: false, remoteGateway: false };
         let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
@@ -2400,8 +2431,8 @@
         // invoke from the web console:  await bvClearDetectionCache()
         globalThis.bvClearDetectionCache = async function () {
             let nodeCleared = false;
-            try { nodeCleared = (await fetch('balances-detect', { method: 'DELETE' })).ok; }
-            catch (e) { console.warn('[balances] node cache clear failed:', e); }
+            try { nodeCleared = (await fetch('portfolio-detect', { method: 'DELETE' })).ok; }
+            catch (e) { console.warn('[portfolio] node cache clear failed:', e); }
             for (const node of nodes) {
                 const state = stateOf(node.chainId);
                 if (!state) continue;
@@ -2410,7 +2441,7 @@
                 store.save(node.chainId);
             }
             renderTokens(); renderCards(); refreshBalances();
-            console.log('[balances] detection cache cleared (connected node: ' + (nodeCleared ? 'ok' : 'unreachable') + '); re-scanning…');
+            console.log('[portfolio] detection cache cleared (connected node: ' + (nodeCleared ? 'ok' : 'unreachable') + '); re-scanning…');
             return nodeCleared;
         };
 
@@ -2657,7 +2688,7 @@
                         tokensOf(node.chainId).map((t) => ({ ticker: t.ticker, key: node.chainId + ':' + t.address.toLowerCase(), color: tokenColor(t.ticker), contract: t.address, auto: t.auto })));
                     for (const row of rows) {
                         const cached = cache.get(entry.address + '|' + row.key);
-                        const tr = el('tr');
+                        const tr = el('tr', 'bal-row'); // token/native balance row (hidden in NFT-only mode)
                         if (cached?.bal === '0') tr.classList.add('zero');
                         const tick = el('td', 'tick');
                         tick.append(tickerLabel(row.ticker, node));
@@ -3129,7 +3160,7 @@
         async function discoverSiblings() {
             let added = false;
             try {
-                const res = await fetch('balances-nodes');
+                const res = await fetch('portfolio-nodes');
                 if (!res.ok) return false;
                 let storedDisabled = [];
                 try { storedDisabled = JSON.parse(localStorage.getItem(DISABLED_KEY) || '[]'); } catch { }
@@ -3137,10 +3168,10 @@
                     const id = Number(BigInt(sibling.chainId));
                     const existing = nodes.find((n) => n.chainId === id);
                     if (existing) {
-                        if (existing !== own()) { existing.rpcPath = 'balances-rpc/' + sibling.port; existing.detectPath = 'balances-detect-rpc/' + sibling.port; }
+                        if (existing !== own()) { existing.rpcPath = 'portfolio-rpc/' + sibling.port; existing.detectPath = 'portfolio-detect-rpc/' + sibling.port; }
                         continue;
                     }
-                    const node = makeNode('balances-rpc/' + sibling.port, id);
+                    const node = makeNode('portfolio-rpc/' + sibling.port, id);
                     node.enabled = !storedDisabled.includes(id);
                     await detectEns(node);
                     nodes.push(node);
@@ -3228,21 +3259,25 @@
 
 
             // ---- settings ----
-            const DETECT_KEY = 'nethermind.balances.detect';
-            const HIDESPAM_KEY = 'nethermind.balances.hidespam';
-            const ART_KEY = 'nethermind.balances.artsources';
-            const GATEWAY_KEY = 'nethermind.balances.ipfsgateway';
-            const WATCH_KEY = 'nethermind.balances.watchcollapsed';
+            const DETECT_KEY = 'nethermind.portfolio.detect';
+            const HIDESPAM_KEY = 'nethermind.portfolio.hidespam';
+            const NFTONLY_KEY = 'nethermind.portfolio.nftonly';
+            const ART_KEY = 'nethermind.portfolio.artsources';
+            const GATEWAY_KEY = 'nethermind.portfolio.ipfsgateway';
+            const WATCH_KEY = 'nethermind.portfolio.watchcollapsed';
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
             hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
+            nftOnly = localStorage.getItem(NFTONLY_KEY) === '1';      // default off
+            document.body.classList.toggle('nft-only', nftOnly);
             try { Object.assign(artSources, JSON.parse(localStorage.getItem(ART_KEY) || '{}')); } catch { }
             ipfsRemoteGateway = localStorage.getItem(GATEWAY_KEY) || IPFS_REMOTE_GATEWAY_DEFAULT;
 
             const settingsModal = $('settingsModal');
-            const setDetect = $('setDetect'), setHideSpam = $('setHideSpam');
+            const setDetect = $('setDetect'), setHideSpam = $('setHideSpam'), setNftOnly = $('setNftOnly');
             const setHttps = $('setHttps'), setLocalIpfs = $('setLocalIpfs'), setRemoteGw = $('setRemoteGw');
             setDetect.checked = detectEnabled;
             setHideSpam.checked = hideSpam;
+            setNftOnly.checked = nftOnly;
             setHttps.checked = artSources.https;
             setLocalIpfs.checked = artSources.localIpfs;
             setRemoteGw.checked = artSources.remoteGateway;
@@ -3262,6 +3297,11 @@
                 localStorage.setItem(HIDESPAM_KEY, hideSpam ? '1' : '0');
                 if (hideSpam) nodeDetect(); else restoreHidden();
                 setStatus(hideSpam ? 'Hiding spam tokens' : 'Showing all detected tokens');
+            };
+            setNftOnly.onchange = () => {
+                nftOnly = setNftOnly.checked;
+                localStorage.setItem(NFTONLY_KEY, nftOnly ? '1' : '0');
+                document.body.classList.toggle('nft-only', nftOnly);
             };
             const onArtChange = () => {
                 localStorage.setItem(ART_KEY, JSON.stringify(artSources));
@@ -3293,7 +3333,7 @@
             // Populates the live parts of the settings panel each time it opens.
             async function refreshSettingsUi() {
                 // detect a local IPFS gateway: the empty-file CID resolves instantly (no network) if one exists
-                try { localIpfsAvailable = (await fetch('balances-ipfs/bafkqaaa')).ok; }
+                try { localIpfsAvailable = (await fetch('portfolio-ipfs/bafkqaaa')).ok; }
                 catch { localIpfsAvailable = false; }
                 $('localIpfsState').textContent = localIpfsAvailable ? '(detected)' : '(not detected)';
                 setLocalIpfs.disabled = !localIpfsAvailable;
@@ -3330,7 +3370,7 @@
                 };
                 addNode((CHAINS[ownNode.chainId]?.name || ('chain ' + ownNode.chainId)) + ' (this node)', location.port || '80');
                 try {
-                    for (const s of await (await fetch('balances-nodes')).json()) {
+                    for (const s of await (await fetch('portfolio-nodes')).json()) {
                         const cid = Number(BigInt(s.chainId));
                         addNode(CHAINS[cid]?.name || ('chain ' + cid), s.port);
                     }

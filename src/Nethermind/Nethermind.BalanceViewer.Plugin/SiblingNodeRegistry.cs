@@ -20,7 +20,7 @@ public interface ISiblingNodeRegistry
     /// <summary>Forwards a JSON-RPC request body to the sibling on the given localhost port.</summary>
     Task ProxyAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken);
 
-    /// <summary>Forwards a detection request body to the sibling's /balances-detect, so the multi-chain
+    /// <summary>Forwards a detection request body to the sibling's /portfolio-detect, so the multi-chain
     /// view can drive historical detection on sibling chains (not just the connected one).</summary>
     Task ProxyDetectAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken);
 }
@@ -49,7 +49,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     private volatile IReadOnlyList<SiblingNode> _siblings = [];
     private DateTimeOffset _refreshedAt = DateTimeOffset.MinValue;
 
-    public SiblingNodeRegistry(IBalanceViewerConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
+    public SiblingNodeRegistry(IPortfolioConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<SiblingNodeRegistry>();
         HashSet<int> ownPorts = [.. jsonRpcUrlCollection.Keys];
@@ -106,7 +106,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
         ForwardAsync($"http://127.0.0.1:{port}/", requestBody, responseBody, cancellationToken);
 
     public Task ProxyDetectAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken) =>
-        ForwardAsync($"http://127.0.0.1:{port}/balances-detect", requestBody, responseBody, cancellationToken);
+        ForwardAsync($"http://127.0.0.1:{port}/portfolio-detect", requestBody, responseBody, cancellationToken);
 
     private async Task ForwardAsync(string url, Stream requestBody, Stream responseBody, CancellationToken cancellationToken)
     {

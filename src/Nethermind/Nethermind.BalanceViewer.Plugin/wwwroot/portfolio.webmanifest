@@ -1,14 +1,14 @@
 {
-    "name": "Nethermind Balances",
-    "short_name": "Balances",
-    "start_url": "/balances",
+    "name": "Nethermind Portfolio",
+    "short_name": "Portfolio",
+    "start_url": "/portfolio",
     "scope": "/",
     "display": "standalone",
     "background_color": "#000000",
     "theme_color": "#000000",
     "icons": [
         {
-            "src": "/balances-icon.svg",
+            "src": "/portfolio-icon.svg",
             "sizes": "any",
             "type": "image/svg+xml",
             "purpose": "any"

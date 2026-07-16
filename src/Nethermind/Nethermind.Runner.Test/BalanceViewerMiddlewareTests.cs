@@ -36,13 +36,13 @@ public class BalanceViewerMiddlewareTests
         if (expectedStatusCode == StatusCodes.Status200OK)
         {
             Assert.That(ctx.Response.ContentType, Does.StartWith("text/html"));
-            Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("Nethermind Balances"));
+            Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("Nethermind Portfolio"));
         }
     }
 
-    [TestCase("/balances-sw.js", "text/javascript", "notificationclick")]
-    [TestCase("/balances.webmanifest", "application/manifest+json", "Nethermind Balances")]
-    [TestCase("/balances-icon.svg", "image/svg+xml", "<svg")]
+    [TestCase("/portfolio-sw.js", "text/javascript", "notificationclick")]
+    [TestCase("/portfolio.webmanifest", "application/manifest+json", "Nethermind Portfolio")]
+    [TestCase("/portfolio-icon.svg", "image/svg+xml", "<svg")]
     public async Task Serves_EmbeddedAssets(string path, string expectedContentType, string expectedContent)
     {
         (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: path);
@@ -64,7 +64,7 @@ public class BalanceViewerMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
-    [TestCase("POST", "/balances")]
+    [TestCase("POST", "/portfolio")]
     [TestCase("GET", "/other")]
     public async Task OtherRequests_PassThrough(string method, string path)
     {
@@ -87,7 +87,7 @@ public class BalanceViewerMiddlewareTests
     [TestCase(true, StatusCodes.Status404NotFound)]
     public async Task NodesList_OnlyOnNonAuthenticatedPorts(bool isAuthenticated, int expectedStatusCode)
     {
-        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: "/balances-nodes");
+        (DefaultHttpContext ctx, MemoryStream responseBody) = CreateContext(Port, path: "/portfolio-nodes");
         ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
         siblings.GetSiblingsAsync(Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<SiblingNode>)[new SiblingNode(SiblingPort, SiblingChainId)]);
@@ -107,7 +107,7 @@ public class BalanceViewerMiddlewareTests
     [Test]
     public async Task Proxy_KnownSibling_ForwardsRequest()
     {
-        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: $"/balances-rpc/{SiblingPort}");
+        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: $"/portfolio-rpc/{SiblingPort}");
         ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
         siblings.IsKnownSibling(SiblingPort).Returns(true);
 
@@ -120,7 +120,7 @@ public class BalanceViewerMiddlewareTests
     [Test]
     public async Task Proxy_UnknownSibling_Returns404()
     {
-        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: "/balances-rpc/9999");
+        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: "/portfolio-rpc/9999");
         ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
         siblings.IsKnownSibling(9999).Returns(false);
 
@@ -136,7 +136,7 @@ public class BalanceViewerMiddlewareTests
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>
         new TestJsonRpcUrlCollection(new JsonRpcUrl("http", "127.0.0.1", Port, RpcEndpoint.Http, isAuthenticated, [ModuleType.Eth]));
 
-    private static (DefaultHttpContext Context, MemoryStream ResponseBody) CreateContext(int localPort, string method = "GET", string path = "/balances")
+    private static (DefaultHttpContext Context, MemoryStream ResponseBody) CreateContext(int localPort, string method = "GET", string path = "/portfolio")
     {
         DefaultHttpContext ctx = new()
         {

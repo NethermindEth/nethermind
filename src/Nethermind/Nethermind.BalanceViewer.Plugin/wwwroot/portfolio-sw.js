@@ -10,7 +10,7 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-        const existing = windows.find((w) => w.url.includes('/balances'));
-        return existing ? existing.focus() : self.clients.openWindow('/balances');
+        const existing = windows.find((w) => w.url.includes('/portfolio'));
+        return existing ? existing.focus() : self.clients.openWindow('/portfolio');
     }));
 });
