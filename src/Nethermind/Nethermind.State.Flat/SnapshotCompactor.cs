@@ -67,11 +67,10 @@ public class SnapshotCompactor(
         if (!isFullCompaction)
         {
             // Save memory by removing the compacted state from previous compaction
-            foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
+            using ArrayPoolList<StateId> previousStates = _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize);
+            foreach (StateId id in previousStates)
             {
-                if (_snapshotRepository.RemoveAndReleaseInMemoryKnownState(id, SnapshotTier.InMemoryCompacted))
-                {
-                }
+                _snapshotRepository.RemoveAndReleaseInMemoryKnownState(id, SnapshotTier.InMemoryCompacted);
             }
         }
 
