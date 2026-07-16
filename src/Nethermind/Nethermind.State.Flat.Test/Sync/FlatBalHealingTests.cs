@@ -189,6 +189,33 @@ public class FlatBalHealingTests
     }
 
     [Test]
+    public async Task Read_only_empty_account_is_preserved_during_healing()
+    {
+        // An empty account (nonce 0, balance 0, no code) that exists in state and appears in the BAL
+        // only because it was read — not modified — must survive healing. The block did not touch it,
+        // so processing it here and deleting it via the IsEmpty check drops a state trie leaf and
+        // diverges from the target root. Regression for a wrong reassembled root when a BAL references
+        // empty-but-present accounts as reads (e.g. touched precompiles / pre-EIP-158 empty accounts).
+        SeedInitialState(Acc(TestItem.AddressA, 100), Acc(TestItem.AddressB, 0));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 150), Acc(TestItem.AddressB, 0));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        ReadOnlyAccountChanges changed = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 150))
+            .TestObject;
+        ReadOnlyAccountChanges readOnly = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressB)
+            .TestObject;
+        BlockHeader lastPivot = SetupBlock(11, expected, Bal(changed, readOnly));
+
+        bool result = await _healing.Run(firstPivot, lastPivot, [], default);
+
+        Assert.That(result, Is.True);
+        _syncStore.Received(1).FinalizeSync(lastPivot);
+    }
+
+    [Test]
     public async Task Cleared_storage_slot_is_removed_from_flat_store()
     {
         // The BAL zeroes slot 1. The trie drops it, but the flat store must drop it too — otherwise

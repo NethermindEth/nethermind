@@ -51,6 +51,61 @@ public class StateSyncRunner(
 
     public async Task Run(CancellationToken token)
     {
+        // if (_logger.IsWarn) _logger.Warn($"We are starting");
+        // ulong blockBumber = 25538231UL; 
+        // // Hash256 blockHash = new("0x85c4131c3e543e6f27d9034173c3bab367aa7e3877ddbfa8ff250ef271b702f7");
+        // RecordedBalStore recordedBalStore = new(logManager);
+
+        // recordedBalStore.Insert(10000, new GeneratedBlockAccessList());
+
+        // ReadOnlyBlockAccessList? bal = recordedBalStore.Get(blockBumber);
+        // if(bal is null)
+        // {
+        //     if (_logger.IsWarn) _logger.Warn($"Bal not found for block number {blockBumber}.");
+        // }
+        // else
+        // {
+        //     if (_logger.IsInfo) _logger.Info($"Bal found for block number {blockBumber}: {bal}");
+        //     if (_logger.IsInfo) _logger.Info($"Total accounts in BAL: {bal.AccountChanges.Count}");
+
+        //     // Diagnostics: surface the exact constructs that ApplyChunk handles differently from the
+        //     // trusted per-block ApplyStateChanges. Whatever fires here is the divergence for this block.
+        //     int readOnly = 0, emptySlotChanges = 0, maybeEmptied = 0;
+        //     foreach (ReadOnlyAccountChanges acc in bal.AccountChanges)
+        //     {
+        //         // (2) read-only entry — ApplyChunk force-writes/deletes it; the reference skips it.
+        //         if (!acc.HasStateChanges)
+        //         {
+        //             readOnly++;
+        //             if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] READ-ONLY {acc.Address} reads={acc.StorageReads.Length} storSlots={acc.StorageChanges.Length}");
+        //         }
+
+        //         // (3) empty slot-change array — ApplyChunk's slot.Changes[^1] throws; the reference guards.
+        //         foreach (ReadOnlySlotChanges s in acc.StorageChanges)
+        //         {
+        //             if (s.Changes.Length == 0)
+        //             {
+        //                 emptySlotChanges++;
+        //                 if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] EMPTY slot-change {acc.Address} slot {s.Key}");
+        //             }
+        //         }
+
+        //         // (1) account emptied to zero — ApplyChunk force-deletes it on IsEmpty regardless of spec/touch.
+        //         bool bal0 = acc.BalanceChanges.Length > 0 && acc.BalanceChanges[^1].Value.IsZero;
+        //         bool nonce0 = acc.NonceChanges.Length > 0 && acc.NonceChanges[^1].Value == 0;
+        //         bool code0 = acc.CodeChanges.Length > 0 && (acc.CodeChanges[^1].Code?.Length ?? 0) == 0;
+        //         if (bal0 || nonce0 || code0)
+        //         {
+        //             maybeEmptied++;
+        //             if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] MAYBE-EMPTIED {acc.Address} bal0={bal0} nonce0={nonce0} code0={code0} storSlots={acc.StorageChanges.Length}");
+        //         }
+        //     }
+
+        //     if (_logger.IsWarn) _logger.Warn($"BAL[{blockBumber}] scan: accounts={bal.AccountChanges.Count} readOnly={readOnly} emptySlotChanges={emptySlotChanges} maybeEmptied={maybeEmptied}");
+        // }
+        // if(blockBumber % 1000 != 0)
+        //     return;
+
         try
         {
             if (syncProgressResolver.FindBestFullState() != 0)

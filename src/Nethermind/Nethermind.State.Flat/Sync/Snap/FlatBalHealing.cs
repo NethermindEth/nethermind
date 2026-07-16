@@ -16,7 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-// using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 
@@ -26,7 +26,7 @@ public class FlatBalHealing(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     ITrieReassembler trieReassembler,
-    // ITreeSyncStore store,
+    ITreeSyncStore store,
     IPersistence persistence,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ILogManager logManager
@@ -76,7 +76,7 @@ public class FlatBalHealing(
                 return Task.FromResult(false);
             }
 
-            // store.FinalizeSync(lastPivot);
+            store.FinalizeSync(lastPivot);
 
             return Task.FromResult(true);
         }
@@ -283,6 +283,12 @@ public class FlatBalHealing(
 
             foreach (ReadOnlyAccountChanges acc in bal.AccountChanges)
             {
+                // Accounts present only for reads (no balance/nonce/code/storage change) must be left
+                // untouched: the block did not modify them. Processing them here would re-encode the
+                // account and, worse, delete any empty-but-present account via the IsEmpty check below,
+                // dropping a state trie leaf that must survive and corrupting the reassembled root.
+                if (!acc.HasStateChanges) continue;
+
                 ref AccountDelta? delta = ref CollectionsMarshal.GetValueRefOrAddDefault(deltas, acc.Address, out _);
                 delta ??= new AccountDelta();
 
