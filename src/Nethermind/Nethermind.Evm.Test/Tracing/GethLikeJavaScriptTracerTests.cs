@@ -4,6 +4,8 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
@@ -19,6 +21,43 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
+    {
+        const int concurrency = 16;
+        string marker = Guid.NewGuid().ToString("N");
+        string tracerCode = $$"""
+                              {
+                                  marker: "{{marker}}",
+                                  result: function() { return this.marker; }
+                              }
+                              """;
+        using CountdownEvent ready = new(concurrency);
+        using ManualResetEventSlim start = new();
+
+        Task[] tasks = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                using Engine engine = new(Shanghai.Instance);
+                ready.Signal();
+                start.Wait();
+                dynamic tracer = engine.CreateTracer(tracerCode);
+                Assert.That((string)tracer.result(), Is.EqualTo(marker));
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default)).ToArray();
+
+        bool allReady = ready.Wait(TimeSpan.FromSeconds(30));
+        start.Set();
+        Assert.That(allReady, Is.True);
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+
+        using Engine sequentialEngine = new(Shanghai.Instance);
+        dynamic cachedTracer = sequentialEngine.CreateTracer(tracerCode);
+        Assert.That((string)cachedTracer.result(), Is.EqualTo(marker));
+    }
+
     [TestCase("{ result: function(ctx, db) { return null } }", TestName = "fault")]
     [TestCase("{ fault: function(log, db) { } }", TestName = "result")]
     [TestCase("{ fault: function(log, db) { }, result: function(ctx, db) { return null }, enter: function(frame) { } }", TestName = "exit")]

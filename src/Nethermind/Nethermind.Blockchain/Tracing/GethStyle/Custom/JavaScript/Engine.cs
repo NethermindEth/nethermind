@@ -41,7 +41,7 @@ public class Engine : IDisposable
 
     private static readonly V8Runtime _runtime = new(new V8RuntimeConstraints { MaxOldSpaceSize = V8MaxOldSpaceMb });
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
-    private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
+    private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
     public static Engine? CurrentEngine
     {
@@ -184,20 +184,10 @@ public class Engine : IDisposable
             }
             else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
-                int hashCode = tracer.GetHashCode();
-                if (_runtimeScripts.TryGet(hashCode, out V8Script script))
-                {
-                    return script;
-                }
-
-                script = _runtime.Compile(PackTracerCode(tracer));
-                if (_runtimeScripts.Set(hashCode, script))
-                {
-                    return script;
-                }
-
-                script.Dispose();
-                return _runtimeScripts.Get(hashCode);
+                return _runtimeScripts.SetOrGet(
+                    tracer,
+                    tracer,
+                    static (_, tracerCode) => _runtime.Compile(PackTracerCode(tracerCode)));
             }
             else
             {
