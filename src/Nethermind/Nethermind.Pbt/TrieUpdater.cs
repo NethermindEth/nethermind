@@ -12,15 +12,34 @@ namespace Nethermind.Pbt;
 
 /// <summary>
 /// Backing store for the PBT tree: the stem trie node groups and the per-stem 256-leaf blobs. Reads
-/// return a poolable, disposable wrapper (null = absent); writes take a span the store copies
-/// (an empty span removes the group / deletes the stem).
+/// return a poolable, disposable wrapper (null = absent); writes hand over one (null removes the group
+/// / deletes the stem).
 /// </summary>
+/// <remarks>
+/// A write transfers the caller's lease on the value: the store owns it from that point and must
+/// release it once done — by disposing it after copying, or, if it retains the memory, when it drops
+/// the value. It never acquires a lease of its own to do so, and the caller must not use the memory
+/// afterwards; a caller that needs to keep reading it acquires its own lease first.
+/// </remarks>
 public interface IPbtStore
 {
     RefCountingMemory? GetTrieNode(in TrieNodeKey key);
-    void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node);
+    void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node);
     RefCountingMemory? GetLeafBlob(in Stem stem);
-    void SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob);
+    void SetLeafBlob(in Stem stem, RefCountingMemory? blob);
+}
+
+public static class PbtStoreExtensions
+{
+    /// <summary>
+    /// Copies a value handed to an <see cref="IPbtStore"/> write into a fresh array and releases the
+    /// lease that came with it, for a store that keeps its values as arrays; a removal
+    /// (<c>null</c>) copies to <c>null</c>.
+    /// </summary>
+    public static byte[]? ToArrayAndRelease(this RefCountingMemory? memory)
+    {
+        using (memory) return memory?.GetSpan().ToArray();
+    }
 }
 
 /// <summary>
@@ -183,7 +202,7 @@ public static class TrieUpdater
             {
                 Slot hoisted = rootKind == NodeKind.Absent ? default : results[BitOperations.TrailingZeroCount(occupied)];
                 changed = hoisted.NodeHash() != before.NodeHash();
-                if (!existing.IsEmpty) store.SetTrieNode(key, default);
+                if (!existing.IsEmpty) store.SetTrieNode(key, null);
                 return hoisted;
             }
 
@@ -215,17 +234,55 @@ public static class TrieUpdater
             in TrieNodeKey key, ReadOnlySpan<Slot> results, PbtTrieNodeGroup existing,
             uint occupied, uint stems, uint changedMask, in Slot before, out bool changed)
         {
-            // Scoped here rather than to ApplyGroup on purpose: this runs only once every child group
-            // has been applied, so the buffer never nests across the descent.
-            Span<byte> destination = stackalloc byte[PbtTrieNodeGroup.MaxEncodedLength];
-            GroupRebuild rebuild = new(results, existing, occupied, stems, changedMask, destination);
+            (uint presence, uint stemMask) = PredictShape(occupied, stems, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
+            RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
+
+            GroupRebuild rebuild = new(results, existing, occupied, stems, changedMask, memory.GetSpan());
             NodeRef root = rebuild.Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
+            int length = rebuild.Finish();
+            Debug.Assert(length == memory.GetSpan().Length, "the predicted shape must size the fold's encoding exactly");
 
             // Unchanged root => the encoding is byte-identical to what is stored (an internal root
             // whose hash matches implies the group already existed); skip the rewrite.
             changed = rebuild.Resolve(root) != before.NodeHash();
-            if (changed) store.SetTrieNode(key, destination[..rebuild.Finish()]);
-            return rebuild.SlotAt(root);
+
+            // Read the root back out before the buffer leaves our hands: the write takes the lease with it.
+            Slot slot = rebuild.SlotAt(root);
+            if (changed) store.SetTrieNode(key, memory);
+            else ((IDisposable)memory).Dispose();
+            return slot;
+        }
+
+        /// <summary>
+        /// The presence and stem bitmaps <see cref="GroupRebuild.Fold"/> will produce over
+        /// <c>[firstSlot, firstSlot + width)</c>, given the boundary results described by
+        /// <paramref name="occupied"/> and <paramref name="stems"/>.
+        /// </summary>
+        /// <remarks>
+        /// Mirrors the fold's walk on the masks alone — no hashing, no reads — so the group's encoding
+        /// can be sized before its buffer is rented, as <see cref="StemLeafBlob.RebuildState"/> sizes a
+        /// leaf blob from its live-node counts. This is well-defined because a node's kind follows from
+        /// <see cref="KindOf"/> over its range, which needs only the boundary masks.
+        /// </remarks>
+        private static (uint Presence, uint Stems) PredictShape(uint occupied, uint stems, int position, int firstSlot, int width)
+        {
+            uint range = ((1u << width) - 1) << firstSlot;
+            switch (KindOf(occupied & range, stems))
+            {
+                case NodeKind.Absent:
+                    return default;
+                case NodeKind.Stem:
+                    // a stem terminates the walk at its shortest unique prefix — nothing below it is emitted
+                    return (1u << position, 1u << position);
+            }
+
+            uint self = 1u << position;
+            if (width == 1) return (self, 0);
+
+            int half = width / 2;
+            (uint leftPresence, uint leftStems) = PredictShape(occupied, stems, position - width, firstSlot, half);
+            (uint rightPresence, uint rightStems) = PredictShape(occupied, stems, position - 1, firstSlot + half, half);
+            return (leftPresence | rightPresence | self, leftStems | rightStems);
         }
 
         /// <summary>A reference to a node appended to the new group blob: its kind and its entry offset.</summary>
@@ -312,8 +369,9 @@ public static class TrieUpdater
             using RefCountingMemory? prior = store.GetLeafBlob(stem);
             using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, memoryProvider);
             subtreeRoot = newBlob.SubtreeRoot;
-            store.SetLeafBlob(stem, newBlob.Blob);
-            return newBlob.IsEmpty;
+            bool isEmpty = newBlob.IsEmpty;
+            store.SetLeafBlob(stem, newBlob.Take());
+            return isEmpty;
         }
 
         /// <summary>
