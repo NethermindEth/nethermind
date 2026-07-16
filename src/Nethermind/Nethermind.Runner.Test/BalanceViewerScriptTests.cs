@@ -374,6 +374,25 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void FillThumbs_ShowsExpandBeforeBackgroundArtFinishesLoading()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim);
+        // regression: only the first row of art has loaded (thumbs == MAX_NFT_THUMBS) but 10 ids are known.
+        // The "+N more" affordance must still appear (id-based), not wait for the background art to finish.
+        object result = engine.Evaluate("""
+            (function () {
+                const node = { chainId: 1 };
+                const collection = { address: '0x000000000000000000000000000000000000dEaD' };
+                const box = document.createElement('div');
+                fillThumbs(box, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(4), kind: 'enum721' }, node, '0xa', collection);
+                return __summary(box);
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("img|img|img|img|+6 more"));
+    }
+
+    [Test]
     public void FillThumbs_NotesStillLoadingAndUndiscoverableHoldings()
     {
         using V8ScriptEngine engine = CreateEngine();
@@ -386,7 +405,7 @@ public class BalanceViewerScriptTests
                 const collection = { address: '0x000000000000000000000000000000000000dEaD' };
                 const loadingBox = document.createElement('div');
                 fillThumbs(loadingBox, { count: 10, ids: __mkThumbs(10), thumbs: __mkThumbs(6), kind: 'enum721' }, node, '0xa', collection);
-                __click(loadingBox, '+2 more');
+                __click(loadingBox, '+6 more'); // affordance is id-based (10 ids - 4 shown), not thumb-based
                 const loading = __summary(loadingBox);
                 const truncBox = document.createElement('div');
                 fillThumbs(truncBox, { count: 8, ids: __mkThumbs(5), thumbs: __mkThumbs(5), kind: 'enum721' }, node, '0xb', collection);

@@ -1437,22 +1437,24 @@
                     box.append(el('span', 'more number', thumb.title));
                 }
             }
-            // "+N more" / "show less" toggle over the already-loaded thumbs — instant, no fetch on click
-            const hidden = cached.thumbs.length - shown.length;
+            // "+N more" / "show less" toggle — keyed off the discovered id count (known at first paint),
+            // not the loaded-thumb count, so the affordance shows immediately while art streams in the background
+            const total = cached.ids?.length ?? cached.thumbs.length;
+            const hidden = total - shown.length;
             if (!expanded && hidden > 0) {
                 const more = el('span', 'more expand', '+' + hidden + ' more');
                 more.title = 'Show all';
                 more.onclick = () => { nftExpanded.add(key); fillThumbs(box, cached, node, owner, collection); };
                 box.append(more);
-            } else if (expanded && cached.thumbs.length > MAX_NFT_THUMBS) {
+            } else if (expanded && total > MAX_NFT_THUMBS) {
                 const less = el('span', 'more expand', 'show less');
                 less.onclick = () => { nftExpanded.delete(key); fillThumbs(box, cached, node, owner, collection); };
                 box.append(less);
             }
             // once expanded: show that art is still streaming in, or that holdings exceed what node data revealed
             if (expanded) {
-                if (cached.thumbs.length < (cached.ids?.length ?? 0)) box.append(el('span', 'more', 'loading…'));
-                else { const missing = (cached.count ?? 0) - cached.thumbs.length; if (missing > 0) box.append(el('span', 'more', missing + ' more not shown')); }
+                if (cached.thumbs.length < total) box.append(el('span', 'more', 'loading…'));
+                else { const missing = (cached.count ?? 0) - total; if (missing > 0) box.append(el('span', 'more', missing + ' more not shown')); }
             }
         }
 
