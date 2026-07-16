@@ -91,6 +91,12 @@ public readonly ref struct PbtTrieNodeGroup
     public bool IsEmpty => _data.IsEmpty;
 
     /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
+    /// <param name="position">
+    /// The node's index in the tile's post-order (depth-first) numbering, in <c>[0, <see cref="PositionCount"/>)</c>
+    /// — an internal DFS position, not the boundary-slot (leaf) index. The 16 boundary slots sit at
+    /// <see cref="BoundaryPosition(int)"/> and the group root at <see cref="RootPosition"/>; see the type
+    /// remarks for the full numbering.
+    /// </param>
     public Slot this[int position]
     {
         get
