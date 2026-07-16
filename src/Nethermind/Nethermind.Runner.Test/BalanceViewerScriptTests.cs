@@ -636,4 +636,41 @@ public class BalanceViewerScriptTests
         using V8ScriptEngine engine = CreateEngine();
         Assert.That(engine.Evaluate($"formatFiatCompact({cur8}n)"), Is.EqualTo(expected));
     }
+
+    // Regression: re-enabling "Hide spam" must re-hide the spam-flagged auto-detected tokens/collections
+    // (that turning it off restored) while keeping genuine ones. Previously nothing re-hid them.
+    [Test]
+    public void HideSpamNow_ReHidesSpamFlaggedAndKeepsGenuine()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute("""
+            nodes = [{ chainId: 1 }];
+            states.clear();
+            states.set(1, {
+                detected: [
+                    { address: '0xAA', ticker: 'USDC', decimals: 6, spam: false },
+                    { address: '0xBB', ticker: 'SPAM', decimals: 18, spam: true }
+                ],
+                nfts: [
+                    { address: '0xCC', ticker: 'REAL', name: 'Real', auto: true, spam: false },
+                    { address: '0xDD', ticker: 'SCAM', name: 'Scam', auto: true, spam: true }
+                ],
+                ignored: [], tokens: []
+            });
+            store.save = () => {};
+            renderTokens = () => {}; renderCards = () => {}; recomputeTotals = () => {};
+            """);
+        object result = engine.Evaluate("""
+            (function () {
+                hideSpamNow();
+                const s = states.get(1);
+                return JSON.stringify({
+                    detected: s.detected.map(t => t.ticker),
+                    nfts: s.nfts.map(t => t.ticker),
+                    ignored: s.ignored.map(t => t.ticker)
+                });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"detected\":[\"USDC\"],\"nfts\":[\"REAL\"],\"ignored\":[\"SPAM\",\"SCAM\"]}"));
+    }
 }
