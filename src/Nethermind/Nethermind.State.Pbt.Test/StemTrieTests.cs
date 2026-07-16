@@ -54,6 +54,23 @@ public class StemTrieTests
     }
 
     [Test]
+    public void UnmergedStem_IsRejectedOnceTheDescentRunsOutOfStem()
+    {
+        // the producer must merge a stem's writes itself; two entries for one stem partition
+        // together all the way to bit 248, where nothing is left to tell them apart
+        Stem stem = new(new byte[31]);
+        ValueHash256 value = new(Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111"));
+
+        using PbtWriteBatch batch = new(estimatedStems: 2);
+        batch.Add(stem, PbtStemChanges.Rent().Set(5, value));
+        batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void StemsAtMixedDepths_SplitHoistAndRebuildStayCanonical()
     {
         // A and B diverge deep (bit 20: stems in the depth-20 group, six groups down the shared

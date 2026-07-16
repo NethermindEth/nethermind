@@ -173,6 +173,12 @@ public static class TrieUpdater
                 return stemNode;
             }
 
+            // Every entry in the range shares bits [0, depth) with `stem`, so at the stem's full depth
+            // they are all this same stem, and the range not having collapsed above means it holds more
+            // than one entry for it: the producer failed to merge its writes to the stem, which
+            // PbtWriteBatch requires of it. Nothing is left to partition on, so this must not descend.
+            if (depth == Stem.LengthInBits) throw new InvalidOperationException($"Stem {stem} written more than once in a single batch");
+
             Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
 
             RefList16<NodeResult> occupantBuffer = new(PbtTrieNodeGroup.BoundarySlots);
