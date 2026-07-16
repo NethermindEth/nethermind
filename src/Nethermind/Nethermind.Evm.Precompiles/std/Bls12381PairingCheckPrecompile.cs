@@ -67,6 +67,8 @@ public partial class Bls12381PairingCheckPrecompile
                 Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
                 if (!local)
                 {
+                    // racy across workers, but every writer stores a failure and only the atomically
+                    // written ResultType is read below, so post-barrier result is a failure iff any pair failed
                     result = local;
                     state.Break();
                 }
