@@ -25,18 +25,20 @@ public sealed class PbtTreeHarness : IPbtStore
 
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key));
 
-    public void SetTrieNode(in TrieNodeKey key, ReadOnlySpan<byte> node)
+    public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
-        if (node.Length == 0) _nodes.Remove(key);
-        else _nodes[key] = node.ToArray();
+        byte[]? value = node.ToArrayAndRelease();
+        if (value is null) _nodes.Remove(key);
+        else _nodes[key] = value;
     }
 
     public RefCountingMemory? GetLeafBlob(in Stem stem) => RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem));
 
-    public void SetLeafBlob(in Stem stem, ReadOnlySpan<byte> blob)
+    public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
-        if (blob.Length == 0) _blobs.Remove(stem);
-        else _blobs[stem] = blob.ToArray();
+        byte[]? value = blob.ToArrayAndRelease();
+        if (value is null) _blobs.Remove(stem);
+        else _blobs[stem] = value;
     }
 
     /// <summary>Applies key/value writes (empty/zero value = clear) and returns the new root.</summary>

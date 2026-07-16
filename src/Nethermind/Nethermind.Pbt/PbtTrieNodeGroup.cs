@@ -73,6 +73,14 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>Largest encoding: all 31 positions present, 16 of them stems (each stem terminates a disjoint boundary range).</summary>
     public const int MaxEncodedLength = HeaderLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
 
+    /// <summary>
+    /// The encoded length of the group described by the bitmaps <paramref name="presence"/> and
+    /// <paramref name="stems"/>, which pin it exactly: every node contributes a hash and a stem node
+    /// its stem as well.
+    /// </summary>
+    public static int EncodedLength(uint presence, uint stems) =>
+        HeaderLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
+
     /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
 
@@ -154,7 +162,7 @@ public readonly ref struct PbtTrieNodeGroup
             throw new InvalidDataException("Invalid trie node group bitmaps");
         }
 
-        int expectedLength = HeaderLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
+        int expectedLength = EncodedLength(presence, stems);
         if (data.Length != expectedLength)
         {
             throw new InvalidDataException($"Trie node group length {data.Length} does not match its bitmaps (expected {expectedLength})");
