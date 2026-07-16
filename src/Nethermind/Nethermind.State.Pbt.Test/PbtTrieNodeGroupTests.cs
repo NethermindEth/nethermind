@@ -48,7 +48,7 @@ public class PbtTrieNodeGroupTests
         slots[PbtTrieNodeGroup.BoundaryPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        int length = PbtTrieNodeGroup.Encode(slots, encoded);
+        int length = Encode(slots, encoded);
         Assert.That(length, Is.EqualTo(8 + 5 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
@@ -64,11 +64,11 @@ public class PbtTrieNodeGroupTests
 
         // deterministic: re-encoding the decoded group reproduces the bytes exactly
         byte[] reencoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        Assert.That(PbtTrieNodeGroup.Encode(roundTripped, reencoded), Is.EqualTo(length));
+        Assert.That(Encode(roundTripped, reencoded), Is.EqualTo(length));
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
         // an empty group encodes to nothing (the store's removal marker)
-        Assert.That(PbtTrieNodeGroup.Encode(new PbtTrieNodeGroup.Slot[PbtTrieNodeGroup.PositionCount], encoded), Is.EqualTo(0));
+        Assert.That(new PbtTrieNodeGroup.Builder(encoded).Finish(), Is.EqualTo(0));
 
         // validation: position bit 31, a stem bit without its presence bit, and a length that does
         // not match the bitmaps are all rejected
@@ -83,5 +83,29 @@ public class PbtTrieNodeGroupTests
 
         Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..^1)), Throws.TypeOf<InvalidDataException>());
         Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..4)), Throws.TypeOf<InvalidDataException>());
+    }
+
+    /// <summary>
+    /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
+    /// the ascending order it requires — the order the updater's post-order rebuild appends in.
+    /// </summary>
+    private static int Encode(ReadOnlySpan<PbtTrieNodeGroup.Slot> slots, Span<byte> destination)
+    {
+        PbtTrieNodeGroup.Builder builder = new(destination);
+        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        {
+            PbtTrieNodeGroup.Slot slot = slots[position];
+            switch (slot.Kind)
+            {
+                case PbtTrieNodeGroup.NodeKind.Internal:
+                    builder.AppendInternal(position, slot.Hash);
+                    break;
+                case PbtTrieNodeGroup.NodeKind.Stem:
+                    builder.AppendStem(position, slot.Stem, slot.Hash);
+                    break;
+            }
+        }
+
+        return builder.Finish();
     }
 }

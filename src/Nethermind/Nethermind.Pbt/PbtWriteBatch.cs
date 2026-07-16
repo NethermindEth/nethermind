@@ -32,7 +32,8 @@ public sealed class PbtWriteBatch(int estimatedStems) : IDisposable
     /// <summary>The number of stems written; zero means the batch applies no changes.</summary>
     public int Count => _entries.Count;
 
-    internal ReadOnlySpan<StemEntry> Entries => _entries.AsSpan();
+    /// <remarks>Mutable: <see cref="TrieUpdater"/> permutes the entries in place as it partitions them by stem.</remarks>
+    internal Span<StemEntry> Entries => _entries.AsSpan();
 
     public void Dispose()
     {

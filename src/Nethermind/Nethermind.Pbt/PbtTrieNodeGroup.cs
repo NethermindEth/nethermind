@@ -158,42 +158,86 @@ public readonly ref struct PbtTrieNodeGroup
     }
 
     /// <summary>
-    /// Encodes the <paramref name="slots"/> (a full <see cref="PositionCount"/>-length builder) into
-    /// <paramref name="destination"/> (≥ <see cref="MaxEncodedLength"/> bytes) and returns the length
-    /// written; 0 for an empty group, which the caller stores as a removal.
+    /// Encodes a group into a caller-supplied buffer one node at a time, as the producer walks the
+    /// group, rather than from a materialized set of slots.
     /// </summary>
-    public static int Encode(ReadOnlySpan<Slot> slots, Span<byte> destination)
+    /// <remarks>
+    /// Nodes must be appended in ascending position order — the order a post-order walk of the group
+    /// visits them, and the order the encoding stores them in — which makes each entry's offset
+    /// implicit in the append cursor: no offset math is needed while building, and the bitmap header
+    /// is backfilled by <see cref="Finish"/> once the walk is done. An appended entry keeps a stable
+    /// offset, so a producer can read a node back through <see cref="NodeHashAt"/> instead of
+    /// carrying hashes up its walk by value.
+    /// </remarks>
+    public ref struct Builder(Span<byte> destination)
     {
-        uint presence = 0;
-        uint stems = 0;
-        for (int position = 0; position < PositionCount; position++)
-        {
-            NodeKind kind = slots[position].Kind;
-            if (kind == NodeKind.Absent) continue;
+        private readonly Span<byte> _destination = destination;
+        private uint _presence;
+        private uint _stems;
+        private int _offset = HeaderLength;
 
-            presence |= 1u << position;
-            if (kind == NodeKind.Stem) stems |= 1u << position;
+        /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
+        public int AppendInternal(int position, in ValueHash256 hash)
+        {
+            Debug.Assert(hash != default, "internal nodes never cache a zero hash");
+            MarkPresent(position);
+            return Write(hash.Bytes);
         }
 
-        if (presence == 0) return 0;
-
-        BinaryPrimitives.WriteUInt32LittleEndian(destination, presence);
-        BinaryPrimitives.WriteUInt32LittleEndian(destination[sizeof(uint)..], stems);
-        int offset = HeaderLength;
-        for (uint remaining = presence; remaining != 0; remaining &= remaining - 1)
+        /// <summary>Appends the stem node at <paramref name="position"/>, returning its entry offset.</summary>
+        public int AppendStem(int position, in Stem stem, in ValueHash256 leafSubtreeRoot)
         {
-            Slot slot = slots[BitOperations.TrailingZeroCount(remaining)];
-            if (slot.Kind == NodeKind.Stem)
-            {
-                slot.Stem.Bytes.CopyTo(destination[offset..]);
-                offset += Stem.Length;
-            }
-
-            Debug.Assert(slot.Kind == NodeKind.Stem || slot.Hash != default, "internal nodes never cache a zero hash");
-            slot.Hash.Bytes.CopyTo(destination[offset..]);
-            offset += HashLength;
+            MarkPresent(position);
+            _stems |= 1u << position;
+            int offset = Write(stem.Bytes);
+            Write(leafSubtreeRoot.Bytes);
+            return offset;
         }
 
-        return offset;
+        /// <summary>The hash the node appended at <paramref name="offset"/> contributes to its parent.</summary>
+        /// <remarks>Mirrors <see cref="Slot.NodeHash"/>, reading the entry back out of the buffer.</remarks>
+        public readonly ValueHash256 NodeHashAt(NodeKind kind, int offset) => kind switch
+        {
+            NodeKind.Absent => default,
+            NodeKind.Internal => new ValueHash256(_destination.Slice(offset, HashLength)),
+            _ => StemLeafBlob.ComputeStemNodeHash(
+                new Stem(_destination.Slice(offset, Stem.Length)),
+                new ValueHash256(_destination.Slice(offset + Stem.Length, HashLength))),
+        };
+
+        /// <summary>Reads the node appended at <paramref name="offset"/> back as a <see cref="Slot"/>.</summary>
+        public readonly Slot SlotAt(NodeKind kind, int offset) => kind == NodeKind.Stem
+            ? StemSlot(
+                new Stem(_destination.Slice(offset, Stem.Length)),
+                new ValueHash256(_destination.Slice(offset + Stem.Length, HashLength)))
+            : InternalSlot(new ValueHash256(_destination.Slice(offset, HashLength)));
+
+        /// <summary>
+        /// Writes the bitmap header and returns the encoded length; 0 when nothing was appended,
+        /// which the caller stores as a removal.
+        /// </summary>
+        public readonly int Finish()
+        {
+            if (_presence == 0) return 0;
+
+            BinaryPrimitives.WriteUInt32LittleEndian(_destination, _presence);
+            BinaryPrimitives.WriteUInt32LittleEndian(_destination[sizeof(uint)..], _stems);
+            return _offset;
+        }
+
+        private void MarkPresent(int position)
+        {
+            Debug.Assert((uint)position < PositionCount);
+            Debug.Assert(_presence >> position == 0, "nodes must be appended in ascending position order");
+            _presence |= 1u << position;
+        }
+
+        private int Write(ReadOnlySpan<byte> bytes)
+        {
+            int offset = _offset;
+            bytes.CopyTo(_destination[offset..]);
+            _offset = offset + bytes.Length;
+            return offset;
+        }
     }
 }
