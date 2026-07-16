@@ -475,6 +475,38 @@ public class BalanceViewerScriptTests
     }
 
     [Test]
+    public void OpenArt_ShowsMetadataAndTraitsEvenWithoutArt()
+    {
+        using V8ScriptEngine engine = CreateEngine();
+        engine.Execute(DomShim + """
+            globalThis.document.body = document.createElement('body');
+            globalThis.document.addEventListener = () => {};
+            globalThis.document.removeEventListener = () => {};
+            globalThis.__texts = (n) => { let o = []; for (const c of (n.children || [])) { if (c.textContent) o.push(c.textContent); o = o.concat(__texts(c)); } return o; };
+            """);
+        // an NFT with on-chain metadata but no on-chain art still opens a lightbox with name, description, and traits
+        object result = engine.Evaluate("""
+            (function () {
+                const thumb = { id: '7', src: null, name: 'Mouse #7', description: 'a mouse',
+                    attributes: [{ trait_type: 'hat', value: 'No Hat' }, { trait_type: 'neck', value: 'Plain' }] };
+                const collection = { address: '0x000000000000000000000000000000000000dEaD', ticker: 'MICE', name: 'Anonymice' };
+                const node = { meta: { explorer: 'https://etherscan.io' } };
+                openArt(thumb, collection, node);
+                const overlay = document.body.children[document.body.children.length - 1];
+                const flat = __texts(overlay);
+                return JSON.stringify({
+                    noArt: flat.includes('no on-chain image'),
+                    title: flat.includes('Mouse #7'),
+                    desc: flat.includes('a mouse'),
+                    traitParts: flat.filter((t) => ['hat', 'No Hat', 'neck', 'Plain'].includes(t)).length,
+                    hasExplorerLink: flat.some((t) => t.includes('0x0000') && t.includes('↗')),
+                });
+            })()
+            """);
+        Assert.That(result, Is.EqualTo("{\"noArt\":true,\"title\":true,\"desc\":true,\"traitParts\":4,\"hasExplorerLink\":true}"));
+    }
+
+    [Test]
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();

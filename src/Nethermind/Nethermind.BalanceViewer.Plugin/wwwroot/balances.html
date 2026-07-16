@@ -304,25 +304,61 @@
             animation: fade 0.12s ease-out;
         }
 
+        .lightbox-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            max-width: min(92vw, 560px);
+            max-height: 88vh;
+            overflow-y: auto;
+            cursor: default;
+            background: #101012;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
         .lightbox img {
-            max-width: min(90vw, 640px);
-            max-height: 82vh;
+            max-width: min(80vw, 480px);
+            max-height: 58vh;
             border: 1px solid var(--border);
             border-radius: 8px;
             background: #0a0a0a;
         }
 
-        .lightbox-caption {
+        .lightbox-noart {
+            width: min(70vw, 320px);
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
             font-family: 'DM Mono', ui-monospace, monospace;
-            font-size: 13px;
-            color: var(--c-name);
+            font-size: 12px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
         }
+
+        .lightbox-info { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+        .lightbox-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 15px; color: var(--c-name); }
+        .lightbox-sub { font-size: 12px; color: var(--muted); }
+        .lightbox-desc { font-size: 12px; color: var(--c-name); line-height: 1.45; white-space: pre-wrap; }
+        .lightbox-traits { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 2px; }
+        .lightbox-traits .trait { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; overflow: hidden; }
+        .lightbox-traits .trait-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lightbox-traits .trait-val { font-size: 12px; color: var(--c-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .lightbox-meta { font-size: 11px; font-family: 'DM Mono', ui-monospace, monospace; margin-top: 2px; }
+        .lightbox-link { color: var(--accent); text-decoration: none; }
+        .lightbox-link:hover { text-decoration: underline; }
 
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
         .thumbs .more { color: var(--muted); font-size: 11px; }
         .thumbs .more.expand { cursor: pointer; }
         .thumbs .more.expand:hover { color: var(--accent); }
+        .thumbs .more.number { cursor: pointer; }
+        .thumbs .more.number:hover { color: var(--accent); }
 
         .chip .x {
             cursor: pointer;
@@ -666,6 +702,7 @@
         const CHAINS = {
             1: {
                 name: 'Ethereum', ticker: 'ETH', ens: true, tag: '', logo: 'logos/ethereum-logo.svg',
+                explorer: 'https://etherscan.io',
                 registry: FEED_REGISTRY,
                 strictValueGate: true, // deep Uniswap coverage: an auto-detected token with no price is spam
 
@@ -714,6 +751,7 @@
             560048: { name: 'Hoodi', ticker: 'ETH', ens: true, tag: 'HOO', logo: 'logos/ethereum-logo.svg' },
             100: {
                 name: 'Gnosis', ticker: 'xDAI', ens: false, tag: 'GNO', logo: 'logos/gnosis.png',
+                explorer: 'https://gnosisscan.io',
                 feeds: GNOSIS_FEEDS,
                 fx: GNOSIS_FX,
                 currencies: ['USD', 'EUR', 'JPY', 'CHF', 'MXN'],
@@ -1395,9 +1433,18 @@
                 // ERC-1155 uri() may template the id as a 64-hex lowercase string
                 if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', ids[i].toString(16).padStart(64, '0'));
                 const metadata = parseOnChainMetadata(uri);
-                const title = metadata?.name || collection.ticker + ' #' + ids[i];
+                const name = typeof metadata?.name === 'string' ? metadata.name : null;
                 const src = typeof metadata?.image === 'string' && metadata.image.startsWith('data:image/') ? metadata.image : null;
-                thumbs.push({ src, title: src ? title : '#' + ids[i] });
+                // carry the on-chain metadata (name / description / traits) so the lightbox can show it even
+                // when the art itself is off-chain (image is an external URI we don't fetch) or absent
+                thumbs.push({
+                    id: ids[i].toString(),
+                    src,
+                    title: src ? (name || collection.ticker + ' #' + ids[i]) : '#' + ids[i],
+                    name,
+                    description: typeof metadata?.description === 'string' ? metadata.description : null,
+                    attributes: Array.isArray(metadata?.attributes) ? metadata.attributes : null,
+                });
             }
             return thumbs;
         }
@@ -1405,14 +1452,58 @@
         // Full-size view in an in-page lightbox. The art is rendered via <img>, which puts
         // SVG in the browser's secure static mode — embedded scripts/external refs never
         // run — so a malicious on-chain NFT can't execute code (unlike opening it as a tab).
-        function openArt(src, title) {
+        // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
+        // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
+        // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
+        function openArt(thumb, collection, node) {
             const overlay = el('div', 'lightbox');
-            const img = el('img');
-            img.src = src;
-            img.alt = title || '';
-            const caption = el('div', 'lightbox-caption', title || '');
-            overlay.append(img, caption);
+            const panel = el('div', 'lightbox-panel');
+
+            if (thumb.src) {
+                const img = el('img');
+                img.src = thumb.src;
+                img.alt = thumb.name || '';
+                panel.append(img);
+            } else {
+                panel.append(el('div', 'lightbox-noart', 'no on-chain image'));
+            }
+
+            const info = el('div', 'lightbox-info');
+            info.append(el('div', 'lightbox-title', thumb.name || (collection.ticker + ' #' + thumb.id)));
+            info.append(el('div', 'lightbox-sub', (collection.name || collection.ticker) + ' · #' + thumb.id));
+            if (thumb.description) info.append(el('div', 'lightbox-desc', thumb.description));
+
+            if (Array.isArray(thumb.attributes) && thumb.attributes.length) {
+                const grid = el('div', 'lightbox-traits');
+                for (const a of thumb.attributes) {
+                    const type = a?.trait_type ?? a?.traitType ?? '';
+                    const val = a?.value ?? '';
+                    if (String(type) === '' && String(val) === '') continue;
+                    const trait = el('div', 'trait');
+                    trait.append(el('div', 'trait-type', String(type)));
+                    trait.append(el('div', 'trait-val', String(val)));
+                    grid.append(trait);
+                }
+                if (grid.children.length) info.append(grid);
+            }
+
+            const meta = el('div', 'lightbox-meta');
+            const shortAddr = collection.address.slice(0, 6) + '…' + collection.address.slice(-4);
+            if (node?.meta?.explorer) {
+                const link = el('a', 'lightbox-link', shortAddr + ' ↗');
+                link.href = node.meta.explorer + '/token/' + collection.address;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                meta.append(link);
+            } else {
+                meta.append(el('span', null, shortAddr));
+            }
+            info.append(meta);
+            panel.append(info);
+
+            overlay.append(panel);
             overlay.onclick = () => overlay.remove();
+            panel.onclick = (e) => e.stopPropagation(); // keep clicks inside (e.g. the explorer link) from closing
             const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
             document.addEventListener('keydown', onKey);
             document.body.append(overlay);
@@ -1431,11 +1522,15 @@
                 if (thumb.src) {
                     const img = el('img');
                     img.src = thumb.src;
-                    img.title = thumb.title + ' (click to enlarge)';
-                    img.onclick = () => openArt(thumb.src, thumb.title);
+                    img.title = thumb.title + ' (click for details)';
+                    img.onclick = () => openArt(thumb, collection, node);
                     box.append(img);
                 } else {
-                    box.append(el('span', 'more number', thumb.title));
+                    // no on-chain art — still clickable to show any on-chain metadata (name/traits) + token info
+                    const span = el('span', 'more number', thumb.title);
+                    span.title = 'Details';
+                    span.onclick = () => openArt(thumb, collection, node);
+                    box.append(span);
                 }
             }
             // "+N more" / "show less" toggle — keyed off the discovered id count (known at first paint),
@@ -1490,7 +1585,7 @@
                             // then stream the on-chain art in the background (chunked, so a large collection never
                             // hangs on one huge request); each thumb is replaced in place as it arrives. `loading`
                             // is cleared when the stream settles (even on error) so the indicator never sticks.
-                            const thumbs = ids.map((id) => ({ src: null, title: '#' + id }));
+                            const thumbs = ids.map((id) => ({ src: null, title: '#' + id, id: id.toString() }));
                             nftCache.set(key, { count, ids, thumbs, kind, sig, loading: ids.length > 0 });
 
                             // fill in the count cell for ERC-1155 (refreshNode left it blank)
