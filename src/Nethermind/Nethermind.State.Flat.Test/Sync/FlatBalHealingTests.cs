@@ -100,6 +100,34 @@ public class FlatBalHealingTests
     }
 
     [Test]
+    public async Task Heals_when_same_account_storage_changes_across_chunks()
+    {
+        // slot 1 changes in chunk 1 (block 1), slot 2 changes in chunk 2 (block 300). Chunk 2 must build
+        // the storage tree on chunk 1's committed storage root (read via reader.GetAccount from the flat
+        // store), not the stale pre-chunk-1 root — otherwise slot 1's update is lost.
+        SeedInitialState(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x05])]));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 100, slots: [new Slot(1, [0x09]), new Slot(2, [0x07])]));
+
+        BlockHeader firstPivot = Pivot(0, TestItem.KeccakA);
+        BlockHeader lastPivot = firstPivot;
+        for (ulong number = 1; number <= 300; number++)
+        {
+            ReadOnlyBlockAccessList bal = number switch
+            {
+                1 => StorageBal(TestItem.AddressA, 1, 9),
+                300 => StorageBal(TestItem.AddressA, 2, 7),
+                _ => EmptyBal()
+            };
+            lastPivot = SetupBlock(number, number == 300 ? expected : TestItem.KeccakA, bal);
+        }
+
+        bool result = await _healing.Run(firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
+
+        Assert.That(result, Is.True);
+        _syncStore.Received(1).FinalizeSync(lastPivot);
+    }
+
+    [Test]
     public async Task Heals_when_bal_creates_account_with_code()
     {
         byte[] code = [0x60, 0x00, 0x60, 0x00];
@@ -416,4 +444,7 @@ public class FlatBalHealingTests
 
     private static ReadOnlyBlockAccessList BalanceBal(Address address, UInt256 balance) =>
         Bal(Build.An.AccountChanges.WithAddress(address).WithBalanceChanges(new BalanceChange(0, balance)).TestObject);
+
+    private static ReadOnlyBlockAccessList StorageBal(Address address, UInt256 slot, UInt256 value) =>
+        Bal(Build.An.AccountChanges.WithAddress(address).WithStorageChanges(slot, new StorageChange(0, value)).TestObject);
 }
