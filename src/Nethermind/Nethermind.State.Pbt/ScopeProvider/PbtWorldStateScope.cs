@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -18,8 +19,9 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// The read/write surface of one processing branch: flat reads/writes go through the bundle,
 /// while <see cref="UpdateRootHash"/> folds the block's cumulative dirty state into an EIP-8297
 /// tree-key write batch and hands it to <see cref="TrieUpdater"/> for the root. The scope is the
-/// <see cref="IPbtStore"/> the updater reads/writes: reads come from the bundle, writes land in the
-/// per-block overlays that <see cref="Commit"/> seals into the snapshot.
+/// <see cref="IPbtStore"/> the updater reads/writes: both go through the bundle's write buffer, which
+/// shadows the layer chain, so a fold composes on top of any earlier fold this block and
+/// <see cref="Commit"/> seals the accumulated buffer into the snapshot.
 /// </summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
@@ -36,13 +38,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
 
-    // results of the last UpdateRootHash, sealed into the snapshot at commit
-    private readonly Dictionary<Stem, byte[]> _blobOverlay = [];
-    private readonly Dictionary<TrieNodeKey, byte[]?> _nodeOverlay = [];
-
     private StateId _currentStateId;
     private Hash256 _rootHash;
     private bool _rootDirty;
+    private bool _isDisposed;
 
     public PbtWorldStateScope(in StateId currentStateId, PbtSnapshotBundle bundle, IWorldStateScopeProvider.ICodeDb codeDb, IPbtCommitTarget commitTarget, bool isReadOnly)
     {
@@ -79,8 +78,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     /// <summary>
     /// Folds the stems dirtied since the last update into the tree on top of the pre-block state,
-    /// recording the new blobs and nodes in the per-block overlays and flushing the dirty set. A
-    /// repeated call with no intervening writes is a no-op; <see cref="Commit"/> seals the overlays.
+    /// recording the new blobs and nodes in the bundle's write buffer and flushing the dirty set. A
+    /// repeated call with no intervening writes is a no-op; <see cref="Commit"/> seals the buffer.
     /// </summary>
     public void UpdateRootHash()
     {
@@ -91,23 +90,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _rootDirty = false;
     }
 
-    // ---- IPbtStore: the updater reads prior state from the per-block overlays (falling back to the bundle)
-    // and writes new state back into them, so a fold composes on top of any earlier fold this block ----
+    // ---- IPbtStore: the updater's reads and writes both go through the bundle, whose write buffer is
+    // probed ahead of the layer chain, so a fold composes on top of any earlier fold this block ----
 
-    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key) =>
-        _nodeOverlay.TryGetValue(key, out byte[]? node)
-            ? RefCountingMemory.WrappingOrNull(node)
-            : Bundle.GetTrieNode(key);
+    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key) => Bundle.GetTrieNode(key);
 
-    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem) =>
-        _blobOverlay.TryGetValue(stem, out byte[]? blob)
-            ? RefCountingMemory.WrappingOrNull(blob)
-            : Bundle.GetLeafBlob(stem);
+    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem) => Bundle.GetLeafBlob(stem);
 
-    void IPbtStore.SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => _nodeOverlay[key] = node.ToArrayAndRelease();
+    void IPbtStore.SetTrieNode(in TrieNodeKey key, RefCountingMemory? node) => Bundle.SetTrieNode(key, node.ToArrayAndRelease());
 
-    // an emptied stem is overlaid as an empty blob: the tombstone that shadows the bundle's blob
-    void IPbtStore.SetLeafBlob(in Stem stem, RefCountingMemory? blob) => _blobOverlay[stem] = blob.ToArrayAndRelease() ?? [];
+    // an emptied stem is buffered as an empty blob: the tombstone that shadows the layer chain's blob
+    void IPbtStore.SetLeafBlob(in Stem stem, RefCountingMemory? blob) => Bundle.SetLeafBlob(stem, blob.ToArrayAndRelease() ?? []);
 
     public void Commit(ulong blockNumber)
     {
@@ -116,7 +109,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         StateId newStateId = new(blockNumber, _rootHash);
         if (newStateId != _currentStateId)
         {
-            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _blobOverlay, _nodeOverlay);
+            PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId);
             if (_isReadOnly)
             {
                 // read-only scopes keep the layer only in their own bundle; drop the lease that
@@ -131,15 +124,39 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _currentStateId = newStateId;
         }
 
-        // _dirtyStems was already drained (and its maps returned) by UpdateRootHash
+        // _dirtyStems was already drained (and its maps returned) by UpdateRootHash, and the blob and
+        // node results left with the buffer CollectSnapshot sealed
         _pendingCode.Clear();
-        _blobOverlay.Clear();
-        _nodeOverlay.Clear();
         _storages.Clear();
         _rootDirty = false;
     }
 
-    public void Dispose() => Bundle.Dispose();
+    /// <remarks>
+    /// Returns the stem-change maps still held by <see cref="_dirtyStems"/>: a scope abandoned with
+    /// pending writes (an exception mid-block, or a branch dropped before its final
+    /// <see cref="UpdateRootHash"/>) never reaches <see cref="BuildChanges"/>, and the maps would
+    /// otherwise be lost to the GC rather than returned — a silent drain of the shared pool.
+    /// Idempotent, so a double dispose cannot return a map twice.
+    /// </remarks>
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+
+        try
+        {
+            // only maps BuildChanges did not already hand to a write batch are still here: it drains
+            // and clears in one step, so ownership is never held in both places
+            foreach ((_, IPbtStemChanges changes) in _dirtyStems)
+            {
+                PbtStemChanges.Return(changes);
+            }
+        }
+        finally
+        {
+            _dirtyStems.NoLockClear();
+            Bundle.Dispose();
+        }
+    }
 
     /// <summary>
     /// Folds an account's EIP-8297 header leaves straight into <see cref="_dirtyStems"/>: BASIC_DATA,
@@ -151,9 +168,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     private void ApplyAccountHeader(Address address, Account account)
     {
         Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
-        // Set may promote the pooled map to a larger variant and return it, so the returned reference
-        // is captured locally and stored back once all this account's header leaves are folded in.
-        IPbtStemChanges header = _dirtyStems.GetOrAdd(headerStem, static _ => PbtStemChanges.Rent());
 
         // Code (immutable after creation) is only chunked when it was written this block; its hash
         // then identifies the pending bytes. For an unchanged-code account whose balance or nonce
@@ -163,34 +177,54 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
             : !account.HasCode ? 0
             : PriorCodeSize(headerStem);
+        byte[][]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
 
-        Span<byte> basicData = stackalloc byte[32];
-        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-        header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
-        header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
+        // Set may promote the pooled map to a larger variant, returning the old one to the pool, so
+        // this account's leaves accumulate on a local and the store-back happens in the finally:
+        // leaving a promoted-away map in the dictionary would hand a pooled map two owners.
+        IPbtStemChanges header = _dirtyStems.GetOrAdd(headerStem, static _ => PbtStemChanges.Rent());
+        try
+        {
+            Span<byte> basicData = stackalloc byte[32];
+            PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+            header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
+            header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
 
-        if (updatedCode is null)
+            if (chunks is null) return;
+
+            int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
+            for (int i = 0; i < headerChunks; i++)
+            {
+                header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
+            }
+        }
+        finally
         {
             _dirtyStems[headerStem] = header;
-            return;
         }
-
-        byte[][] chunks = PbtKeyDerivation.ChunkifyCode(updatedCode);
-        int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
-        for (int i = 0; i < headerChunks; i++)
-        {
-            header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
-        }
-
-        _dirtyStems[headerStem] = header;
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            IPbtStemChanges overflow = _dirtyStems.GetOrAdd(overflowStem, static _ => PbtStemChanges.Rent());
-            _dirtyStems[overflowStem] = overflow.Set(subIndex, ToLeaf(chunks[i]));
+            SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
         }
+    }
+
+    /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
+    /// <remarks>
+    /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old
+    /// one to the pool, so its result must always be stored back; routing single-leaf writes through
+    /// here makes forgetting that unrepresentable. Safe only while at most one thread writes a given
+    /// stem: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> may
+    /// run the factory and discard its result, which would leak the rented map. That holds because
+    /// <c>PersistentStorageProvider</c> partitions its parallel batches by address, and code-overflow
+    /// stems are reached only from the single-threaded account flush.
+    /// </remarks>
+    private void SetLeaf(in Stem stem, byte subIndex, in ValueHash256 value)
+    {
+        IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
+        _dirtyStems[stem] = changes.Set(subIndex, value);
     }
 
     /// <summary>Drains the dirty stem leaves accumulated since the last root update into a <see cref="PbtWriteBatch"/>.</summary>
@@ -297,8 +331,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             }
 
             // single-writer per stem: this address's storage is flushed by one worker
-            IPbtStemChanges changes = scope._dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
-            scope._dirtyStems[stem] = changes.Set(subIndex, SlotLeaf(word));
+            scope.SetLeaf(stem, subIndex, SlotLeaf(word));
             scope.SetSlot(address, index, word);
         }
 

@@ -56,7 +56,7 @@ public class PbtDbManagerTests
         {
             Assert.That(reopened.Manager.HasStateForBlock(new StateId(3, root3)), Is.True);
             Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root1)), Is.False);
-            Assert.That(reopened.Manager.TryGatherBundle(new StateId(1, root1), isReadOnly: true), Is.Null);
+            Assert.That(reopened.Manager.TryGatherBundle(new StateId(1, root1), PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true), Is.Null);
 
             using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(Header(3, root3), new LocalMetrics());
             Account? account = scope.Get(Address);

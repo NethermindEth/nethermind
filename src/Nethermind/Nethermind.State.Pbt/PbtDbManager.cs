@@ -20,6 +20,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly PbtSnapshotRepository _repository;
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
+    private readonly IPbtResourcePool _resourcePool;
     private readonly ILogger _logger;
     private readonly Channel<bool> _workSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Task _persistenceWorker;
@@ -29,21 +30,23 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtSnapshotRepository repository,
         PbtPersistenceCoordinator coordinator,
         IPbtPersistence persistence,
+        IPbtResourcePool resourcePool,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
         _repository = repository;
         _coordinator = coordinator;
         _persistence = persistence;
+        _resourcePool = resourcePool;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _exitToken = processExitSource.Token;
         _persistenceWorker = Task.Run(RunPersistenceWorker);
     }
 
-    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, bool isReadOnly)
+    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage, bool isReadOnly)
     {
         // the pre-genesis state is empty by definition, whatever is on disk
-        if (stateId == StateId.PreGenesis) return new PbtSnapshotBundle([], EmptyPersistenceReader.Instance, isReadOnly);
+        if (stateId == StateId.PreGenesis) return new PbtSnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _resourcePool, usage, isReadOnly);
 
         // reader first, chain second: if persistence advances in between, the chain walk to the
         // reader's (stale) floor fails and we retry with a fresh reader; leased layers pruned
@@ -51,12 +54,15 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         for (int attempt = 0; attempt < GatherRetryLimit; attempt++)
         {
             IPbtPersistence.IReader reader = _persistence.CreateReader();
-            List<PbtSnapshot> chain = [];
+            PbtSnapshotPooledList chain = new(1);
             if (_repository.TryLeaseChain(stateId, reader.CurrentState, chain))
             {
-                return new PbtSnapshotBundle(chain, reader, isReadOnly);
+                // ownership of the chain and the reader passes to the bundle
+                return new PbtSnapshotBundle(chain, reader, _resourcePool, usage, isReadOnly);
             }
 
+            // a broken walk leaves the partial leases on the chain: disposing it releases them
+            chain.Dispose();
             reader.Dispose();
         }
 

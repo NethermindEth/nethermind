@@ -27,6 +27,7 @@ public class PbtPersistenceCoordinator(
     IFinalizedStateProvider finalizedStateProvider,
     IPbtPersistence persistence,
     PbtSnapshotRepository repository,
+    PbtSnapshotCompactor compactor,
     IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager)
 {
@@ -119,22 +120,17 @@ public class PbtPersistenceCoordinator(
     private bool PersistSegment(in StateId seed)
     {
         StateId persisted = GetCurrentPersistedStateId();
-        List<PbtSnapshot> chain = [];
+        // the using must cover the early return too: the chain rents its backing array before
+        // TryLeaseChain can discover the walk is broken, and CheckPersistence takes this no-op path
+        // on every signal that has nothing to persist
+        using PbtSnapshotPooledList chain = new(1);
         if (!repository.TryLeaseChain(seed, persisted, chain) || chain.Count == 0) return false;
 
-        try
+        using (PbtSnapshot merged = compactor.Compact(chain))
         {
-            using PbtSnapshot merged = PbtSnapshotCompactor.Compact(chain);
             persistenceBarrier.FlushDeferred();
             Persist(merged);
             Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(merged.To));
-        }
-        finally
-        {
-            foreach (PbtSnapshot snapshot in chain)
-            {
-                snapshot.Dispose();
-            }
         }
 
         repository.RemoveStatesUntil(seed.BlockNumber);

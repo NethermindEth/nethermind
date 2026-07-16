@@ -11,15 +11,25 @@ namespace Nethermind.State.Pbt;
 /// Merges a chain of consecutive diff layers into a single layer covering the whole segment,
 /// applied newest-wins so the result is what a bundle walk over the originals would observe.
 /// </summary>
-public static class PbtSnapshotCompactor
+/// <remarks>
+/// The merged layer shares its blob and node arrays with the layers it merged, so it must not outlive
+/// them unless it takes leases of its own.
+/// </remarks>
+public class PbtSnapshotCompactor(IPbtResourcePool resourcePool)
 {
-    /// <param name="chainNewestFirst">Consecutive snapshots, newest first, as produced by <see cref="PbtSnapshotRepository.TryLeaseChain"/>.</param>
-    public static PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainNewestFirst)
+    /// <param name="chainOldestFirst">Consecutive snapshots, oldest first, as produced by <see cref="PbtSnapshotRepository.TryLeaseChain"/>.</param>
+    public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
     {
-        PbtSnapshotContent merged = new();
-        for (int i = chainNewestFirst.Count - 1; i >= 0; i--)
+        // sized by what is actually merged: a segment is also persisted one layer deep on a genesis
+        // flush and up to the reorg depth by the finality-stall backstop, so the configured compact
+        // size would mis-charge the pool on both
+        PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
+        PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
+        // oldest to newest, so a later layer's write overwrites an earlier one: reversing this
+        // inverts precedence and writes stale values to disk without any error
+        for (int i = 0; i < chainOldestFirst.Count; i++)
         {
-            PbtSnapshotContent content = chainNewestFirst[i].Content;
+            PbtSnapshotContent content = chainOldestFirst[i].Content;
 
             foreach ((AddressAsKey address, Account? account) in content.Accounts)
             {
@@ -53,6 +63,6 @@ public static class PbtSnapshotCompactor
             }
         }
 
-        return new PbtSnapshot(chainNewestFirst[^1].From, chainNewestFirst[0].To, merged);
+        return new PbtSnapshot(chainOldestFirst[0].From, chainOldestFirst[^1].To, merged, resourcePool, usage);
     }
 }
