@@ -196,33 +196,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Phase 1: account reads + trie warmup + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                Parallel.ForEach(Partitioner.Create(0, accountCount, AccountReadBatchSize), parallelOptions, range =>
+                void WarmAccountRange(int start, int end)
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    int rangeLength = range.Item2 - range.Item1;
+                    // Accounts are read unconditionally so read-only touches (the BALANCE/EXTCODE*
+                    // pattern) reach the flat caches before execution.
+                    int rangeLength = end - start;
                     Address[] addressesToRead = new Address[rangeLength];
-                    int[] addressIndices = new int[rangeLength];
-                    int addressCount = 0;
-                    for (int i = range.Item1; i < range.Item2; i++)
-                    {
-                        ReadOnlyAccountChanges accountChange = accountChanges[i];
-                        if (sink is null && accountChange.StorageChanges.Length == 0) continue;
+                    for (int i = 0; i < rangeLength; i++)
+                        addressesToRead[i] = accountChanges[start + i].Address;
 
-                        addressesToRead[addressCount] = accountChange.Address;
-                        addressIndices[addressCount] = i;
-                        addressCount++;
-                    }
+                    _snapshotBundle.GetAccounts(addressesToRead, loadedAccounts.AsSpan(start, rangeLength));
 
-                    if (addressCount > 0)
-                    {
-                        Account?[] batchAccounts = new Account?[addressCount];
-                        _snapshotBundle.GetAccounts(addressesToRead.AsSpan(0, addressCount), batchAccounts);
-                        for (int i = 0; i < addressCount; i++)
-                            loadedAccounts[addressIndices[i]] = batchAccounts[i];
-                    }
-
-                    for (int i = range.Item1; i < range.Item2; i++)
+                    for (int i = start; i < end; i++)
                     {
                         if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
@@ -272,7 +259,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
                         }
                     }
-                });
+                }
+
+                // The shared ThreadPool is saturated by the parallel EVM executor
+                // during newPayload, so Parallel.ForEach here gets starved exactly when
+                // warmup matters. The dedicated reader pool is idle at that point.
+                if (_warmReadPool is not null)
+                {
+                    WarmReadPool pool = _warmReadPool.Value;
+                    int batchCount = (accountCount + AccountReadBatchSize - 1) / AccountReadBatchSize;
+                    int workers = Math.Min(batchCount, Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64)));
+                    pool.Run(batchCount, workers, batchIndex => WarmAccountRange(
+                        batchIndex * AccountReadBatchSize,
+                        Math.Min((batchIndex + 1) * AccountReadBatchSize, accountCount)), token);
+                }
+                else
+                {
+                    Parallel.ForEach(Partitioner.Create(0, accountCount, AccountReadBatchSize), parallelOptions,
+                        range => WarmAccountRange(range.Item1, range.Item2));
+                }
 
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
