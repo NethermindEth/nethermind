@@ -30,6 +30,40 @@ public class PbtDbManagerTests
 
     private static BlockHeader Header(ulong number, Hash256 root) => Build.A.BlockHeader.WithNumber(number).WithStateRoot(root).TestObject;
 
+    /// <summary>
+    /// Every scope at one state assembles the same immutable view, so it is shared rather than
+    /// rebuilt — gathering is on the hot path of every RPC read. A shared view is only safe to hand
+    /// out because it is immutable; what it must not do is outlive the layers it pins, so a sweep at
+    /// the persistence boundary releases it while a scope still reading keeps its own lease.
+    /// </summary>
+    [Test]
+    public async Task ReadOnlyBundle_IsSharedPerState_UntilTheBoundarySweepReleasesIt()
+    {
+        await using PbtTestContext ctx = new();
+        Hash256 root1;
+        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+        {
+            root1 = CommitBlock(scope, 1, 100);
+        }
+
+        StateId state = new(1, root1);
+        IPbtDbManager manager = ctx.Manager;
+        PbtReadOnlySnapshotBundle first = manager.GatherReadOnlyBundle(state);
+        PbtReadOnlySnapshotBundle second = manager.GatherReadOnlyBundle(state);
+        Assert.That(second, Is.SameAs(first), "one state, one shared view");
+
+        // a gather still holding a lease keeps reading after the sweep drops the cache's
+        ctx.Manager.FlushCache(default);
+        Assert.That(first.GetAccount(Address)!.Balance, Is.EqualTo((UInt256)100));
+
+        PbtReadOnlySnapshotBundle afterSweep = manager.GatherReadOnlyBundle(state);
+        Assert.That(afterSweep, Is.Not.SameAs(first), "the swept view is not handed out again");
+
+        first.Dispose();
+        second.Dispose();
+        afterSweep.Dispose();
+    }
+
     [Test]
     public async Task CommitFlushReopen_ServesPersistedState_AndPrunesHistory()
     {

@@ -42,11 +42,11 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, new PbtSnapshotCompactor(ResourcePool), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool), CodeDb);
+        WorldStateManager = new PbtWorldStateManager(Manager, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool), CodeDb);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false) =>
-        new(CodeDb, Manager, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly);
+        new(CodeDb, Manager, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly);
 
     public async ValueTask DisposeAsync()
     {

@@ -58,14 +58,18 @@ public class PbtPersistenceCoordinator(
     }
 
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
-    public void CheckPersistence()
+    /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>
+    public bool CheckPersistence()
     {
         lock (_persistenceLock)
         {
             const int maxDrainIterations = 4;
-            for (int i = 0; i < maxDrainIterations && TryPersistOneSegment(); i++)
+            int persisted = 0;
+            for (; persisted < maxDrainIterations && TryPersistOneSegment(); persisted++)
             {
             }
+
+            return persisted > 0;
         }
     }
 

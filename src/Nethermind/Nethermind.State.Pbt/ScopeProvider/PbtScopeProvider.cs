@@ -7,7 +7,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-public class PbtScopeProvider(IDb codeDb, IPbtDbManager manager, PbtResourcePool.Usage usage, bool isReadOnly) : IWorldStateScopeProvider
+public class PbtScopeProvider(IDb codeDb, IPbtDbManager manager, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, bool isReadOnly) : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
 
@@ -16,6 +16,6 @@ public class PbtScopeProvider(IDb codeDb, IPbtDbManager manager, PbtResourcePool
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId stateId = new(baseBlock);
-        return new PbtWorldStateScope(stateId, manager.GatherBundle(stateId, usage), _codeDb, manager, isReadOnly);
+        return new PbtWorldStateScope(stateId, manager.GatherBundle(stateId, usage), _codeDb, manager, resourcePool, usage, isReadOnly);
     }
 }

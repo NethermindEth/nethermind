@@ -101,7 +101,7 @@ public class PbtScopeProviderBenchmark
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
             repository, coordinator, persistence, resourcePool, new BenchProcessExitSource(_cts), LimboLogs.Instance);
-        return new PbtScopeProvider(new MemDb(), _pbtManager, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
+        return new PbtScopeProvider(new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
     }
 
     private static IWorldStateScopeProvider CreateTrieProvider() =>

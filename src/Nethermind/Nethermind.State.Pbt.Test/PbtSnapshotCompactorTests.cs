@@ -99,6 +99,35 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.Content.SelfDestructs.ContainsKey(destroyed), "the marker is kept so persistence still range-deletes the on-disk storage");
     }
 
+    /// <summary>
+    /// When an address is destroyed more than once, only the newest destruct counts: a slot written
+    /// between the two is wiped by the later one, and only writes at or after it survive. The merge
+    /// filters against that boundary rather than replaying each destruct, so the boundary has to be
+    /// the last one, not the first.
+    /// </summary>
+    [Test]
+    public void Compact_SelfDestructedTwice_KeepsOnlySlotsFromTheLastDestructOnwards()
+    {
+        Address destroyed = TestItem.AddressA;
+
+        PbtSnapshotContent first = new();
+        first.SelfDestructs[destroyed] = true;
+        first.Slots[(destroyed, (UInt256)1)] = Word(0x11);   // survives the first destruct...
+
+        PbtSnapshotContent second = new();
+        second.Slots[(destroyed, (UInt256)2)] = Word(0x22);  // ...as does this, until
+
+        PbtSnapshotContent third = new();
+        third.SelfDestructs[destroyed] = true;               // the second destruct wipes both
+        third.Slots[(destroyed, (UInt256)3)] = Word(0x33);
+
+        using PbtSnapshot merged = Compact(first, second, third);
+
+        Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)1)), Is.False);
+        Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)2)), Is.False);
+        Assert.That(merged.Content.Slots[(destroyed, (UInt256)3)], Is.EqualTo(Word(0x33)));
+    }
+
     /// <summary>The merged layer's content is rented for the width actually merged, and returns there.</summary>
     [Test]
     public void Compact_ReturnsTheMergedContent_ToTheSizeClassOfTheMergedWidth()
@@ -122,11 +151,15 @@ public class PbtSnapshotCompactorTests
     public void CompactUsage_RoundsTheMergedWidthUpToItsSizeClass(int mergedLayerCount, PbtResourcePool.Usage expected) =>
         Assert.That(PbtResourcePool.CompactUsage(mergedLayerCount), Is.EqualTo(expected));
 
-    private PbtSnapshot Compact(PbtSnapshotContent older, PbtSnapshotContent newer)
+    /// <summary>Compacts <paramref name="layers"/> as consecutive blocks, oldest first.</summary>
+    private PbtSnapshot Compact(params PbtSnapshotContent[] layers)
     {
-        using PbtSnapshotPooledList chain = new(2);
-        chain.Add(new PbtSnapshot(State(1), State(2), older, _pool, PbtResourcePool.Usage.MainBlockProcessing));
-        chain.Add(new PbtSnapshot(State(2), State(3), newer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+        using PbtSnapshotPooledList chain = new(layers.Length);
+        for (int i = 0; i < layers.Length; i++)
+        {
+            chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
+        }
+
         return new PbtSnapshotCompactor(_pool).Compact(chain);
     }
 
