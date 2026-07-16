@@ -352,8 +352,10 @@
         .lightbox-traits .trait-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lightbox-traits .trait-val { font-size: 12px; color: var(--c-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lightbox-meta { font-size: 11px; font-family: 'DM Mono', ui-monospace, monospace; margin-top: 2px; }
-        .lightbox-copy { color: var(--accent); cursor: pointer; width: fit-content; }
+        .lightbox-meta { display: flex; align-items: center; gap: 8px; }
+        .lightbox-copy { color: var(--accent); cursor: pointer; }
         .lightbox-copy:hover { text-decoration: underline; }
+        .art-source { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -1551,13 +1553,17 @@
                     if (murl && !murl.startsWith('data:')) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
                 }
                 const name = typeof metadata?.name === 'string' ? metadata.name : null;
+                const image = typeof metadata?.image === 'string' ? metadata.image : null;
                 // on-chain (data:) art always resolves; off-chain art only via an enabled source
-                const src = typeof metadata?.image === 'string' ? resolveArtUri(metadata.image) : null;
+                const src = image ? resolveArtUri(image) : null;
+                // where the art lives, for the lightbox badge (independent of whether it loaded)
+                const source = !image ? null : image.startsWith('data:') ? 'on-chain' : ipfsPath(image) ? 'IPFS' : /^https?:\/\//i.test(image) ? 'HTTPS' : null;
                 // carry the metadata (name / description / traits) so the lightbox can show it even when the art
-                // is off-chain (and IPFS is off) or absent
+                // is off-chain (and its source is off) or absent
                 return {
                     id: id.toString(),
                     src,
+                    source,
                     title: src ? (name || collection.ticker + ' #' + id) : '#' + id,
                     name,
                     description: typeof metadata?.description === 'string' ? metadata.description : null,
@@ -1606,10 +1612,13 @@
                 if (grid.children.length) info.append(grid);
             }
 
+            const meta = el('div', 'lightbox-meta');
             const shortAddr = collection.address.slice(0, 6) + '…' + collection.address.slice(-4);
-            const meta = el('div', 'lightbox-meta lightbox-copy', shortAddr);
-            meta.title = 'Copy contract address';
-            meta.onclick = () => copyAddress(collection.address);
+            const copy = el('span', 'lightbox-copy', shortAddr);
+            copy.title = 'Copy contract address';
+            copy.onclick = () => copyAddress(collection.address);
+            meta.append(copy);
+            if (thumb.source) meta.append(el('span', 'art-source', thumb.source)); // on-chain / IPFS / HTTPS
             info.append(meta);
             panel.append(info);
 
@@ -1699,6 +1708,7 @@
                             // is cleared when the stream settles (even on error) so the indicator never sticks.
                             const thumbs = ids.map((id) => ({ src: null, title: '#' + id, id: id.toString() }));
                             nftCache.set(key, { count, ids, thumbs, kind, sig, loading: ids.length > 0 });
+                            if (ids.length) updateScanIndicators(); // keep the account spinner up while art streams
 
                             // fill in the count cell for ERC-1155 (refreshNode left it blank)
                             if (kind === 'erc1155') {
@@ -1729,6 +1739,7 @@
                                         c.loading = false;
                                         const b = document.querySelector(`[data-thumbs="${key}"]`);
                                         if (b) fillThumbs(b, c, node, entry.address, collection);
+                                        updateScanIndicators(); // art finished — drop the spinner if nothing else is loading
                                     }
                                 })();
                             }
@@ -2219,16 +2230,27 @@
             } finally { nodeDetectBusy = false; }
         }
 
-        // drive each account card's history-scan indicator from scanState / detectionCancelled (tri-state:
-        // spinning while scanning, a static "paused" dot when cancelled, hidden when complete/idle)
+        // whether any NFT collection for this address is still streaming art (so the spinner keeps showing
+        // while new NFTs / thumbnails pop in after the token scan itself has finished)
+        function nftLoadingFor(addrLower) {
+            for (const [key, c] of nftCache) {
+                if (c && c.loading && key.split('|')[0].toLowerCase() === addrLower) return true;
+            }
+            return false;
+        }
+
+        // drive each account card's activity indicator: spinning while its history is being scanned OR its NFT
+        // art is still loading, a static "paused" glyph when the scan is cancelled, hidden when idle/complete
         function updateScanIndicators() {
             for (const el of document.querySelectorAll('[data-scan]')) {
                 const addr = el.dataset.scan;
                 const st = scanState.get(addr);
+                const nftLoading = nftLoadingFor(addr);
                 const paused = detectionCancelled.has(addr);
-                el.classList.toggle('active', !!st);
-                el.classList.toggle('paused', !st && paused);
+                el.classList.toggle('active', !!st || nftLoading);
+                el.classList.toggle('paused', !st && !nftLoading && paused);
                 el.title = st ? `Scanning history… ${st.pct}% — click to pause`
+                    : nftLoading ? 'Loading NFT art…'
                     : paused ? 'Scan paused — click to resume' : '';
             }
         }
@@ -3214,7 +3236,7 @@
                     const line = el('div', 'node-line');
                     line.append(document.createTextNode(name + ' · :' + port + ' — '));
                     const a = el('a', null, 'open ↗');
-                    a.href = '//' + location.hostname + ':' + port + '/balances';
+                    a.href = '//' + location.hostname + ':' + port + '/'; // node's main page (not the balance viewer)
                     a.target = '_blank';
                     a.rel = 'noopener noreferrer';
                     line.append(a);
