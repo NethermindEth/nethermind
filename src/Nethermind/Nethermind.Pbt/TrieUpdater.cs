@@ -236,7 +236,18 @@ public static class TrieUpdater
                 return hoisted;
             }
 
-            return RebuildGroup(key, results, existing, occupied, stems, changedMask, before, out changed);
+            (NodeRef root, RefCountingMemory memory) = RebuildGroup(results, existing, occupied, stems, changedMask);
+            PbtTrieNodeGroup.Slot rebuilt = PbtTrieNodeGroup.SlotAt(memory.GetSpan(), root.Kind, root.Offset);
+
+            // Unchanged root => the encoding is byte-identical to what is stored (an internal root
+            // whose hash matches implies the group already existed); skip the rewrite.
+            changed = rebuilt.NodeHash() != before.NodeHash();
+
+            // Copy the root back out before the buffer leaves our hands: the write takes the lease with it.
+            ValueSlot rebuiltRoot = rebuilt.ToValue();
+            if (changed) store.SetTrieNode(key, memory);
+            else ((IDisposable)memory).Dispose();
+            return rebuiltRoot;
         }
 
         /// <summary>
@@ -256,13 +267,16 @@ public static class TrieUpdater
             : NodeKind.Internal;
 
         /// <summary>
-        /// Rebuilds the group at <paramref name="key"/> straight into its encoding and writes it,
-        /// unless the writes leave its root identical to <paramref name="before"/>, and returns the
-        /// node now occupying the group's root position.
+        /// Rebuilds a group's sixteen boundary <paramref name="results"/> straight into a fresh
+        /// encoding of the group.
         /// </summary>
-        private ValueSlot RebuildGroup(
-            in TrieNodeKey key, ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing,
-            uint occupied, uint stems, uint changedMask, in ValueSlot before, out bool changed)
+        /// <returns>
+        /// The encoding, and its root node as an offset into it — for the caller to read back and
+        /// then either store or drop, whichever its root turns out to call for. The caller takes the
+        /// lease on the memory with it.
+        /// </returns>
+        private (NodeRef Root, RefCountingMemory Memory) RebuildGroup(
+            ReadOnlySpan<ValueSlot> results, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask)
         {
             (uint presence, uint stemMask) = PredictShape(occupied, stems, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
@@ -272,15 +286,7 @@ public static class TrieUpdater
             int length = rebuild.Finish();
             Debug.Assert(length == memory.GetSpan().Length, "the predicted shape must size the fold's encoding exactly");
 
-            // Unchanged root => the encoding is byte-identical to what is stored (an internal root
-            // whose hash matches implies the group already existed); skip the rewrite.
-            changed = rebuild.Resolve(root) != before.NodeHash();
-
-            // Copy the root back out before the buffer leaves our hands: the write takes the lease with it.
-            ValueSlot slot = rebuild.SlotAt(root).ToValue();
-            if (changed) store.SetTrieNode(key, memory);
-            else ((IDisposable)memory).Dispose();
-            return slot;
+            return (root, memory);
         }
 
         /// <summary>
@@ -384,10 +390,7 @@ public static class TrieUpdater
             }
 
             /// <summary>The hash <paramref name="node"/> contributes to its parent.</summary>
-            public readonly ValueHash256 Resolve(in NodeRef node) => SlotAt(node).NodeHash();
-
-            /// <summary>Reads <paramref name="node"/> back out of the blob.</summary>
-            public readonly PbtTrieNodeGroup.Slot SlotAt(in NodeRef node) => _builder.SlotAt(node.Kind, node.Offset);
+            public readonly ValueHash256 Resolve(in NodeRef node) => _builder.SlotAt(node.Kind, node.Offset).NodeHash();
 
             /// <inheritdoc cref="PbtTrieNodeGroup.Builder.Finish"/>
             public readonly int Finish() => _builder.Finish();
