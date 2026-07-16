@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
@@ -29,7 +30,7 @@ public class StemTrieTests
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        PbtTreeHarness harness = new();
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
 
         // single stem: one root group holding just the stem
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA)]);
@@ -70,7 +71,7 @@ public class StemTrieTests
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
         byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
 
-        PbtTreeHarness harness = new();
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA), (keyB, valueB), (keyC, valueC)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB), (keyC, valueC)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(6));
@@ -101,7 +102,7 @@ public class StemTrieTests
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        PbtTreeHarness harness = new();
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
 
         // deleting absent keys across both root buckets leaves the tree empty
         ValueHash256 root = harness.ApplyBatch([([.. stemA, 5], null), ([.. stemB, 9], null)]);
@@ -138,7 +139,7 @@ public class StemTrieTests
             }
         }
 
-        PbtTreeHarness harness = new();
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
         Dictionary<string, byte[]> model = [];
         for (int batch = 0; batch < 5; batch++)
         {
@@ -212,11 +213,82 @@ public class StemTrieTests
             model[key.ToHexString()] = value;
         }
 
-        PbtTreeHarness harness = new();
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
         ValueHash256 root = harness.ApplyBatch(writes);
         Assert.That(root, Is.EqualTo(ReferenceRoot(ModelEntries(model))));
 
         AssertStoreMatchesFreshRebuild(harness, ModelEntries(model));
+    }
+
+    /// <summary>
+    /// Every buffer the updater rents is released, whichever way the descent settles a group: the
+    /// ones handed to the store are released by the store, the rest by the updater. A leak would
+    /// silently starve the array pool, and an over-release would hand one buffer to two owners.
+    /// </summary>
+    [Test]
+    public void UpdateRoot_BalancesTheLeasesOnEveryBufferItRents()
+    {
+        byte[] stemA = new byte[31];
+        byte[] stemB = new byte[31];
+        stemB[20] = 0x01; // diverges deep, so the split relocates across several group boundaries
+        byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        TrackingMemoryProvider provider = new();
+        PbtTreeHarness harness = new(provider);
+
+        // each batch settles groups by a different path: fresh groups, an unchanged rebuild that is
+        // dropped rather than written, a split that rewrites the chain, and a delete that removes
+        // groups and hoists the survivor back up
+        harness.ApplyBatch([([.. stemA, 5], valueA)]);
+        harness.ApplyBatch([([.. stemA, 5], valueA)]);
+        harness.ApplyBatch([([.. stemB, 7], valueB)]);
+        harness.ApplyBatch([([.. stemA, 5], null)]);
+
+        Assert.That(provider.RentedCount, Is.Not.Zero, "the batches must have rented something to check");
+        Assert.That(provider.UnreleasedCount, Is.Zero, "every rented buffer must end up fully released");
+    }
+
+    /// <summary>
+    /// Hands out pooled memory and keeps a handle on each buffer, so a test can check the updater
+    /// balanced its leases: a fully released buffer refuses a fresh lease, an outstanding one takes it.
+    /// </summary>
+    private sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
+    {
+        private readonly List<RefCountingMemory> _rented = [];
+
+        public int RentedCount => _rented.Count;
+
+        public int UnreleasedCount
+        {
+            get
+            {
+                int unreleased = 0;
+                foreach (RefCountingMemory memory in _rented)
+                {
+                    try
+                    {
+                        memory.AcquireLease();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        continue; // refused: fully released, which is what we want to see
+                    }
+
+                    ((IDisposable)memory).Dispose();
+                    unreleased++;
+                }
+
+                return unreleased;
+            }
+        }
+
+        public RefCountingMemory Rent(int length)
+        {
+            RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
+            _rented.Add(memory);
+            return memory;
+        }
     }
 
     /// <summary>
@@ -225,7 +297,7 @@ public class StemTrieTests
     /// </summary>
     private static void AssertStoreMatchesFreshRebuild(PbtTreeHarness harness, IEnumerable<(byte[] Key, byte[]? Value)> survivingEntries)
     {
-        PbtTreeHarness fresh = new();
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance);
         fresh.ApplyBatch(survivingEntries);
         Assert.That(harness.Nodes, Has.Count.EqualTo(fresh.Nodes.Count));
         foreach ((TrieNodeKey key, byte[] expected) in fresh.Nodes)
