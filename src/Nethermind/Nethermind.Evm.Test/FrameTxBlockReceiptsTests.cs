@@ -94,6 +94,8 @@ public class FrameTxBlockReceiptsTests
         Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must be the union of frame logs");
         Assert.That(receipt.GasUsed, Is.GreaterThanOrEqualTo((long)Eip8141Constants.IntrinsicGasCost),
             "spec gas includes the frame tx intrinsic cost");
+        Assert.That(block.Header.GasUsed, Is.EqualTo(receipt.GasUsedTotal),
+            "block header GasUsed must equal the cumulative receipt gas (production/processing parity)");
 
         // The frame-aware wire encoding must produce a computable receipts root.
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
