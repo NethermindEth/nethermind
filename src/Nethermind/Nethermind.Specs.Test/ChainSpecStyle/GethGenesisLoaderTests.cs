@@ -232,6 +232,18 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Can_load_genesis_with_bogota_time()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 15");
+
+        Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15));
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(14)).IsEip8141Enabled, Is.False);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(15)).IsEip8141Enabled, Is.True);
+    }
+
+    [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");
