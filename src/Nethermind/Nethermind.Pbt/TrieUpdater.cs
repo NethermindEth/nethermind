@@ -128,9 +128,9 @@ public static class TrieUpdater
         /// <summary>
         /// Applies <paramref name="entries"/> to a subtree with no stored group at <paramref name="key"/>:
         /// either empty, or holding a single stem <paramref name="pushed"/> down from the parent's
-        /// boundary slot. When the range reaches the shortest prefix no other stem shares it folds that
-        /// stem in place without descending; otherwise the pushed stem and the writes are routed on down
-        /// together.
+        /// boundary slot. A range holding one uncontended stem has reached the shortest prefix no other
+        /// stem shares, so that stem's node is built here, out of its leaf blob, without descending;
+        /// otherwise the pushed stem and the writes are routed on down together.
         /// </summary>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
         private NodeResult ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in ValueSlot pushed, out bool changed)
@@ -139,20 +139,23 @@ public static class TrieUpdater
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
             Debug.Assert(pushed.Kind != NodeKind.Internal);
 
-            // The shortest-unique-prefix fold: a lone write that no pushed stem contends — either none
-            // was pushed (an empty subtree, or the updated stem relocating in) or the same stem is
-            // re-folding in place — folds its leaf blob here, without descending, for an enclosing
-            // rebuild to place at its shortest unique prefix (default when the stem emptied). Multiple
-            // writes, or a *different* pushed stem — which diverges from the write further down and
-            // would be dropped if folded here — are routed deeper instead. This also serves depth 248,
-            // where every remaining range is necessarily a single stem.
+            // A lone write whose stem nothing else contends — either nothing was pushed down here (an
+            // empty subtree, or this very stem relocating in) or what was pushed is that same stem,
+            // updating in place. Its writes go into its leaf blob, that blob merkelizes to a subtree
+            // root, and stem + root is the whole of its stem node: it is built here and handed up for
+            // an enclosing rebuild to place at its shortest unique prefix, so nothing below needs
+            // walking. A *different* pushed stem does contend — it diverges from this write somewhere
+            // further down and would be dropped if the node were built here — so that case, and any
+            // batch of several writes, routes deeper instead. This also serves depth 248, where every
+            // remaining range is necessarily a single stem.
             Stem stem = entries[0].Stem;
             if (entries.Length == 1 && (pushed.Kind == NodeKind.Absent || pushed.Stem == stem))
             {
+                // a blob left with no leaves deletes its stem, so the node goes absent rather than up
                 bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
-                ValueSlot folded = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
-                changed = folded.NodeHash() != pushed.NodeHash();
-                return new NodeResult(folded);
+                ValueSlot stemNode = isEmpty ? default : PbtTrieNodeGroup.StemSlot(stem, subtreeRoot);
+                changed = stemNode.NodeHash() != pushed.NodeHash();
+                return new NodeResult(stemNode);
             }
 
             Debug.Assert(depth <= PbtTrieNodeGroup.MaxGroupDepth);
