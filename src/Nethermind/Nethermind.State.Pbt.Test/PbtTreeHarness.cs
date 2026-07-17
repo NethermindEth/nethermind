@@ -15,12 +15,19 @@ namespace Nethermind.State.Pbt.Test;
 /// key/value writes are packed into a <see cref="PbtWriteBatch"/> and applied over dictionary-backed
 /// node/blob stores that persist across batches.
 /// </summary>
-public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : IPbtStore
+/// <param name="writeFormat">
+/// Which encoding the batches write; settable through <see cref="WriteFormat"/> so that one store can
+/// be driven across a format switch, as a node whose configuration changed does.
+/// </param>
+public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat) : IPbtStore
 {
     private readonly Dictionary<TrieNodeKey, byte[]> _nodes = [];
     private readonly Dictionary<Stem, byte[]> _blobs = [];
     private readonly List<RefCountingMemory> _handedOut = [];
     private ValueHash256 _root;
+
+    /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
+    public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
 
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
@@ -71,7 +78,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat);
         return _root;
     }
 
@@ -94,7 +101,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
         }
 
         using PbtWriteBatch batch = builder.DrainToWriteBatch();
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat);
         return _root;
     }
 }

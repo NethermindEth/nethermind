@@ -8,6 +8,27 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
+/// <summary>Which levels of a <see cref="PbtTrieNodeGroup"/> an encoding stores internal nodes for; the leading byte of every non-empty encoding.</summary>
+/// <remarks>
+/// Both encodings describe the same trie and fold to the same root — they differ only in how much of
+/// the fold they write down — so a store may hold either at any key, and a group converts only when a
+/// change rewrites it. The values are disjoint from <see cref="PbtNodeChain"/>'s, which is what
+/// discriminates a group from a run in the store.
+/// </remarks>
+public enum PbtGroupFormat : byte
+{
+    /// <summary>Every level of the tile, the original encoding.</summary>
+    EveryLevel = 0x01,
+
+    /// <summary>
+    /// Only the even group-relative levels (0, 2 and the boundary), skipping the internal nodes of
+    /// levels 1 and 3 — a kept node's stored children are its grandchildren. A skipped node's hash is
+    /// folded from its children wherever it is needed, so nothing about the trie is lost. Stem nodes
+    /// are stored wherever they land, skipped level or not.
+    /// </summary>
+    Interleaved = 0x03,
+}
+
 /// <summary>
 /// One 4-level tile of the stem trie: 31 post-order positions (16 boundary slots and 15 inner
 /// positions), each absent, an internal node holding its cached hash (for a boundary slot, the
@@ -28,6 +49,13 @@ namespace Nethermind.Pbt;
 /// The header counts stems twice over, and means a different thing by each: the stem bitmap says
 /// which of <em>this tile's</em> positions hold a stem node, while <see cref="Stats"/> counts the
 /// stems of the <em>whole subtree</em>, the ones below this group's child groups included.
+/// </para>
+/// <para>
+/// A <see cref="PbtGroupFormat.Interleaved"/> group stores no internal node at an odd group-relative level,
+/// folding those hashes on demand instead; see <see cref="PbtGroupFormat"/>. Only the fold reads them, so a
+/// node there reads as <see cref="NodeKind.Absent"/> from the outside though the trie holds one —
+/// see <see cref="KindAt"/>. A stem is stored wherever its shortest unique prefix falls, skipped
+/// level or not, so the bitmaps still pin the entries exactly.
 /// </para>
 /// </remarks>
 public readonly ref struct PbtTrieNodeGroup
@@ -135,9 +163,6 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
     public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
 
-    /// <summary>Version sentinel heading every non-empty encoding, validated on decode.</summary>
-    private const byte FormatByte = 0x01;
-
     private const int PresenceOffset = sizeof(byte);
     private const int StemsOffset = PresenceOffset + sizeof(uint);
     private const int StatsOffset = StemsOffset + sizeof(uint);
@@ -158,19 +183,50 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
 
+    /// <summary>
+    /// Bit set at each position <see cref="PbtGroupFormat.Interleaved"/> stores no internal node at: the odd
+    /// group-relative levels, 14 and 29 (level 1) and 2, 5, 9, 12, 17, 20, 24 and 27 (level 3).
+    /// </summary>
+    /// <remarks>
+    /// A position's level follows from the boundary slots its subtree covers — 16 at the root, then 8,
+    /// 4, 2 and 1 at the boundary — so the levels alternate with the width halving, and
+    /// <see cref="StoresInternalAtWidth"/> says the same thing by width where a walk has one to hand.
+    /// Disjoint from <see cref="BoundaryPositionsMask"/>: a boundary slot is a level of its own.
+    /// </remarks>
+    private const uint SkippedPositionsMask = 0x29125224u;
+
+    /// <summary>The widths whose level <see cref="PbtGroupFormat.Interleaved"/> stores an internal node at: 16, 4 and 1.</summary>
+    private const int KeptWidths = 0b10101;
+
+    /// <summary>Whether <paramref name="format"/> stores no internal node at <paramref name="position"/>.</summary>
+    /// <remarks>A stem node is stored at every position; only an internal node's hash is recomputable.</remarks>
+    public static bool IsSkippedPosition(PbtGroupFormat format, int position) =>
+        format == PbtGroupFormat.Interleaved && (SkippedPositionsMask & (1u << position)) != 0;
+
+    /// <summary>
+    /// Whether <paramref name="format"/> stores an internal node at the position whose subtree covers
+    /// <paramref name="width"/> boundary slots.
+    /// </summary>
+    public static bool StoresInternalAtWidth(PbtGroupFormat format, int width) =>
+        format == PbtGroupFormat.EveryLevel || (width & KeptWidths) != 0;
+
     private readonly ReadOnlySpan<byte> _data;
     private readonly uint _presence;
     private readonly uint _stems;
 
-    private PbtTrieNodeGroup(ReadOnlySpan<byte> data, uint presence, uint stems)
+    private PbtTrieNodeGroup(ReadOnlySpan<byte> data, PbtGroupFormat format, uint presence, uint stems)
     {
         _data = data;
+        Format = format;
         _presence = presence;
         _stems = stems;
     }
 
     /// <summary>True for the default group, the absence sentinel; a stored group is never empty.</summary>
     public bool IsEmpty => _data.IsEmpty;
+
+    /// <summary>Which encoding this group is in; meaningless for the empty group, which is neither.</summary>
+    public PbtGroupFormat Format { get; }
 
     /// <summary>
     /// What the subtree rooted at this group amounts to; the empty group's, an absent subtree's, is
@@ -195,6 +251,13 @@ public readonly ref struct PbtTrieNodeGroup
     }
 
     /// <summary>The kind of the node at <paramref name="position"/>.</summary>
+    /// <remarks>
+    /// This is the kind the <em>encoding</em> holds, which for a <see cref="PbtGroupFormat.Interleaved"/>
+    /// group is not quite the kind the trie holds: an internal node at a skipped level has no entry
+    /// and reads as <see cref="NodeKind.Absent"/>, though the trie has a node there. Only its hash is
+    /// recoverable, by folding its two children — which is what the rebuild does, and why nothing
+    /// else asks about an inner position.
+    /// </remarks>
     /// <param name="position"><inheritdoc cref="this[int]" path="/param[@name='position']"/></param>
     public NodeKind KindAt(int position)
     {
@@ -290,7 +353,12 @@ public readonly ref struct PbtTrieNodeGroup
     public static PbtTrieNodeGroup Decode(ReadOnlySpan<byte> data)
     {
         if (data.Length < HeaderLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
-        if (data[0] != FormatByte) throw new InvalidDataException($"Trie node group: unexpected format byte 0x{data[0]:x2}");
+
+        PbtGroupFormat format = (PbtGroupFormat)data[0];
+        if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved))
+        {
+            throw new InvalidDataException($"Trie node group: unexpected format byte 0x{data[0]:x2}");
+        }
 
         uint presence = BinaryPrimitives.ReadUInt32LittleEndian(data[PresenceOffset..]);
         uint stems = BinaryPrimitives.ReadUInt32LittleEndian(data[StemsOffset..]);
@@ -299,13 +367,20 @@ public readonly ref struct PbtTrieNodeGroup
             throw new InvalidDataException("Invalid trie node group bitmaps");
         }
 
+        // An interleaved group folds its odd levels' internal nodes rather than storing them, so a
+        // present skipped position is a stem — the one node nothing recomputes.
+        if (format == PbtGroupFormat.Interleaved && (presence & SkippedPositionsMask & ~stems) != 0)
+        {
+            throw new InvalidDataException("Interleaved trie node group holds an internal node at a skipped level");
+        }
+
         int expectedLength = EncodedLength(presence, stems);
         if (data.Length != expectedLength)
         {
             throw new InvalidDataException($"Trie node group length {data.Length} does not match its bitmaps (expected {expectedLength})");
         }
 
-        return new PbtTrieNodeGroup(data, presence, stems);
+        return new PbtTrieNodeGroup(data, format, presence, stems);
     }
 
     /// <summary>
@@ -320,9 +395,10 @@ public readonly ref struct PbtTrieNodeGroup
     /// offset, so a producer can read a node back through <see cref="SlotAt"/> instead of carrying
     /// hashes up its walk by value.
     /// </remarks>
-    public ref struct Builder(Span<byte> destination)
+    public ref struct Builder(Span<byte> destination, PbtGroupFormat format)
     {
         private readonly Span<byte> _destination = destination;
+        private readonly PbtGroupFormat _format = format;
         private uint _presence;
         private uint _stems;
         private int _offset = HeaderLength;
@@ -331,6 +407,7 @@ public readonly ref struct PbtTrieNodeGroup
         public int AppendInternal(int position, in ValueHash256 hash)
         {
             Debug.Assert(hash != default, "internal nodes never cache a zero hash");
+            Debug.Assert(!IsSkippedPosition(_format, position), "an interleaved group stores no internal node at a skipped level");
             MarkPresent(position);
             return Write(hash.Bytes);
         }
@@ -362,6 +439,9 @@ public readonly ref struct PbtTrieNodeGroup
             Debug.Assert(presence != 0, "an absent subtree has no entries to append");
             Debug.Assert((stems & ~presence) == 0, "only a present position holds a stem");
             Debug.Assert(_presence >> BitOperations.TrailingZeroCount(presence) == 0, "nodes must be appended in ascending position order");
+            Debug.Assert(
+                _format == PbtGroupFormat.EveryLevel || (presence & SkippedPositionsMask & ~stems) == 0,
+                "a verbatim run must be in this group's own format");
 
             _presence |= presence;
             _stems |= stems;
@@ -389,7 +469,7 @@ public readonly ref struct PbtTrieNodeGroup
         {
             if (_presence == 0) return 0;
 
-            _destination[0] = FormatByte;
+            _destination[0] = (byte)_format;
             BinaryPrimitives.WriteUInt32LittleEndian(_destination[PresenceOffset..], _presence);
             BinaryPrimitives.WriteUInt32LittleEndian(_destination[StemsOffset..], _stems);
             stats.Write(_destination[StatsOffset..]);
