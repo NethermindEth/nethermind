@@ -28,6 +28,7 @@ public class PbtPersistenceCoordinator(
     IPbtPersistence persistence,
     PbtSnapshotRepository repository,
     PbtSnapshotCompactor compactor,
+    PbtCompactionSchedule schedule,
     IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager)
 {
@@ -98,9 +99,9 @@ public class PbtPersistenceCoordinator(
         ulong depth = persisted == StateId.PreGenesis
             ? head.BlockNumber + 1
             : head.BlockNumber.SaturatingSub(persisted.BlockNumber);
-        ulong nextBoundary = persisted == StateId.PreGenesis
-            ? _compactSize - 1
-            : persisted.BlockNumber + _compactSize;
+        // the schedule's boundary, not a fixed stride from the persisted state: it is offset-shifted
+        // per node, and it is where a full-width compaction lands
+        ulong nextBoundary = schedule.NextFullCompactionAfter(persisted);
 
         // Finality-driven trigger: persist up to the next CompactSize boundary along the canonical chain.
         if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
