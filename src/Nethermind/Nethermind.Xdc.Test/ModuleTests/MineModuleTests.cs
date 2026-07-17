@@ -3,8 +3,11 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
@@ -219,6 +222,55 @@ internal class MineModuleTests
         catch (TimeoutException)
         {
             Assert.Fail("No block was proposed after a stale-round trigger during the mine-period wait");
+        }
+    }
+
+    [Test]
+    public async Task TestHigherRoundCancelsInFlightBuildButSameRoundDoesNot()
+    {
+        GatedBlockProducer gatedProducer = new();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton<IBlockProducer>(gatedProducer));
+
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        ulong round = blockchain.XdcContext.CurrentRound;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, round, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        // As round-1 leader at genesis bootstrap, Start() launches the round task which parks in the gated build.
+        blockchain.StartHotStuffModule();
+        await gatedProducer.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Cancellation happens synchronously inside StartRoundTask, so the assertions are race-free.
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.False,
+            "A same-round restart must not cancel the in-flight proposal build");
+
+        blockchain.ConsensusModule.StartRoundTask(head, round + 1);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.True,
+            "An advance to a higher round must cancel the obsolete proposal build");
+    }
+
+    /// <summary>
+    /// Block producer stub whose build parks until its cancellation token fires, exposing the token
+    /// so tests can assert which triggers cancel an in-flight build.
+    /// </summary>
+    private sealed class GatedBlockProducer : IBlockProducer
+    {
+        public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken ObservedToken { get; private set; }
+
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes,
+            IBlockProducer.Flags flags, CancellationToken cancellationToken)
+        {
+            ObservedToken = cancellationToken;
+            BuildStarted.TrySetResult();
+            TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+            await cancelled.Task;
+            return null;
         }
     }
 

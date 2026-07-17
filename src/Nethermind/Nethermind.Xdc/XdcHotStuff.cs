@@ -55,6 +55,7 @@ namespace Nethermind.Xdc
         private Task? _roundTask;
         private CancellationTokenSource? _shutdownCts;
         private CancellationToken _shutdownToken;
+        private CancellationTokenSource? _buildCts;
 
         // Sentinel meaning "no round recorded yet"; TryAdvance treats it specially so the first advance always succeeds.
         private const ulong NoRound = ulong.MaxValue;
@@ -192,6 +193,12 @@ namespace Nethermind.Xdc
                 // newer one was scheduled; starting it would cancel the newer round's task and
                 // forfeit its proposal.
                 if (_scheduledRound != NoRound && round < _scheduledRound) return;
+
+                if (round != _scheduledRound)
+                    // A round advance obsoletes any in-flight proposal build for the previous
+                    // round; same-round restarts must leave the build running (see TryPropose).
+                    _buildCts?.Cancel();
+
                 _scheduledRound = round;
 
                 _roundCts?.Cancel();
@@ -265,7 +272,28 @@ namespace Nethermind.Xdc
 
             if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
 
-            await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, _shutdownToken);
+            // The round is claimed: a cancelled build could no longer be retried, so the build
+            // survives same-round restarts and is aborted only by shutdown or a higher round.
+            CancellationTokenSource buildCts;
+            lock (_lockObject)
+            {
+                if (!_running) return;
+                _buildCts = buildCts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownToken);
+            }
+
+            try
+            {
+                await BuildAndProposeBlock(proposalParent, qc, round, proposalSpec, buildCts.Token);
+            }
+            finally
+            {
+                lock (_lockObject)
+                {
+                    if (ReferenceEquals(_buildCts, buildCts))
+                        _buildCts = null;
+                }
+                buildCts.Dispose();
+            }
         }
 
         private async Task<bool> EnsureStateForProposalParent(XdcBlockHeader proposalParent, ulong round, CancellationToken ct)
