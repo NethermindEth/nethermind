@@ -49,7 +49,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count capped at 16, 0 to disable)", DefaultValue = "-1")]
+    [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
