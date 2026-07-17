@@ -3,9 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -13,12 +17,16 @@ namespace Nethermind.State.Pbt.Test;
 
 public class StemTrieTests
 {
+    // The store after the split is the root group, the group holding the divergence, and — once they are
+    // more than four levels apart — one chain spanning everything between, however deep that reaches.
     [TestCase(3, 1)] // divergence inside the root group: both stems at its boundary slots
     [TestCase(5, 2)] // stems at an inner position of the depth-4 group
     [TestCase(7, 2)] // stems exactly on a group boundary (depth 8)
-    [TestCase(8, 3)] // stems just past a group boundary (depth 9)
+    [TestCase(8, 3)] // stems just past a group boundary (depth 9): the chain appears, spanning depth 4 to 8
     [TestCase(10, 3)] // stems mid-group (depth 11)
-    [TestCase(247, 62)] // deepest split: stems at the 248-bit level, relocating through every tier
+    [TestCase(163, 3)] // deep divergence just inside a group (depth 160)
+    [TestCase(164, 3)] // and just past that boundary (depth 164), which only lengthens the chain
+    [TestCase(247, 3)] // deepest split: stems at the 248-bit level, spanned by one chain rather than 60 groups
     public void InsertSplitDeleteHoist_MaintainsCanonicalStructureAndRoots(int divergenceBit, int splitGroupCount)
     {
         // stemA and stemB share their first divergenceBit bits and diverge there
@@ -37,12 +45,14 @@ public class StemTrieTests
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(1));
 
-        // split: a chain of groups down to the stems at their shortest unique prefixes
+        // split: a run of single-child levels down to the group where the stems part, each at its
+        // shortest unique prefix
         root = harness.ApplyBatch([(keyB, valueB)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(splitGroupCount));
+        AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyB, valueB)]);
 
-        // delete A: B hoists all the way back to the root group, tombstoning the whole chain
+        // delete A: B hoists all the way back to the root group, tombstoning the whole run
         root = harness.ApplyBatch([(keyA, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(1));
@@ -91,10 +101,12 @@ public class StemTrieTests
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA), (keyB, valueB), (keyC, valueC)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB), (keyC, valueC)])));
-        Assert.That(harness.Nodes, Has.Count.EqualTo(6));
+        // the root group, the depth-4 group holding C beside the path on towards A and B, the run
+        // spanning depths 8 to 20, and the depth-20 group where A and B part
+        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
         AssertStoreMatchesFreshRebuild(harness, [(keyA, valueA), (keyB, valueB), (keyC, valueC)]);
 
-        // delete B: A hoists out of the deep groups and lands next to C at depth 7
+        // delete B: A hoists out through the whole run, which dissolves, and lands next to C at depth 7
         root = harness.ApplyBatch([(keyB, null)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyC, valueC)])));
         Assert.That(harness.Nodes, Has.Count.EqualTo(2));
@@ -108,6 +120,158 @@ public class StemTrieTests
         root = harness.ApplyBatch([(keyA, null)]);
         Assert.That(root, Is.EqualTo(default(ValueHash256)));
         Assert.That(harness.Nodes, Is.Empty);
+    }
+
+    [Test]
+    public void ChainAbsorbsAnUntouchedChildAndSplitsBackAroundASibling()
+    {
+        // A1 and A2 share their first 40 bits, so a run of single-child levels spans depths 8 to 40 —
+        // eight groups' worth. B parts from them at bit 7, landing in the depth-4 group beside the slot
+        // that run descends from.
+        byte[] stemA1 = new byte[31];
+        byte[] stemA2 = new byte[31];
+        stemA2[5] = 0x80; // bit 40
+        byte[] stemB = new byte[31];
+        stemB[0] = 0x01; // bit 7
+        byte[] keyA1 = [.. stemA1, 1];
+        byte[] keyA2 = [.. stemA2, 2];
+        byte[] keyB = [.. stemB, 3];
+        byte[] valueA1 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueA2 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] valueB = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
+        (byte[], byte[]?)[] all = [(keyA1, valueA1), (keyA2, valueA2), (keyB, valueB)];
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        ValueHash256 root = harness.ApplyBatch(all);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
+        // the root group, the depth-4 group holding B, the run from 8 to 40, and the group where A1/A2 part
+        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
+        Assert.That(harness.Nodes.Keys, Has.Some.Matches<TrieNodeKey>(key => key.Depth == 8), "the run is stored where it starts");
+        AssertStoreMatchesFreshRebuild(harness, all);
+
+        // Delete B and the depth-4 group is left with one child this batch never descended into. Only
+        // reading it reveals the run to merge with, and merging is what keeps a run as long as it can be.
+        (byte[], byte[]?)[] justA = [(keyA1, valueA1), (keyA2, valueA2)];
+        root = harness.ApplyBatch([(keyB, null)]);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(justA)));
+        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the run absorbed the one below it rather than pointing at it");
+        AssertStoreMatchesFreshRebuild(harness, justA);
+
+        // Re-inserting B splits the run inside its own top four levels. The remainder keeps the slot this
+        // batch never touches, so nothing descends there — yet it must still be planted under the group
+        // that replaces the run.
+        root = harness.ApplyBatch([(keyB, valueB)]);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
+        Assert.That(harness.Nodes, Has.Count.EqualTo(4));
+        AssertStoreMatchesFreshRebuild(harness, all);
+    }
+
+    [Test]
+    public void ChainSplitDescendsALiveRemainderBucket()
+    {
+        // A1/A2 part at bit 40, so a run spans depths 4 to 40. C parts from them at bit 9 — inside the
+        // depth-8 group, which the run reaches only by skipping the frame at depth 4.
+        byte[] stemA1 = new byte[31];
+        byte[] stemA2 = new byte[31];
+        stemA2[5] = 0x80; // bit 40
+        byte[] stemC = new byte[31];
+        stemC[1] = 0x40; // bit 9
+        byte[] keyA1 = [.. stemA1, 1];
+        byte[] keyA2 = [.. stemA2, 2];
+        byte[] keyC = [.. stemC, 3];
+        byte[] valueA1 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueA2 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
+        byte[] rewritten = Bytes.FromHexString("0x4444444444444444444444444444444444444444444444444444444444444444");
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        ValueHash256 root = harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
+        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 40, and the group at 40");
+
+        // Rewriting A1 with the value it already holds folds to the same nodes throughout, so the run and
+        // every group above it stay exactly as they were.
+        Dictionary<TrieNodeKey, byte[]> before = new(harness.Nodes);
+        Assert.That(harness.ApplyBatch([(keyA1, valueA1)]), Is.EqualTo(root), "a no-op write leaves the root alone");
+        Assert.That(harness.Nodes, Is.EquivalentTo(before), "and rewrites nothing under the run");
+
+        // C parts from the run below this frame's four levels, so the descent skips straight to the
+        // depth-8 group holding the branch; A1's write shares the run's nibble there, so the remainder it
+        // seeds is descended rather than merely passed through.
+        (byte[], byte[]?)[] all = [(keyA1, rewritten), (keyA2, valueA2), (keyC, valueC)];
+        root = harness.ApplyBatch([(keyA1, rewritten), (keyC, valueC)]);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
+        // the root group, the run from 4 to 8, the group at 8 where C parts, the run from 12 to 40, and
+        // the group at 40 — one run split into two by a branch landing between them
+        Assert.That(harness.Nodes, Has.Count.EqualTo(5));
+        AssertStoreMatchesFreshRebuild(harness, all);
+    }
+
+    [Test]
+    public void ChainSpanningOneGroupSplitsAgainstItsTarget()
+    {
+        // A1/A2 part at bit 8, the shortest run there is: depth 4 to 8, one group's worth. D then parts at
+        // bit 5, splitting it against a target that is already its direct child.
+        byte[] stemA1 = new byte[31];
+        byte[] stemA2 = new byte[31];
+        stemA2[1] = 0x80; // bit 8
+        byte[] stemD = new byte[31];
+        stemD[0] = 0x04; // bit 5
+        byte[] keyA1 = [.. stemA1, 1];
+        byte[] keyA2 = [.. stemA2, 2];
+        byte[] keyD = [.. stemD, 3];
+        byte[] valueA1 = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueA2 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] valueD = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
+        Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 8, and the group at 8");
+
+        (byte[], byte[]?)[] all = [(keyA1, valueA1), (keyA2, valueA2), (keyD, valueD)];
+        Assert.That(harness.ApplyBatch([(keyD, valueD)]), Is.EqualTo(ReferenceRoot(all)));
+        // the run is gone: its four levels are the depth-4 group now, pointing straight at what it targeted
+        Assert.That(harness.Nodes, Has.Count.EqualTo(3));
+        AssertStoreMatchesFreshRebuild(harness, all);
+    }
+
+    [Test]
+    public void ContractStorageSharingItsStemPrefix_CollapsesToOneChain()
+    {
+        // The case the format is for: every storage stem of a contract is
+        // 1 || blake3(address)[:60] || blake3(address || treeIndex)[:187], so they share 61 bits and the
+        // trie has nothing but single-child levels from wherever the contract parts from others down to
+        // the group at depth 60 — which is one run, not fifteen groups.
+        Address contract = TestItem.AddressA;
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        List<(byte[], byte[]?)> writes = [];
+        for (int slot = 0; slot < 3; slot++)
+        {
+            // past HeaderStorageOffset, and a whole tree index apart, so each takes a stem of its own
+            writes.Add((PbtKeyDerivation.StorageKey(contract, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), value));
+        }
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(harness, writes);
+
+        // one run carries the whole shared prefix, and nothing is stored anywhere along it (invariant 3)
+        TrieNodeKey[] chains = [.. harness.Nodes.Keys.Where(key => PbtNodeChain.IsChain(harness.Nodes[key]))];
+        Assert.That(chains, Has.Length.EqualTo(1));
+
+        PbtNodeChain chain = PbtNodeChain.Decode(harness.Nodes[chains[0]], chains[0].Depth);
+        int levels = chain.TargetDepth - chains[0].Depth;
+        for (int depth = chains[0].Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+        {
+            Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"nothing is stored at depth {depth}, inside the run");
+        }
+
+        // The prefix runs to bit 60, so every contract's storage produces this same shape: one run from
+        // the root group down to the depth-60 group where the suffix starts branching. That is fourteen
+        // groups — 14 * (9 + 5 * 32) = 2366 bytes of single-child levels — held in 97.
+        Assert.That(chains[0].Depth, Is.EqualTo(PbtTrieNodeGroup.LevelsPerGroup));
+        Assert.That(chain.TargetDepth, Is.EqualTo(60));
+        Assert.That(levels / PbtTrieNodeGroup.LevelsPerGroup, Is.EqualTo(14));
+        Assert.That(harness.Nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
     }
 
     [Test]
@@ -334,19 +498,25 @@ public class StemTrieTests
     {
         byte[] stemA = new byte[31];
         byte[] stemB = new byte[31];
-        stemB[20] = 0x01; // diverges deep, so the split relocates across several group boundaries
+        stemB[20] = 0x01; // diverges deep, so the split leaves a run spanning many group boundaries
+        byte[] stemC = new byte[31];
+        stemC[0] = 0x01; // parts at bit 7, into the depth-4 group beside the slot the run descends from
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
 
         TrackingMemoryProvider provider = new();
         PbtTreeHarness harness = new(provider);
 
-        // each batch settles groups by a different path: fresh groups, an unchanged rebuild that is
-        // dropped rather than written, a split that rewrites the chain, and a delete that removes
-        // groups and hoists the survivor back up
+        // each batch settles nodes by a different path: fresh groups, an unchanged rebuild that is
+        // dropped rather than written, a split that builds a run, a split of that run, a delete that
+        // collapses a group onto an untouched child and absorbs the run below it, and one that dissolves
+        // the run entirely and hoists the survivor back up
         harness.ApplyBatch([([.. stemA, 5], valueA)]);
         harness.ApplyBatch([([.. stemA, 5], valueA)]);
         harness.ApplyBatch([([.. stemB, 7], valueB)]);
+        harness.ApplyBatch([([.. stemC, 9], valueC)]);
+        harness.ApplyBatch([([.. stemC, 9], null)]);
         harness.ApplyBatch([([.. stemA, 5], null)]);
 
         Assert.That(provider.Rented, Is.Not.Empty, "the batches must have rented something to check");
@@ -407,6 +577,35 @@ public class StemTrieTests
         {
             Assert.That(harness.Nodes.TryGetValue(key, out byte[]? actual), $"missing node at {key}");
             Assert.That(actual.AsSpan().SequenceEqual(expected), $"node mismatch at {key}");
+        }
+
+        AssertChainsAreMaximal(harness);
+    }
+
+    /// <summary>
+    /// Every run reaches a stored group, and holds every level down to it (<see cref="PbtNodeChain"/>
+    /// invariants 2 and 3).
+    /// </summary>
+    /// <remarks>
+    /// A rebuild touches every node it makes, so it never meets the one case that can leave a run short —
+    /// a group collapsing onto a child it never descended into — which is what lets the comparison above
+    /// stand in for canonicality at all. Checking the runs directly says so where they break, rather than
+    /// as a byte that differs.
+    /// </remarks>
+    private static void AssertChainsAreMaximal(PbtTreeHarness harness)
+    {
+        foreach ((TrieNodeKey key, byte[] blob) in harness.Nodes)
+        {
+            if (!PbtNodeChain.IsChain(blob)) continue;
+
+            PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
+            for (int depth = key.Depth + PbtTrieNodeGroup.LevelsPerGroup; depth < chain.TargetDepth; depth += PbtTrieNodeGroup.LevelsPerGroup)
+            {
+                Assert.That(harness.Nodes.ContainsKey(TrieNodeKey.For(depth, chain.TargetPath)), Is.False, $"{key} spans depth {depth}, which must hold nothing");
+            }
+
+            Assert.That(harness.Nodes.TryGetValue(chain.TargetKey, out byte[]? target), $"{key} targets {chain.TargetKey}, which holds nothing");
+            Assert.That(PbtNodeChain.IsChain(target), Is.False, $"{key} targets another run at {chain.TargetKey} rather than absorbing it");
         }
     }
 
