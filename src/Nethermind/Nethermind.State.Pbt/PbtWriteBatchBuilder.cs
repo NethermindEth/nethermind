@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using Nethermind.Core.Collections;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -19,19 +18,53 @@ namespace Nethermind.State.Pbt;
 /// returns it — so it belongs to the scope rather than to the bundle, which also keeps a bundle built
 /// only to read (an <c>eth_call</c> override reader) from renting one at all.
 /// <para>
-/// The outer map is concurrent because the parallel storage batches add stems from several threads,
-/// but each stem is address-derived and written by a single worker, so its per-stem change map is
-/// single-writer.
+/// The stem map is sharded under one lock per shard because the parallel storage batches add stems from
+/// several threads. Both writing methods hold their shard's lock across the change map's own mutation,
+/// so a stem needs no single-writer guarantee of its own.
 /// </para>
 /// </remarks>
 public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 {
-    private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
+    /// <summary>One shard per value of the shard key, which is a stem's first byte.</summary>
+    private const int ShardCount = 256;
+
+    private readonly Shard[] _shards = CreateShards();
 
     private IPbtResourcePool? _pool;
     private PbtResourcePool.Usage _usage;
 
-    public bool HasDirtyStems => !_dirtyStems.IsEmpty;
+    public bool HasDirtyStems => DirtyStemCount != 0;
+
+    private int DirtyStemCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (Shard shard in _shards) count += shard.Stems.Count;
+            return count;
+        }
+    }
+
+    private sealed class Shard
+    {
+        internal readonly Lock Lock = new();
+        internal readonly Dictionary<Stem, IPbtStemChanges> Stems = [];
+    }
+
+    private static Shard[] CreateShards()
+    {
+        Shard[] shards = new Shard[ShardCount];
+        for (int i = 0; i < ShardCount; i++) shards[i] = new Shard();
+        return shards;
+    }
+
+    /// <summary>The shard <paramref name="stem"/>'s changes live in.</summary>
+    /// <remarks>
+    /// EIP-8297 puts the 4-bit zone in the first byte, so account stems land in shards 0x00-0x0F and code
+    /// stems in 0x10-0x1F, while storage — the only zone written in parallel, and the one that dominates
+    /// a block's stems — spreads over 0x80-0xFF on the address-hash bits that follow its high bit.
+    /// </remarks>
+    private Shard ShardFor(in Stem stem) => _shards[stem.Bytes[0]];
 
     /// <summary>Records the pool <see cref="Dispose"/> returns this builder to.</summary>
     /// <remarks>Called on every rent, since a returned builder has been detached.</remarks>
@@ -43,18 +76,19 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 
     /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
     /// <remarks>
-    /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old
-    /// one to the pool, so its result must always be stored back; routing every leaf write through
-    /// here makes forgetting that unrepresentable. Safe only while at most one thread writes a given
-    /// stem: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> may
-    /// run the factory and discard its result, which would leak the rented map. That holds because
-    /// <c>PersistentStorageProvider</c> partitions its parallel batches by address, and code-overflow
-    /// stems are reached only from the single-threaded account flush.
+    /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old one
+    /// to the pool, so its result must always be stored back; routing every leaf write through here
+    /// makes forgetting that unrepresentable. The shard's lock is held across the promotion, so the
+    /// map a concurrent writer of the same stem finds is never one already returned to the pool.
     /// </remarks>
     public void SetLeaf(in Stem stem, byte subIndex, in ValueHash256 value)
     {
-        IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
-        _dirtyStems[stem] = changes.Set(subIndex, value);
+        Shard shard = ShardFor(stem);
+        lock (shard.Lock)
+        {
+            ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(shard.Stems, stem, out bool exists);
+            changes = (exists ? changes! : PbtStemChanges.Rent()).Set(subIndex, value);
+        }
     }
 
     /// <summary>
@@ -63,21 +97,18 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// starting at <paramref name="startSubIndex"/>.
     /// </summary>
     /// <remarks>
-    /// The batched <see cref="SetLeaf"/>: an account header writes BASIC_DATA and CODE_HASH together,
-    /// and a deployment writes up to a full stem of code chunks, so taking the change map once per run
-    /// rather than once per leaf is worth a method. Carries <see cref="SetLeaf"/>'s single-writer
-    /// requirement, and <paramref name="values"/> must fit the stem from
+    /// The batched <see cref="SetLeaf"/>, taking the change map and the shard's lock once per run rather
+    /// than once per leaf. <paramref name="values"/> must fit the stem from
     /// <paramref name="startSubIndex"/>.
     /// </remarks>
     public void SetLeafRange(in Stem stem, byte startSubIndex, ReadOnlySpan<byte> values)
     {
-        IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
-        for (int i = 0; i < values.Length; i += ValueHash256.MemorySize)
+        Shard shard = ShardFor(stem);
+        lock (shard.Lock)
         {
-            changes = changes.Set((byte)(startSubIndex + i / ValueHash256.MemorySize), new ValueHash256(values.Slice(i, ValueHash256.MemorySize)));
+            ref IPbtStemChanges? changes = ref CollectionsMarshal.GetValueRefOrAddDefault(shard.Stems, stem, out bool exists);
+            changes = (exists ? changes! : PbtStemChanges.Rent()).SetRange(startSubIndex, values);
         }
-
-        _dirtyStems[stem] = changes;
     }
 
     /// <summary>Hands every dirtied stem to a fresh write batch, emptying this builder.</summary>
@@ -90,17 +121,20 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// </remarks>
     public PbtWriteBatch DrainToWriteBatch()
     {
-        PbtWriteBatch batch = new(estimatedStems: _dirtyStems.Count);
+        PbtWriteBatch batch = new(estimatedStems: DirtyStemCount);
         try
         {
-            foreach ((Stem stem, IPbtStemChanges leaves) in _dirtyStems)
+            foreach (Shard shard in _shards)
             {
-                batch.Add(stem, leaves);
+                foreach ((Stem stem, IPbtStemChanges leaves) in shard.Stems)
+                {
+                    batch.Add(stem, leaves);
+                }
             }
         }
         finally
         {
-            _dirtyStems.Clear();
+            ClearShards();
         }
 
         return batch;
@@ -109,22 +143,34 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// <summary>Returns every map still held — those a fold never claimed — and empties the builder.</summary>
     /// <remarks>
     /// Only maps <see cref="DrainToWriteBatch"/> did not already transfer are here, which is what
-    /// makes this safe to call after any number of folds. The lock-free clear is sound because a
-    /// scope returns its builder only once its parallel storage batches have been joined.
+    /// makes this safe to call after any number of folds.
     /// </remarks>
     public void Reset()
     {
         try
         {
-            foreach ((_, IPbtStemChanges changes) in _dirtyStems)
+            foreach (Shard shard in _shards)
             {
-                PbtStemChanges.Return(changes);
+                foreach ((_, IPbtStemChanges changes) in shard.Stems)
+                {
+                    PbtStemChanges.Return(changes);
+                }
             }
         }
         finally
         {
-            _dirtyStems.NoLockClear();
+            ClearShards();
         }
+    }
+
+    /// <remarks>
+    /// Lock-free, like the enumeration each caller does first: a fold and a reset both run only once the
+    /// scope's parallel storage batches have been joined. Clearing keeps each shard's capacity, which is
+    /// most of what makes a pooled builder worth pooling.
+    /// </remarks>
+    private void ClearShards()
+    {
+        foreach (Shard shard in _shards) shard.Stems.Clear();
     }
 
     /// <summary>Returns this builder to the pool it was rented from, which resets it on the way in.</summary>
