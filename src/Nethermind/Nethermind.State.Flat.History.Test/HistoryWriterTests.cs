@@ -314,6 +314,33 @@ public class HistoryWriterTests
         }
     }
 
+    // Genesis (block 0) is a real base snapshot whose From is the PreGenesis sentinel. Allocations made there and
+    // never touched again must be captured on the first walk and resolve at every later height, not read as absent.
+    [Test]
+    public void Genesis_allocations_are_captured_and_readable_at_later_blocks()
+    {
+        CommitGenesis(
+            accountChanges: [(AddrA, new Account(0UL, 1000))],
+            storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(0, 1, accountChanges: [(AddrB, new Account(1, 1))]);
+        CommitBlock(1, 2, accountChanges: [(AddrB, new Account(2, 2))]);
+
+        _writer.CaptureUpTo(StateAt(2), _repository);
+
+        bool atGenesis = _reader.TryGetAccount(0, AddrA, out AccountStruct genesisAccount);
+        bool atLater = _reader.TryGetAccount(2, AddrA, out AccountStruct laterAccount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.HasHistoryForBlock(0), Is.True);
+            Assert.That(atGenesis, Is.True);
+            Assert.That(genesisAccount.Balance, Is.EqualTo((UInt256)1000));
+            Assert.That(atLater, Is.True, "a genesis allocation never touched again must resolve at a later block");
+            Assert.That(laterAccount.Balance, Is.EqualTo((UInt256)1000));
+            AssertStorageAt(2, Slot1, "0a");
+        }
+    }
+
     // turning HistoryEnabled on is additive. The live tip read through a
     // real ReadOnlySnapshotBundle must still return the latest value while capture also populates the history index.
     [Test]
@@ -455,6 +482,24 @@ public class HistoryWriterTests
 
         Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
         _repository.AddStateId(StateAt(toBlock));
+    }
+
+    private void CommitGenesis(
+        (Address Address, Account? Account)[]? accountChanges = null,
+        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null)
+    {
+        Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        if (accountChanges is not null)
+            foreach ((Address address, Account? account) in accountChanges)
+                snapshot.Content.Accounts[address] = account;
+
+        if (storageChanges is not null)
+            foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
+                snapshot.Content.Storages[(address, slot)] = value;
+
+        Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
+        _repository.AddStateId(StateAt(0));
     }
 
     private static StateId StateAt(ulong blockNumber)

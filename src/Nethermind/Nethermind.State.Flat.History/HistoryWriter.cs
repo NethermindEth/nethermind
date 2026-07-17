@@ -68,14 +68,21 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// persistedHead's exact canonical chain — no fork disambiguation and no per-block state lookup. One lease at a
     /// time, so the walk allocates nothing.
     ///
-    /// Capture runs before a block's base can be converted away (<see cref="PersistenceManager"/> only converts
-    /// bases already at or below the persisted head, which this hook has already captured), so within a session the
-    /// leased bases from persistedHead down to the last-captured block are always present and the walk records the
-    /// whole range. After a restart the in-memory tier only holds bases produced since startup; the walk then stops
-    /// at that floor, above the reset <c>_lastCapturedBlock</c>. Advancing the watermark to <paramref
-    /// name="persistedHead"/> regardless is safe because it only suppresses redundant re-walks — read availability is
-    /// driven by the per-block <c>AvailableBlocks</c> markers <see cref="CaptureBlock"/> writes, never by this
-    /// watermark, so a block the walk did not record simply reports no history rather than claiming an empty one.
+    /// The first capture records nothing yet, so it walks all the way down to genesis (block 0), whose From is the
+    /// <see cref="StateId.PreGenesis"/> sentinel that terminates the loop — genesis-allocated accounts/slots that are
+    /// never later touched are thereby recorded and resolve at every historical height. A resume stops once past the
+    /// last-captured block. Capture runs before a block's base can be converted away
+    /// (<see cref="PersistenceManager"/> only converts bases already at or below the persisted head, which this hook
+    /// has already captured), so within a session the leased bases down to the walk floor are always present.
+    ///
+    /// Advancing the watermark to <paramref name="persistedHead"/> even when a restart leaves the in-memory tier
+    /// holding only bases produced since startup is safe for read availability: it is driven by the per-block
+    /// <c>AvailableBlocks</c> markers <see cref="CaptureBlock"/> writes, never by this watermark, so a block the walk
+    /// did not record reports no history rather than claiming an empty one. The remaining gap is a crash between a
+    /// block's durable flat persist and its capture here: that block stays permanently uncaptured, and an as-of read
+    /// of a <em>later</em> available block for a key whose last change fell in the gap floor-seeks past the missing
+    /// entry to a stale earlier value. Closing it fully requires capturing within the same batch as the flat persist;
+    /// until then the window is one block wide per crash.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
@@ -84,11 +91,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         ulong target = persistedHead.BlockNumber;
         if (_anyCaptured && target <= _lastCapturedBlock) return;
 
-        ulong stopAtOrBelow = _anyCaptured ? _lastCapturedBlock : 0;
+        bool resuming = _anyCaptured;
+        ulong lastCaptured = _lastCapturedBlock;
 
         StateId current = persistedHead;
-        while (current.BlockNumber > stopAtOrBelow
-               && current != StateId.PreGenesis
+        while (current != StateId.PreGenesis
+               && (!resuming || current.BlockNumber > lastCaptured)
                && snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
             StateId parent;

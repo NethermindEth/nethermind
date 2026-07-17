@@ -899,6 +899,35 @@ public class PersistenceManagerTests
         Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(16UL));
     }
 
+    [Test]
+    public async Task AddToPersistence_WhenCaptureHookThrows_StillPersists()
+    {
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            new ThrowingCaptureHook());
+
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(from, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        await manager.AddToPersistence(latest);
+
+        Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+    }
+
     #region FlushToPersistence Tests
 
     [Test]
@@ -1124,6 +1153,12 @@ public class PersistenceManagerTests
 
         public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+    }
+
+    private sealed class ThrowingCaptureHook : IFlatPersistenceCaptureHook
+    {
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
+            throw new System.InvalidOperationException("simulated history capture failure");
     }
 
     #endregion

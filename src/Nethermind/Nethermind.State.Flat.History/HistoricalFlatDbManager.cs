@@ -18,7 +18,7 @@ public sealed class HistoricalFlatDbManager(
     HistoryReader historyReader,
     ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
-    bool enableDetailedMetrics) : IFlatDbManager, IAsyncDisposable
+    bool enableDetailedMetrics) : IFlatDbManager
 {
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
@@ -56,20 +56,6 @@ public sealed class HistoricalFlatDbManager(
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
         inner.AddSnapshot(snapshot, transientResource);
-
-    // The inner manager owns the background tasks; the container only tracks this decorator, so forward disposal.
-    public async ValueTask DisposeAsync()
-    {
-        switch (inner)
-        {
-            case IAsyncDisposable asyncDisposable:
-                await asyncDisposable.DisposeAsync();
-                break;
-            case IDisposable disposable:
-                disposable.Dispose();
-                break;
-        }
-    }
 
     private bool IsBelowBarrier(in StateId baseBlock)
     {
