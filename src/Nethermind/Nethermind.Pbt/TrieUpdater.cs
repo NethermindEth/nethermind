@@ -83,6 +83,9 @@ public static class TrieUpdater
 
     private sealed class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider)
     {
+        /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
+        private const int TinyRange = 3;
+
         /// <summary>
         /// What a boundary result turned out to be. The first three mirror <see cref="NodeKind"/>;
         /// <see cref="Chain"/> is a node stored as a <see cref="PbtNodeChain"/> blob of its own rather
@@ -151,7 +154,8 @@ public static class TrieUpdater
         /// </summary>
         /// <param name="existingData">
         /// The group's stored encoding, which the caller owns and this keeps no lease on beyond the
-        /// call: the occupants read out of it take their own.
+        /// call: the occupants read out of it — and the root, when the writes leave the group as it
+        /// was — take their own.
         /// </param>
         /// <param name="precalculatedBuckets"><inheritdoc cref="ApplyToOccupants" path="/param[@name='precalculatedBuckets']"/></param>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
@@ -200,7 +204,7 @@ public static class TrieUpdater
             }
 
             NodeResult root = ApplyToOccupants(
-                key, entries, existing, existingData is null ? StoredBlob.None : StoredBlob.Group,
+                key, entries, existing, existingData, existingData is null ? StoredBlob.None : StoredBlob.Group,
                 occupants, existing[PbtTrieNodeGroup.RootPosition].NodeHash(), existing.Stats, precalculatedBuckets,
                 out changed, out delta);
             Release(occupants, handedUp: -1);
@@ -267,7 +271,7 @@ public static class TrieUpdater
             if (pushed.Kind == ResultKind.Stem) occupants[NibbleOf(pushed.Stem, depth)] = pushed.Lease();
 
             NodeResult root = ApplyToOccupants(
-                key, entries, default, StoredBlob.None, occupants, pushed.NodeHash(), beforeStats, precalculatedBuckets,
+                key, entries, default, null, StoredBlob.None, occupants, pushed.NodeHash(), beforeStats, precalculatedBuckets,
                 out changed, out delta);
             Release(occupants, handedUp: -1);
             return root;
@@ -436,7 +440,7 @@ public static class TrieUpdater
 
             // The run reached one subtree and nothing else, so it is the whole of what is here.
             NodeResult root = ApplyToOccupants(
-                key, entries, default, stored, occupants, chain.NodeHash, chain.Stats, precalculatedBuckets,
+                key, entries, default, null, stored, occupants, chain.NodeHash, chain.Stats, precalculatedBuckets,
                 out changed, out delta);
             Release(occupants, handedUp: -1);
             return root;
@@ -491,6 +495,11 @@ public static class TrieUpdater
         /// pushed-stem subtree, a tree with no stored root group, or a run, which is no group's encoding.
         /// Used only to reuse cached hashes in the rebuild; <paramref name="stored"/> says what is on disk.
         /// </param>
+        /// <param name="existingData">
+        /// The memory <paramref name="existing"/> was decoded from, non-<c>null</c> exactly when
+        /// <paramref name="stored"/> is <see cref="StoredBlob.Group"/>, for the root to be handed back out
+        /// of when the writes leave the group as it was.
+        /// </param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
         /// <param name="beforeStats">
         /// What this frame's subtree amounted to before the writes, which <paramref name="delta"/> is
@@ -513,10 +522,13 @@ public static class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         private NodeResult ApplyToOccupants(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing, StoredBlob stored,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing,
+            RefCountingMemory? existingData, StoredBlob stored,
             Span<NodeResult> occupants, in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats,
             ReadOnlySpan<int> precalculatedBuckets, out bool changed, out PbtSubtreeStats delta)
         {
+            Debug.Assert((stored == StoredBlob.Group) == (existingData is not null), "a stored group is one this frame decoded");
+
             int depth = key.Depth;
 
             // A precalculated level is already a bounds array over this very range, so it is read where it
@@ -624,6 +636,24 @@ public static class TrieUpdater
                 if (stored != StoredBlob.None) store.SetTrieNode(key, null);
                 Release(results, hoistedSlot);
                 return hoisted;
+            }
+
+            // Every touched child came back unchanged, so the rebuild would reproduce the stored encoding
+            // byte for byte: a child that changed kind would have reported changed, leaving `occupied` and
+            // `stems` — hence the shape — those of `existing`, every hash the fold would cache is the one
+            // already encoded, and an unchanged child hash is an unchanged subtree, so the statistics in
+            // the header hoist nothing either. That makes the rewrite below a no-op too, which its guard
+            // concludes only after building the encoding it then drops. Runs are the exception: one still
+            // pending has no blob until this frame plants it.
+            if (changedMask == 0 && chainMask == 0 && stored == StoredBlob.Group)
+            {
+                Debug.Assert(existing.KindAt(PbtTrieNodeGroup.RootPosition) == rootKind, "unchanged children reproduce the stored group's shape");
+                Debug.Assert(childDeltas.IsZero, "an unchanged child hash is an unchanged subtree, which moves no statistic");
+                changed = false;
+                Release(results, handedUp: -1);
+                existingData!.AcquireLease();
+                return new NodeResult(
+                    new NodeRef(ToResultKind(rootKind), existing.EntryOffset(PbtTrieNodeGroup.RootPosition)), existingData);
             }
 
             (NodeRef root, RefCountingMemory memory) = RebuildGroup(results, existing, occupied, stems, changedMask, afterStats);
@@ -964,6 +994,18 @@ public static class TrieUpdater
         /// </summary>
         private static void Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> bounds)
         {
+            // Only the levels the producer left unbucketed reach here, which for a batch drained from
+            // PbtWriteBatchBuilder — its shard key handing over the depth-0 and depth-4 bounds — is
+            // everything below depth 8, by which point the batch has fragmented sixteen ways twice and a
+            // range is almost always one or a few entries. The count-and-permute below costs its
+            // sixteen-wide passes whether it buckets one entry or a hundred, so the tiny ranges that
+            // dominate take a sort network instead.
+            if (entries.Length <= TinyRange)
+            {
+                SortTiny(entries, depth, bounds);
+                return;
+            }
+
             Span<int> counts = stackalloc int[PbtTrieNodeGroup.BoundarySlots];
             counts.Clear();
             for (int i = 0; i < entries.Length; i++) counts[NibbleOf(entries[i].Stem, depth)]++;
@@ -996,6 +1038,49 @@ public static class TrieUpdater
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// <inheritdoc cref="Partition" path="/summary"/> For a range of at most <see cref="TinyRange"/>
+        /// entries, which a sorting network on the nibble orders in as many compare-and-swaps.
+        /// </summary>
+        /// <remarks>
+        /// Mirrors <c>PatriciaTree.BulkSet</c>'s <c>SortTiny</c>. Ordering the nibbles makes every bucket
+        /// a contiguous run, so the bounds fill as a handful of vectorized spans rather than a per-slot
+        /// loop over a counts array.
+        /// </remarks>
+        private static void SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> bounds)
+        {
+            Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
+
+            Span<int> nibbleBuffer = stackalloc int[TinyRange];
+            Span<int> nibbles = nibbleBuffer[..entries.Length];
+            for (int i = 0; i < nibbles.Length; i++) nibbles[i] = NibbleOf(entries[i].Stem, depth);
+
+            if (nibbles.Length > 1)
+            {
+                CompareAndSwap(entries, nibbles, 0, 1);
+                if (nibbles.Length > 2)
+                {
+                    CompareAndSwap(entries, nibbles, 1, 2);
+                    CompareAndSwap(entries, nibbles, 0, 1);
+                }
+            }
+
+            // Ascending nibbles leave bounds[i] — the number of entries whose nibble is below i — stepping
+            // up only where one sits, so each run holds the count so far. Entries sharing a nibble make the
+            // run between them empty, which Fill ignores.
+            bounds[..(nibbles[0] + 1)].Clear();
+            for (int i = 1; i < nibbles.Length; i++) bounds[(nibbles[i - 1] + 1)..(nibbles[i] + 1)].Fill(i);
+            bounds[(nibbles[^1] + 1)..].Fill(nibbles.Length);
+        }
+
+        /// <summary>Orders <paramref name="entries"/> <paramref name="i"/> and <paramref name="j"/> by their nibble.</summary>
+        private static void CompareAndSwap(Span<PbtWriteBatch.StemEntry> entries, Span<int> nibbles, int i, int j)
+        {
+            if (nibbles[i] <= nibbles[j]) return;
+            (entries[i], entries[j]) = (entries[j], entries[i]);
+            (nibbles[i], nibbles[j]) = (nibbles[j], nibbles[i]);
         }
 
         private static int NibbleOf(in Stem stem, int depth) => NibbleAt(stem.Bytes[depth >> 3], depth);
