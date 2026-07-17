@@ -36,6 +36,45 @@ public class FrameTxReceiptDecoderTests
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
+    // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
+    // restart round-trips the execution results the block cannot reproduce. The union Logs and the
+    // per-frame logs are stored independently — a rolled-back batch frame keeps its log in the
+    // frame receipt while the union omits it, and storage must preserve exactly that divergence.
+    [Test]
+    public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
+        [Values(true, false)] bool compactEncoding)
+    {
+        LogEntry unionLog = Log(0x01);
+        LogEntry rolledBackLog = Log(0x02);
+        TxReceipt frameReceipt = CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [rolledBackLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
+        frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
+        frameReceipt.Sender = TestItem.AddressC;
+        frameReceipt.Logs = [unionLog];
+        frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
+        TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+
+        ReceiptArrayStorageDecoder encoder = new(compactEncoding);
+        using Nethermind.Core.Collections.ArrayPoolSpan<byte> rlp =
+            encoder.EncodeToArrayPoolSpan([legacyReceipt, frameReceipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+
+        RlpReader ctx = new((System.ReadOnlySpan<byte>)rlp);
+        TxReceipt[] decoded = ReceiptArrayStorageDecoder.Instance.Decode(ref ctx, RlpBehaviors.Storage);
+
+        Assert.That(decoded, Has.Length.EqualTo(2));
+        Assert.That(decoded[0].Payer, Is.Null, "regular receipts carry no frame extension");
+        Assert.That(decoded[0].FrameReceipts, Is.Null);
+
+        TxReceipt decodedFrame = decoded[1];
+        Assert.That(decodedFrame.TxType, Is.EqualTo(TxType.FrameTx));
+        Assert.That(decodedFrame.Payer, Is.EqualTo(frameReceipt.Payer));
+        AssertFrameReceiptsEqual(decodedFrame.FrameReceipts!, frameReceipt.FrameReceipts!);
+        AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs,
+            "the stored union must stay the union, not get rebuilt from frame logs");
+    }
+
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateReceipt(
@@ -65,9 +104,9 @@ public class FrameTxReceiptDecoderTests
     }
 
     // LogEntry has no value equality, so logs are compared field by field.
-    private static void AssertLogsEqual(LogEntry[] actual, LogEntry[] expected)
+    private static void AssertLogsEqual(LogEntry[] actual, LogEntry[] expected, string? message = null)
     {
-        Assert.That(actual.Length, Is.EqualTo(expected.Length));
+        Assert.That(actual.Length, Is.EqualTo(expected.Length), message);
         for (int i = 0; i < expected.Length; i++)
         {
             Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address), $"log {i} address");
