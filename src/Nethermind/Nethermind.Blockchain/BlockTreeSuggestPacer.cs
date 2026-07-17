@@ -13,13 +13,44 @@ namespace Nethermind.Blockchain;
 /// </summary>
 public class BlockTreeSuggestPacer : IDisposable
 {
-    private readonly Lock _lock = new();
-    private TaskCompletionSource? _dbBatchProcessed;
-    private TaskCompletionSource? _pausedSignal;
-    private ulong _blockNumberReachedToUnlock = 0;
+    private PacingState _pacingState = new();
     private readonly ulong _stopBatchSize;
     private readonly ulong _resumeBatchSize;
     private readonly IBlockTree _blockTree;
+
+    // An unpaused generation latches once it pauses so observers holding it cannot miss a rapid resume.
+    private sealed class PacingState(PacingBatch? pacingBatch = null)
+    {
+        private TaskCompletionSource? _pauseSignal;
+        private int _hasPaused;
+
+        public PacingBatch? PacingBatch { get; } = pacingBatch;
+
+        public Task WaitForPauseAsync(CancellationToken token)
+        {
+            if (Volatile.Read(ref _hasPaused) != 0) return Task.CompletedTask;
+
+            TaskCompletionSource signal = LazyInitializer.EnsureInitialized(
+                ref _pauseSignal, static () => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))!;
+            if (Volatile.Read(ref _hasPaused) != 0) signal.TrySetResult();
+
+            return token.CanBeCanceled
+                ? signal.Task.WaitAsync(token)
+                : signal.Task;
+        }
+
+        public void SignalPaused()
+        {
+            Volatile.Write(ref _hasPaused, 1);
+            Interlocked.Exchange(ref _pauseSignal, null)?.TrySetResult();
+        }
+    }
+
+    private sealed class PacingBatch(ulong unlockBlockNumber)
+    {
+        public ulong UnlockBlockNumber { get; } = unlockBlockNumber;
+        public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 
     public BlockTreeSuggestPacer(IBlockTree blockTree, ulong stopBatchSize = 4096, ulong resumeBatchSize = 2048)
     {
@@ -36,61 +67,53 @@ public class BlockTreeSuggestPacer : IDisposable
     /// </summary>
     public Task WaitForPausedAsync(CancellationToken token = default)
     {
-        TaskCompletionSource signal;
-        lock (_lock)
-        {
-            if (_dbBatchProcessed is not null) return Task.CompletedTask;
-            signal = _pausedSignal ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-
-        return token.CanBeCanceled
-            ? signal.Task.WaitAsync(token)
-            : signal.Task;
+        PacingState state = Volatile.Read(ref _pacingState);
+        return state.PacingBatch is not null ? Task.CompletedTask : state.WaitForPauseAsync(token);
     }
 
     private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
     {
-        TaskCompletionSource? completionSource;
-        lock (_lock)
-        {
-            completionSource = _dbBatchProcessed;
-            if (completionSource is null || e.Block.Number < _blockNumberReachedToUnlock) return;
+        PacingState state = Volatile.Read(ref _pacingState);
+        PacingBatch? pacingBatch = state.PacingBatch;
+        if (pacingBatch is null || e.Block.Number < pacingBatch.UnlockBlockNumber) return;
 
-            _dbBatchProcessed = null;
-        }
-
-        completionSource.TrySetResult();
+        if (Interlocked.CompareExchange(ref _pacingState, new PacingState(), state) == state)
+            pacingBatch.Completion.TrySetResult();
     }
 
     public async Task WaitForQueue(ulong currentBlockNumber, CancellationToken token)
     {
         ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
-        TaskCompletionSource? pauseSignal = null;
-        TaskCompletionSource? completionSource;
+        PacingState state = Volatile.Read(ref _pacingState);
+        PacingBatch? pacingBatch = state.PacingBatch;
 
         // Head can transiently overtake the suggestion (parallel-import advance, post-FCU); wrap would pause indefinitely.
-        lock (_lock)
+        if (currentBlockNumber > currentHeadNumber
+            && currentBlockNumber - currentHeadNumber > _stopBatchSize
+            && pacingBatch is null)
         {
-            if (currentBlockNumber > currentHeadNumber
-                && currentBlockNumber - currentHeadNumber > _stopBatchSize
-                && _dbBatchProcessed is null)
+            PacingBatch newPacingBatch = new(currentBlockNumber - _stopBatchSize + _resumeBatchSize);
+            PacingState pausedState = new(newPacingBatch);
+            while (pacingBatch is null)
             {
-                _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
-                _dbBatchProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                pauseSignal = _pausedSignal;
-                _pausedSignal = null;
-            }
+                if (Interlocked.CompareExchange(ref _pacingState, pausedState, state) == state)
+                {
+                    state.SignalPaused();
+                    pacingBatch = newPacingBatch;
+                    break;
+                }
 
-            completionSource = _dbBatchProcessed;
+                state = Volatile.Read(ref _pacingState);
+                pacingBatch = state.PacingBatch;
+            }
         }
 
-        pauseSignal?.TrySetResult();
-
-        if (completionSource is not null)
+        if (pacingBatch is not null)
         {
-            await using (token.Register(() => completionSource.TrySetCanceled()))
+            TaskCompletionSource completion = pacingBatch.Completion;
+            await using (token.Register(() => completion.TrySetCanceled()))
             {
-                await completionSource.Task;
+                await completion.Task;
             }
         }
     }
