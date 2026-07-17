@@ -217,6 +217,40 @@ public readonly ref struct PbtTrieNodeGroup
             + BitOperations.PopCount(_stems & below) * Stem.Length;
     }
 
+    /// <summary>The lowest position of the subtree rooted at <paramref name="position"/> covering <paramref name="width"/> boundary slots.</summary>
+    /// <remarks>A subtree's children sit at <c>position - width</c> and <c>position - 1</c>, which leaves it the positions <c>[position - 2 * width + 2, position]</c>.</remarks>
+    private static int FirstSubtreePosition(int position, int width) => position - 2 * width + 2;
+
+    /// <summary>The positions of that subtree, as a bitmap.</summary>
+    private static uint SubtreeMask(int position, int width) =>
+        ((1u << (position + 1)) - 1) & ~((1u << FirstSubtreePosition(position, width)) - 1);
+
+    /// <summary>
+    /// The presence and stem bitmaps of the subtree rooted at <paramref name="position"/> and covering
+    /// <paramref name="width"/> boundary slots — the shape this group gives it.
+    /// </summary>
+    internal void SubtreeBitmaps(int position, int width, out uint presence, out uint stems)
+    {
+        uint mask = SubtreeMask(position, width);
+        presence = _presence & mask;
+        stems = _stems & mask;
+    }
+
+    /// <summary>
+    /// That subtree's entries, exactly as this group encodes them, for a producer copying a whole
+    /// subtree rather than rebuilding it node by node.
+    /// </summary>
+    /// <remarks>
+    /// A subtree's positions are contiguous and entries are stored in ascending position order, so its
+    /// entries are one unbroken run — ending at its root, the highest position it holds. The run starts
+    /// where the entries below it end, which <see cref="EntryOffset"/> gives whether or not
+    /// <see cref="FirstSubtreePosition"/> itself holds a node, and <paramref name="presence"/> and
+    /// <paramref name="stems"/> (from <see cref="SubtreeBitmaps"/>) pin its length — so neither needs a
+    /// walk to find.
+    /// </remarks>
+    internal ReadOnlySpan<byte> SubtreeEntries(int position, int width, uint presence, uint stems) =>
+        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(presence, stems) - HeaderLength);
+
     /// <summary>
     /// Reads the node of kind <paramref name="kind"/> whose entry starts at <paramref name="offset"/>
     /// out of the encoding <paramref name="data"/>, for a producer holding an entry offset rather than
@@ -310,6 +344,33 @@ public readonly ref struct PbtTrieNodeGroup
             WriteStem(_destination[offset..], stem, leafSubtreeRoot);
             _offset = offset + Slot.StemLength;
             return offset;
+        }
+
+        /// <summary>
+        /// Appends a whole subtree at once — <paramref name="entries"/>, holding the positions
+        /// <paramref name="presence"/> of which <paramref name="stems"/> are stem nodes — returning its
+        /// root's entry offset.
+        /// </summary>
+        /// <remarks>
+        /// The run is another group's encoding of that same subtree (<see cref="SubtreeEntries"/>), which
+        /// is byte-for-byte what appending its nodes one at a time would produce, so a producer that finds
+        /// a subtree unchanged copies it rather than folding it. Its root is its highest position, hence
+        /// the last entry of the run.
+        /// </remarks>
+        public int AppendSubtree(uint presence, uint stems, ReadOnlySpan<byte> entries)
+        {
+            Debug.Assert(presence != 0, "an absent subtree has no entries to append");
+            Debug.Assert((stems & ~presence) == 0, "only a present position holds a stem");
+            Debug.Assert(_presence >> BitOperations.TrailingZeroCount(presence) == 0, "nodes must be appended in ascending position order");
+
+            _presence |= presence;
+            _stems |= stems;
+
+            int rootPosition = BitOperations.Log2(presence);
+            int rootLength = (stems >> rootPosition & 1) != 0 ? Slot.StemLength : Slot.InternalLength;
+            int rootOffset = _offset + entries.Length - rootLength;
+            Write(entries);
+            return rootOffset;
         }
 
         /// <summary>Reads the node of kind <paramref name="kind"/> appended at <paramref name="offset"/> back out of the buffer.</summary>

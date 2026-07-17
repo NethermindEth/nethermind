@@ -755,6 +755,28 @@ public static class TrieUpdater
             : NodeKind.Internal;
 
         /// <summary>
+        /// Whether the internal node at <paramref name="position"/>, over the boundary slots
+        /// <paramref name="range"/>, folds to exactly the nodes <paramref name="existing"/> already
+        /// encodes — so that its entries are copied out of that encoding rather than rebuilt.
+        /// </summary>
+        /// <remarks>
+        /// The fold is a pure function of a range's boundary results, and every stored group is some
+        /// fold's output, so a range whose results are the ones this very group was built from folds
+        /// back to the bytes already there. That is what <paramref name="changed"/> says: an untouched
+        /// slot's result is the occupant routed straight out of <paramref name="existing"/>, and a
+        /// touched one that reports unchanged came back the same node — the same kind, hash and stem —
+        /// since a change of any of them moves the node hash <c>changed</c> is decided on.
+        /// <para>
+        /// Whether the slot's blob is a group or a run does not enter into it: a run's cached node hash
+        /// is a boundary internal's hash, so the entry either way is the same 32 bytes, and the blob
+        /// itself is settled outside the encoding. A frame with no existing encoding — a pushed-stem
+        /// subtree or a run — has nothing to copy, and a single slot is one entry either way.
+        /// </para>
+        /// </remarks>
+        private static bool IsCleanRange(PbtTrieNodeGroup existing, uint changed, uint range, int position, int width) =>
+            width > 1 && (changed & range) == 0 && !existing.IsEmpty && existing.KindAt(position) == NodeKind.Internal;
+
+        /// <summary>
         /// Rebuilds a group's sixteen boundary <paramref name="results"/> straight into a fresh
         /// encoding of the group.
         /// </summary>
@@ -768,7 +790,7 @@ public static class TrieUpdater
             ReadOnlySpan<NodeResult> results, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask,
             in PbtSubtreeStats stats)
         {
-            (uint presence, uint stemMask) = PredictShape(occupied, stems, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
+            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
 
             GroupRebuild rebuild = new(results, existing, occupied, stems, changedMask, memory.GetSpan());
@@ -788,9 +810,12 @@ public static class TrieUpdater
         /// Mirrors the fold's walk on the masks alone — no hashing, no reads — so the group's encoding
         /// can be sized before its buffer is rented, as <see cref="StemLeafBlob.RebuildState"/> sizes a
         /// leaf blob from its live-node counts. This is well-defined because a node's kind follows from
-        /// <see cref="KindOf"/> over its range, which needs only the boundary masks.
+        /// <see cref="KindOf"/> over its range, which needs only the boundary masks. It must prune where
+        /// the fold prunes, which is what sharing <see cref="IsCleanRange"/> keeps it doing: a range
+        /// copied verbatim keeps the shape it already had.
         /// </remarks>
-        private static (uint Presence, uint Stems) PredictShape(uint occupied, uint stems, int position, int firstSlot, int width)
+        private static (uint Presence, uint Stems) PredictShape(
+            PbtTrieNodeGroup existing, uint occupied, uint stems, uint changed, int position, int firstSlot, int width)
         {
             uint range = ((1u << width) - 1) << firstSlot;
             switch (KindOf(occupied & range, stems))
@@ -802,12 +827,18 @@ public static class TrieUpdater
                     return (1u << position, 1u << position);
             }
 
+            if (IsCleanRange(existing, changed, range, position, width))
+            {
+                existing.SubtreeBitmaps(position, width, out uint cleanPresence, out uint cleanStems);
+                return (cleanPresence, cleanStems);
+            }
+
             uint self = 1u << position;
             if (width == 1) return (self, 0);
 
             int half = width / 2;
-            (uint leftPresence, uint leftStems) = PredictShape(occupied, stems, position - width, firstSlot, half);
-            (uint rightPresence, uint rightStems) = PredictShape(occupied, stems, position - 1, firstSlot + half, half);
+            (uint leftPresence, uint leftStems) = PredictShape(existing, occupied, stems, changed, position - width, firstSlot, half);
+            (uint rightPresence, uint rightStems) = PredictShape(existing, occupied, stems, changed, position - 1, firstSlot + half, half);
             return (leftPresence | rightPresence | self, leftStems | rightStems);
         }
 
@@ -893,9 +924,11 @@ public static class TrieUpdater
         /// to the blob as it is folded, with no intermediate set of nodes and no separate encoding
         /// pass. This is well-defined because post-order visits a group's positions in ascending
         /// order — exactly the order the encoding stores them in — so each entry's offset is implicit
-        /// in the append cursor. The walk hands each subtree up as a <see cref="NodeRef"/> into the
-        /// buffer, so a node's hash is materialized only where its parent needs it, never copied by
-        /// value up the stack.
+        /// in the append cursor, and a subtree's entries are one unbroken run. That run is what lets
+        /// the walk prune at a range no write changed and copy it over whole, as the leaf blob's
+        /// rebuild copies a clean leaf subtree. The walk hands each subtree up as a
+        /// <see cref="NodeRef"/> into the buffer, so a node's hash is materialized only where its
+        /// parent needs it, never copied by value up the stack.
         /// <para>
         /// Node kinds come from <see cref="KindOf"/> rather than from the walk, which is what lets a
         /// node be appended at its own position instead of by its parent: a stem never recurses, so
@@ -934,6 +967,17 @@ public static class TrieUpdater
                         return new NodeRef(ResultKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
                 }
 
+                // An unchanged subtree folds to the nodes already encoded, so the whole of its run — its
+                // cached hashes and every node below them — is copied out of the existing group in one
+                // block, never walked. Mirrors StemLeafBlob.RebuildState's clean-subtree copy.
+                if (IsCleanRange(_existing, _changed, range, position, width))
+                {
+                    _existing.SubtreeBitmaps(position, width, out uint presence, out uint stems);
+                    return new NodeRef(
+                        ResultKind.Internal,
+                        _builder.AppendSubtree(presence, stems, _existing.SubtreeEntries(position, width, presence, stems)));
+                }
+
                 // a boundary slot: its internal node is the cached pointer to the child blob, which for a
                 // run is the run's own cached node hash — so a run reads here exactly as a group does
                 if (width == 1) return new NodeRef(ResultKind.Internal, _builder.AppendInternal(position, _results[firstSlot].Hash));
@@ -942,12 +986,9 @@ public static class TrieUpdater
                 NodeRef left = Fold(position - width, firstSlot, half);
                 NodeRef right = Fold(position - 1, firstSlot + half, half);
 
-                // an unchanged subtree keeps its cached hash; its existing slot is internal by
-                // construction then, as unchanged inputs reproduce the existing structure
-                ValueHash256 hash = (_changed & range) == 0 && !_existing.IsEmpty && _existing[position].Kind == NodeKind.Internal
-                    ? _existing[position].Hash
-                    : Blake3Hash.HashPairOrZero(Resolve(left), Resolve(right));
-                return new NodeRef(ResultKind.Internal, _builder.AppendInternal(position, hash));
+                return new NodeRef(
+                    ResultKind.Internal,
+                    _builder.AppendInternal(position, Blake3Hash.HashPairOrZero(Resolve(left), Resolve(right))));
             }
 
             /// <summary>The hash <paramref name="node"/> contributes to its parent.</summary>
