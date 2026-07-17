@@ -16,14 +16,18 @@ public class PbtStemChangesTests
     private static object[] TierCases =>
     [
         new object[] { 1, typeof(SingleStemChanges) },
-        new object[] { 2, typeof(Length8StemChanges) },
+        new object[] { 2, typeof(Length4StemChanges) },
+        new object[] { 4, typeof(Length4StemChanges) },
+        new object[] { 5, typeof(Length8StemChanges) },
         new object[] { 8, typeof(Length8StemChanges) },
-        new object[] { 9, typeof(SortedStemChanges) },
+        new object[] { 9, typeof(Length16StemChanges) },
+        new object[] { 16, typeof(Length16StemChanges) },
+        new object[] { 17, typeof(SortedStemChanges) },
         new object[] { 70, typeof(SortedStemChanges) },
     ];
 
     /// <summary>
-    /// Across all three variants: entries are added out of order, one is updated in place and one is
+    /// Across every variant: entries are added out of order, one is updated in place and one is
     /// cleared to zero; the map must promote to the expected variant, keep <see cref="IPbtStemChanges.Count"/>
     /// stable through updates/clears, and write entries strictly ascending with the latest (and retained
     /// zero) values.
@@ -57,16 +61,19 @@ public class PbtStemChangesTests
     }
 
     /// <summary>
-    /// Fuzzes the SIMD insertion search (<see cref="Length8StemChanges"/>), the binary-search insert
+    /// Fuzzes the SIMD insertion search (<see cref="FixedStemChanges{TSearch}"/>), the binary-search insert
     /// (<see cref="SortedStemChanges"/>) and the promotion path by writing a random permutation of
     /// sub-indices (with a second pass of in-place overwrites) and checking the map reproduces a
     /// <see cref="SortedDictionary{TKey,TValue}"/> reference exactly, in order.
     /// </summary>
     [TestCase(1, 1)]
-    [TestCase(8, 2)]
-    [TestCase(9, 3)]
-    [TestCase(64, 4)]
-    [TestCase(256, 5)]
+    [TestCase(4, 2)]
+    [TestCase(8, 3)]
+    [TestCase(9, 4)]
+    [TestCase(16, 5)]
+    [TestCase(17, 6)]
+    [TestCase(64, 7)]
+    [TestCase(256, 8)]
     public void MatchesSortedReferenceUnderRandomInsertion(int distinctKeys, int seed)
     {
         Random rng = new(seed);
@@ -117,12 +124,18 @@ public class PbtStemChangesTests
         new object[] { Array.Empty<byte>(), (byte)0, 256, "empty map, a full stem of chunks" },
         new object[] { new byte[] { 5 }, (byte)5, 1, "run overwrites the only leaf" },
         new object[] { new byte[] { 9 }, (byte)5, 1, "run misses the only leaf" },
-        new object[] { Array.Empty<byte>(), (byte)0, 8, "run fills the small variant exactly" },
-        new object[] { Array.Empty<byte>(), (byte)0, 9, "run is one past the small variant" },
+        new object[] { Array.Empty<byte>(), (byte)0, 4, "run fills a fixed variant exactly" },
+        new object[] { Array.Empty<byte>(), (byte)0, 5, "run is one past a fixed variant" },
+        new object[] { Array.Empty<byte>(), (byte)0, 8, "run fills a fixed variant exactly" },
+        new object[] { Array.Empty<byte>(), (byte)0, 9, "run is one past a fixed variant" },
+        new object[] { Array.Empty<byte>(), (byte)0, 16, "run fills the largest fixed variant exactly" },
+        new object[] { Array.Empty<byte>(), (byte)0, 17, "run is one past the largest fixed variant" },
         new object[] { new byte[] { 0, 1, 2, 3 }, (byte)4, 4, "run sits entirely above the map" },
         new object[] { new byte[] { 4, 5, 6, 7 }, (byte)0, 4, "run sits entirely below the map" },
         new object[] { new byte[] { 0, 1, 3, 5, 7, 9 }, (byte)2, 4, "run straddles the map" },
-        new object[] { new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 }, (byte)0, 8, "run overwrites a full small variant" },
+        new object[] { new byte[] { 0, 1, 2, 3 }, (byte)0, 4, "run overwrites a full fixed variant" },
+        new object[] { new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 }, (byte)0, 8, "run overwrites a full fixed variant" },
+        new object[] { new byte[] { 0, 1 }, (byte)2, 12, "run promotes a fixed variant two tiers up" },
         new object[] { new byte[] { 0, 50, 150, 250 }, (byte)100, 100, "run straddles the large variant" },
         new object[] { new byte[] { 255 }, (byte)0, 255, "run stops one short of the map's only leaf" },
     ];
