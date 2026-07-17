@@ -17,8 +17,12 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// <remarks>
 /// The reader is a point-in-time snapshot that does not observe writes buffered in the batch. This is
 /// safe within a single <see cref="TrieUpdater.UpdateRoot"/> call, which reads each node/blob at most
-/// once and before writing it. The arrays returned by the reader are already owned, so they are wrapped
-/// without copying; a written value is copied into a fresh array the batch owns, and its lease released.
+/// once and before writing it — including the two reads the descent makes off its own recursion: a
+/// chain's target lies below the frame reading it, and a group collapsing onto an untouched child reads
+/// one nothing descended into. No other store here observes that ordering rule (the layered ones read
+/// their own writes), so a violation would surface only on this path. The arrays returned by the reader
+/// are already owned, so they are wrapped without copying; a written value is copied into a fresh array
+/// the batch owns, and its lease released.
 /// </remarks>
 internal sealed class PersistenceBackedPbtStore(IPbtPersistence.IReader reader, IPbtPersistence.IWriteBatch batch) : IPbtStore
 {

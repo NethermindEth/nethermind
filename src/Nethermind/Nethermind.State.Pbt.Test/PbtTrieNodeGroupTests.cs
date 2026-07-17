@@ -74,7 +74,7 @@ public class PbtTrieNodeGroupTests
         // and a length that does not match the bitmaps are all rejected
         byte[] valid = encoded[..length];
         byte[] badFormat = (byte[])valid.Clone();
-        badFormat[0] = 0x02;
+        badFormat[0] = 0xFF;
         Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
 
         byte[] highBit = (byte[])valid.Clone();
