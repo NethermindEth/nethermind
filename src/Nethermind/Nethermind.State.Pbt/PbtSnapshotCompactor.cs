@@ -15,8 +15,42 @@ namespace Nethermind.State.Pbt;
 /// The merged layer shares its blob and node arrays with the layers it merged, so it must not outlive
 /// them unless it takes leases of its own.
 /// </remarks>
-public class PbtSnapshotCompactor(IPbtResourcePool resourcePool)
+public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSchedule schedule, PbtSnapshotRepository repository, IPbtConfig config)
 {
+    private readonly ulong _fullCompactSize = (ulong)config.CompactSize;
+
+    /// <summary>Runs the compaction the schedule calls for at <paramref name="stateId"/>, if any.</summary>
+    /// <returns>Whether a compacted layer was published, and so whether reads at states above it now walk fewer layers.</returns>
+    /// <remarks>
+    /// Called for every committed block; the schedule decides that most of them merge nothing. The
+    /// window's inputs stay in the repository afterwards: the compacted layer is a shortcut across
+    /// them, and a walk aiming between the wide boundaries still needs the narrow ones.
+    /// </remarks>
+    public bool DoCompactSnapshot(in StateId stateId)
+    {
+        ulong width = schedule.GetCompactSize(stateId.BlockNumber);
+        if (width <= 1) return false;
+
+        // the window starts a full width back, which may be below genesis for an early wide boundary —
+        // signed, so that fails to assemble rather than wrapping into an enormous window
+        long start = (long)stateId.BlockNumber - (long)width;
+        using PbtSnapshotPooledList window = new((int)width);
+        if (!repository.TryLeaseCompactionWindow(stateId, start, window) || window.Count <= 1) return false;
+
+        PbtSnapshot compacted = Compact(window);
+        if (!repository.TryAddCompacted(compacted)) return false;
+
+        // Anything narrower than a full window is itself about to be spanned by a wider one, so the
+        // compacted layer a full width back is now subsumed and only costs memory. The full-width
+        // layers are the persistence boundaries and are left for the coordinator to consume.
+        if (width < _fullCompactSize && stateId.BlockNumber >= _fullCompactSize)
+        {
+            repository.RemoveCompactedAt(stateId.BlockNumber - _fullCompactSize);
+        }
+
+        return true;
+    }
+
     /// <param name="chainOldestFirst">Consecutive snapshots, oldest first, as produced by <see cref="PbtSnapshotRepository.TryLeaseChain"/>.</param>
     public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
     {

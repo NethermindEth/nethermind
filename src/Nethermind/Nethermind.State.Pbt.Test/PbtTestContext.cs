@@ -29,6 +29,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public IPbtResourcePool ResourcePool { get; }
     public IDb MetadataDb { get; } = new MemDb();
     public PbtCompactionSchedule Schedule { get; }
+    public PbtSnapshotCompactor Compactor { get; }
     public PbtRocksDbPersistence Persistence { get; }
     public PbtPersistenceCoordinator Coordinator { get; }
     public PbtDbManager Manager { get; }
@@ -39,11 +40,17 @@ internal sealed class PbtTestContext : IAsyncDisposable
     {
         Db = db ?? new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         Config = config ?? new PbtConfig();
+
+        // A node rolls its compaction offset at random so the network does not all compact on the
+        // same blocks. A test that inherited that would have its boundaries — and so what persists,
+        // and what prunes — move from run to run, so pin it unless the test asked for one.
+        if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
         Persistence = new PbtRocksDbPersistence(Db);
         ResourcePool = new PbtResourcePool(Config);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
-        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, new PbtSnapshotCompactor(ResourcePool), Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, new TestProcessExitSource(_cts), LimboLogs.Instance);
+        Compactor = new PbtSnapshotCompactor(ResourcePool, Schedule, Repository, Config);
+        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, Compactor, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool), CodeDb);
     }

@@ -17,15 +17,25 @@ namespace Nethermind.State.Pbt;
 public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 {
     private const int GatherRetryLimit = 16;
+    private const int MaxInFlightCompactionJobs = 32;
     private static readonly TimeSpan CacheSweepInterval = TimeSpan.FromSeconds(15);
 
     private readonly PbtSnapshotRepository _repository;
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
+    // Persistence is idempotent — it re-reads the head every time — so a dropped nudge costs nothing
+    // and one pending signal is enough.
     private readonly Channel<bool> _workSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+
+    // Compaction is not: each block is its own window at its own width, and a dropped one is a level
+    // that never merges and never comes back. Committing waits rather than drops when this backs up.
+    private readonly Channel<StateId> _compactionJobs = Channel.CreateBounded<StateId>(new BoundedChannelOptions(MaxInFlightCompactionJobs) { FullMode = BoundedChannelFullMode.Wait });
+
     private readonly Task _persistenceWorker;
+    private readonly Task _compactionWorker;
     private readonly Task _cacheSweeper;
     private readonly CancellationTokenSource _stopSource;
 
@@ -42,6 +52,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtPersistenceCoordinator coordinator,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
+        PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         ILogManager logManager)
     {
@@ -49,9 +60,11 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _coordinator = coordinator;
         _persistence = persistence;
         _resourcePool = resourcePool;
+        _compactor = compactor;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
         _persistenceWorker = Task.Run(RunPersistenceWorker);
+        _compactionWorker = Task.Run(RunCompactionWorker);
         _cacheSweeper = Task.Run(RunCacheSweeper);
     }
 
@@ -128,8 +141,17 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public void AddSnapshot(PbtSnapshot snapshot)
     {
+        StateId committed = snapshot.To;
         _repository.TryAdd(snapshot);
-        _workSignal.Writer.TryWrite(true);
+
+        // A dropped compaction job is a level that never merges, so block processing waits for room
+        // rather than losing one. Backing up this far means compaction is not keeping pace with the
+        // chain, which persistence sits downstream of.
+        if (!_compactionJobs.Writer.TryWrite(committed))
+        {
+            if (_logger.IsWarn) _logger.Warn("Pbt compaction is not keeping up with block processing; stalling the commit until it does.");
+            _compactionJobs.Writer.WriteAsync(committed, _stopSource.Token).AsTask().GetAwaiter().GetResult();
+        }
     }
 
     public bool HasStateForBlock(in StateId stateId) =>
@@ -168,6 +190,36 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     }
 
     /// <remarks>
+    /// Compaction is upstream of persistence: a block is merged into whatever level its number calls
+    /// for, and only then is persistence nudged, so it always finds the widest layer available.
+    /// </remarks>
+    private async Task RunCompactionWorker()
+    {
+        try
+        {
+            await foreach (StateId stateId in _compactionJobs.Reader.ReadAllAsync(_stopSource.Token))
+            {
+                try
+                {
+                    // a published layer changes what a walk at any state above it would assemble, so
+                    // the cached views have to go before anything reads through them again — and
+                    // before persistence is nudged, or the boundary sweep would race this one
+                    if (_compactor.DoCompactSnapshot(stateId)) ClearReadOnlyBundleCache();
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Pbt compaction failed", e);
+                }
+
+                _workSignal.Writer.TryWrite(true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <remarks>
     /// The boundary sweeps only fire when persistence advances, which it never does while finality
     /// lags. This is what bounds the pinning until it resumes.
     /// </remarks>
@@ -189,8 +241,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _workSignal.Writer.TryComplete();
+        _compactionJobs.Writer.TryComplete();
         await _stopSource.CancelAsync();
         await _persistenceWorker;
+        await _compactionWorker;
         await _cacheSweeper;
         ClearReadOnlyBundleCache();
         _stopSource.Dispose();

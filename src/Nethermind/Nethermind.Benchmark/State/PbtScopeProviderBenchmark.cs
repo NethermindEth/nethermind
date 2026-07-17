@@ -109,11 +109,13 @@ public class PbtScopeProviderBenchmark
         PbtSnapshotRepository repository = new();
         PbtRocksDbPersistence persistence = new(_pbtDb);
         PbtResourcePool resourcePool = new(config);
+        PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
+        PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
-            config, new BenchFinalizedStateProvider(), persistence, repository, new PbtSnapshotCompactor(resourcePool),
+            config, new BenchFinalizedStateProvider(), persistence, repository, compactor, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, new BenchProcessExitSource(_cts), LimboLogs.Instance);
+            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
     }
 
