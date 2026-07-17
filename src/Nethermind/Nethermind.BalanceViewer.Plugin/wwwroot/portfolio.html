@@ -1681,8 +1681,12 @@
             if (uri.startsWith('data:')) return uri;
             const ip = ipfsPath(uri);
             if (ip) {
-                if (artSources.localIpfs) return 'portfolio-ipfs/' + ip;
+                // Skip the local node for a CID it already failed to serve this session, so we don't re-wait on
+                // the local timeout every view — go straight to the (cached) remote gateway. Auto-pin may make it
+                // local later; a fresh session re-checks. Falls through to local when the remote gateway is off.
+                if (artSources.localIpfs && !nonLocalCids.has(ip.split('/')[0])) return 'portfolio-ipfs/' + ip;
                 if (artSources.remoteGateway) return ipfsRemoteGateway + ip;
+                if (artSources.localIpfs) return 'portfolio-ipfs/' + ip;
                 return null;
             }
             if (/^https?:\/\//i.test(uri)) return artSources.https ? uri : null;
@@ -1954,12 +1958,15 @@
             // it, future loads are local again — the public gateway is only touched while the content is missing.
             const PROXY = 'portfolio-ipfs/';
             const remoteAlt = (src.startsWith(PROXY) && artSources.localIpfs && artSources.remoteGateway) ? (ipfsRemoteGateway + src.slice(PROXY.length)) : null;
+            const cid = remoteAlt ? src.slice(PROXY.length).split('/')[0] : null;
             let triedRemote = false;
+            // switch to the remote gateway and remember the CID isn't local, so later views skip the local attempt
+            const goRemote = () => { triedRemote = true; if (cid) nonLocalCids.add(cid); img.src = remoteAlt; };
             if (!eager) {
                 img.loading = 'lazy';
                 let t = 0;
                 img.onerror = () => {
-                    if (remoteAlt && !triedRemote) { triedRemote = true; img.src = remoteAlt; return; }
+                    if (remoteAlt && !triedRemote) { goRemote(); return; }
                     if (!remoteAlt && t < 2) { t++; setTimeout(() => { img.src = bust(t); }, 700 * t); return; }
                     onFail();
                 };
@@ -1971,14 +1978,14 @@
             img.onload = finish;
             img.onerror = () => {
                 clearTimeout(fbTimer);
-                if (remoteAlt && !triedRemote) { triedRemote = true; img.src = remoteAlt; return; } // fall back to the public gateway
+                if (remoteAlt && !triedRemote) { goRemote(); return; } // fall back to the public gateway
                 if (!remoteAlt && tries < 1) { tries++; setTimeout(() => { img.src = bust(tries); }, 700); return; } // local retry re-triggers the node
                 finish(); onFail();
             };
             imgAcquire(() => {
                 img.src = src;
                 // don't wait the full local-gateway timeout for a CID the node lacks — switch to the remote gateway fast
-                if (remoteAlt) fbTimer = setTimeout(() => { if (!done && !triedRemote) { triedRemote = true; img.src = remoteAlt; } }, 2500);
+                if (remoteAlt) fbTimer = setTimeout(() => { if (!done && !triedRemote) goRemote(); }, 2500);
             });
             return img;
         }
@@ -2912,6 +2919,7 @@
         let displayMode = 'all';            // 'all' | 'tokens' | 'nfts' — which asset classes to show
         // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
         const artSources = { https: false, localIpfs: false, remoteGateway: false };
+        const nonLocalCids = new Set(); // CIDs the local IPFS node couldn't serve this session — resolve straight to remote
         let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
         let autoPin = false;                // pin viewed IPFS art to the local node (only when Local IPFS is on)
         const pinnedCids = new Set();       // CIDs already pin-requested this session (avoid duplicate requests)
