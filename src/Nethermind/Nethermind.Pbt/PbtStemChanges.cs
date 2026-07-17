@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -30,6 +31,19 @@ public interface IPbtStemChanges
     /// <returns>The map to keep using — this instance, or a larger variant it promoted to.</returns>
     IPbtStemChanges Set(byte subIndex, in ValueHash256 value);
 
+    /// <summary>Adds or overwrites the writes for a run of consecutive sub-indices starting at <paramref name="startSubIndex"/>.</summary>
+    /// <param name="startSubIndex">The sub-index the run starts at.</param>
+    /// <param name="values">The run's writes laid out back to back, each <see cref="ValueHash256.MemorySize"/> bytes; the run must fit the stem from <paramref name="startSubIndex"/>.</param>
+    /// <returns>The map to keep using — this instance, or a larger variant it promoted to.</returns>
+    /// <remarks>
+    /// Equivalent to <see cref="Set"/> per leaf, but a run is knowable in a way a leaf is not: its
+    /// sub-indices are consecutive and ascending. So a variant promotes once to the tier that holds the
+    /// whole result rather than climbing there a leaf at a time, and the large variant — where a
+    /// deployment's up-to-a-full-stem of code chunks lands — places the run in a pair of block copies
+    /// rather than a search and a shift per leaf.
+    /// </remarks>
+    IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values);
+
     /// <summary>The sub-index of the write at ordinal <paramref name="index"/> (writes are ordered ascending by sub-index).</summary>
     byte SubIndexAt(int index);
 
@@ -45,6 +59,25 @@ public static class PbtStemChanges
 {
     /// <summary>Rents an empty map. The first <see cref="IPbtStemChanges.Set"/> grows it as needed.</summary>
     public static IPbtStemChanges Rent() => StaticPool<SingleStemChanges>.Rent();
+
+    /// <summary>Rents an empty map of the smallest variant that holds <paramref name="count"/> writes without promoting.</summary>
+    /// <remarks>
+    /// Only <see cref="IPbtStemChanges.SetRange"/> knows a write count up front. Getting this wrong costs
+    /// a promotion, not correctness — every variant still grows itself on overflow.
+    /// </remarks>
+    internal static IPbtStemChanges RentFor(int count) => count switch
+    {
+        <= 1 => StaticPool<SingleStemChanges>.Rent(),
+        <= Length8StemChanges.Capacity => StaticPool<Length8StemChanges>.Rent(),
+        _ => StaticPool<SortedStemChanges>.Rent(),
+    };
+
+    /// <summary>Whether a run of <paramref name="count"/> writes from <paramref name="startSubIndex"/> overwrites <paramref name="subIndex"/>.</summary>
+    internal static bool RunCovers(byte startSubIndex, int count, byte subIndex) => subIndex >= startSubIndex && subIndex < startSubIndex + count;
+
+    /// <summary>The write at ordinal <paramref name="index"/> of a run, as <see cref="IPbtStemChanges.SetRange"/> lays one out.</summary>
+    internal static ValueHash256 RunValue(ReadOnlySpan<byte> values, int index) =>
+        new(values.Slice(index * ValueHash256.MemorySize, ValueHash256.MemorySize));
 
     /// <summary>Returns <paramref name="changes"/> to the pool matching its concrete variant.</summary>
     public static void Return(IPbtStemChanges changes)
@@ -84,6 +117,21 @@ internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
         return promoted;
     }
 
+    public IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
+    {
+        int count = values.Length / ValueHash256.MemorySize;
+        if (count == 0) return this;
+
+        // this variant's leaf survives the run only if the run does not overwrite it
+        int resulting = count + (_hasValue && !PbtStemChanges.RunCovers(startSubIndex, count, _subIndex) ? 1 : 0);
+        if (resulting == 1) return Set(startSubIndex, PbtStemChanges.RunValue(values, 0));
+
+        IPbtStemChanges promoted = PbtStemChanges.RentFor(resulting);
+        if (_hasValue) promoted = promoted.Set(_subIndex, _value);
+        StaticPool<SingleStemChanges>.Return(this);
+        return promoted.SetRange(startSubIndex, values);
+    }
+
     public byte SubIndexAt(int index) => _subIndex;
 
     public ref readonly ValueHash256 Get(int index) => ref _value;
@@ -99,7 +147,7 @@ internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
 /// <summary>The up-to-eight-write variant: a fixed array kept ascending by insertion sort. Promotes to <see cref="SortedStemChanges"/> when full.</summary>
 internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
 {
-    private const int Capacity = 8;
+    internal const int Capacity = 8;
     private readonly byte[] _subIndices = new byte[Capacity];
     private readonly ValueHash256[] _values = new ValueHash256[Capacity];
     private int _count;
@@ -130,9 +178,48 @@ internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
             return this;
         }
 
-        SortedStemChanges promoted = StaticPool<SortedStemChanges>.Rent();
-        promoted.PromoteFrom(_subIndices, _values, subIndex, value);
+        SortedStemChanges promoted = CopyToSorted();
+        IPbtStemChanges result = promoted.Set(subIndex, value);
         StaticPool<Length8StemChanges>.Return(this);
+        return result;
+    }
+
+    public IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
+    {
+        int count = values.Length / ValueHash256.MemorySize;
+        if (count == 0) return this;
+
+        int resulting = count;
+        for (int i = 0; i < _count; i++)
+        {
+            if (!PbtStemChanges.RunCovers(startSubIndex, count, _subIndices[i])) resulting++;
+        }
+
+        // this variant addresses its values by ordinal, not by sub-index, so it has no block-copy to
+        // offer a run: placing at most eight leaves one by one is the whole of what it can do
+        if (resulting <= Capacity)
+        {
+            IPbtStemChanges changes = this;
+            for (int i = 0; i < count; i++) changes = changes.Set((byte)(startSubIndex + i), PbtStemChanges.RunValue(values, i));
+            return changes;
+        }
+
+        SortedStemChanges promoted = CopyToSorted();
+        IPbtStemChanges result = promoted.SetRange(startSubIndex, values);
+        StaticPool<Length8StemChanges>.Return(this);
+        return result;
+    }
+
+    /// <summary>Copies this map's writes into a freshly rented <see cref="SortedStemChanges"/>.</summary>
+    /// <remarks>
+    /// The caller returns this map to the pool itself, once it has made the write it is promoting for:
+    /// that write may be handed in by reference to a value this map still owns, which returning it first
+    /// would expose to whoever rents it next.
+    /// </remarks>
+    private SortedStemChanges CopyToSorted()
+    {
+        SortedStemChanges promoted = StaticPool<SortedStemChanges>.Rent();
+        promoted.Seed(_subIndices.AsSpan(0, _count), _values.AsSpan(0, _count));
         return promoted;
     }
 
@@ -150,6 +237,11 @@ internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
 /// value in place; a new sub-index is insertion-sorted into <c>_order</c>. Sorting happens on write, so
 /// <see cref="Get"/> reads directly and <see cref="Reset"/> need only clear the count (stale <c>_values</c>
 /// entries are never read, as every new sub-index rewrites its slot).
+/// <para>
+/// Addressing <c>_values</c> by sub-index is also what lets <see cref="SetRange"/> place a run in block
+/// copies: a run of consecutive sub-indices is a contiguous span of <c>_values</c> and a contiguous slice
+/// of <c>_order</c>, so neither needs to be walked a leaf at a time.
+/// </para>
 /// </remarks>
 internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
 {
@@ -160,20 +252,15 @@ internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
 
     public int Count => _count;
 
+    /// <inheritdoc/>
+    /// <remarks>Always returns this: the largest variant has nothing to promote to.</remarks>
     public IPbtStemChanges Set(byte subIndex, in ValueHash256 value)
     {
-        int lo = 0, hi = _count - 1;
-        while (lo <= hi)
+        int lo = LowerBound(subIndex);
+        if (lo < _count && _order[lo] == subIndex)
         {
-            int mid = (lo + hi) >> 1;
-            byte m = _order[mid];
-            if (m < subIndex) lo = mid + 1;
-            else if (m > subIndex) hi = mid - 1;
-            else
-            {
-                _values[subIndex] = value;
-                return this;
-            }
+            _values[subIndex] = value;
+            return this;
         }
 
         _order.AsSpan(lo, _count - lo).CopyTo(_order.AsSpan(lo + 1));
@@ -183,23 +270,50 @@ internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
         return this;
     }
 
-    /// <summary>
-    /// Seeds this (freshly rented) map from <see cref="Length8StemChanges"/>'s already-sorted run plus one
-    /// more write, avoiding the per-entry insertion sort a sequence of <see cref="Set"/> calls would incur.
-    /// </summary>
-    /// <remarks><paramref name="subIndices"/> is ascending and must not contain <paramref name="subIndex"/>.</remarks>
-    internal void PromoteFrom(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values, byte subIndex, in ValueHash256 value)
+    /// <inheritdoc/>
+    /// <remarks>Always returns this: the largest variant has nothing to promote to.</remarks>
+    public IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
     {
-        int insert = 0;
-        while (insert < subIndices.Length && subIndices[insert] < subIndex) insert++;
+        int count = values.Length / ValueHash256.MemorySize;
+        if (count == 0) return this;
 
-        subIndices[..insert].CopyTo(_order);
-        _order[insert] = subIndex;
-        subIndices[insert..].CopyTo(_order.AsSpan(insert + 1));
+        // _values is addressed by sub-index, so the run's values are already contiguous in it: the whole
+        // run lands in one copy, wherever the run falls relative to what is already here.
+        values.CopyTo(MemoryMarshal.AsBytes(_values.AsSpan(startSubIndex, count)));
 
-        for (int k = 0; k < subIndices.Length; k++) _values[subIndices[k]] = values[k];
-        _values[subIndex] = value;
-        _count = subIndices.Length + 1;
+        // _order is ascending, so the sub-indices the run overwrites are exactly the slice [lo, hi) — the
+        // run replaces it wholesale, which is one move of the entries above it and one ascending fill.
+        int lo = LowerBound(startSubIndex);
+        int hi = LowerBound(startSubIndex + count);
+        int above = _count - hi;
+        _order.AsSpan(hi, above).CopyTo(_order.AsSpan(lo + count));
+        for (int i = 0; i < count; i++) _order[lo + i] = (byte)(startSubIndex + i);
+        _count = lo + count + above;
+        return this;
+    }
+
+    /// <summary>Seeds this (freshly rented, still empty) map from an already-ascending run of writes.</summary>
+    /// <remarks><paramref name="subIndices"/> must be ascending; seeding skips the per-entry insertion a sequence of <see cref="Set"/> calls would incur.</remarks>
+    internal void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
+    {
+        subIndices.CopyTo(_order);
+        for (int i = 0; i < subIndices.Length; i++) _values[subIndices[i]] = values[i];
+        _count = subIndices.Length;
+    }
+
+    /// <summary>The first ordinal whose sub-index is at or above <paramref name="subIndex"/>, or <see cref="Count"/> if there is none.</summary>
+    /// <param name="subIndex">Not a <see cref="byte"/>: a run's exclusive end is 256 when it reaches the end of the stem.</param>
+    private int LowerBound(int subIndex)
+    {
+        int lo = 0, hi = _count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) >> 1;
+            if (_order[mid] < subIndex) lo = mid + 1;
+            else hi = mid;
+        }
+
+        return lo;
     }
 
     public byte SubIndexAt(int index) => _order[index];

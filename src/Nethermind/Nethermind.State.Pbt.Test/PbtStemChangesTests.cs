@@ -107,6 +107,102 @@ public class PbtStemChangesTests
         PbtStemChanges.Return(map);
     }
 
+    // Sub-indices already in the map → the run's start and length. Each case is named for what it puts
+    // the run's block copies up against.
+    private static object[] RunCases =>
+    [
+        new object[] { Array.Empty<byte>(), (byte)0, 1, "empty map, lone leaf" },
+        new object[] { Array.Empty<byte>(), (byte)0, 2, "empty map, BASIC_DATA + CODE_HASH" },
+        new object[] { Array.Empty<byte>(), (byte)128, 128, "empty map, the header's code chunks" },
+        new object[] { Array.Empty<byte>(), (byte)0, 256, "empty map, a full stem of chunks" },
+        new object[] { new byte[] { 5 }, (byte)5, 1, "run overwrites the only leaf" },
+        new object[] { new byte[] { 9 }, (byte)5, 1, "run misses the only leaf" },
+        new object[] { Array.Empty<byte>(), (byte)0, 8, "run fills the small variant exactly" },
+        new object[] { Array.Empty<byte>(), (byte)0, 9, "run is one past the small variant" },
+        new object[] { new byte[] { 0, 1, 2, 3 }, (byte)4, 4, "run sits entirely above the map" },
+        new object[] { new byte[] { 4, 5, 6, 7 }, (byte)0, 4, "run sits entirely below the map" },
+        new object[] { new byte[] { 0, 1, 3, 5, 7, 9 }, (byte)2, 4, "run straddles the map" },
+        new object[] { new byte[] { 0, 1, 2, 3, 4, 5, 6, 7 }, (byte)0, 8, "run overwrites a full small variant" },
+        new object[] { new byte[] { 0, 50, 150, 250 }, (byte)100, 100, "run straddles the large variant" },
+        new object[] { new byte[] { 255 }, (byte)0, 255, "run stops one short of the map's only leaf" },
+    ];
+
+    /// <summary>
+    /// A run written through <see cref="IPbtStemChanges.SetRange"/> must land exactly as the same writes
+    /// made one at a time would — same variant, same order, same values — whatever the map already holds.
+    /// </summary>
+    [TestCaseSource(nameof(RunCases))]
+    public void SetRangeMatchesPerLeafSet(byte[] seeded, byte start, int runLength, string because)
+    {
+        (IPbtStemChanges viaRange, IPbtStemChanges perLeaf) = ApplyRunBothWays(seeded, start, runLength);
+        AssertSameWrites(viaRange, perLeaf, because);
+    }
+
+    /// <summary>
+    /// Fuzzes the run merge — the sub-index binary searches, the block copies and the tier promotion —
+    /// against the same writes made one at a time, over runs at every position and length and maps holding
+    /// anything from nothing to a full stem.
+    /// </summary>
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void SetRangeMatchesPerLeafSetUnderRandomRuns(int seed)
+    {
+        Random rng = new(seed);
+
+        for (int iteration = 0; iteration < 500; iteration++)
+        {
+            HashSet<byte> seededSet = [];
+            int seedCount = rng.Next(0, 20);
+            for (int i = 0; i < seedCount; i++) seededSet.Add((byte)rng.Next(256));
+
+            byte start = (byte)rng.Next(256);
+            int runLength = rng.Next(1, 256 - start + 1);
+
+            byte[] seeded = [.. seededSet];
+            (IPbtStemChanges viaRange, IPbtStemChanges perLeaf) = ApplyRunBothWays(seeded, start, runLength);
+            AssertSameWrites(viaRange, perLeaf, $"seeded [{string.Join(',', seeded)}], run [{start}, {start + runLength})");
+        }
+    }
+
+    /// <summary>Seeds two maps identically, then applies the same run to one as a range and to the other leaf by leaf.</summary>
+    private static (IPbtStemChanges ViaRange, IPbtStemChanges PerLeaf) ApplyRunBothWays(byte[] seeded, byte start, int runLength)
+    {
+        IPbtStemChanges viaRange = PbtStemChanges.Rent();
+        IPbtStemChanges perLeaf = PbtStemChanges.Rent();
+        foreach (byte subIndex in seeded)
+        {
+            // seeded values are out of the run's range, so a seed that wrongly survives is visible
+            viaRange = viaRange.Set(subIndex, Value(9000 + subIndex));
+            perLeaf = perLeaf.Set(subIndex, Value(9000 + subIndex));
+        }
+
+        byte[] values = new byte[runLength * ValueHash256.MemorySize];
+        for (int i = 0; i < runLength; i++)
+        {
+            ValueHash256 value = Value(start + i + 1);
+            value.Bytes.CopyTo(values.AsSpan(i * ValueHash256.MemorySize));
+            perLeaf = perLeaf.Set((byte)(start + i), value);
+        }
+
+        viaRange = viaRange.SetRange(start, values);
+        return (viaRange, perLeaf);
+    }
+
+    private static void AssertSameWrites(IPbtStemChanges viaRange, IPbtStemChanges perLeaf, string because)
+    {
+        Assert.That(viaRange, Is.InstanceOf(perLeaf.GetType()), $"variant — {because}");
+        Assert.That(viaRange.Count, Is.EqualTo(perLeaf.Count), $"count — {because}");
+        for (int i = 0; i < perLeaf.Count; i++)
+        {
+            Assert.That(viaRange.SubIndexAt(i), Is.EqualTo(perLeaf.SubIndexAt(i)), $"sub-index at {i} — {because}");
+            Assert.That(viaRange.Get(i), Is.EqualTo(perLeaf.Get(i)), $"value at {i} — {because}");
+        }
+
+        PbtStemChanges.Return(viaRange);
+        PbtStemChanges.Return(perLeaf);
+    }
+
     private static ValueHash256 Value(int seed)
     {
         Span<byte> bytes = stackalloc byte[32];
