@@ -4229,12 +4229,14 @@
                 try {
                     const st = await rpc('logIndex_status', [], ownNode.rpcPath);
                     const cur = st.current ?? st.Current ?? {}, tgt = st.target ?? st.Target ?? {};
-                    const running = st.isRunning ?? st.IsRunning;
                     const curTo = cur.toBlock ?? cur.ToBlock, tgtTo = tgt.toBlock ?? tgt.ToBlock;
-                    const synced = tgtTo != null && curTo != null && BigInt(curTo) >= BigInt(tgtTo);
-                    note.textContent = (running || !synced)
-                        ? 'Log index: syncing… — auto-detection gets much faster once it finishes.'
-                        : 'Log index: enabled ✓ — fast auto-detection.';
+                    // "syncing" only while the index is still catching up to the chain head. Once caught up it
+                    // stays isRunning forever just to follow new blocks — that isn't a sync in progress, so don't
+                    // key off isRunning (which never turns off). Small margin absorbs head-following lag.
+                    const caughtUp = tgtTo != null && curTo != null && BigInt(curTo) >= BigInt(tgtTo) - 64n;
+                    note.textContent = caughtUp
+                        ? 'Log index: enabled ✓ — fast auto-detection.'
+                        : 'Log index: syncing… — auto-detection gets much faster once it finishes.';
                 } catch {
                     note.textContent = 'Tip: run the node with --LogIndex.Enabled true for much faster auto-detection.';
                 }
