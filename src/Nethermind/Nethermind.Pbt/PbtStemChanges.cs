@@ -3,6 +3,7 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Caching;
@@ -53,7 +54,8 @@ public interface IPbtStemChanges
 
 /// <summary>
 /// Rents and returns the pooled <see cref="IPbtStemChanges"/> variants. Each variant is pooled in its
-/// own <see cref="StaticPool{T}"/>, giving three size-tiered pools: single, up-to-eight, and sorted.
+/// own <see cref="StaticPool{T}"/>, giving five size-tiered pools: single, up-to-four, up-to-eight,
+/// up-to-sixteen, and sorted.
 /// </summary>
 public static class PbtStemChanges
 {
@@ -65,10 +67,24 @@ public static class PbtStemChanges
     /// Only <see cref="IPbtStemChanges.SetRange"/> knows a write count up front. Getting this wrong costs
     /// a promotion, not correctness — every variant still grows itself on overflow.
     /// </remarks>
-    internal static IPbtStemChanges RentFor(int count) => count switch
+    internal static IPbtStemChanges RentFor(int count) =>
+        count <= 1 ? StaticPool<SingleStemChanges>.Rent() : RentSeedable(count);
+
+    /// <summary>Rents the smallest variant that holds <paramref name="count"/> writes, seeded with an already-ascending run of writes.</summary>
+    /// <param name="count">The writes the map is to end up with, at least two — the seed's own writes plus whatever the caller is promoting to make room for.</param>
+    internal static IPbtStemChanges RentSeeded(int count, ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
     {
-        <= 1 => StaticPool<SingleStemChanges>.Rent(),
-        <= Length8StemChanges.Capacity => StaticPool<Length8StemChanges>.Rent(),
+        SeedableStemChanges rented = RentSeedable(count);
+        rented.Seed(subIndices, values);
+        return rented;
+    }
+
+    /// <summary>Rents the smallest variant that holds <paramref name="count"/> (at least two) writes.</summary>
+    private static SeedableStemChanges RentSeedable(int count) => count switch
+    {
+        <= Search4.Lanes => StaticPool<Length4StemChanges>.Rent(),
+        <= Search8.Lanes => StaticPool<Length8StemChanges>.Rent(),
+        <= Search16.Lanes => StaticPool<Length16StemChanges>.Rent(),
         _ => StaticPool<SortedStemChanges>.Rent(),
     };
 
@@ -85,13 +101,35 @@ public static class PbtStemChanges
         switch (changes)
         {
             case SingleStemChanges single: StaticPool<SingleStemChanges>.Return(single); break;
-            case Length8StemChanges length8: StaticPool<Length8StemChanges>.Return(length8); break;
-            case SortedStemChanges sorted: StaticPool<SortedStemChanges>.Return(sorted); break;
+            case SeedableStemChanges seedable: seedable.ReturnSelf(); break;
         }
     }
 }
 
-/// <summary>The single-write variant: no backing allocation. Promotes to <see cref="Length8StemChanges"/> on a second key.</summary>
+/// <summary>The variants that hold more than one write, and so can be rented already holding a map's writes to promote it.</summary>
+internal abstract class SeedableStemChanges : IPbtStemChanges, IResettable
+{
+    public abstract int Count { get; }
+
+    public abstract IPbtStemChanges Set(byte subIndex, in ValueHash256 value);
+
+    public abstract IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values);
+
+    public abstract byte SubIndexAt(int index);
+
+    public abstract ref readonly ValueHash256 Get(int index);
+
+    public abstract void Reset();
+
+    /// <summary>Seeds this (freshly rented, still empty) map from an already-ascending run of writes.</summary>
+    /// <remarks><paramref name="subIndices"/> must be ascending; seeding skips the per-entry insertion a sequence of <see cref="Set"/> calls would incur.</remarks>
+    internal abstract void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values);
+
+    /// <summary>Returns this map to the pool of its own variant.</summary>
+    internal abstract void ReturnSelf();
+}
+
+/// <summary>The single-write variant: no backing allocation. Promotes to <see cref="Length4StemChanges"/> on a second key.</summary>
 internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
 {
     private byte _subIndex;
@@ -110,7 +148,7 @@ internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
             return this;
         }
 
-        Length8StemChanges promoted = StaticPool<Length8StemChanges>.Rent();
+        Length4StemChanges promoted = StaticPool<Length4StemChanges>.Rent();
         promoted.Set(_subIndex, _value);
         promoted.Set(subIndex, value);
         StaticPool<SingleStemChanges>.Return(this);
@@ -144,31 +182,82 @@ internal sealed class SingleStemChanges : IPbtStemChanges, IResettable
     }
 }
 
-/// <summary>The up-to-eight-write variant: a fixed array kept ascending by insertion sort. Promotes to <see cref="SortedStemChanges"/> when full.</summary>
-internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
+/// <summary>
+/// A fixed tier's sub-index search: one compare of the tier's whole sub-index array against a sub-index.
+/// </summary>
+/// <remarks>
+/// Every tier compares in <see cref="Vector128{T}"/> and narrows only its load, because a narrower vector
+/// is not a narrower compare: <see cref="Vector64{T}"/> is hardware-accelerated on Arm64 but emulated on
+/// x64, where it compiles to a scalar compare per lane and a hand-assembled mask — an order of magnitude
+/// more code than the <c>vpcmpltub</c> the same search in <see cref="Vector128{T}"/> lowers to on both.
+/// <para>
+/// The search is a type parameter of <see cref="FixedStemChanges{TSearch}"/> rather than a virtual method
+/// so that each tier's JIT instantiation inlines its own load, and sizes its array to its own lanes.
+/// </para>
+/// </remarks>
+internal interface ISubIndexSearch
 {
-    internal const int Capacity = 8;
-    private readonly byte[] _subIndices = new byte[Capacity];
-    private readonly ValueHash256[] _values = new ValueHash256[Capacity];
+    /// <summary>The sub-indices one compare covers, which is the tier's capacity and its array's length.</summary>
+    static abstract int Lanes { get; }
+
+    /// <summary>A bit per lane of a <see cref="Vector128{T}"/>, set where the lane's sub-index is strictly below <paramref name="subIndex"/>.</summary>
+    /// <param name="subIndices">The tier's whole sub-index array, live entries first. Lanes at or above the map's count hold stale sub-indices, and the lanes past a tier's <see cref="Lanes"/> hold the zeroes its load left, so callers must discard their bits.</param>
+    static abstract uint LessThan(byte[] subIndices, byte subIndex);
+}
+
+/// <summary>Four lanes, read as one <see cref="uint"/> so the tier's array needs no padding to load.</summary>
+internal readonly struct Search4 : ISubIndexSearch
+{
+    internal const int Lanes = 4;
+
+    static int ISubIndexSearch.Lanes => Lanes;
+
+    static uint ISubIndexSearch.LessThan(byte[] subIndices, byte subIndex) =>
+        Vector128.LessThan(Vector128.CreateScalar(Unsafe.ReadUnaligned<uint>(ref subIndices[0])).AsByte(), Vector128.Create(subIndex)).ExtractMostSignificantBits();
+}
+
+/// <summary>Eight lanes, read as one <see cref="ulong"/> so the tier's array needs no padding to load.</summary>
+internal readonly struct Search8 : ISubIndexSearch
+{
+    internal const int Lanes = 8;
+
+    static int ISubIndexSearch.Lanes => Lanes;
+
+    static uint ISubIndexSearch.LessThan(byte[] subIndices, byte subIndex) =>
+        Vector128.LessThan(Vector128.CreateScalar(Unsafe.ReadUnaligned<ulong>(ref subIndices[0])).AsByte(), Vector128.Create(subIndex)).ExtractMostSignificantBits();
+}
+
+/// <summary>Sixteen lanes: the array is a whole vector, so it loads as one.</summary>
+internal readonly struct Search16 : ISubIndexSearch
+{
+    internal const int Lanes = 16;
+
+    static int ISubIndexSearch.Lanes => Lanes;
+
+    static uint ISubIndexSearch.LessThan(byte[] subIndices, byte subIndex) =>
+        Vector128.LessThan(Vector128.LoadUnsafe(ref subIndices[0]), Vector128.Create(subIndex)).ExtractMostSignificantBits();
+}
+
+/// <summary>The small variants: up to <typeparamref name="TSearch"/>'s lanes of writes in a fixed array kept ascending by insertion sort. Promotes to the next tier up when full.</summary>
+/// <typeparam name="TSearch">The tier's sub-index search, which fixes its capacity.</typeparam>
+internal abstract class FixedStemChanges<TSearch> : SeedableStemChanges where TSearch : struct, ISubIndexSearch
+{
+    private readonly byte[] _subIndices = new byte[TSearch.Lanes];
+    private readonly ValueHash256[] _values = new ValueHash256[TSearch.Lanes];
     private int _count;
 
-    public int Count => _count;
+    public override int Count => _count;
 
-    public IPbtStemChanges Set(byte subIndex, in ValueHash256 value)
+    public override IPbtStemChanges Set(byte subIndex, in ValueHash256 value)
     {
-        // The insertion index is the number of live entries strictly less than subIndex; since the
-        // eight sub-indices are sorted ascending, that is the population count of the "< subIndex"
-        // lanes masked to the live ones.
-        uint less = Vector64.LessThan(Vector64.LoadUnsafe(ref _subIndices[0]), Vector64.Create(subIndex)).ExtractMostSignificantBits();
-        int i = BitOperations.PopCount(less & (uint)((1 << _count) - 1));
-
+        int i = InsertionIndex(subIndex);
         if (i < _count && _subIndices[i] == subIndex)
         {
             _values[i] = value;
             return this;
         }
 
-        if (_count < Capacity)
+        if (_count < TSearch.Lanes)
         {
             _subIndices.AsSpan(i, _count - i).CopyTo(_subIndices.AsSpan(i + 1));
             _values.AsSpan(i, _count - i).CopyTo(_values.AsSpan(i + 1));
@@ -178,13 +267,12 @@ internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
             return this;
         }
 
-        SortedStemChanges promoted = CopyToSorted();
-        IPbtStemChanges result = promoted.Set(subIndex, value);
-        StaticPool<Length8StemChanges>.Return(this);
+        IPbtStemChanges result = Promoted(_count + 1).Set(subIndex, value);
+        ReturnSelf();
         return result;
     }
 
-    public IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
+    public override IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
     {
         int count = values.Length / ValueHash256.MemorySize;
         if (count == 0) return this;
@@ -195,39 +283,64 @@ internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
             if (!PbtStemChanges.RunCovers(startSubIndex, count, _subIndices[i])) resulting++;
         }
 
-        // this variant addresses its values by ordinal, not by sub-index, so it has no block-copy to
-        // offer a run: placing at most eight leaves one by one is the whole of what it can do
-        if (resulting <= Capacity)
+        // these variants address their values by ordinal, not by sub-index, so they have no block-copy to
+        // offer a run: placing at most a tier's worth of leaves one by one is the whole of what they can do
+        if (resulting <= TSearch.Lanes)
         {
             IPbtStemChanges changes = this;
             for (int i = 0; i < count; i++) changes = changes.Set((byte)(startSubIndex + i), PbtStemChanges.RunValue(values, i));
             return changes;
         }
 
-        SortedStemChanges promoted = CopyToSorted();
-        IPbtStemChanges result = promoted.SetRange(startSubIndex, values);
-        StaticPool<Length8StemChanges>.Return(this);
+        IPbtStemChanges result = Promoted(resulting).SetRange(startSubIndex, values);
+        ReturnSelf();
         return result;
     }
 
-    /// <summary>Copies this map's writes into a freshly rented <see cref="SortedStemChanges"/>.</summary>
+    /// <summary>The ordinal <paramref name="subIndex"/> belongs at: the number of live entries strictly less than it.</summary>
+    /// <remarks>Since the sub-indices are sorted ascending, that is the population count of the search's "&lt; subIndex" lanes masked to the live ones.</remarks>
+    private int InsertionIndex(byte subIndex) =>
+        BitOperations.PopCount(TSearch.LessThan(_subIndices, subIndex) & (uint)((1 << _count) - 1));
+
+    /// <summary>Rents the tier that holds <paramref name="resulting"/> writes, seeded with this map's writes.</summary>
     /// <remarks>
     /// The caller returns this map to the pool itself, once it has made the write it is promoting for:
     /// that write may be handed in by reference to a value this map still owns, which returning it first
     /// would expose to whoever rents it next.
     /// </remarks>
-    private SortedStemChanges CopyToSorted()
+    private IPbtStemChanges Promoted(int resulting) =>
+        PbtStemChanges.RentSeeded(resulting, _subIndices.AsSpan(0, _count), _values.AsSpan(0, _count));
+
+    internal override void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
     {
-        SortedStemChanges promoted = StaticPool<SortedStemChanges>.Rent();
-        promoted.Seed(_subIndices.AsSpan(0, _count), _values.AsSpan(0, _count));
-        return promoted;
+        subIndices.CopyTo(_subIndices);
+        values.CopyTo(_values);
+        _count = subIndices.Length;
     }
 
-    public byte SubIndexAt(int index) => _subIndices[index];
+    public override byte SubIndexAt(int index) => _subIndices[index];
 
-    public ref readonly ValueHash256 Get(int index) => ref _values[index];
+    public override ref readonly ValueHash256 Get(int index) => ref _values[index];
 
-    public void Reset() => _count = 0;
+    public override void Reset() => _count = 0;
+}
+
+/// <summary>The up-to-four-write variant: an account's basic-data-and-code-hash header, or a stem holding a handful of storage slots.</summary>
+internal sealed class Length4StemChanges : FixedStemChanges<Search4>
+{
+    internal override void ReturnSelf() => StaticPool<Length4StemChanges>.Return(this);
+}
+
+/// <summary>The up-to-eight-write variant.</summary>
+internal sealed class Length8StemChanges : FixedStemChanges<Search8>
+{
+    internal override void ReturnSelf() => StaticPool<Length8StemChanges>.Return(this);
+}
+
+/// <summary>The up-to-sixteen-write variant: the last tier before the directly-addressed <see cref="SortedStemChanges"/>.</summary>
+internal sealed class Length16StemChanges : FixedStemChanges<Search16>
+{
+    internal override void ReturnSelf() => StaticPool<Length16StemChanges>.Return(this);
 }
 
 /// <summary>The large variant: sub-indices kept ascending in a byte array that indexes into a directly-addressed values array, insertion-sorted on write.</summary>
@@ -243,18 +356,18 @@ internal sealed class Length8StemChanges : IPbtStemChanges, IResettable
 /// of <c>_order</c>, so neither needs to be walked a leaf at a time.
 /// </para>
 /// </remarks>
-internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
+internal sealed class SortedStemChanges : SeedableStemChanges
 {
     private const int Capacity = 256;
     private readonly byte[] _order = new byte[Capacity];
     private readonly ValueHash256[] _values = new ValueHash256[Capacity];
     private int _count;
 
-    public int Count => _count;
+    public override int Count => _count;
 
     /// <inheritdoc/>
     /// <remarks>Always returns this: the largest variant has nothing to promote to.</remarks>
-    public IPbtStemChanges Set(byte subIndex, in ValueHash256 value)
+    public override IPbtStemChanges Set(byte subIndex, in ValueHash256 value)
     {
         int lo = LowerBound(subIndex);
         if (lo < _count && _order[lo] == subIndex)
@@ -272,7 +385,7 @@ internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
 
     /// <inheritdoc/>
     /// <remarks>Always returns this: the largest variant has nothing to promote to.</remarks>
-    public IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
+    public override IPbtStemChanges SetRange(byte startSubIndex, ReadOnlySpan<byte> values)
     {
         int count = values.Length / ValueHash256.MemorySize;
         if (count == 0) return this;
@@ -292,9 +405,7 @@ internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
         return this;
     }
 
-    /// <summary>Seeds this (freshly rented, still empty) map from an already-ascending run of writes.</summary>
-    /// <remarks><paramref name="subIndices"/> must be ascending; seeding skips the per-entry insertion a sequence of <see cref="Set"/> calls would incur.</remarks>
-    internal void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
+    internal override void Seed(ReadOnlySpan<byte> subIndices, ReadOnlySpan<ValueHash256> values)
     {
         subIndices.CopyTo(_order);
         for (int i = 0; i < subIndices.Length; i++) _values[subIndices[i]] = values[i];
@@ -316,9 +427,11 @@ internal sealed class SortedStemChanges : IPbtStemChanges, IResettable
         return lo;
     }
 
-    public byte SubIndexAt(int index) => _order[index];
+    public override byte SubIndexAt(int index) => _order[index];
 
-    public ref readonly ValueHash256 Get(int index) => ref _values[_order[index]];
+    public override ref readonly ValueHash256 Get(int index) => ref _values[_order[index]];
 
-    public void Reset() => _count = 0;
+    public override void Reset() => _count = 0;
+
+    internal override void ReturnSelf() => StaticPool<SortedStemChanges>.Return(this);
 }
