@@ -1614,6 +1614,38 @@
             fetch('portfolio-ipfs-pin/' + cid, { method: 'POST' }).then((r) => { if (!r.ok) pinnedCids.delete(cid); }).catch(() => pinnedCids.delete(cid));
         }
 
+        // Bounded-concurrency, retrying fetch for off-chain art/metadata. The concurrency cap keeps us from
+        // hammering IPFS gateways / NFT servers (which drop requests under load); retries with backoff ride
+        // out the transient failures that causes. Slots are held across backoff, further easing pressure.
+        const OFFCHAIN_CONCURRENCY = 6;
+        let offchainActive = 0;
+        const offchainQueue = [];
+        function offchainAcquire() {
+            if (offchainActive < OFFCHAIN_CONCURRENCY) { offchainActive++; return Promise.resolve(); }
+            return new Promise((resolve) => offchainQueue.push(resolve));
+        }
+        function offchainRelease() {
+            const next = offchainQueue.shift();
+            if (next) next(); else offchainActive--;
+        }
+        async function fetchOffchain(url, tries = 3) {
+            await offchainAcquire();
+            try {
+                for (let attempt = 0; ; attempt++) {
+                    try {
+                        const res = await fetch(url);
+                        // retry transient failures (5xx, 429, network); don't retry hard 4xx
+                        if (res.ok || attempt >= tries - 1 || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
+                    } catch (e) {
+                        if (attempt >= tries - 1) throw e;
+                    }
+                    await new Promise((r) => setTimeout(r, 500 * (attempt + 1) * (attempt + 1))); // 500ms, 2s, 4.5s
+                }
+            } finally {
+                offchainRelease();
+            }
+        }
+
         // where a URI's bytes live: on-chain (data:), IPFS, or an HTTPS server — used for the art badge/state
         function artKind(uri) {
             if (typeof uri !== 'string') return null;
@@ -1733,7 +1765,7 @@
                 // opt-in: fetch off-chain metadata JSON via an enabled art source (IPFS gateway or HTTPS)
                 if (!metadata && uri) {
                     const murl = resolveArtUri(uri);
-                    if (murl && !murl.startsWith('data:')) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
+                    if (murl && !murl.startsWith('data:')) { try { const res = await fetchOffchain(murl); if (res.ok) metadata = await res.json(); } catch { metadata = null; } }
                 }
                 // Store the raw (unresolved) art URIs + metadata so applyArtSource can (re)compute the
                 // renderable art on demand — e.g. when the art-source toggles change, without refetching.
@@ -1755,6 +1787,22 @@
             }));
         }
 
+        // An <img> for NFT art that retries a couple of times on error before giving up (off-chain gateways/
+        // servers often fail transiently under load). Retries add a cache-buster to force a fresh request;
+        // on-chain data: URIs never retry. Calls onFail() once retries are exhausted.
+        function artImg(src, onFail) {
+            const img = el('img');
+            let tries = 0;
+            img.onerror = () => {
+                if (src && !src.startsWith('data:') && tries < 2) {
+                    tries++;
+                    setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
+                } else onFail();
+            };
+            img.src = src;
+            return img;
+        }
+
         // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
         // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
         // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
@@ -1772,9 +1820,9 @@
                     v.setAttribute('playsinline', ''); if (t.src) v.poster = t.src; return v;
                 }
                 if (t.src) {
-                    const img = el('img'); img.src = t.src; img.alt = t.name || '';
-                    img.onerror = () => img.replaceWith(el('div', 'lightbox-noart', (t.offKind || t.source || 'art') + ' — couldn’t load'));
-                    return img;
+                    let im; im = artImg(t.src, () => im.replaceWith(el('div', 'lightbox-noart', (t.offKind || t.source || 'art') + ' — couldn’t load')));
+                    im.alt = t.name || '';
+                    return im;
                 }
                 const note = t.animType === 'audio' ? '♪ audio'
                     : t.artState === 'disabled' ? (t.offKind || 'off-chain') + ' art — enable it in settings'
@@ -1955,11 +2003,9 @@
                 return span;
             };
             if (thumb && thumb.src) {
-                const img = el('img');
-                img.src = thumb.src;
+                let img; img = artImg(thumb.src, () => img.replaceWith(fallback())); // retries, then falls back to the id (no black box)
                 img.title = (thumb.title || ('#' + (thumb.id ?? ''))) + ' (click for details)';
                 img.onclick = open;
-                img.onerror = () => img.replaceWith(fallback()); // broken/blocked image → show the id, not a black box
                 return img;
             }
             return fallback();
