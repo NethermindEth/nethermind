@@ -1572,6 +1572,73 @@
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
+        // ---------- Persistent cache (IndexedDB) — survives page reload ----------
+        // Two stores, both holding only immutable data so nothing can go stale:
+        //   meta — resolved NFT metadata for content-addressed tokenURIs (data:/ipfs://), keyed chainId|collection|id.
+        //   img  — the raw bytes of loaded art, keyed by exact URL, so reopening after a soft refresh doesn't
+        //          re-download (which showed as black tiles). Bounded FIFO so it can't grow without limit.
+        // Everything degrades gracefully: if IndexedDB is unavailable every call resolves to null/no-op and the
+        // in-memory caches + network path take over. HTTPS tokenURIs (which can change on reveal) are never stored.
+        const IDB_NAME = 'portfolio-cache';
+        const IDB_IMG_CAP = 4000;
+        let idbPromise;
+        function idbOpen() {
+            if (idbPromise !== undefined) return idbPromise;
+            idbPromise = new Promise((resolve) => {
+                let req;
+                try { req = indexedDB.open(IDB_NAME, 1); } catch { resolve(null); return; }
+                req.onupgradeneeded = () => {
+                    const db = req.result;
+                    if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+                    if (!db.objectStoreNames.contains('img')) db.createObjectStore('img', { keyPath: 'url' }).createIndex('seq', 'seq');
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+            navigator.storage?.persist?.().catch(() => { }); // ask the browser not to evict our cache
+            return idbPromise;
+        }
+        function idbGet(store, key) {
+            return idbOpen().then((db) => db && new Promise((res) => {
+                try { const r = db.transaction(store, 'readonly').objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }
+                catch { res(null); }
+            }));
+        }
+        function idbGetMeta(key) { return idbGet('meta', key); }
+        function idbPutMeta(key, value) {
+            return idbOpen().then((db) => { if (!db) return; try { db.transaction('meta', 'readwrite').objectStore('meta').put(value, key); } catch { } });
+        }
+        async function idbGetImg(url) { const r = await idbGet('img', url); return r?.blob || null; }
+        function idbPutImg(url, blob) {
+            return idbOpen().then((db) => {
+                if (!db) return;
+                try {
+                    const os = db.transaction('img', 'readwrite').objectStore('img');
+                    os.put({ url, blob, seq: Date.now() });
+                    const cnt = os.count();
+                    cnt.onsuccess = () => { // opportunistic FIFO eviction once over the cap
+                        let over = cnt.result - IDB_IMG_CAP;
+                        if (over <= 0) return;
+                        const cur = os.index('seq').openCursor();
+                        cur.onsuccess = () => { const c = cur.result; if (c && over-- > 0) { c.delete(); c.continue(); } };
+                    };
+                } catch { }
+            });
+        }
+        // Durable image bytes for an art URL: IndexedDB hit, else fetch-and-store. Returns null when the bytes
+        // can't be read (data: URIs, or opaque cross-origin responses) — the caller then loads via <img src>.
+        async function artBlobGet(url) {
+            const hit = await idbGetImg(url);
+            if (hit) return hit;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) return null; // opaque cross-origin (no CORS) reports status 0 -> fall back to <img>
+                const blob = await res.blob();
+                if (blob.size > 0 && blob.type.startsWith('image')) { idbPutImg(url, blob); return blob; }
+            } catch { }
+            return null;
+        }
+
         function parseOnChainMetadata(uri) {
             if (!uri || !uri.startsWith('data:application/json')) return null;
             try {
@@ -1721,10 +1788,14 @@
         async function detectKind(node, collection) {
             const key = node.chainId + '|' + collection.address.toLowerCase();
             if (collectionKind.has(key)) return collectionKind.get(key);
+            const lsKey = 'pf:kind:' + key;
+            const stored = localStorage.getItem(lsKey); // a deployed contract's standard is immutable
+            if (stored) { collectionKind.set(key, stored); return stored; }
             const q = (id) => ['eth_call', [{ to: collection.address, data: SEL_SUPPORTS_INTERFACE + id.padEnd(64, '0') }, 'latest']];
             const [enumerable, is721, is1155] = await rpcBatch([q(IFACE_ERC721_ENUMERABLE), q(IFACE_ERC721), q(IFACE_ERC1155)], node.rpcPath);
             const kind = iface1(enumerable) ? 'enum721' : iface1(is1155) ? 'erc1155' : iface1(is721) ? 'plain721' : 'none';
             collectionKind.set(key, kind);
+            if (kind !== 'none') try { localStorage.setItem(lsKey, kind); } catch { } // don't persist a failed/negative probe
             return kind;
         }
 
@@ -1773,12 +1844,22 @@
         async function fetchThumbsForIds(node, collection, ids, kind, signal) {
             const keyBase = node.chainId + '|' + collection.address.toLowerCase() + '|';
             const result = new Array(ids.length);
-            const miss = [];
+            let miss = [];
             // reuse already-fetched thumbs (re-resolving art for the current sources) — reopening is instant
             ids.forEach((id, i) => {
                 const c = artCache.get(keyBase + id);
                 if (c) { applyArtSource(c, collection); result[i] = c; } else miss.push(i);
             });
+            if (!miss.length) return result;
+            // then the persistent metadata cache (immutable tokenURIs) — a soft refresh reopens without re-fetching
+            const persisted = await Promise.all(miss.map((i) => idbGetMeta(keyBase + ids[i])));
+            const stillMiss = [];
+            miss.forEach((i, k) => {
+                const m = persisted[k];
+                if (m) { applyArtSource(m, collection); result[i] = m; artCache.set(keyBase + ids[i], m); }
+                else stillMiss.push(i);
+            });
+            miss = stillMiss;
             if (!miss.length) return result;
 
             const sel = kind === 'erc1155' ? SEL_ERC1155_URI : SEL_TOKEN_URI;
@@ -1815,24 +1896,41 @@
                 // cache only once the metadata is actually in hand (art resolution is then deterministic from the
                 // raw URIs + current sources). Thumbs whose metadata couldn't be fetched (source off / transient
                 // failure) are left uncached so they re-fetch on reopen or when a source is enabled.
-                if (thumb.metaFetched) artCache.set(keyBase + ids[miss[k]], thumb);
+                if (thumb.metaFetched) {
+                    artCache.set(keyBase + ids[miss[k]], thumb);
+                    // persist across reloads only for content-addressed tokenURIs, which can't change (HTTPS
+                    // metadata may be re-revealed, so it stays session-only)
+                    const mk = artKind(thumb.metaUri);
+                    if (mk === 'on-chain' || mk === 'IPFS') idbPutMeta(keyBase + ids[miss[k]], thumb);
+                }
             });
             return result;
         }
 
-        // An <img> for NFT art that retries a couple of times on error before giving up (off-chain gateways/
-        // servers often fail transiently under load). Retries add a cache-buster to force a fresh request;
-        // on-chain data: URIs never retry. Calls onFail() once retries are exhausted.
+        // An <img> for NFT art. Off-chain art is served from the durable IndexedDB blob cache when possible, so it
+        // survives a soft refresh instead of re-downloading (which showed as black tiles); a cache miss fetches the
+        // bytes once and stores them. Bytes that can't be read (data: URIs, opaque cross-origin) load via <img src>,
+        // which retries a couple of times on transient gateway/server failures (cache-busted) before onFail().
         function artImg(src, onFail) {
             const img = el('img');
             let tries = 0;
-            img.onerror = () => {
-                if (src && !src.startsWith('data:') && tries < 2) {
-                    tries++;
-                    setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
-                } else onFail();
+            const directWithRetry = () => {
+                img.onerror = () => {
+                    if (src && !src.startsWith('data:') && tries < 2) {
+                        tries++;
+                        setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
+                    } else onFail();
+                };
+                img.src = src;
             };
-            img.src = src;
+            if (!src || src.startsWith('data:')) { directWithRetry(); return img; }
+            artBlobGet(src).then((blob) => {
+                if (!blob) { directWithRetry(); return; }
+                const url = URL.createObjectURL(blob);
+                img.onload = () => URL.revokeObjectURL(url);
+                img.onerror = () => { URL.revokeObjectURL(url); directWithRetry(); }; // corrupt blob -> network fallback
+                img.src = url;
+            });
             return img;
         }
 
