@@ -132,43 +132,43 @@ public class PbtResourcePool : IPbtResourcePool
 
         public PbtSnapshotContent GetSnapshotContent()
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, 1);
+            Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, 1);
             if (_snapshotPool.TryGet(out PbtSnapshotContent? content))
             {
-                Metrics.CachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
+                Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
                 return content;
             }
 
             // the only signal of a pool sized too small for its category: it never stops climbing
-            Metrics.CreatedPooledResource.AddBy(_snapshotLabel, 1);
+            Metrics.PbtCreatedPooledResource.AddBy(_snapshotLabel, 1);
             return new PbtSnapshotContent();
         }
 
         public void ReturnSnapshotContent(PbtSnapshotContent content)
         {
-            Metrics.ActivePooledResource.AddBy(_snapshotLabel, -1);
+            Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, -1);
             _snapshotPool.Return(content);
-            Metrics.CachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
+            Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
         }
 
         public PbtWriteBatchBuilder GetWriteBatchBuilder()
         {
-            Metrics.ActivePooledResource.AddBy(_builderLabel, 1);
+            Metrics.PbtActivePooledResource.AddBy(_builderLabel, 1);
             if (_builderPool.TryGet(out PbtWriteBatchBuilder? builder))
             {
-                Metrics.CachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
+                Metrics.PbtCachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
                 return builder;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_builderLabel, 1);
+            Metrics.PbtCreatedPooledResource.AddBy(_builderLabel, 1);
             return new PbtWriteBatchBuilder();
         }
 
         public void ReturnWriteBatchBuilder(PbtWriteBatchBuilder builder)
         {
-            Metrics.ActivePooledResource.AddBy(_builderLabel, -1);
+            Metrics.PbtActivePooledResource.AddBy(_builderLabel, -1);
             _builderPool.Return(builder);
-            Metrics.CachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
+            Metrics.PbtCachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
         }
     }
 
