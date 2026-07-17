@@ -14,8 +14,10 @@ using Nethermind.State.Flat.History;
 namespace Nethermind.Init.Steps;
 
 /// <summary>
-/// Backfills the genesis changeset into flat history from the chain spec allocations on nodes whose history was
-/// captured before genesis capture existed. Idempotent: a node with block 0 already available is left untouched.
+/// Anchors the history floor at genesis: seeds the block-0 changeset from the chain spec allocations on any
+/// history-enabled node that did not capture genesis via the walk (e.g. history enabled mid-life, when the genesis
+/// snapshot has long left memory). Without it, an allocation never touched since genesis floor-seeks to nothing and
+/// silently reads as absent at every captured height. Idempotent: a node with block 0 available is left untouched.
 /// </summary>
 [RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class SeedFlatHistoryGenesis(

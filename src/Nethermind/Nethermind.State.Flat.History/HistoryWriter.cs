@@ -114,8 +114,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
     /// <summary>
     /// Seeds the genesis (block 0) changeset from the chain's initial allocations. The capture walk can only lease
-    /// in-memory snapshots, so on a node whose history predates genesis capture block 0 is unrecoverable at runtime;
-    /// its state is fully derivable from the chain spec instead.
+    /// in-memory snapshots, so a node that did not run history capture through genesis can never recover block 0 at
+    /// runtime; its state is fully derivable from the chain spec instead, and it anchors the floor every dormant
+    /// genesis allocation floor-seeks to.
     /// </summary>
     [SkipLocalsInit]
     public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations)
