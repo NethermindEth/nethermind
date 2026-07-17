@@ -28,6 +28,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly StorageClearStore _storageClears;
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
+    private readonly ILogger _logger;
 
     private ulong _lastCapturedBlock;
     private bool _anyCaptured;
@@ -36,16 +37,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         : this(history, BasePersistence.ResolveSlotEncoding(
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
-            logManager.GetClassLogger<HistoryWriter>()), config.HistoryEnabled)
+            logManager.GetClassLogger<HistoryWriter>()), config.HistoryEnabled, logManager.GetClassLogger<HistoryWriter>())
     {
     }
 
-    private HistoryWriter(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots, bool enabled)
+    private HistoryWriter(IColumnsDb<FlatHistoryColumns> history, bool rlpWrapSlots, bool enabled, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(history);
         _enabled = enabled;
         _history = history;
         _rlpWrapSlots = rlpWrapSlots;
+        _logger = logger;
         _accountHistory = new HistoryStore(
             history.GetColumnDb(FlatHistoryColumns.AccountHistory),
             history.GetColumnDb(FlatHistoryColumns.AccountChangeSets));
@@ -108,6 +110,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 
             current = parent;
         }
+
+        // Reaching genesis (first capture) or the last-captured block (resume) is the expected stop. Exiting because
+        // a base could not be leased means the range down to the floor is left uncaptured — the documented crash-gap;
+        // surface it so a widening gap is diagnosable rather than silent.
+        bool reachedFloor = current == StateId.PreGenesis || (resuming && current.BlockNumber <= lastCaptured);
+        if (!reachedFloor && _logger.IsWarn)
+            _logger.Warn($"History capture stopped early at {current}: its in-memory base is no longer leasable. Blocks down to {(resuming ? lastCaptured + 1 : 0)} are left uncaptured and will report no history.");
 
         MarkCaptured(target);
     }
