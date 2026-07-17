@@ -1884,22 +1884,38 @@
             return result;
         }
 
-        // An <img> for NFT art that retries a couple of times on error before giving up (off-chain gateways/
-        // servers often fail transiently under load). Retries add a cache-buster to force a fresh request;
-        // on-chain data: URIs never retry. Calls onFail() once retries are exhausted. Loads natively (the browser
-        // starts immediately, decodes progressively and serves from its HTTP cache on reload — the IPFS proxy
-        // marks responses immutable), which is faster than routing bytes through IndexedDB.
-        function artImg(src, onFail) {
+        // Eager art (an actively-opened collection grid / single-NFT lightbox) loads through a small bounded queue
+        // so a page's images trickle to the local IPFS gateway rather than bursting (which can overwhelm it).
+        const IMG_CONCURRENCY = 6;
+        let imgActive = 0;
+        const imgWaiters = [];
+        function imgAcquire(run) { if (imgActive < IMG_CONCURRENCY) { imgActive++; run(); } else imgWaiters.push(run); }
+        function imgRelease() { const next = imgWaiters.shift(); if (next) next(); else imgActive = Math.max(0, imgActive - 1); }
+
+        // An <img> for NFT art. A failed load is retried with a cache-buster, which re-hits the proxy and so
+        // re-triggers the local node's provider search + fetch (a slow-to-find CID may resolve on a later try);
+        // once exhausted, onFail() shows a retryable placeholder. Background/preview thumbs load lazily and
+        // browser-paced; an actively-opened view loads eagerly (so nothing stays black — native lazy loading is
+        // unreliable inside a just-opened overlay) through the bounded queue above. on-chain data: URIs never retry.
+        function artImg(src, onFail, eager) {
             const img = el('img');
-            img.loading = 'lazy'; // browser only fetches bytes for tiles near the viewport (prioritises what's visible)
-            let tries = 0;
+            if (!src || src.startsWith('data:')) { if (src) img.src = src; else onFail(); return img; }
+            const bust = (n) => src + (src.includes('?') ? '&' : '?') + '_retry=' + n;
+            if (!eager) {
+                img.loading = 'lazy';
+                let t = 0;
+                img.onerror = () => { if (t < 2) { t++; setTimeout(() => { img.src = bust(t); }, 700 * t); } else onFail(); };
+                img.src = src;
+                return img;
+            }
+            let tries = 0, done = false;
+            const finish = () => { if (!done) { done = true; imgRelease(); } };
+            img.onload = finish;
             img.onerror = () => {
-                if (src && !src.startsWith('data:') && tries < 2) {
-                    tries++;
-                    setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
-                } else onFail();
+                if (tries < 1) { tries++; setTimeout(() => { img.src = bust(tries); }, 700); } // one retry re-triggers the fetch, holding the slot
+                else { finish(); onFail(); }
             };
-            img.src = src;
+            imgAcquire(() => { img.src = src; });
             return img;
         }
 
@@ -1922,7 +1938,7 @@
                     v.setAttribute('playsinline', ''); if (t.src) v.poster = t.src; return v;
                 }
                 if (t.src) {
-                    let im; im = artImg(t.src, () => im.replaceWith(el('div', 'lightbox-noart', (t.offKind || t.source || 'art') + ' — couldn’t load')));
+                    let im; im = artImg(t.src, () => im.replaceWith(el('div', 'lightbox-noart', (t.offKind || t.source || 'art') + ' — couldn’t load')), true);
                     im.alt = t.name || '';
                     return im;
                 }
@@ -2099,7 +2115,7 @@
         // Makes a clickable NFT cell that opens the single-item lightbox. A cell shows the art when
         // renderable, else the token id plus a state hint: loading (not fetched yet), "no art" (none in
         // metadata), or "<IPFS/HTTPS> off" (off-chain art whose source is disabled — enable it in settings).
-        function thumbEl(thumb, collection, node, owner) {
+        function thumbEl(thumb, collection, node, owner, eager) {
             const open = () => openArt(thumb, collection, node, owner);
             // retry re-fetches one item's art in place (its metadata wasn't cached because the fetch failed)
             async function retry(host) {
@@ -2110,12 +2126,14 @@
                 host.replaceWith(loading);
                 let full;
                 try { [full] = await fetchThumbsForIds(node, collection, [BigInt(thumb.id)], kind); } catch { /* keep old */ }
-                loading.replaceWith(thumbEl(full || thumb, collection, node, owner));
+                const t = full || thumb; if (t) t.imgFailed = false; // let the image be re-attempted
+                loading.replaceWith(thumbEl(t, collection, node, owner, eager));
             }
             const fallback = () => {
                 const span = el('span', 'more number cell-state');
                 const pending = thumb && !('metaFetched' in thumb);   // art not fetched yet -> still loading
-                const failed = thumb && thumb.artState === 'failed';  // fetched, but the art couldn't be loaded
+                // 'failed' = metadata fetch failed; imgFailed = metadata was fine but the image itself wouldn't load
+                const failed = thumb && (thumb.artState === 'failed' || thumb.imgFailed);
                 if (pending) span.classList.add('cell-loading');      // shimmer so "loading" is unmistakable
                 span.append(el('span', 'cell-id', thumb ? ('#' + thumb.id) : '…'));
                 if (failed) {
@@ -2129,7 +2147,7 @@
                 return span;
             };
             if (thumb && thumb.src) {
-                let img; img = artImg(thumb.src, () => img.replaceWith(fallback())); // retries, then falls back to the id (no black box)
+                let img; img = artImg(thumb.src, () => { thumb.imgFailed = true; img.replaceWith(fallback()); }, eager); // retries, then a retryable placeholder
                 img.title = (thumb.title || ('#' + (thumb.id ?? ''))) + ' (click for details)';
                 img.onclick = open;
                 return img;
@@ -2252,8 +2270,8 @@
         }
 
         // Paginated collection lightbox. Opens immediately (so you can see it's loading); a page-number text box
-        // and ◀ ▶ move between pages of COLLECTION_PAGE_SIZE. Art fills in top-to-bottom (a page is bounded, and
-        // <img>s lazy-load so only near-viewport bytes are fetched); background NFT refresh pauses while it's open.
+        // and ◀ ▶ move between pages of COLLECTION_PAGE_SIZE. Art fills in top-to-bottom through a small bounded
+        // queue (a page is bounded, so no per-cell lazy-observing); background NFT refresh pauses while it's open.
         // A jump-to-# opens any token directly. `opts.loadPage(p)` returns { ids: [BigInt], seed: [thumb|null] }.
         function openCollection(node, collection, opts) {
             const overlay = el('div', 'lightbox');
@@ -2279,7 +2297,8 @@
             const copy = el('span', 'lightbox-copy', collection.address.slice(0, 6) + '…' + collection.address.slice(-4));
             copy.title = collection.address + ' (click to copy)';
             copy.onclick = () => copyAddress(collection.address);
-            infoStrip.append(copy, el('span', 'art-source', node.meta.name));
+            const sourceEl = el('span', 'art-source', ''); // where the art lives (on-chain/IPFS/HTTPS), set once art loads
+            infoStrip.append(copy, sourceEl, el('span', 'art-source', node.meta.name));
             if (opts.onViewFull) {
                 const link = el('span', 'collection-link', 'view full collection');
                 link.onclick = () => { close(); opts.onViewFull(); };
@@ -2301,15 +2320,17 @@
                 if (opts.jump) {
                     const jin = el('input', 'collection-jump');
                     jin.type = 'text'; jin.inputMode = 'numeric'; jin.placeholder = 'go to #';
-                    jin.onkeydown = async (e) => {
-                        if (e.key !== 'Enter') return;
+                    const submitJump = async () => {
                         let idBig; try { idBig = BigInt(jin.value.trim()); } catch { return; }
                         jin.disabled = true;
                         try { const [t] = await fetchThumbsForIds(node, collection, [idBig], opts.kind); openArt(t, collection, node, opts.ownerAddr); }
                         catch { setStatus('Could not load #' + jin.value.trim(), true); }
                         finally { jin.disabled = false; jin.value = ''; }
                     };
-                    controls.append(jin);
+                    jin.onkeydown = (e) => { if (e.key === 'Enter') submitJump(); };
+                    // explicit button: mobile numeric keyboards have no Enter/Go key
+                    const goBtn = el('button', 'collection-arrow', '→'); goBtn.title = 'Open token'; goBtn.onclick = submitJump;
+                    controls.append(jin, goBtn);
                 }
                 if (opts.pageCount > 1) {
                     prevBtn = el('button', 'collection-arrow', '◀');
@@ -2319,16 +2340,23 @@
                     nextBtn = el('button', 'collection-arrow', '▶');
                     prevBtn.onclick = () => { if (page > 0) go(page - 1); };
                     nextBtn.onclick = () => { if (page < opts.pageCount - 1) go(page + 1); };
-                    pageInput.onkeydown = (e) => { if (e.key === 'Enter') { const n = parseInt(pageInput.value, 10); if (!isNaN(n)) go(Math.min(opts.pageCount - 1, Math.max(0, n - 1))); else pageInput.value = page + 1; } };
+                    const submitPage = () => {
+                        const n = parseInt(pageInput.value, 10);
+                        const target = isNaN(n) ? page : Math.min(opts.pageCount - 1, Math.max(0, n - 1));
+                        if (target !== page) go(target); else pageInput.value = page + 1;
+                    };
+                    pageInput.onkeydown = (e) => { if (e.key === 'Enter') submitPage(); };
+                    pageInput.onchange = submitPage; // commit on blur too — mobile numeric keyboards have no Enter key
                     controls.append(prevBtn, lbl, pageInput, ofN, nextBtn);
                 }
             }
 
             // Load a page's art sequentially, top-to-bottom, in chunks. A page is bounded to COLLECTION_PAGE_SIZE,
             // so there's no need to lazy-observe within it — this fills tiles in order (not an observer's arbitrary
-            // order) and doesn't depend on IntersectionObserver firing. The <img>s themselves are loading="lazy",
-            // so the browser still only fetches image bytes for tiles near the viewport. `token` guards against a
-            // page change (go) superseding an in-flight load; `closed` stops scheduling new work when closed.
+            // order) and doesn't depend on IntersectionObserver firing. Tiles are created top-to-bottom and their
+            // <img>s load eagerly (the view is open), so they fetch in order without native lazy-loading's
+            // unreliability. `token` guards against a page change (go) superseding an in-flight load; `closed`
+            // stops scheduling new work when closed.
             async function loadPageArt(cells, ids, thumbsRef, token) {
                 for (let k = 0; k < cells.length; k += NFT_GRID_CHUNK) {
                     if (closed || token !== loadToken) return;
@@ -2342,8 +2370,9 @@
                         chunk[j].dataset.loaded = '1';
                         chunk[j].classList.remove('loading-cell');
                         thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j];
-                        chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr));
+                        chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr, true));
                     }
+                    if (!sourceEl.textContent) { const s = loaded.find((t) => t && t.source); if (s) sourceEl.textContent = s.source; } // where the art lives
                 }
             }
 
@@ -2371,7 +2400,7 @@
                 const cells = ids.map((id, i) => {
                     const cell = el('div', 'collection-cell'); cell.dataset.idx = String(i);
                     if (!thumbsRef[i].src) cell.classList.add('loading-cell'); // shimmer until art arrives
-                    cell.append(thumbEl(thumbsRef[i], collection, node, opts.ownerAddr));
+                    cell.append(thumbEl(thumbsRef[i], collection, node, opts.ownerAddr, true));
                     grid.append(cell); return cell;
                 });
                 curCells = cells; curThumbs = thumbsRef;
@@ -2384,7 +2413,7 @@
             const reRenderArt = () => {
                 for (let i = 0; i < curCells.length; i++) {
                     const t = curThumbs[i];
-                    if (t && 'metaFetched' in t) { applyArtSource(t, collection); curCells[i].dataset.loaded = '1'; curCells[i].classList.remove('loading-cell'); curCells[i].replaceChildren(thumbEl(t, collection, node, opts.ownerAddr)); }
+                    if (t && 'metaFetched' in t) { applyArtSource(t, collection); curCells[i].dataset.loaded = '1'; curCells[i].classList.remove('loading-cell'); curCells[i].replaceChildren(thumbEl(t, collection, node, opts.ownerAddr, true)); }
                 }
             };
             openCollectionRenderers.add(reRenderArt);

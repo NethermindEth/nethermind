@@ -73,6 +73,10 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     // general proxy — only the CID is forwarded, so the browser can't drive arbitrary node-API commands.
     private const string IpfsApi = "http://127.0.0.1:5001";
     private static readonly HttpClient IpfsClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    // Per-request cap for a gateway GET. Long enough to give the local node a fair chance to find a provider and
+    // fetch, but bounded so an unresolvable CID doesn't hang the request indefinitely (the UI shows a retry, which
+    // re-triggers the node's provider search + fetch).
+    private static readonly TimeSpan IpfsGetTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
@@ -163,10 +167,12 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return;
         }
 
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+        cts.CancelAfter(IpfsGetTimeout);
         try
         {
             using HttpResponseMessage resp = await IpfsClient.GetAsync(
-                $"{IpfsGateway}/ipfs/{rel}", HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+                $"{IpfsGateway}/ipfs/{rel}", HttpCompletionOption.ResponseHeadersRead, cts.Token);
             context.Response.StatusCode = (int)resp.StatusCode;
             if (resp.Content.Headers.ContentType is not null)
                 context.Response.ContentType = resp.Content.Headers.ContentType.ToString();
@@ -178,7 +184,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         }
         catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
         {
-            // no local gateway, or it couldn't resolve the CID — the UI falls back to a placeholder
+            // the local node couldn't resolve the CID in time — the UI shows a retry (which re-triggers a fetch)
             if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
         }
     }
