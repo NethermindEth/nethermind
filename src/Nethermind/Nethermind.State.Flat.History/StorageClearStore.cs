@@ -47,15 +47,16 @@ public sealed class StorageClearStore
     {
         if (afterBlockExclusive >= atOrBeforeBlock) return false;
 
-        Span<byte> upperKey = stackalloc byte[accountKey.Length + BlockBytes];
-        WriteClearKey(upperKey, accountKey, atOrBeforeBlock);
-        if (_clears.KeyExists(upperKey)) return true;
-
         Span<byte> lowerBound = stackalloc byte[accountKey.Length + BlockBytes];
         WriteClearKey(lowerBound, accountKey, afterBlockExclusive + 1);
 
-        using ISortedView view = _clears.GetViewBetween(lowerBound, upperKey);
-        if (!view.StartBefore(upperKey)) return false;
+        // StartBefore is strictly-below, so an exclusive upper bound of atOrBeforeBlock + 1 finds a clear at or
+        // before it in one seek; the view's lower bound keeps the hit inside (afterBlockExclusive, atOrBeforeBlock].
+        Span<byte> upperBound = stackalloc byte[accountKey.Length + BlockBytes];
+        WriteClearKey(upperBound, accountKey, atOrBeforeBlock + 1);
+
+        using ISortedView view = _clears.GetViewBetween(lowerBound, upperBound);
+        if (!view.StartBefore(upperBound)) return false;
 
         ReadOnlySpan<byte> foundKey = view.CurrentKey;
         return foundKey.Length == accountKey.Length + BlockBytes && foundKey[..accountKey.Length].SequenceEqual(accountKey);

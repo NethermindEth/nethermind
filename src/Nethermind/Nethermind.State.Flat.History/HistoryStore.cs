@@ -64,25 +64,19 @@ public sealed class HistoryStore
     [SkipLocalsInit]
     public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock)
     {
-        // A change at exactly `block` is the floor; KeyExists disambiguates a present-but-empty tombstone (length 0)
-        // from a missing key, which Get's length alone cannot. Otherwise floor-seek strictly below `block`, where the
-        // backends' inclusive/exclusive StartBefore agree, and read the value from the same seek (CurrentValue).
-        Span<byte> key = stackalloc byte[flatKey.Length + BlockBytes];
-        WriteHistoryKey(key, flatKey, block);
-        if (_history.KeyExists(key))
-        {
-            foundAtBlock = block;
-            return _history.Get(key, outBuffer);
-        }
-
         foundAtBlock = 0;
+
+        // StartBefore is strictly-below, so an exclusive upper bound of block + 1 folds the exact-block change and
+        // the latest-before change into one seek.
+        Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes];
+        WriteHistoryKey(upperBound, flatKey, block + 1);
 
         Span<byte> lowerBound = stackalloc byte[flatKey.Length + BlockBytes];
         flatKey.CopyTo(lowerBound);
         lowerBound[flatKey.Length..].Clear();
 
-        using ISortedView view = _history.GetViewBetween(lowerBound, key);
-        if (!view.StartBefore(key)) return -1;
+        using ISortedView view = _history.GetViewBetween(lowerBound, upperBound);
+        if (!view.StartBefore(upperBound)) return -1;
 
         ReadOnlySpan<byte> foundKey = view.CurrentKey;
         if (foundKey.Length != flatKey.Length + BlockBytes || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
