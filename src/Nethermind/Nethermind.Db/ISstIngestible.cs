@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db;
@@ -14,8 +15,8 @@ public interface ISstIngestible
     /// <summary>Ingests previously staged SST files into the column family in a single native call.</summary>
     void IngestStagedFiles(IReadOnlyList<string> files);
 
-    /// <summary>Bounded wait until the column's L0 drains below the ingest throttle threshold.</summary>
-    void WaitForIngestCompactionHeadroom();
+    /// <summary>Bounded wait until the column's L0 drains below the ingest throttle threshold, or the token trips.</summary>
+    void WaitForIngestCompactionHeadroom(CancellationToken cancellationToken);
 
     string IngestStagingDir { get; }
 }
