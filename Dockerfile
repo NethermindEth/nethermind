@@ -27,8 +27,11 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0.302-resolute@sha256:45401dde65ffc706a65841120ffdf827805eefe16852d6de1086a876c421de2e AS rpmalloc-build
-RUN apt-get update && apt-get install -y --no-install-recommends gcc git ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN git clone --depth 1 https://github.com/mjansson/rpmalloc /rpmalloc  && gcc -shared -fPIC -O2 -DNDEBUG -DENABLE_PRELOAD=1 -DENABLE_OVERRIDE=1 -I/rpmalloc/rpmalloc     /rpmalloc/rpmalloc/rpmalloc.c /rpmalloc/rpmalloc/malloc.c -o /librpmallocwrap.so -lpthread -ldl
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/mjansson/rpmalloc /rpmalloc
+RUN gcc -shared -fPIC -O2 -DNDEBUG -DENABLE_PRELOAD=1 -DENABLE_OVERRIDE=1 -I/rpmalloc/rpmalloc \
+    /rpmalloc/rpmalloc/rpmalloc.c -o /librpmallocwrap.so -lpthread -ldl \
+ && nm -D /librpmallocwrap.so | grep -qE ' T (malloc|rpmalloc)$' && echo "rpmalloc override symbols present"
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67a7d26d901864866c235e7ea59966cdb8f0e680ed25ad9
 
