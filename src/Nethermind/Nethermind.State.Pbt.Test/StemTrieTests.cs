@@ -462,6 +462,52 @@ public class StemTrieTests
 
     private static TestCaseData Fixture(string name, byte[][] stems) => new TestCaseData((object)stems).SetArgDisplayNames(name);
 
+    /// <summary>
+    /// A range of at most three entries is partitioned by a sorting network rather than by counting into
+    /// sixteen buckets, and a batch sharing one first byte diverges only past the two levels the producer
+    /// buckets, so the network folds every level of these. Both the drained and the hand-built path share
+    /// it there, which would cancel a bug out of a comparison between them — the reference tree is the
+    /// independent oracle.
+    /// </summary>
+    [TestCaseSource(nameof(TinyRangeFixtures))]
+    public void TinyBatchBelowTheProducersBuckets_FoldsToTheReferenceTree(byte[] secondBytes)
+    {
+        List<(byte[], byte[]?)> writes = [];
+        for (int i = 0; i < secondBytes.Length; i++)
+        {
+            byte[] stem = new byte[Stem.Length];
+            stem[0] = 0x80; // one shard, so the producer's own two levels never tell these apart
+            stem[1] = secondBytes[i];
+            stem[^1] = (byte)i; // parts stems sharing a second byte, far below the divergence under test
+            byte[] value = new byte[32];
+            value.AsSpan().Fill((byte)(i + 1));
+            writes.Add(([.. stem, (byte)i], value));
+        }
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(harness, writes);
+    }
+
+    /// <summary>
+    /// Second bytes whose depth-8 and depth-12 nibbles walk the bucket runs a sorted tiny range fills:
+    /// the ends of the bounds array, and the empty runs entries sharing a nibble leave between them.
+    /// </summary>
+    private static IEnumerable<TestCaseData> TinyRangeFixtures()
+    {
+        yield return TinyFixture("one entry", [0x30]);
+        yield return TinyFixture("two, ascending", [0x10, 0x20]);
+        yield return TinyFixture("two, descending", [0x20, 0x10]);
+        yield return TinyFixture("two sharing a nibble", [0x10, 0x10]);
+        yield return TinyFixture("three, reversed", [0x30, 0x20, 0x10]);
+        yield return TinyFixture("three, unsorted, two sharing a nibble", [0x20, 0x20, 0x10]);
+        yield return TinyFixture("nibbles at either end", [0x00, 0xF0]);
+        yield return TinyFixture("all three in the first nibble", [0x00, 0x00, 0x00]);
+        yield return TinyFixture("all three in the last nibble", [0xF0, 0xF0, 0xF0]);
+    }
+
+    private static TestCaseData TinyFixture(string name, byte[] secondBytes) => new TestCaseData((object)secondBytes).SetArgDisplayNames(name);
+
     /// <summary><paramref name="count"/> distinct stems that all share <paramref name="firstByte"/>, so they diverge only below depth 8.</summary>
     private static byte[][] OneFirstByte(byte firstByte, int count)
     {
@@ -486,6 +532,54 @@ public class StemTrieTests
         {
             Assert.That(actual.Nodes[key], Is.EqualTo(node), $"node {key} differs in round {round}");
         }
+    }
+
+    /// <summary>
+    /// A rewrite that changes no value leaves every group above it exactly as stored, and none of them
+    /// is folded to discover that. The stored bytes and the root are the same either way, so what the
+    /// nesting must not move is the rents: one per group is what folding a fresh encoding costs.
+    /// </summary>
+    [Test]
+    public void NoOpRewrite_FoldsNoGroupAboveTheStem()
+    {
+        (int shallowRents, int shallowGroups) = NoOpRewrite(deeplyNested: false);
+        (int deepRents, int deepGroups) = NoOpRewrite(deeplyNested: true);
+
+        Assert.That(deepGroups, Is.GreaterThan(shallowGroups), "the deep case must really nest the stem under more groups");
+        Assert.That(deepRents, Is.EqualTo(shallowRents), "a group above the rewrite must not be folded only to find it unchanged");
+    }
+
+    /// <summary>
+    /// Nests a stem under two groups — or three, when <paramref name="deeplyNested"/> — rewrites it with
+    /// the value it already holds, and reports what that batch rented and how many groups are stored.
+    /// </summary>
+    private static (int Rents, int Groups) NoOpRewrite(bool deeplyNested)
+    {
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] target = TwoByteStem(0x00, 0x00);
+
+        // parts from the target at depth 4, so the group there branches rather than collapsing to a run
+        List<(byte[], byte[]?)> writes = [([.. target, 5], value), ([.. TwoByteStem(0x01, 0x00), 5], value)];
+
+        // and at depth 8, nesting the target one group deeper still
+        if (deeplyNested) writes.Add(([.. TwoByteStem(0x00, 0x10), 5], value));
+
+        TrackingMemoryProvider provider = new();
+        PbtTreeHarness harness = new(provider);
+        harness.ApplyBatch(writes);
+
+        int rentsBefore = provider.Rented.Count;
+        harness.ApplyBatch([([.. target, 5], value)]);
+        return (provider.Rented.Count - rentsBefore, harness.Nodes.Count);
+    }
+
+    /// <summary>A stem told apart from its fellows only by <paramref name="b0"/> and <paramref name="b1"/>, so it parts from them above depth 16.</summary>
+    private static byte[] TwoByteStem(byte b0, byte b1)
+    {
+        byte[] stem = new byte[Stem.Length];
+        stem[0] = b0;
+        stem[1] = b1;
+        return stem;
     }
 
     /// <summary>
