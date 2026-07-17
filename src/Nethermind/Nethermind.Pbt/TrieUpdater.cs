@@ -78,10 +78,17 @@ public static class TrieUpdater
     /// blobs and trie node groups to <paramref name="store"/>, and returns the new root (32 zero
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider) =>
-        changes.Count == 0 ? currentRoot : new Updater(store, memoryProvider).Run(changes);
+    /// <param name="writeFormat">
+    /// Which encoding to write the groups this batch rebuilds in. Both fold to the same root and both
+    /// are read whatever this says, so it may change between batches over one store: a group is
+    /// converted only by a change that rewrites it anyway.
+    /// </param>
+    public static ValueHash256 UpdateRoot(
+        IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
+        PbtGroupFormat writeFormat) =>
+        changes.Count == 0 ? currentRoot : new Updater(store, memoryProvider, writeFormat).Run(changes);
 
-    private sealed class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider)
+    private sealed class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
@@ -773,8 +780,21 @@ public static class TrieUpdater
         /// subtree or a run — has nothing to copy, and a single slot is one entry either way.
         /// </para>
         /// </remarks>
-        private static bool IsCleanRange(PbtTrieNodeGroup existing, uint changed, uint range, int position, int width) =>
-            width > 1 && (changed & range) == 0 && !existing.IsEmpty && existing.KindAt(position) == NodeKind.Internal;
+        /// <param name="format">
+        /// The encoding being written. A run is only ever what a fold in that very format produced, so a
+        /// group in the other one is refolded in full instead — which is what converts it on the way
+        /// past. A skipped position heads no run either: it has no entry, and
+        /// <see cref="PbtTrieNodeGroup.Builder.AppendSubtree"/> takes a run's last entry for its root.
+        /// Its children are stored, so they are copied in its place and it is folded from them.
+        /// </param>
+        private static bool IsCleanRange(
+            PbtTrieNodeGroup existing, uint changed, uint range, int position, int width, PbtGroupFormat format) =>
+            width > 1
+            && (changed & range) == 0
+            && !existing.IsEmpty
+            && existing.Format == format
+            && PbtTrieNodeGroup.StoresInternalAtWidth(format, width)
+            && existing.KindAt(position) == NodeKind.Internal;
 
         /// <summary>
         /// Rebuilds a group's sixteen boundary <paramref name="results"/> straight into a fresh
@@ -790,11 +810,12 @@ public static class TrieUpdater
             ReadOnlySpan<NodeResult> results, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask,
             in PbtSubtreeStats stats)
         {
-            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
+            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, writeFormat);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
 
-            GroupRebuild rebuild = new(results, existing, occupied, stems, changedMask, memory.GetSpan());
-            NodeRef root = rebuild.Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots);
+            GroupRebuild rebuild = new(results, existing, occupied, stems, changedMask, memory.GetSpan(), writeFormat);
+            // the group root is stored whatever the format: the caller reads it back out of the encoding
+            NodeRef root = rebuild.Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots).ToNodeRef();
             int length = rebuild.Finish(stats);
             Debug.Assert(length == memory.GetSpan().Length, "the predicted shape must size the fold's encoding exactly");
 
@@ -815,7 +836,8 @@ public static class TrieUpdater
         /// copied verbatim keeps the shape it already had.
         /// </remarks>
         private static (uint Presence, uint Stems) PredictShape(
-            PbtTrieNodeGroup existing, uint occupied, uint stems, uint changed, int position, int firstSlot, int width)
+            PbtTrieNodeGroup existing, uint occupied, uint stems, uint changed, int position, int firstSlot, int width,
+            PbtGroupFormat format)
         {
             uint range = ((1u << width) - 1) << firstSlot;
             switch (KindOf(occupied & range, stems))
@@ -823,27 +845,62 @@ public static class TrieUpdater
                 case NodeKind.Absent:
                     return default;
                 case NodeKind.Stem:
-                    // a stem terminates the walk at its shortest unique prefix — nothing below it is emitted
+                    // a stem terminates the walk at its shortest unique prefix — nothing below it is
+                    // emitted, and it is stored there whatever the format
                     return (1u << position, 1u << position);
             }
 
-            if (IsCleanRange(existing, changed, range, position, width))
+            if (IsCleanRange(existing, changed, range, position, width, format))
             {
                 existing.SubtreeBitmaps(position, width, out uint cleanPresence, out uint cleanStems);
                 return (cleanPresence, cleanStems);
             }
 
-            uint self = 1u << position;
+            // an internal node the format skips is folded, not stored, so it takes no room
+            uint self = PbtTrieNodeGroup.StoresInternalAtWidth(format, width) ? 1u << position : 0;
             if (width == 1) return (self, 0);
 
             int half = width / 2;
-            (uint leftPresence, uint leftStems) = PredictShape(existing, occupied, stems, changed, position - width, firstSlot, half);
-            (uint rightPresence, uint rightStems) = PredictShape(existing, occupied, stems, changed, position - 1, firstSlot + half, half);
+            (uint leftPresence, uint leftStems) = PredictShape(existing, occupied, stems, changed, position - width, firstSlot, half, format);
+            (uint rightPresence, uint rightStems) = PredictShape(existing, occupied, stems, changed, position - 1, firstSlot + half, half, format);
             return (leftPresence | rightPresence | self, leftStems | rightStems);
         }
 
         /// <summary>A reference to a node in the encoding holding it: its kind and its entry offset.</summary>
         private readonly record struct NodeRef(ResultKind Kind, int Offset);
+
+        /// <summary>
+        /// A node the rebuild has folded, as its parent needs it: a <see cref="NodeRef"/> into the
+        /// encoding being built where the group stores an entry for it, and its hash by value where
+        /// the group stores none.
+        /// </summary>
+        /// <remarks>
+        /// A <see cref="PbtGroupFormat.Interleaved"/> group stores no internal node at an odd level, so
+        /// there is no entry for its parent to read the hash back out of — and the hash is the only
+        /// thing about it that survives the encoding. It is carried here rather than on
+        /// <see cref="NodeRef"/>, which stays a bare reference: only the fold ever holds an unstored
+        /// node, and only until the parent one frame up consumes it. An absent node is unstored with a
+        /// zero hash, which is exactly what it contributes.
+        /// </remarks>
+        private readonly record struct FoldedNode(ResultKind Kind, int Offset, ValueHash256 Hash)
+        {
+            private const int NoEntry = -1;
+
+            public static FoldedNode Absent => new(ResultKind.Absent, NoEntry, default);
+
+            public static FoldedNode Stored(ResultKind kind, int offset) => new(kind, offset, default);
+
+            public static FoldedNode Unstored(in ValueHash256 hash) => new(ResultKind.Internal, NoEntry, hash);
+
+            public bool IsStored => Offset != NoEntry;
+
+            /// <summary>This node as a bare reference, for a consumer that reads it back out of the encoding.</summary>
+            public NodeRef ToNodeRef()
+            {
+                Debug.Assert(IsStored, "an unstored node is the fold's own business: it has no entry to point at");
+                return new NodeRef(Kind, Offset);
+            }
+        }
 
         /// <summary>
         /// A node handed around the descent: where its bytes are, and a lease on the memory holding
@@ -927,8 +984,9 @@ public static class TrieUpdater
         /// in the append cursor, and a subtree's entries are one unbroken run. That run is what lets
         /// the walk prune at a range no write changed and copy it over whole, as the leaf blob's
         /// rebuild copies a clean leaf subtree. The walk hands each subtree up as a
-        /// <see cref="NodeRef"/> into the buffer, so a node's hash is materialized only where its
-        /// parent needs it, never copied by value up the stack.
+        /// <see cref="FoldedNode"/>, a reference into the buffer, so a node's hash is materialized only
+        /// where its parent needs it rather than copied by value up the stack — bar a node the format
+        /// stores no entry for, whose hash has nowhere else to live.
         /// <para>
         /// Node kinds come from <see cref="KindOf"/> rather than from the walk, which is what lets a
         /// node be appended at its own position instead of by its parent: a stem never recurses, so
@@ -939,60 +997,66 @@ public static class TrieUpdater
         /// </remarks>
         private ref struct GroupRebuild(
             ReadOnlySpan<NodeResult> results, PbtTrieNodeGroup existing,
-            uint occupied, uint stems, uint changed, Span<byte> destination)
+            uint occupied, uint stems, uint changed, Span<byte> destination, PbtGroupFormat format)
         {
             private readonly ReadOnlySpan<NodeResult> _results = results;
             private readonly PbtTrieNodeGroup _existing = existing;
             private readonly uint _occupied = occupied;
             private readonly uint _stems = stems;
             private readonly uint _changed = changed;
-            private PbtTrieNodeGroup.Builder _builder = new(destination);
+            private readonly PbtGroupFormat _format = format;
+            private PbtTrieNodeGroup.Builder _builder = new(destination, format);
 
             /// <summary>
             /// Folds the boundary results over <c>[firstSlot, firstSlot + width)</c> into the node at
             /// <paramref name="position"/>, appending it and every node below it to the blob.
             /// </summary>
-            public NodeRef Fold(int position, int firstSlot, int width)
+            public FoldedNode Fold(int position, int firstSlot, int width)
             {
                 uint range = ((1u << width) - 1) << firstSlot;
                 uint occupied = _occupied & range;
                 switch (KindOf(occupied, _stems))
                 {
                     case NodeKind.Absent:
-                        return default;
+                        return FoldedNode.Absent;
                     case NodeKind.Stem:
                         // the topmost frame whose range holds only this stem — its shortest unique
                         // prefix, so it lands here rather than anywhere below
                         ref readonly NodeResult stem = ref _results[BitOperations.TrailingZeroCount(occupied)];
-                        return new NodeRef(ResultKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
+                        return FoldedNode.Stored(ResultKind.Stem, _builder.AppendStem(position, stem.Stem, stem.Hash));
                 }
 
                 // An unchanged subtree folds to the nodes already encoded, so the whole of its run — its
                 // cached hashes and every node below them — is copied out of the existing group in one
                 // block, never walked. Mirrors StemLeafBlob.RebuildState's clean-subtree copy.
-                if (IsCleanRange(_existing, _changed, range, position, width))
+                if (IsCleanRange(_existing, _changed, range, position, width, _format))
                 {
                     _existing.SubtreeBitmaps(position, width, out uint presence, out uint stems);
-                    return new NodeRef(
+                    return FoldedNode.Stored(
                         ResultKind.Internal,
                         _builder.AppendSubtree(presence, stems, _existing.SubtreeEntries(position, width, presence, stems)));
                 }
 
                 // a boundary slot: its internal node is the cached pointer to the child blob, which for a
                 // run is the run's own cached node hash — so a run reads here exactly as a group does
-                if (width == 1) return new NodeRef(ResultKind.Internal, _builder.AppendInternal(position, _results[firstSlot].Hash));
+                if (width == 1) return FoldedNode.Stored(ResultKind.Internal, _builder.AppendInternal(position, _results[firstSlot].Hash));
 
                 int half = width / 2;
-                NodeRef left = Fold(position - width, firstSlot, half);
-                NodeRef right = Fold(position - 1, firstSlot + half, half);
+                FoldedNode left = Fold(position - width, firstSlot, half);
+                FoldedNode right = Fold(position - 1, firstSlot + half, half);
+                ValueHash256 hash = Blake3Hash.HashPairOrZero(Resolve(left), Resolve(right));
 
-                return new NodeRef(
-                    ResultKind.Internal,
-                    _builder.AppendInternal(position, Blake3Hash.HashPairOrZero(Resolve(left), Resolve(right))));
+                // The hash is folded either way — the root depends on every level of it. A format that
+                // skips this level simply does not write it down, and hands it to the parent that needs
+                // it instead.
+                return PbtTrieNodeGroup.StoresInternalAtWidth(_format, width)
+                    ? FoldedNode.Stored(ResultKind.Internal, _builder.AppendInternal(position, hash))
+                    : FoldedNode.Unstored(hash);
             }
 
             /// <summary>The hash <paramref name="node"/> contributes to its parent.</summary>
-            public readonly ValueHash256 Resolve(in NodeRef node) => _builder.SlotAt(ToNodeKind(node.Kind), node.Offset).NodeHash();
+            public readonly ValueHash256 Resolve(in FoldedNode node) =>
+                node.IsStored ? _builder.SlotAt(ToNodeKind(node.Kind), node.Offset).NodeHash() : node.Hash;
 
             /// <inheritdoc cref="PbtTrieNodeGroup.Builder.Finish"/>
             public readonly int Finish(in PbtSubtreeStats stats) => _builder.Finish(stats);

@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -116,7 +117,9 @@ public class PbtScopeProviderBenchmark
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
-        return new PbtScopeProvider(new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false);
+        return new PbtScopeProvider(
+            new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
+            config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
     }
 
     private static IWorldStateScopeProvider CreateTrieProvider() =>

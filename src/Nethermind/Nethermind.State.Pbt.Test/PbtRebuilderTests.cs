@@ -65,7 +65,7 @@ public class PbtRebuilderTests
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db);
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance) { FlushEntryInterval = flushEntryInterval };
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = flushEntryInterval };
 
         Channel<RebuildEntry> channel = Channel.CreateUnbounded<RebuildEntry>();
         foreach (RebuildEntry entry in entries) channel.Writer.TryWrite(entry);
@@ -100,7 +100,7 @@ public class PbtRebuilderTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db);
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance);
+        PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig());
 
         Channel<RebuildEntry> channel = Channel.CreateUnbounded<RebuildEntry>();
         channel.Writer.Complete();

@@ -15,7 +15,14 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-public class StemTrieTests
+/// <param name="format">
+/// Both encodings describe the same trie and must fold to the same root, so every scenario here runs
+/// twice — and since each asserts against <see cref="EipReferenceTree"/>, running it under
+/// <see cref="PbtGroupFormat.Interleaved"/> is what pins that skipping levels changes only the bytes.
+/// </param>
+[TestFixture(PbtGroupFormat.EveryLevel)]
+[TestFixture(PbtGroupFormat.Interleaved)]
+public class StemTrieTests(PbtGroupFormat format)
 {
     // The store after the split is the root group, the group holding the divergence, and — once they are
     // more than four levels apart — one chain spanning everything between, however deep that reaches.
@@ -38,7 +45,7 @@ public class StemTrieTests
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
 
         // single stem: one root group holding just the stem
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA)]);
@@ -75,8 +82,8 @@ public class StemTrieTests
         batch.Add(stem, PbtStemChanges.Rent().Set(5, value));
         batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
-        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance),
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -98,7 +105,7 @@ public class StemTrieTests
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
         byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         ValueHash256 root = harness.ApplyBatch([(keyA, valueA), (keyB, valueB), (keyC, valueC)]);
         Assert.That(root, Is.EqualTo(ReferenceRoot([(keyA, valueA), (keyB, valueB), (keyC, valueC)])));
         // the root group, the depth-4 group holding C beside the path on towards A and B, the run
@@ -141,7 +148,7 @@ public class StemTrieTests
         byte[] valueB = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
         (byte[], byte[]?)[] all = [(keyA1, valueA1), (keyA2, valueA2), (keyB, valueB)];
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         ValueHash256 root = harness.ApplyBatch(all);
         Assert.That(root, Is.EqualTo(ReferenceRoot(all)));
         // the root group, the depth-4 group holding B, the run from 8 to 40, and the group where A1/A2 part
@@ -184,7 +191,7 @@ public class StemTrieTests
         byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
         byte[] rewritten = Bytes.FromHexString("0x4444444444444444444444444444444444444444444444444444444444444444");
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         ValueHash256 root = harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
         Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 40, and the group at 40");
 
@@ -223,7 +230,7 @@ public class StemTrieTests
         byte[] valueA2 = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
         byte[] valueD = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         harness.ApplyBatch([(keyA1, valueA1), (keyA2, valueA2)]);
         Assert.That(harness.Nodes, Has.Count.EqualTo(3), "the root group, the run from 4 to 8, and the group at 8");
 
@@ -250,7 +257,7 @@ public class StemTrieTests
             writes.Add((PbtKeyDerivation.StorageKey(contract, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), value));
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
         AssertStoreMatchesFreshRebuild(harness, writes);
 
@@ -283,7 +290,7 @@ public class StemTrieTests
         byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
 
         // deleting absent keys across both root buckets leaves the tree empty
         ValueHash256 root = harness.ApplyBatch([([.. stemA, 5], null), ([.. stemB, 9], null)]);
@@ -320,7 +327,7 @@ public class StemTrieTests
             }
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         Dictionary<string, byte[]> model = [];
         for (int batch = 0; batch < 5; batch++)
         {
@@ -394,7 +401,7 @@ public class StemTrieTests
             model[key.ToHexString()] = value;
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         ValueHash256 root = harness.ApplyBatch(writes);
         Assert.That(root, Is.EqualTo(ReferenceRoot(ModelEntries(model))));
 
@@ -411,8 +418,8 @@ public class StemTrieTests
     [TestCaseSource(nameof(BucketOrderFixtures))]
     public void DrainedBatch_FoldsIdenticallyToAHandBuiltBatch(byte[][] stems)
     {
-        PbtTreeHarness handBuilt = new(PooledRefCountingMemoryProvider.Instance);
-        PbtTreeHarness drained = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness handBuilt = new(PooledRefCountingMemoryProvider.Instance, format);
+        PbtTreeHarness drained = new(PooledRefCountingMemoryProvider.Instance, format);
 
         // insert every stem, rewrite every stem, then delete every other one — so the drained path
         // also folds the hoists and blob removals a delete drives, not just inserts
@@ -484,7 +491,7 @@ public class StemTrieTests
             writes.Add(([.. stem, (byte)i], value));
         }
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
         AssertStoreMatchesFreshRebuild(harness, writes);
     }
@@ -509,7 +516,7 @@ public class StemTrieTests
     private static TestCaseData TinyFixture(string name, byte[] secondBytes) => new TestCaseData((object)secondBytes).SetArgDisplayNames(name);
 
     /// <summary>
-    /// A rewrite in a group whose every position is present: the fifteen untouched boundary slots leave
+    /// A rewrite in a group holding a node at every position: the fifteen untouched boundary slots leave
     /// whole subtrees of it unchanged, which the fold copies verbatim out of the stored encoding rather
     /// than rebuilding node by node. The copy must be indistinguishable from that rebuild, which a
     /// from-scratch fold of the same stems is what pins.
@@ -525,12 +532,20 @@ public class StemTrieTests
         List<(byte[] Key, byte[]? Value)> writes = [];
         for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add(([.. MakeStem(slot, 0), 5], value));
 
-        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         harness.ApplyBatch(writes);
+
+        // every stem lands on a boundary slot here, so a dense group stores exactly the positions its
+        // format keeps — all thirty-one, or the twenty-one an interleaved group does not fold away
+        int storedPositions = 0;
+        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        {
+            if (!PbtTrieNodeGroup.IsSkippedPosition(format, position)) storedPositions++;
+        }
 
         PbtTrieNodeGroup dense = PbtTrieNodeGroup.Decode(harness.Nodes[TrieNodeKey.Root.ChildGroup(0)]);
         Assert.That(
-            CountPresentPositions(dense), Is.EqualTo(PbtTrieNodeGroup.PositionCount),
+            CountPresentPositions(dense), Is.EqualTo(storedPositions),
             "the setup must really fill the group, or nothing here is clean enough to be copied");
 
         writes[3] = (writes[3].Key, rewritten);
@@ -595,7 +610,7 @@ public class StemTrieTests
     /// Nests a stem under two groups — or three, when <paramref name="deeplyNested"/> — rewrites it with
     /// the value it already holds, and reports what that batch rented and how many groups are stored.
     /// </summary>
-    private static (int Rents, int Groups) NoOpRewrite(bool deeplyNested)
+    private (int Rents, int Groups) NoOpRewrite(bool deeplyNested)
     {
         byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
         byte[] target = TwoByteStem(0x00, 0x00);
@@ -607,7 +622,7 @@ public class StemTrieTests
         if (deeplyNested) writes.Add(([.. TwoByteStem(0x00, 0x10), 5], value));
 
         TrackingMemoryProvider provider = new();
-        PbtTreeHarness harness = new(provider);
+        PbtTreeHarness harness = new(provider, format);
         harness.ApplyBatch(writes);
 
         int rentsBefore = provider.Rented.Count;
@@ -642,7 +657,7 @@ public class StemTrieTests
         byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
 
         TrackingMemoryProvider provider = new();
-        PbtTreeHarness harness = new(provider);
+        PbtTreeHarness harness = new(provider, format);
 
         // each batch settles nodes by a different path: fresh groups, an unchanged rebuild that is
         // dropped rather than written, a split that builds a run, a split of that run, a delete that
@@ -706,7 +721,7 @@ public class StemTrieTests
     /// </summary>
     private static void AssertStoreMatchesFreshRebuild(PbtTreeHarness harness, IEnumerable<(byte[] Key, byte[]? Value)> survivingEntries)
     {
-        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness fresh = new(PooledRefCountingMemoryProvider.Instance, harness.WriteFormat);
         fresh.ApplyBatch(survivingEntries);
         Assert.That(harness.Nodes, Has.Count.EqualTo(fresh.Nodes.Count));
         foreach ((TrieNodeKey key, byte[] expected) in fresh.Nodes)

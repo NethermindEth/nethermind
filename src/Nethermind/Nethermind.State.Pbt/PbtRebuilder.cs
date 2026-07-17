@@ -62,7 +62,7 @@ public readonly record struct RebuildEntry
 /// Because each window folds against the previously committed windows, a stem split across windows is
 /// merged correctly (the updater reads its prior leaf blob and folds the new leaves in).
 /// </remarks>
-public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
+public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager, IPbtConfig config)
 {
     /// <summary>Entries (accounts + slots) buffered before a window is folded into the tree and committed.</summary>
     internal int FlushEntryInterval { get; init; } = 128_000;
@@ -150,7 +150,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
             // and blobs and writes the new ones into this window's still-open batch
             using IPbtPersistence.IReader reader = target.CreateReader();
             PersistenceBackedPbtStore store = new(reader, writeBatch);
-            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance);
+            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat());
         }
 
         writeBatch.Dispose(); // atomic commit of this window's flat rows and, when non-empty, its leaves and nodes
