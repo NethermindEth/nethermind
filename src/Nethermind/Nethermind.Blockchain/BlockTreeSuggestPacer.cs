@@ -89,6 +89,9 @@ public class BlockTreeSuggestPacer : IDisposable
                 _dbBatchProcessed = null;
                 completedBatch = completionSource;
                 completionSource = null;
+                // The batch never blocked, so retain any observer for the next real pause.
+                _pausedSignal = pauseSignal;
+                pauseSignal = null;
             }
         }
 

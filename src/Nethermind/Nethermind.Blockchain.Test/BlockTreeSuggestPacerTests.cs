@@ -56,7 +56,7 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
-    public void WillNotMissHeadUpdateBeforeStartingBatch()
+    public async Task WillNotMissHeadUpdateBeforeStartingBatch()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         Block initialHead = Build.A.Block.WithNumber(0).TestObject;
@@ -74,8 +74,24 @@ public class BlockTreeSuggestPacerTests
         });
 
         using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
+        using CancellationTokenSource cts = new();
+        Task pausedTask = pacer.WaitForPausedAsync(cts.Token);
+        try
+        {
+            Task queueTask = pacer.WaitForQueue(11, default);
 
-        Assert.That(pacer.WaitForQueue(11, default).IsCompleted, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queueTask.IsCompleted, Is.True);
+                Assert.That(pausedTask.IsCompleted, Is.False);
+            }
+        }
+        finally
+        {
+            cts.Cancel();
+        }
+
+        Assert.That(async () => await pausedTask, Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
