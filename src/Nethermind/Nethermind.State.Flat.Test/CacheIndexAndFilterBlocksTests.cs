@@ -39,28 +39,45 @@ public class CacheIndexAndFilterBlocksTests
         string path = Path.Combine(Path.GetTempPath(), "flat-cif-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         DbConfig dbConfig = new() { CacheIndexAndFilterBlocks = true };
+        StateId s1 = State(1, 1);
+        SlotValue v1 = Slot(0x11);
         try
         {
-            using ColumnsDb<FlatDbColumns> db = new(
+            // Write, then force a full flush so the data lands in an SST built with the partitioned
+            // index/filter format - the batch's own dispose only flushes the WAL, leaving it in the memtable.
+            using (ColumnsDb<FlatDbColumns> db = new(
                 path,
                 new DbSettings("State", path) { DeleteOnStart = true },
                 dbConfig,
                 new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
                 LimboLogs.Instance,
-                Enum.GetValues<FlatDbColumns>());
-            RocksDbPersistence persistence = new(db, LimboLogs.Instance, new FlatDbConfig());
-
-            StateId s1 = State(1, 1);
-            SlotValue v1 = Slot(0x11);
-            using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+                Enum.GetValues<FlatDbColumns>()))
             {
-                batch.SetAccount(Addr, new Account(100));
-                batch.SetStorage(Addr, Slot1, v1);
+                RocksDbPersistence persistence = new(db, LimboLogs.Instance, new FlatDbConfig());
+                using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+                {
+                    batch.SetAccount(Addr, new Account(100));
+                    batch.SetStorage(Addr, Slot1, v1);
+                }
+
+                db.Flush();
             }
 
-            using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-            AssertSlot(reader, Slot1, v1);
-            Assert.That(reader.GetAccount(Addr), Is.Not.Null);
+            // Reopen without deleting so the reads round-trip from the on-disk SST, exercising the
+            // partitioned index/filter format on both table open and lookup.
+            using (ColumnsDb<FlatDbColumns> db = new(
+                path,
+                new DbSettings("State", path) { DeleteOnStart = false },
+                dbConfig,
+                new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+                LimboLogs.Instance,
+                Enum.GetValues<FlatDbColumns>()))
+            {
+                RocksDbPersistence persistence = new(db, LimboLogs.Instance, new FlatDbConfig());
+                using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+                AssertSlot(reader, Slot1, v1);
+                Assert.That(reader.GetAccount(Addr), Is.Not.Null);
+            }
         }
         finally
         {

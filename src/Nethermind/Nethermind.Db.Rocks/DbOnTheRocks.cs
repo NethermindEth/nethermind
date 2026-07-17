@@ -186,7 +186,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                DbMetricsUpdater<DbOptions> metricUpdater = new(Name, DbOptions, db, null, dbConfig, _logger);
+                DbMetricsUpdater<DbOptions> metricUpdater = new(Name, DbOptions, db, null, dbConfig, _isUsingSharedBlockCache, _logger);
                 metricUpdater.StartUpdating();
                 _metricsUpdaters.Add(metricUpdater);
 
@@ -198,7 +198,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
                             DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new(
-                                Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
+                                Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _isUsingSharedBlockCache, _logger);
                             columnMetricUpdater.StartUpdating();
                             _metricsUpdaters.Add(columnMetricUpdater);
                         }
@@ -566,6 +566,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // kBinarySearch: the partitioned (two-level) index is what lets the index/filter blocks live
             // in — and be bounded by — the block cache. That is the whole point of the flag; the extra
             // top-level index lookup is the accepted cost.
+            // A base RocksDbOptions may end without a trailing ';' (RocksDB accepts a final option without
+            // one), so add a delimiter first, otherwise the first appended key merges into that last value.
+            if (rocksDbOptions.Length > 0 && !rocksDbOptions.TrimEnd().EndsWith(';'))
+            {
+                rocksDbOptions += ";";
+            }
             rocksDbOptions +=
                 "block_based_table_factory.cache_index_and_filter_blocks=true;" +
                 "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;" +

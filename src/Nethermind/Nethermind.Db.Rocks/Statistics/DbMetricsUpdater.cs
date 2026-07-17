@@ -12,7 +12,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, bool isUsingSharedBlockCache, ILogger logger)
     : IDisposable
     where T : Options<T>
 {
@@ -187,7 +187,9 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         long liveSst = Prop("rocksdb.live-sst-files-size");
         long numKeys = Prop("rocksdb.estimate-num-keys");
         long liveFiles = 0;
-        for (int level = 0; level <= 6; level++)
+        // num_levels is configurable above the default 7; querying only levels 0..6 would undercount L7+.
+        int numLevels = Native.Instance.rocksdb_options_get_num_levels(dbOptions.Handle);
+        for (int level = 0; level < numLevels; level++)
         {
             liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));
         }
@@ -196,8 +198,14 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         string Mb(long v) => v < 0 ? "n/a" : $"{v / MB:F0}MB";
         string Gb(long v) => v < 0 ? "n/a" : $"{v / GB:F1}GB";
 
+        // A shared block cache reports the same process-wide total on every column, so label it rather than
+        // emit a per-column value that would multiply the footprint when the [RocksDbMem] lines are summed.
+        string blockCacheField = isUsingSharedBlockCache
+            ? $"block_cache={Mb(blockCache)}(shared)"
+            : $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)})";
+
         logger.Info($"[RocksDbMem] {dbName}: table_readers={Mb(tableReaders)} memtables={Mb(memtables)} " +
-                    $"block_cache={Mb(blockCache)}(pinned {Mb(blockCachePinned)}) " +
+                    $"{blockCacheField} " +
                     $"live_sst={Gb(liveSst)} sst_files={liveFiles} keys={(numKeys < 0 ? "n/a" : numKeys.ToString())}");
     }
 
