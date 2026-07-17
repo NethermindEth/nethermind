@@ -2337,7 +2337,7 @@
             const c = cached || nftCache.get(ownerAddr + '|' + node.chainId + '|' + collection.address.toLowerCase()) || { ids: [], thumbs: [], count: 0 };
             const ids = c.ids || [], seed = c.thumbs || [], total = ids.length;
             openCollection(node, collection, {
-                titleSuffix: 'of ' + ownerDisplay(ownerAddr),
+                titleSuffix: ownerAddr ? 'of ' + ownerDisplay(ownerAddr) : 'held', // null owner = merged holdings across accounts
                 ownedCount: c.count ?? total,
                 ownerAddr,
                 kind: c.kind,
@@ -3585,8 +3585,12 @@
             const strip = el('div', 'thumbs asset-thumbs');
             for (const t of (merged.thumbs || []).slice(0, MAX_NFT_THUMBS)) strip.append(thumbEl(t, g.collection, g.node, null));
             const more = el('span', 'more expand', 'view all ' + (merged.count ?? g.count));
-            more.title = 'Open the collection';
-            more.onclick = () => openFullCollection(g.node, g.collection);
+            more.title = 'Open the held items';
+            // open the owned items (this account's, or merged across accounts) — the owned view still links to the
+            // full collection via its "view full collection" control
+            more.onclick = () => g.parts.length === 1
+                ? openOwnedCollection(g.node, g.collection, g.parts[0].entry.address)
+                : openOwnedCollection(g.node, g.collection, null, merged);
             strip.append(more);
             row.append(strip);
 
