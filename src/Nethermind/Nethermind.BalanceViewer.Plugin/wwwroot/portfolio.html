@@ -388,6 +388,10 @@
         .lightbox-info { width: 100%; display: flex; flex-direction: column; gap: 8px; }
         .lightbox-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 15px; color: var(--c-name); }
         .lightbox-sub { font-size: 12px; color: var(--muted); }
+        .lightbox-untrack { cursor: pointer; color: var(--muted); font-size: 12px; }
+        .lightbox-untrack:hover { color: var(--danger); }
+        /* very large accounts: cap the card body height and scroll, so one whale can't push everything else away */
+        .card-scroll { max-height: 70vh; overflow-y: auto; }
         .lightbox-desc { font-size: 12px; color: var(--c-name); line-height: 1.45; white-space: pre-wrap; }
         .lightbox-traits { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 2px; }
         .lightbox-traits .trait { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; overflow: hidden; }
@@ -1956,7 +1960,10 @@
 
                 const info = el('div', 'lightbox-info');
                 info.append(el('div', 'lightbox-title', t.name || (collection.ticker + ' #' + t.id)));
-                if (t.name && !t.name.includes(String(t.id))) info.append(el('div', 'lightbox-sub', (collection.name || collection.ticker) + ' · #' + t.id));
+                // subtitle is the collection name; append the on-chain token id only when the title has no number
+                // of its own — some collections name tokens with their own numbering (e.g. an edition #) that
+                // differs from the token id, and showing both reads as a mismatch
+                info.append(el('div', 'lightbox-sub', (collection.name || collection.ticker) + (/\d/.test(t.name || '') ? '' : ' · #' + t.id)));
                 if (t.description) info.append(el('div', 'lightbox-desc', t.description));
 
                 if (Array.isArray(t.attributes) && t.attributes.length) {
@@ -2043,12 +2050,13 @@
         // (and, when opened from a holding row, the holder's value) come from the last refresh (cache);
         // name, total supply, and market cap are read on demand.
         async function openTokenInfo(node, token, cached) {
+            const native = !!token.native; // native asset (ETH/xDAI): no contract, and can't be untracked
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'lightbox-panel');
             const info = el('div', 'lightbox-info');
 
             info.append(el('div', 'lightbox-title', token.ticker));
-            const subEl = el('div', 'lightbox-sub', '');
+            const subEl = el('div', 'lightbox-sub', native ? node.meta.name + ' native asset' : '');
             info.append(subEl);
 
             const facts = el('div', 'token-facts');
@@ -2058,25 +2066,34 @@
             const fxRate = await resolveFxRate();
             const conv = (usd8) => (usd8 === null || usd8 === undefined || !fxRate) ? null : usd8 * PRICE_SCALE / fxRate;
             const price8 = (cached && cached.price8 !== null && cached.price8 !== undefined)
-                ? cached.price8 : tokenPrice8(node.chainId, token.address);
+                ? cached.price8 : tokenPrice8(node.chainId, native ? 'native' : token.address);
 
             addFact('Price', formatPrice8(conv(price8)));
-            const mcapEl = el('div', 'token-fact-v', '…');
-            facts.append(el('div', 'token-fact-k', 'Market cap'));
-            facts.append(mcapEl);
-            const supplyEl = el('div', 'token-fact-v', '…');
-            facts.append(el('div', 'token-fact-k', 'Total supply'));
-            facts.append(supplyEl);
+            let mcapEl = null, supplyEl = null;
+            if (!native) { // native has no ERC-20 total supply / market cap to read
+                mcapEl = el('div', 'token-fact-v', '…');
+                facts.append(el('div', 'token-fact-k', 'Market cap'), mcapEl);
+                supplyEl = el('div', 'token-fact-v', '…');
+                facts.append(el('div', 'token-fact-k', 'Total supply'), supplyEl);
+            }
             if (cached && cached.bal !== null && cached.bal !== undefined) addFact('Your balance', cached.bal + ' ' + token.ticker);
             if (cached && cached.fiat) addFact('Your value', cached.fiat);
-            addFact('Decimals', String(token.decimals));
+            if (!native) addFact('Decimals', String(token.decimals));
 
             const meta = el('div', 'lightbox-meta');
-            const copy = el('span', 'lightbox-copy', token.address.slice(0, 6) + '…' + token.address.slice(-4));
-            copy.title = 'Copy contract address';
-            copy.onclick = () => copyAddress(token.address);
-            meta.append(copy);
+            if (!native) {
+                const copy = el('span', 'lightbox-copy', token.address.slice(0, 6) + '…' + token.address.slice(-4));
+                copy.title = 'Copy contract address';
+                copy.onclick = () => copyAddress(token.address);
+                meta.append(copy);
+            }
             meta.append(el('span', 'art-source', node.meta.name));
+            if (!native) {
+                const untrack = el('span', 'lightbox-untrack', 'untrack');
+                untrack.title = 'Stop tracking this token';
+                untrack.onclick = () => { untrackAsset(node, token, false); overlay.remove(); };
+                meta.append(untrack);
+            }
             info.append(meta);
 
             panel.append(info);
@@ -2087,6 +2104,7 @@
             document.addEventListener('keydown', onKey);
             document.body.append(overlay);
 
+            if (native) return;
             try {
                 const [nameHex, supplyHex] = await rpcBatch([
                     ['eth_call', [{ to: token.address, data: SEL_NAME }, 'latest']],
@@ -2238,7 +2256,7 @@
                     }
                     const ckey = node.chainId + '|' + collection.address.toLowerCase();
                     return {
-                        kind, titleSuffix: '…', // total resolves via countPages after tiles are already on screen
+                        kind, titleSuffix: '', // count is shown in the info strip, not repeated in the title
                         // Enumerate a page's ids via tokenByIndex (over-fetches the last page; out-of-range calls
                         // revert and are dropped) — no need to know totalSupply first, so tiles render after one
                         // batched round-trip. Cached per session, so reopening a page skips enumeration entirely.
@@ -2282,7 +2300,8 @@
             let closed = false;
 
             const head = el('div', 'collection-head');
-            const titleEl = el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + opts.titleSuffix);
+            const titleText = () => (collection.name || collection.ticker) + (opts.titleSuffix ? ' · ' + opts.titleSuffix : '');
+            const titleEl = el('span', 'collection-title', titleText());
             head.append(titleEl);
             const x = el('button', 'settings-x', '×');
             x.onclick = () => close();
@@ -2304,6 +2323,10 @@
                 link.onclick = () => { close(); opts.onViewFull(); };
                 infoStrip.append(link);
             }
+            const untrack = el('span', 'lightbox-untrack', 'untrack');
+            untrack.title = 'Stop tracking this collection';
+            untrack.onclick = () => { untrackAsset(node, collection, true); close(); };
+            infoStrip.append(untrack);
             panel.append(infoStrip);
 
             const controls = el('div', 'collection-controls');
@@ -2431,7 +2454,7 @@
                 if (opts.prepare) {
                     try { Object.assign(opts, await opts.prepare()); }
                     catch { grid.replaceChildren(el('div', 'collection-loading', 'failed to load')); return; }
-                    titleEl.textContent = (collection.name || collection.ticker) + ' · ' + opts.titleSuffix;
+                    titleEl.textContent = titleText();
                 }
                 buildControls();
                 go(0); // render tiles immediately — counting / total supply resolves below without blocking
@@ -2454,7 +2477,7 @@
                                 if (prevBtn) prevBtn.disabled = page === 0;
                                 if (nextBtn) nextBtn.disabled = page === opts.pageCount - 1;
                             }
-                            if (total != null) { opts.titleSuffix = String(total); titleEl.textContent = (collection.name || collection.ticker) + ' · ' + opts.titleSuffix; }
+                            // count goes to the info strip only (supplyEl below), not the title
                         } catch { /* best-effort */ }
                     }
                     if (total == null) {
@@ -3234,6 +3257,21 @@
             recomputeTotals();
         }
 
+        // Untrack an asset from its lightbox (mirrors the Watch-bar chip ×): auto-detected ones are hidden
+        // (restorable in the hidden section), manually tracked ones are removed outright.
+        function untrackAsset(node, item, isNft) {
+            const state = stateOf(node.chainId);
+            const key = item.address.toLowerCase();
+            const isAuto = isNft ? !!item.auto : state.detected.some((t) => t.address.toLowerCase() === key);
+            if (isAuto) { hideDetected(node, item, isNft); return; }
+            const list = isNft ? 'nfts' : 'tokens';
+            state[list] = state[list].filter((t) => t.address.toLowerCase() !== key);
+            store.save(node.chainId);
+            renderTokens();
+            renderCards();
+            recomputeTotals();
+        }
+
         function renderTokens() {
             const box = $('tokens');
             box.replaceChildren();
@@ -3414,6 +3452,11 @@
                             tick.classList.add('copyable');
                             tick.title = row.contract + ' (click to copy)';
                             tick.onclick = () => copyAddress(row.contract);
+                        } else {
+                            // native asset row: read-only info lightbox (price/balance/value — can't be untracked)
+                            tick.classList.add('copyable');
+                            tick.title = 'Asset info';
+                            tick.onclick = () => openTokenInfo(node, { ticker: row.ticker, native: true, decimals: 18 }, cache.get(entry.address + '|' + row.key));
                         }
                         tr.append(tick);
                         const bal = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
@@ -3465,7 +3508,9 @@
                     totalRow.append(totalCell);
                     table.append(totalRow);
                 }
-                card.append(table);
+                const scroll = el('div', 'card-scroll');
+                scroll.append(table);
+                card.append(scroll);
                 cards.append(card);
             }
             updateScanIndicators(); // reflect in-progress scans on the freshly-rendered account spinners
