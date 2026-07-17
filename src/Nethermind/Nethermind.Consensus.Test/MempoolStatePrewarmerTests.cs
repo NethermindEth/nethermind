@@ -76,8 +76,6 @@ public class MempoolStatePrewarmerTests
     [Test]
     public async Task PreWarmFromMempool_PassesHeaderPreservingChainSpecificSubtypeToPreWarmer()
     {
-        // Regression: the header was previously built via `new BlockHeader(...)`, degrading chain-specific subtypes
-        // to a plain BlockHeader and throwing InvalidCastException in chain-specific processors (e.g. XDC).
         ChainSpecificHeader parentHeader = new(
             TestItem.KeccakA, Keccak.OfAnEmptySequenceRlp, TestItem.AddressA, UInt256.One, 10, 30_000_000, 100, [])
         {
@@ -85,6 +83,7 @@ public class MempoolStatePrewarmerTests
             MixHash = TestItem.KeccakC,
             ParentBeaconBlockRoot = TestItem.KeccakD,
             BaseFeePerGas = 7,
+            Author = TestItem.AddressD,
         };
         Block head = new(parentHeader);
 
@@ -117,11 +116,15 @@ public class MempoolStatePrewarmerTests
 
         BlockHeader deltaHeader = await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.That(deltaHeader, Is.InstanceOf<ChainSpecificHeader>(), "chain-specific header subtypes must survive so chain-specific processors don't hit an InvalidCastException");
-        Assert.That(deltaHeader.Number, Is.EqualTo(parentHeader.Number + 1), "the child is the parent's successor");
-        Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
-        Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
-        Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deltaHeader, Is.InstanceOf<ChainSpecificHeader>(), "chain-specific header subtypes must survive so chain-specific processors don't hit an InvalidCastException");
+            Assert.That(deltaHeader.Number, Is.EqualTo(parentHeader.Number + 1), "the child is the parent's successor");
+            Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
+            Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
+            Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
+            Assert.That(deltaHeader.GasBeneficiary, Is.EqualTo(parentHeader.GasBeneficiary), "Beneficiary resolves to the parent's actual coinbase (Author), not a diverging governance vote target");
+        }
     }
 
     // Stands in for a chain-specific header subtype (e.g. XdcBlockHeader) whose CreateSimulatedChild returns its own type.
@@ -138,9 +141,7 @@ public class MempoolStatePrewarmerTests
     }
 
     /// <summary>
-    /// Captures the header of the first delta block <see cref="MempoolStatePrewarmer"/> offers for warming, by
-    /// invoking <c>nextDelta</c> itself instead of only recording the call (as <see cref="StartSpeculativePreWarm"/>
-    /// would with a plain substitute).
+    /// Invokes <c>nextDelta</c> and captures the resulting header.
     /// </summary>
     private sealed class DeltaCapturingPreWarmer : IBlockCachePreWarmer
     {

@@ -120,6 +120,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
     {
         BlockHeader header = parent.CreateSimulatedChild(timestamp);
+        // Resolve the actual coinbase: on Clique, Beneficiary is a vote target, not the sealer.
+        header.Beneficiary = parent.GasBeneficiary ?? Address.Zero;
         header.MixHash = parent.MixHash;
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
         header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
