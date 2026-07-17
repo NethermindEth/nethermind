@@ -928,6 +928,43 @@ public class PersistenceManagerTests
         Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
     }
 
+    [Test]
+    public async Task AddToPersistence_CapturesHistoryBeforeAdvancingTheBarrier()
+    {
+        PersistenceManager manager = null!;
+        BarrierObservingCaptureHook hook = new(() => manager.GetCurrentPersistedStateId());
+        manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            hook);
+        using PersistenceManager managerScope = manager;
+
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(from, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId barrierBefore = manager.GetCurrentPersistedStateId();
+        await manager.AddToPersistence(latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hook.BarrierAtCapture, Is.EqualTo(barrierBefore), "history must be captured before the persisted-state barrier is published");
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+        }
+    }
+
     #region FlushToPersistence Tests
 
     [Test]
@@ -1159,6 +1196,14 @@ public class PersistenceManagerTests
     {
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
             throw new System.InvalidOperationException("simulated history capture failure");
+    }
+
+    private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook
+    {
+        public StateId BarrierAtCapture { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository) =>
+            BarrierAtCapture = readBarrier();
     }
 
     #endregion

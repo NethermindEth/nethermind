@@ -251,8 +251,8 @@ public class PersistenceManager(
                     using Snapshot _ = toPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     PersistSnapshot(toPersist);
+                    CaptureHistory(toPersist.To);
                     CurrentPersistedStateId = toPersist.To;
-                    CaptureHistoryUpToPersistedState();
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
                 }
                 else if (persistedToPersist is not null)
@@ -260,8 +260,8 @@ public class PersistenceManager(
                     using PersistedSnapshot _ = persistedToPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     PersistPersistedSnapshot(persistedToPersist);
+                    CaptureHistory(persistedToPersist.To);
                     CurrentPersistedStateId = persistedToPersist.To;
-                    CaptureHistoryUpToPersistedState();
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
                 }
                 else if (toConvert?.Compacted is not null)
@@ -285,23 +285,25 @@ public class PersistenceManager(
     }
 
     // Capture the just-finalized per-block changesets while their per-block snapshots are still in the
-    // repository, before RemoveStatesUntil prunes them. The hook is absent unless an external module
+    // repository, before RemoveStatesUntil prunes them. Runs before CurrentPersistedStateId is published so a
+    // reader never observes the barrier ahead of the history markers that gate below-barrier reads; otherwise a
+    // read of a block below the freshly-advanced barrier whose marker is not yet written would route to the live
+    // manager and resolve against the wrong (as-of-tip) state. The hook is absent unless an external module
     // (e.g. historical state) registers one. History is an opt-in archival feature, so a capture failure is
     // logged and swallowed rather than propagated: it must not abort persistence (which would leave snapshots
     // unpruned and stall block processing). A block left uncaptured simply reports no history — its
     // AvailableBlocks marker is never written — so the failure degrades archival reads, not the node.
-    private void CaptureHistoryUpToPersistedState()
+    private void CaptureHistory(in StateId persistedHead)
     {
-        StateId persisted = CurrentPersistedStateId;
-        if (captureHook is null || persisted == StateId.PreGenesis) return;
+        if (captureHook is null || persistedHead == StateId.PreGenesis) return;
 
         try
         {
-            captureHook.CaptureUpTo(persisted, snapshotRepository);
+            captureHook.CaptureUpTo(persistedHead, snapshotRepository);
         }
         catch (Exception e)
         {
-            if (_logger.IsError) _logger.Error($"History capture up to {persisted} failed; archival history for this range may be incomplete.", e);
+            if (_logger.IsError) _logger.Error($"History capture up to {persistedHead} failed; archival history for this range may be incomplete.", e);
         }
     }
 
