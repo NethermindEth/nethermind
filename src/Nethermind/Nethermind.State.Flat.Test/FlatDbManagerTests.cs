@@ -292,6 +292,38 @@ public class FlatDbManagerTests
         Assert.That(manager.HasStateForBlock(historicalBlock), Is.EqualTo(expected));
     }
 
+    // History serves strictly below the persisted barrier; the barrier block itself and anything above route to
+    // the live manager even when availability markers exist at those heights.
+    [TestCase(99ul, true)]
+    [TestCase(100ul, false)]
+    [TestCase(150ul, false)]
+    public async Task HasStateForBlock_serves_history_only_strictly_below_the_barrier(ulong block, bool expected)
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkBlocksAvailable(0, (ulong)HistoryBarrier + 50);
+        StateId stateId = CreateStateId(block, rootByte: 42);
+        _snapshotRepository.HasState(stateId).Returns(false);
+
+        await using FlatDbManager inner = CreateManager();
+        Assert.That(WrapHistory(inner).HasStateForBlock(stateId), Is.EqualTo(expected));
+    }
+
+    // A historical bundle reads values as of the block but exposes the current trie; executing main-chain blocks
+    // over that mix would commit a corrupt state root, so the manager must reject it rather than serve the scope.
+    [TestCase(ResourcePool.Usage.MainBlockProcessing)]
+    [TestCase(ResourcePool.Usage.PostMainBlockProcessing)]
+    public async Task GatherSnapshotBundle_below_barrier_rejects_main_block_processing(ResourcePool.Usage usage)
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        RecordHistoryWindow();
+        StateId historicalBlock = CreateStateId(10, rootByte: 10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.InvalidOperationException);
+    }
+
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
         inner,
         _persistenceManager,

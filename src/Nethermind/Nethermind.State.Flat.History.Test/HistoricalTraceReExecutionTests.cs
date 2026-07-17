@@ -25,17 +25,10 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.History.Test;
 
 /// <summary>
-/// Regression guard for historical <c>trace_*</c>/<c>debug_trace*</c> returning an empty result on a flat node with
-/// history. Trace re-execution of a block below the finalization barrier runs over a history-backed (trie-less) scope.
-/// Previously the post-block commit (state-tree <c>BulkSet</c>/<c>Commit</c>, storage-tree bulk write,
-/// <c>UpdateRootHash</c>) resolved trie nodes via the history-backed reader, which throws
-/// <see cref="NotSupportedException"/> — so the whole trace was swallowed and the RPC returned <c>[]</c>.
-///
-/// This drives the same block-processing commit path the tracer triggers (<c>WorldState.Commit(spec, commitRoots:
-/// true)</c> → <c>RecalculateStateRoot</c> → <c>CommitTree</c>) against a real <see cref="FlatWorldStateScope"/> built
-/// from a genuine history-backed <see cref="SnapshotBundle"/> obtained from <see cref="FlatDbManager"/> below the
-/// barrier. It fails (throws) if the trie path is taken again, and asserts the re-executed mutations are observable
-/// through the flat overlay (the values a non-empty trace reports).
+/// Regression guard for historical <c>trace_*</c>/<c>debug_trace*</c> returning <c>[]</c>: the post-block commit
+/// used to resolve trie nodes via the history-backed reader, which throws. Drives the tracer's commit path
+/// (<c>Commit</c> → <c>RecalculateStateRoot</c> → <c>CommitTree</c>) against a real trie-less scope below the
+/// barrier and asserts the re-executed mutations are observable through the flat overlay.
 /// </summary>
 [TestFixture]
 public class HistoricalTraceReExecutionTests
@@ -183,10 +176,8 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
-    // Historical re-execution (debug_traceTransaction / eth_call) runs through the read-only processing
-    // environment — the same usage FlatOverridableWorldScope drives in production. MainBlockProcessing is
-    // reserved for canonical block processing, which HistoricalFlatDbManager deliberately rejects at a
-    // trie-less historical state (a corrupt state root would cascade into invalid-block deletions).
+    // Historical re-execution runs through the read-only processing env, as in production;
+    // HistoricalFlatDbManager rejects MainBlockProcessing at a trie-less historical state.
     private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
         new MemDb(),
         manager,

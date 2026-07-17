@@ -14,11 +14,9 @@ using Nethermind.State.Flat.Persistence;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Captures finalized per-block changesets into the history columns before the per-block snapshots are pruned.
-/// For each newly-finalized block it leases that block's per-block snapshot and records every changed account
-/// and storage slot via <see cref="HistoryStore"/>, using the exact flat key/value encoders so the recorded
-/// bytes are identical to what the live flat columns store. A deleted account or zeroed/removed slot is recorded
-/// as an empty (tombstone) value.
+/// Captures finalized per-block changesets into the history columns before the per-block snapshots are pruned,
+/// using the exact flat key/value encoders so the recorded bytes match the live flat columns. Deleted accounts
+/// and zeroed/removed slots are recorded as empty tombstones.
 /// </summary>
 public sealed class HistoryWriter : IFlatPersistenceCaptureHook
 {
@@ -65,26 +63,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// pruned.
     /// </summary>
     /// <remarks>
-    /// Walks the ancestry backwards through the per-block base snapshots' <see cref="Snapshot.From"/> links: each
-    /// base snapshot is exactly one block's changeset (To = this block, From = its parent), so following From is
-    /// persistedHead's exact canonical chain — no fork disambiguation and no per-block state lookup. One lease at a
-    /// time, so the walk allocates nothing.
-    ///
-    /// The first capture records nothing yet, so it walks all the way down to genesis (block 0), whose From is the
-    /// <see cref="StateId.PreGenesis"/> sentinel that terminates the loop — genesis-allocated accounts/slots that are
-    /// never later touched are thereby recorded and resolve at every historical height. A resume stops once past the
-    /// last-captured block. Capture runs before a block's base can be converted away
-    /// (<see cref="PersistenceManager"/> only converts bases already at or below the persisted head, which this hook
-    /// has already captured), so within a session the leased bases down to the walk floor are always present.
-    ///
-    /// Advancing the watermark to <paramref name="persistedHead"/> even when a restart leaves the in-memory tier
-    /// holding only bases produced since startup is safe for read availability: it is driven by the per-block
-    /// <c>AvailableBlocks</c> markers <see cref="CaptureBlock"/> writes, never by this watermark, so a block the walk
-    /// did not record reports no history rather than claiming an empty one. The remaining gap is a crash between a
-    /// block's durable flat persist and its capture here: that block stays permanently uncaptured, and an as-of read
-    /// of a <em>later</em> available block for a key whose last change fell in the gap floor-seeks past the missing
-    /// entry to a stale earlier value. Closing it fully requires capturing within the same batch as the flat persist;
-    /// until then the window is one block wide per crash.
+    /// Walks backwards through the per-block base snapshots' <see cref="Snapshot.From"/> links — each base is
+    /// exactly one block's changeset, so the walk follows persistedHead's canonical chain, one lease at a time,
+    /// allocating nothing. The first capture runs down to genesis, whose From is the
+    /// <see cref="StateId.PreGenesis"/> sentinel; a resume stops once past the last-captured block. Advancing the
+    /// watermark past an early stop is safe for reads — availability is driven by the per-block
+    /// <c>AvailableBlocks</c> markers, never the watermark — but a block durably persisted and never captured
+    /// (a crash between persist and capture) leaves a hole through which a later as-of read floor-seeks to a stale
+    /// earlier value; closing it requires capturing in the same batch as the flat persist.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
@@ -111,9 +97,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
             current = parent;
         }
 
-        // Reaching genesis (first capture) or the last-captured block (resume) is the expected stop. Exiting because
-        // a base could not be leased means the range down to the floor is left uncaptured — the documented crash-gap;
-        // surface it so a widening gap is diagnosable rather than silent.
+        // A lease miss before the genesis/resume floor is the documented crash-gap; surface it rather than let it
+        // widen silently.
         bool reachedFloor = current == StateId.PreGenesis || (resuming && current.BlockNumber <= lastCaptured);
         if (!reachedFloor && _logger.IsWarn)
             _logger.Warn($"History capture stopped early at {current}: its in-memory base is no longer leasable. Blocks down to {(resuming ? lastCaptured + 1 : 0)} are left uncaptured and will report no history.");

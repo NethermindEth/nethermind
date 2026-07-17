@@ -284,15 +284,10 @@ public class PersistenceManager(
         }
     }
 
-    // Capture the just-finalized per-block changesets while their per-block snapshots are still in the
-    // repository, before RemoveStatesUntil prunes them. Runs before CurrentPersistedStateId is published so a
-    // reader never observes the barrier ahead of the history markers that gate below-barrier reads; otherwise a
-    // read of a block below the freshly-advanced barrier whose marker is not yet written would route to the live
-    // manager and resolve against the wrong (as-of-tip) state. The hook is absent unless an external module
-    // (e.g. historical state) registers one. History is an opt-in archival feature, so a capture failure is
-    // logged and swallowed rather than propagated: it must not abort persistence (which would leave snapshots
-    // unpruned and stall block processing). A block left uncaptured simply reports no history — its
-    // AvailableBlocks marker is never written — so the failure degrades archival reads, not the node.
+    // Captures the just-finalized per-block changesets before RemoveStatesUntil prunes them, and before
+    // CurrentPersistedStateId is published so a reader never sees the barrier ahead of the history markers that
+    // gate below-barrier routing. Failures are logged and swallowed: history is opt-in archival, an uncaptured
+    // block just reports no history, and a capture error must not stall persistence.
     private void CaptureHistory(in StateId persistedHead)
     {
         if (captureHook is null || persistedHead == StateId.PreGenesis) return;

@@ -93,8 +93,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
 
-        // A history-backed scope is trie-less: its persistence reader serves account/storage values only and throws
-        // for trie-node access. Post-block state-root recomputation must therefore not traverse the state trie.
+        // A history-backed scope is trie-less: post-block state-root recomputation must not traverse the state trie.
         _trieless = snapshotBundle.IsHistorical;
     }
 

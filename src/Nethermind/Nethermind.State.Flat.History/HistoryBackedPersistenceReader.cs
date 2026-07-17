@@ -10,12 +10,10 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// An <see cref="IPersistence.IPersistenceReader"/> pinned to a single historical block, serving account and storage
-/// reads from the finalized history index via <see cref="HistoryReader"/>. Backs a read-only world-state scope for
-/// blocks below the finalization barrier, whose tip snapshots have been pruned. Flat history retains no trie nodes,
-/// raw-import data, or iteration order, so those members throw rather than return misleading empty/null results: a
-/// historical trie traversal (e.g. <c>eth_getProof</c>, verifyTrie) must fail loudly as unsupported, not silently
-/// produce a wrong proof or an empty state walk. Only the account/storage read members are serviceable.
+/// An <see cref="IPersistence.IPersistenceReader"/> pinned to one historical block, serving account and storage
+/// reads from the history index. Flat history keeps no trie nodes, raw-import data, or iteration order, so those
+/// members throw — a historical trie traversal must fail loudly as unsupported, not silently produce a wrong proof
+/// or an empty state walk.
 /// </summary>
 public sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block) : IPersistence.IPersistenceReader
 {
@@ -37,8 +35,6 @@ public sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, 
 
     public bool IsPreimageMode => false;
 
-    // Not serviceable from flat history (no trie nodes, no raw-import data, no iteration). Throw so a historical
-    // trie traversal / scan fails loudly as unsupported instead of silently producing a wrong or empty result.
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw Unsupported();
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw Unsupported();

@@ -213,34 +213,25 @@ public class HistoryWriterTests
         }
     }
 
-    // slot written @1, cleared @2 (null tombstone), re-written @3.
-    [TestCase(0ul, null)]
-    [TestCase(1ul, "0a")]
-    [TestCase(2ul, null)] // cleared -> tombstone -> absent
-    [TestCase(3ul, "0c")]
-    [TestCase(4ul, "0c")]
-    public void Storage_cleared_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex)
-    {
-        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, SlotValue.FromSpanWithoutLeadingZero([0x0a]))]);
-        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, null)]);
-        CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, SlotValue.FromSpanWithoutLeadingZero([0x0c]))]);
-
-        _writer.CaptureUpTo(StateAt(3), _repository);
-
-        AssertStorageAt(readBlock, Slot1, expectedHex);
-    }
-
-    // slot written @1, account self-destructed @2 (with prior persisted storage), slot re-written @3.
-    // The destruct is a range-delete in the live column, so only the clear marker can kill the @1 value.
-    [TestCase(0ul, null)]
-    [TestCase(1ul, "0a")]
-    [TestCase(2ul, null)] // destructed -> cleared without a per-slot tombstone
-    [TestCase(3ul, "0c")]
-    [TestCase(4ul, "0c")]
-    public void Storage_selfdestructed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex)
+    // Slot written @1, killed @2 by a per-slot clear (tombstone) or a self-destruct (range-delete in the live
+    // column, so only the clear marker can kill the @1 value), re-written @3.
+    [TestCase(0ul, null, false)]
+    [TestCase(1ul, "0a", false)]
+    [TestCase(2ul, null, false)]
+    [TestCase(3ul, "0c", false)]
+    [TestCase(4ul, "0c", false)]
+    [TestCase(0ul, null, true)]
+    [TestCase(1ul, "0a", true)]
+    [TestCase(2ul, null, true)]
+    [TestCase(3ul, "0c", true)]
+    [TestCase(4ul, "0c", true)]
+    public void Storage_killed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex, bool viaSelfDestruct)
     {
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
-        CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        if (viaSelfDestruct)
+            CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        else
+            CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, null)]);
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
 
         _writer.CaptureUpTo(StateAt(3), _repository);
@@ -314,8 +305,7 @@ public class HistoryWriterTests
         }
     }
 
-    // Genesis (block 0) is a real base snapshot whose From is the PreGenesis sentinel. Allocations made there and
-    // never touched again must be captured on the first walk and resolve at every later height, not read as absent.
+    // Genesis allocations never touched again must be captured on the first walk and resolve at every later height.
     [Test]
     public void Genesis_allocations_are_captured_and_readable_at_later_blocks()
     {
@@ -341,8 +331,21 @@ public class HistoryWriterTests
         }
     }
 
-    // turning HistoryEnabled on is additive. The live tip read through a
-    // real ReadOnlySnapshotBundle must still return the latest value while capture also populates the history index.
+    [Test]
+    public void Capture_with_history_disabled_records_nothing()
+    {
+        HistoryWriter disabled = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = false }, LimboLogs.Instance);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+
+        disabled.CaptureUpTo(StateAt(1), _repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.HasHistoryForBlock(1), Is.False);
+            Assert.That(_reader.TryGetAccount(1, AddrA, out _), Is.False);
+        }
+    }
+
     [Test]
     public void Flag_on_keeps_tip_reads_correct_and_populates_history()
     {
@@ -380,9 +383,6 @@ public class HistoryWriterTests
         }
     }
 
-    // per-block history capture must survive REAL compaction with no
-    // gaps. The compactor (and its schedule) is built locally so the shared [SetUp] stays unchanged; it must still
-    // call the real DoCompactSnapshot and assert compaction actually fired before checking every block.
     [Test]
     public void Capture_after_real_compaction_has_no_gaps()
     {

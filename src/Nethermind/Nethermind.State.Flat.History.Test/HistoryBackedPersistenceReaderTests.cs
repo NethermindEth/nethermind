@@ -83,8 +83,6 @@ public class HistoryBackedPersistenceReaderTests
     public void Pins_current_state_to_its_block() =>
         Assert.That(Reader(10).CurrentState.BlockNumber, Is.EqualTo(10));
 
-    // Flat history has no trie nodes / raw-import data / iteration, so a historical trie traversal (eth_getProof,
-    // verifyTrie) must fail loudly as unsupported rather than silently return a wrong proof or an empty state walk.
     [Test]
     public void Unsupported_members_throw_not_supported()
     {
