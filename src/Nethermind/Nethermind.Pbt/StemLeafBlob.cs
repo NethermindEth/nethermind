@@ -335,6 +335,8 @@ public static class StemLeafBlob
         /// <summary>Rebuilds <c>[low, high)</c>, emitting its stored nodes, and returns its hash (<c>default</c> when the range holds no leaf).</summary>
         private ValueHash256 Rebuild(scoped ReadOnlySpan<byte> previousBitmap, scoped ReadOnlySpan<byte> newBitmap, int low, int high)
         {
+            // changes arrive ascending and an earlier sibling consumed those below low, so the next one
+            // lying at or past high proves none fall in this range
             bool clean = _changeIndex >= _changes.Count || _changes.SubIndexAt(_changeIndex) >= high;
 
             if (high - low == 1)
@@ -342,12 +344,13 @@ public static class StemLeafBlob
                 if (clean) return CopyCleanSubtree(previousBitmap, low, high);
 
                 Debug.Assert(_changes.SubIndexAt(_changeIndex) == low);
+                // _previousSlot walks the previous blob, so what it steps over turns on the previous bitmap
                 if (IsPresent(previousBitmap, (byte)low)) _previousSlot++;
 
                 ValueHash256 value = _changes.Get(_changeIndex++);
                 if (value == default) return default;
 
-                Append(value.Bytes);
+                Append(value.Bytes);                    // a leaf entry holds the value; its parent needs the hash
                 return Blake3Hash.Hash(value.Bytes);
             }
 
@@ -363,11 +366,18 @@ public static class StemLeafBlob
             ValueHash256 left = Rebuild(previousBitmap, newBitmap, low, middle);
             ValueHash256 right = Rebuild(previousBitmap, newBitmap, middle, high);
 
+            // post-order put the children's entries before this node's in the previous blob too, so its own
+            // slot is only stepped over once they have been
             if (previousLeft && previousRight) _previousSlot++;
 
             ValueHash256 hash = Blake3Hash.HashPairOrZero(left, right);
+            // What is emitted turns on the new bitmap where _previousSlot above turns on the previous one:
+            // writing a leaf promotes a single-child internal to branching and clearing one demotes it, so
+            // the two disagree at every ancestor of a change. Asking the bitmap rather than whether left and
+            // right came back non-default keeps the popcount the buffer was sized from the only thing
+            // deciding what lands in it.
             if (RangeHasLeaf(newBitmap, low, middle) && RangeHasLeaf(newBitmap, middle, high)) Append(hash.Bytes);
-            return hash;
+            return hash;   // returned whether or not it was stored: skipping withholds the entry, not the hash
         }
 
         /// <summary>Copies an unchanged subtree's stored nodes verbatim from the previous blob and returns its root's hash.</summary>
