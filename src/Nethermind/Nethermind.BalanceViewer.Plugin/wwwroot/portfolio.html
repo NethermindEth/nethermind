@@ -363,6 +363,10 @@
         /* slow gentle shimmer on the whole cell while its art is still loading */
         .collection-cell.loading-cell { animation: cellpulse 2.4s ease-in-out infinite; }
         @keyframes cellpulse { 0%,100% { background: #0a0a0a; } 50% { background: #1c1c22; } }
+        /* inline tile states (also used in dashboard previews): shimmer while loading, ↻ to retry a failed load */
+        .cell-state.cell-loading { animation: cellpulse 2.4s ease-in-out infinite; border-radius: 8px; }
+        .cell-state .cell-retry { cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; }
+        .cell-state .cell-retry:hover { color: var(--c-name); }
         .lightbox-owner { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
         .lightbox-owner-k { text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
         .lightbox-owner .lightbox-copy { white-space: normal; word-break: break-word; }
@@ -1569,6 +1573,8 @@
         const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
         const openCollectionRenderers = new Set(); // re-render callbacks for open collection lightboxes (art-source changes)
         const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
+        const enumPageCache = new Map();   // `${chainId}|${collection}|${page}` -> [BigInt] enum721 ids, so reopening skips tokenByIndex
+        const supplyCache = new Map();     // `${chainId}|${collection}` -> totalSupply, so reopening doesn't recount
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
@@ -1678,20 +1684,18 @@
         const HOST_FAIL_LIMIT = 3;
         const hostFails = new Map();
         function hostOf(url) { try { return new URL(url, location.href).host; } catch { return url; } }
-        async function fetchOffchain(url, tries = 3, signal) {
+        async function fetchOffchain(url, tries = 3) {
             const host = hostOf(url);
             if ((hostFails.get(host) || 0) >= HOST_FAIL_LIMIT) throw new Error('host unreachable: ' + host);
             await offchainAcquire();
             try {
                 for (let attempt = 0; ; attempt++) {
-                    if (signal?.aborted) throw new Error('aborted'); // e.g. the collection was closed — stop retrying
                     try {
-                        const res = await fetch(url, { signal });
+                        const res = await fetch(url);
                         if (res.ok) { hostFails.delete(host); return res; }
                         // retry transient failures (5xx, 429); don't retry hard 4xx
                         if (attempt >= tries - 1 || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
                     } catch (e) {
-                        if (signal?.aborted) throw e;
                         hostFails.set(host, (hostFails.get(host) || 0) + 1); // CORS/network failure — count toward the breaker
                         if (attempt >= tries - 1) throw e;
                     }
@@ -1814,7 +1818,7 @@
 
         // decodes token metadata for a slice of ids into thumbnails. On-chain (data:) metadata is used always;
         // off-chain (ipfs://) metadata + art is resolved via the local IPFS gateway only when the user opted in.
-        async function fetchThumbsForIds(node, collection, ids, kind, signal) {
+        async function fetchThumbsForIds(node, collection, ids, kind) {
             const keyBase = node.chainId + '|' + collection.address.toLowerCase() + '|';
             const result = new Array(ids.length);
             let miss = [];
@@ -1845,7 +1849,7 @@
                 // opt-in: fetch off-chain metadata JSON via an enabled art source (bounded + retrying)
                 if (!metadata && uri) {
                     const murl = resolveArtUri(uri);
-                    if (murl && !murl.startsWith('data:')) { try { const res = await fetchOffchain(murl, 3, signal); if (res.ok) metadata = await res.json(); } catch { metadata = null; } }
+                    if (murl && !murl.startsWith('data:')) { try { const res = await fetchOffchain(murl, 3); if (res.ok) metadata = await res.json(); } catch { metadata = null; } }
                 }
                 // Store the raw (unresolved) art URIs + metadata so applyArtSource can (re)compute the
                 // renderable art on demand — e.g. when the art-source toggles change, without refetching.
@@ -1887,6 +1891,7 @@
         // marks responses immutable), which is faster than routing bytes through IndexedDB.
         function artImg(src, onFail) {
             const img = el('img');
+            img.loading = 'lazy'; // browser only fetches bytes for tiles near the viewport (prioritises what's visible)
             let tries = 0;
             img.onerror = () => {
                 if (src && !src.startsWith('data:') && tries < 2) {
@@ -1905,7 +1910,9 @@
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'lightbox-panel');
             let cur = thumb;
-            let ownerResolved = false;
+            let resolvedOwner = owner || null;   // the holder to display; resolved once via ownerOf when not passed
+            let ownerFetchStarted = false;
+            let ownerRowEl = null;               // the current render's owner row (async ownerOf updates it in place)
 
             // the media area (video / image / a note explaining why there is no image)
             function mediaEl(t, loading) {
@@ -1949,25 +1956,29 @@
                     if (grid.children.length) info.append(grid);
                 }
 
-                // owner row: the account it was opened under, else resolved once via ownerOf (ERC-721)
-                const ownerRow = el('div', 'lightbox-owner');
-                info.append(ownerRow);
+                // owner row: the account it was opened under, else resolved once via ownerOf (ERC-721). Because
+                // render() repaints the whole panel (loading -> loaded), the async ownerOf must update the *current*
+                // owner row (ownerRowEl), not one captured before a repaint — otherwise the owner lands in a
+                // detached node and never shows (e.g. opening a not-yet-fetched cell from the full collection).
+                ownerRowEl = el('div', 'lightbox-owner');
+                info.append(ownerRowEl);
                 const showOwner = (addr) => {
-                    if (!addr || /^0x0{40}$/i.test(addr)) return;
-                    ownerRow.append(el('span', 'lightbox-owner-k', 'Owner'));
+                    if (!ownerRowEl || !addr || /^0x0{40}$/i.test(addr)) return;
+                    ownerRowEl.replaceChildren();
+                    ownerRowEl.append(el('span', 'lightbox-owner-k', 'Owner'));
                     const oc = el('span', 'lightbox-copy', ownerDisplay(addr));
                     oc.title = addr + ' (click to copy)'; oc.onclick = () => copyAddress(addr);
-                    ownerRow.append(oc);
+                    ownerRowEl.append(oc);
                 };
-                if (owner) showOwner(owner);
-                else if (!ownerResolved) {
-                    ownerResolved = true;
+                if (resolvedOwner) showOwner(resolvedOwner);
+                else if (!ownerFetchStarted) {
+                    ownerFetchStarted = true;
                     (async () => {
                         try {
                             const kind = await detectKind(node, collection);
                             if (kind !== 'erc1155') {
                                 const r = await rpc('eth_call', [{ to: collection.address, data: SEL_OWNER_OF + pad32(BigInt(t.id).toString(16)) }, 'latest'], node.rpcPath);
-                                if (r && r.length >= 66) showOwner('0x' + r.slice(-40));
+                                if (r && r.length >= 66) { resolvedOwner = '0x' + r.slice(-40); showOwner(resolvedOwner); }
                             }
                         } catch { /* owner is best-effort */ }
                     })();
@@ -2090,11 +2101,31 @@
         // metadata), or "<IPFS/HTTPS> off" (off-chain art whose source is disabled — enable it in settings).
         function thumbEl(thumb, collection, node, owner) {
             const open = () => openArt(thumb, collection, node, owner);
+            // retry re-fetches one item's art in place (its metadata wasn't cached because the fetch failed)
+            async function retry(host) {
+                const kind = collectionKind.get(node.chainId + '|' + collection.address.toLowerCase());
+                if (!kind) return;
+                const loading = el('span', 'more number cell-state cell-loading');
+                loading.append(el('span', 'cell-id', '#' + thumb.id));
+                host.replaceWith(loading);
+                let full;
+                try { [full] = await fetchThumbsForIds(node, collection, [BigInt(thumb.id)], kind); } catch { /* keep old */ }
+                loading.replaceWith(thumbEl(full || thumb, collection, node, owner));
+            }
             const fallback = () => {
-                // no renderable image: just the token id (the reason — off / failed / none — is shown on open)
                 const span = el('span', 'more number cell-state');
+                const pending = thumb && !('metaFetched' in thumb);   // art not fetched yet -> still loading
+                const failed = thumb && thumb.artState === 'failed';  // fetched, but the art couldn't be loaded
+                if (pending) span.classList.add('cell-loading');      // shimmer so "loading" is unmistakable
                 span.append(el('span', 'cell-id', thumb ? ('#' + thumb.id) : '…'));
-                if (thumb) { span.title = 'Details'; span.onclick = open; }
+                if (failed) {
+                    const r = el('span', 'cell-retry', '↻');
+                    r.title = 'Retry loading art';
+                    r.onclick = (e) => { e.stopPropagation(); retry(span); };
+                    span.append(r);
+                    span.title = 'Details';
+                    span.onclick = open;
+                } else if (thumb) { span.title = 'Details'; span.onclick = open; }
                 return span;
             };
             if (thumb && thumb.src) {
@@ -2161,7 +2192,6 @@
                 ownedCount: c.count ?? total,
                 ownerAddr,
                 kind: c.kind,
-                eager: true, // a held set is bounded — prefetch all its art so scrolling is instant
                 pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)),
                 loadPage: (p) => {
                     const s = p * COLLECTION_PAGE_SIZE, e = Math.min(s + COLLECTION_PAGE_SIZE, total);
@@ -2188,18 +2218,33 @@
                             loadPage: (p) => { const s = p * COLLECTION_PAGE_SIZE, e = Math.min(s + COLLECTION_PAGE_SIZE, ids.length); return { ids: ids.slice(s, e), seed: seed.slice(s, e) }; },
                         };
                     }
-                    let total = 0;
-                    try { const s = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath); if (s && s !== '0x') total = Number(BigInt(s)); } catch { /* no totalSupply */ }
+                    const ckey = node.chainId + '|' + collection.address.toLowerCase();
                     return {
-                        kind, titleSuffix: String(total),
-                        pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)),
+                        kind, titleSuffix: '…', // total resolves via countPages after tiles are already on screen
+                        // Enumerate a page's ids via tokenByIndex (over-fetches the last page; out-of-range calls
+                        // revert and are dropped) — no need to know totalSupply first, so tiles render after one
+                        // batched round-trip. Cached per session, so reopening a page skips enumeration entirely.
                         loadPage: async (p) => {
-                            const start = p * COLLECTION_PAGE_SIZE, end = Math.min(start + COLLECTION_PAGE_SIZE, total);
-                            const calls = [];
-                            for (let i = start; i < end; i++) calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_BY_INDEX + pad32(i.toString(16)) }, 'latest']]);
-                            const ids = [];
-                            try { for (const r of await rpcBatch(calls, node.rpcPath)) { try { ids.push(BigInt(r)); } catch { /* skip */ } } } catch { /* leave partial */ }
+                            const pkey = ckey + '|' + p;
+                            let ids = enumPageCache.get(pkey);
+                            if (!ids) {
+                                const start = p * COLLECTION_PAGE_SIZE;
+                                const calls = [];
+                                for (let i = start; i < start + COLLECTION_PAGE_SIZE; i++) calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_BY_INDEX + pad32(i.toString(16)) }, 'latest']]);
+                                ids = [];
+                                try { for (const r of await rpcBatch(calls, node.rpcPath)) { if (r && r !== '0x') { try { ids.push(BigInt(r)); } catch { /* skip */ } } } } catch { /* leave partial */ }
+                                if (ids.length) enumPageCache.set(pkey, ids);
+                            }
                             return { ids, seed: [] };
+                        },
+                        countPages: async () => {
+                            let total = supplyCache.get(ckey);
+                            if (total == null) {
+                                total = 0;
+                                try { const s = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath); if (s && s !== '0x') total = Number(BigInt(s)); } catch { /* no totalSupply */ }
+                                supplyCache.set(ckey, total);
+                            }
+                            return { total, pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)) };
                         },
                     };
                 },
@@ -2207,14 +2252,16 @@
         }
 
         // Paginated collection lightbox. Opens immediately (so you can see it's loading); a page-number text box
-        // and ◀ ▶ move between pages of COLLECTION_PAGE_SIZE. Art loads visible-first via an IntersectionObserver
-        // (whatever you scroll to loads next); background NFT refresh pauses while it's open. A jump-to-# opens
-        // any token directly. `opts.loadPage(p)` returns { ids: [BigInt], seed: [thumb|null] } for page p.
+        // and ◀ ▶ move between pages of COLLECTION_PAGE_SIZE. Art fills in top-to-bottom (a page is bounded, and
+        // <img>s lazy-load so only near-viewport bytes are fetched); background NFT refresh pauses while it's open.
+        // A jump-to-# opens any token directly. `opts.loadPage(p)` returns { ids: [BigInt], seed: [thumb|null] }.
         function openCollection(node, collection, opts) {
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'collection-panel');
             collectionOpen++;
-            const abort = new AbortController(); // closing cancels in-flight art fetches so they don't slow later views
+            // closing stops scheduling new loads but does NOT cancel in-flight fetches: they finish and populate
+            // the caches (metadata + enumerated ids), so reopening is instant rather than starting over.
+            let closed = false;
 
             const head = el('div', 'collection-head');
             const titleEl = el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + opts.titleSuffix);
@@ -2246,7 +2293,7 @@
             grid.replaceChildren(el('div', 'collection-loading', 'loading…'));
             panel.append(grid);
 
-            let page = 0, pageInput = null, prevBtn = null, nextBtn = null, io = null, curCells = [], curThumbs = [];
+            let page = 0, pageInput = null, prevBtn = null, nextBtn = null, loadToken = 0, curCells = [], curThumbs = [];
 
             // built after meta is known (prepare may resolve kind/pageCount/jump asynchronously)
             function buildControls() {
@@ -2277,35 +2324,32 @@
                 }
             }
 
-            const makeIO = (ids, thumbsRef) => {
-                const pending = new Set(); let timer = null;
-                const flush = async () => {
-                    timer = null;
-                    const group = [...pending].filter((c) => !c.dataset.loaded); pending.clear();
-                    for (let k = 0; k < group.length; k += NFT_GRID_CHUNK) {
-                        if (abort.signal.aborted) return; // collection closed — stop loading
-                        const chunk = group.slice(k, k + NFT_GRID_CHUNK);
-                        let loaded;
-                        try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind, abort.signal); } catch { continue; }
-                        if (abort.signal.aborted) return;
-                        for (let j = 0; j < chunk.length; j++) {
-                            chunk[j].dataset.loaded = '1';
-                            chunk[j].classList.remove('loading-cell');
-                            thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j];
-                            chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr));
-                        }
+            // Load a page's art sequentially, top-to-bottom, in chunks. A page is bounded to COLLECTION_PAGE_SIZE,
+            // so there's no need to lazy-observe within it — this fills tiles in order (not an observer's arbitrary
+            // order) and doesn't depend on IntersectionObserver firing. The <img>s themselves are loading="lazy",
+            // so the browser still only fetches image bytes for tiles near the viewport. `token` guards against a
+            // page change (go) superseding an in-flight load; `closed` stops scheduling new work when closed.
+            async function loadPageArt(cells, ids, thumbsRef, token) {
+                for (let k = 0; k < cells.length; k += NFT_GRID_CHUNK) {
+                    if (closed || token !== loadToken) return;
+                    const chunk = cells.slice(k, k + NFT_GRID_CHUNK).filter((c) => !c.dataset.loaded && !(thumbsRef[Number(c.dataset.idx)] || {}).src);
+                    if (!chunk.length) continue;
+                    let loaded;
+                    try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind); } catch { continue; }
+                    if (closed || token !== loadToken) return;
+                    for (let j = 0; j < chunk.length; j++) {
+                        if (chunk[j].dataset.loaded) continue;
+                        chunk[j].dataset.loaded = '1';
+                        chunk[j].classList.remove('loading-cell');
+                        thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j];
+                        chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr));
                     }
-                };
-                const obs = new IntersectionObserver((entries) => {
-                    for (const e of entries) if (e.isIntersecting) { pending.add(e.target); obs.unobserve(e.target); }
-                    if (pending.size && !timer) timer = setTimeout(flush, 40);
-                }, { root: grid, rootMargin: '800px' });
-                return obs;
-            };
+                }
+            }
 
             async function go(p) {
                 page = p;
-                if (io) io.disconnect();
+                const token = ++loadToken; // supersede any in-flight load from a previous page
                 if (pageInput) pageInput.value = String(p + 1);
                 if (prevBtn) prevBtn.disabled = p === 0;
                 if (nextBtn) nextBtn.disabled = p === opts.pageCount - 1;
@@ -2332,26 +2376,8 @@
                 });
                 curCells = cells; curThumbs = thumbsRef;
                 for (const cell of cells) if ((thumbsRef[Number(cell.dataset.idx)] || {}).src) cell.classList.remove('loading-cell');
-                // Art loads visible-first: the observer fires immediately for on-screen cells (and pre-loads within
-                // 800px of the viewport as you scroll), so whatever you're looking at is prioritised.
-                io = makeIO(ids, thumbsRef);
-                for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
-                if (opts.eager) {
-                    // owned view (bounded set): after the visible cells have a head start, backfill the rest in the
-                    // background so scrolling stays instant. Cells the observer already loaded are skipped.
-                    setTimeout(async () => {
-                        for (let k = 0; k < cells.length; k += NFT_GRID_CHUNK) {
-                            if (abort.signal.aborted) return;
-                            const chunk = cells.slice(k, k + NFT_GRID_CHUNK).filter((c) => !c.dataset.loaded && !(thumbsRef[Number(c.dataset.idx)] || {}).src);
-                            if (!chunk.length) continue;
-                            let loaded;
-                            try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind, abort.signal); } catch { continue; }
-                            if (abort.signal.aborted) return;
-                            for (let j = 0; j < chunk.length; j++) { if (chunk[j].dataset.loaded) continue; chunk[j].dataset.loaded = '1'; chunk[j].classList.remove('loading-cell'); thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j]; chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr)); }
-                        }
-                    }, 350);
-                }
                 grid.scrollTop = 0;
+                loadPageArt(cells, ids, thumbsRef, token); // fill art top-to-bottom (images are lazy-loaded natively)
             }
 
             // re-resolve already-fetched thumbs' art in place when the art sources change (no refetch/flicker)
@@ -2364,8 +2390,7 @@
             openCollectionRenderers.add(reRenderArt);
 
             const onKey = (e) => { if (e.key === 'Escape') close(); };
-            let closedOnce = false;
-            function close() { if (closedOnce) return; closedOnce = true; abort.abort(); if (io) io.disconnect(); openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); document.removeEventListener('keydown', onKey); }
+            function close() { if (closed) return; closed = true; openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); document.removeEventListener('keydown', onKey); }
             overlay.append(panel);
             overlay.onclick = () => close();
             panel.onclick = (e) => e.stopPropagation();
@@ -2380,15 +2405,33 @@
                     titleEl.textContent = (collection.name || collection.ticker) + ' · ' + opts.titleSuffix;
                 }
                 buildControls();
-                go(0); // render tiles immediately — do NOT block on the info-strip RPCs below
-                // fill the info strip (standard + total supply) in the background
+                go(0); // render tiles immediately — counting / total supply resolves below without blocking
+                // background: standard, then page count + total supply (one totalSupply call, shared)
                 (async () => {
                     try {
                         const kind = opts.kind || await detectKind(node, collection);
                         standardEl.textContent = kind === 'erc1155' ? 'ERC-1155' : kind === 'none' ? '' : 'ERC-721';
-                        const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
-                        if (supplyHex && supplyHex !== '0x') supplyEl.textContent = BigInt(supplyHex).toLocaleString('en-US') + ' total';
-                    } catch { /* standard/supply are best-effort */ }
+                    } catch { /* best-effort */ }
+                    let total = null;
+                    if (opts.countPages) {
+                        try {
+                            const c = await opts.countPages();
+                            if (closed) return;
+                            total = c.total;
+                            if (c.pageCount && c.pageCount !== opts.pageCount) {
+                                opts.pageCount = c.pageCount;
+                                buildControls();
+                                if (pageInput) pageInput.value = String(page + 1);
+                                if (prevBtn) prevBtn.disabled = page === 0;
+                                if (nextBtn) nextBtn.disabled = page === opts.pageCount - 1;
+                            }
+                            if (total != null) { opts.titleSuffix = String(total); titleEl.textContent = (collection.name || collection.ticker) + ' · ' + opts.titleSuffix; }
+                        } catch { /* best-effort */ }
+                    }
+                    if (total == null) {
+                        try { const s = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath); if (s && s !== '0x') total = Number(BigInt(s)); } catch { /* best-effort */ }
+                    }
+                    if (total) supplyEl.textContent = total.toLocaleString('en-US') + ' total';
                 })();
             })();
         }
