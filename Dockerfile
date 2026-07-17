@@ -26,9 +26,15 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302-resolute@sha256:45401dde65ffc706a65841120ffdf827805eefe16852d6de1086a876c421de2e AS rpmalloc-build
+RUN apt-get update && apt-get install -y --no-install-recommends gcc git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/mjansson/rpmalloc /rpmalloc  && gcc -shared -fPIC -O2 -DNDEBUG -DENABLE_PRELOAD=1 -DENABLE_OVERRIDE=1 -I/rpmalloc/rpmalloc     /rpmalloc/rpmalloc/rpmalloc.c /rpmalloc/rpmalloc/malloc.c -o /librpmallocwrap.so -lpthread -ldl
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67a7d26d901864866c235e7ea59966cdb8f0e680ed25ad9
 
 WORKDIR /nethermind
+
+ENV LD_PRELOAD=/nethermind/librpmallocwrap.so
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
@@ -38,5 +44,6 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 COPY scripts/entrypoint.sh .
+COPY --from=rpmalloc-build /librpmallocwrap.so .
 
 ENTRYPOINT ["./entrypoint.sh"]
