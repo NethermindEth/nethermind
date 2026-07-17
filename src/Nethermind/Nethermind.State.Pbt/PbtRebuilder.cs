@@ -96,7 +96,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
                     currentRoot = FlushAndCommit(writeBatch, currentRoot, window);
                     writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
                     pending = 0;
-                    if (_logger.IsInfo) _logger.Info($"PBT rebuild progress: {accounts} accounts, {slots} slots");
+                    if (_logger.IsInfo) _logger.Info($"PBT rebuild progress: {accounts} accounts, {slots} slots, at {entry.Address}");
                 }
             }
 
