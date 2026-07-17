@@ -16,12 +16,12 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c>
 /// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
-/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is
-/// two little-endian 32-bit bitmaps over the positions — presence and stem — followed by one entry
-/// per present position in ascending position order: a 32-byte cached hash for an internal node, or
-/// the 31-byte stem followed by its 32-byte leaf-subtree root for a stem node (the stem node hash
-/// is derived, never stored). Entry offsets and the total length follow from the bitmaps, keeping
-/// the encoding deterministic. A stem position has no present positions below it in the group and
+/// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is a
+/// leading format byte, then two little-endian 32-bit bitmaps over the positions — presence and
+/// stem — followed by one entry per present position in ascending position order: a 32-byte cached
+/// hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root for a
+/// stem node (the stem node hash is derived, never stored). Entry offsets and the total length
+/// follow from the bitmaps, keeping the encoding deterministic. A stem position has no present positions below it in the group and
 /// no child groups below it. An empty group encodes to zero bytes, the store's removal marker.
 /// </remarks>
 public readonly ref struct PbtTrieNodeGroup
@@ -129,7 +129,12 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
     public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
 
-    private const int HeaderLength = 2 * sizeof(uint);
+    /// <summary>Version sentinel heading every non-empty encoding, validated on decode.</summary>
+    private const byte FormatByte = 0x01;
+
+    private const int PresenceOffset = sizeof(byte);
+    private const int StemsOffset = PresenceOffset + sizeof(uint);
+    private const int HeaderLength = StemsOffset + sizeof(uint);
     private const int HashLength = 32;
 
     /// <summary>Largest encoding: all 31 positions present, 16 of them stems (each stem terminates a disjoint boundary range).</summary>
@@ -238,9 +243,10 @@ public readonly ref struct PbtTrieNodeGroup
     public static PbtTrieNodeGroup Decode(ReadOnlySpan<byte> data)
     {
         if (data.Length < HeaderLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
+        if (data[0] != FormatByte) throw new InvalidDataException($"Trie node group: unexpected format byte 0x{data[0]:x2}");
 
-        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(data);
-        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(data[sizeof(uint)..]);
+        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(data[PresenceOffset..]);
+        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(data[StemsOffset..]);
         if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
         {
             throw new InvalidDataException("Invalid trie node group bitmaps");
@@ -297,15 +303,16 @@ public readonly ref struct PbtTrieNodeGroup
         public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
 
         /// <summary>
-        /// Writes the bitmap header and returns the encoded length; 0 when nothing was appended,
-        /// which the caller stores as a removal.
+        /// Writes the format byte and the bitmap header, and returns the encoded length; 0 when
+        /// nothing was appended, which the caller stores as a removal.
         /// </summary>
         public readonly int Finish()
         {
             if (_presence == 0) return 0;
 
-            BinaryPrimitives.WriteUInt32LittleEndian(_destination, _presence);
-            BinaryPrimitives.WriteUInt32LittleEndian(_destination[sizeof(uint)..], _stems);
+            _destination[0] = FormatByte;
+            BinaryPrimitives.WriteUInt32LittleEndian(_destination[PresenceOffset..], _presence);
+            BinaryPrimitives.WriteUInt32LittleEndian(_destination[StemsOffset..], _stems);
             return _offset;
         }
 
