@@ -747,6 +747,12 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Pull benchmark image (avoid stale local tag)
+        shell: bash
+        run: |
+          docker pull "${NETHERMIND_IMAGE}"
+          docker image inspect "${NETHERMIND_IMAGE}" --format 'Using image digest: {{index .RepoDigests 0}}'
+
       - name: Start allocator pressure sampler
         id: pressure-sampler
         continue-on-error: true
