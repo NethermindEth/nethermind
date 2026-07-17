@@ -40,7 +40,7 @@ public class EraImporter(
     /// lets callers (notably tests) wait deterministically for the importer to back off when its suggest queue
     /// outruns the chain head, instead of relying on real-time delays.
     /// </summary>
-    public BlockTreeSuggestPacer? CurrentPacer => System.Threading.Volatile.Read(ref _currentPacer);
+    public BlockTreeSuggestPacer? CurrentPacer => Volatile.Read(ref _currentPacer);
 
     public async Task Import(string src, ulong from, ulong to, string? accumulatorFile, CancellationToken cancellation = default)
     {
@@ -117,7 +117,7 @@ public class EraImporter(
             ? eraConfig.ImportBlocksBufferSize - 1024UL
             : eraConfig.ImportBlocksBufferSize / 2;
         using BlockTreeSuggestPacer pacer = new(blockTree, eraConfig.ImportBlocksBufferSize, resumeBatchSize);
-        System.Threading.Volatile.Write(ref _currentPacer, pacer);
+        Volatile.Write(ref _currentPacer, pacer);
         ulong blockNumber = from;
 
         ulong suggestFromBlock = (blockTree.Head?.Number ?? 0UL) + 1UL;

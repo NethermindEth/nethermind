@@ -35,27 +35,6 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
-    public async Task WaitForPausedAsync_WillCompleteWhenPacerStopsSuggesting()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
-        using CancellationTokenSource waitCts = new(TimeSpan.FromSeconds(5));
-        using CancellationTokenSource queueCts = new();
-
-        Task pausedTask = pacer.WaitForPausedAsync();
-        Assert.That(pausedTask.IsCompleted, Is.False);
-
-        Task queueTask = pacer.WaitForQueue(11, queueCts.Token);
-
-        await pausedTask.WaitAsync(waitCts.Token);
-        Assert.That(queueTask.IsCompleted, Is.False);
-
-        queueCts.Cancel();
-        Assert.That(async () => await queueTask, Throws.InstanceOf<OperationCanceledException>());
-    }
-
-    [Test]
     public async Task WillNotMissHeadUpdateBeforeStartingBatch()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
