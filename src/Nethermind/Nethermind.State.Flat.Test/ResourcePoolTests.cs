@@ -65,9 +65,9 @@ public class ResourcePoolTests
     [Test]
     public void Test_SnapshotContentPool_RespectsCapacity()
     {
-        // For MainBlockProcessing: capacity = config.CompactSize * 3 = 6
+        // For MainBlockProcessing: capacity = max(config.CompactSize * 3, 8) = 8 at CompactSize 2
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
-        int capacity = (int)_config.CompactSize * 3;
+        int capacity = Math.Max((int)_config.CompactSize * 3, 8);
         List<SnapshotContent> items = [];
 
         for (int i = 0; i < capacity + 5; i++)
@@ -90,6 +90,21 @@ public class ResourcePoolTests
         // The next one should be a new instance because pool is empty
         SnapshotContent newContent = _resourcePool.GetSnapshotContent(usage);
         Assert.That(items.Contains(newContent), Is.False, "Should be a new instance");
+    }
+
+    [Test]
+    public void Test_MainBlockProcessingPool_RecyclesWhenCompactionDisabled()
+    {
+        // CompactSize <= 1 is an accepted compaction-disabled config; without a floor the pool capacity
+        // would be zero and every returned SnapshotContent would be discarded and reallocated per block.
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 0 });
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+
+        SnapshotContent content = pool.GetSnapshotContent(usage);
+        pool.ReturnSnapshotContent(usage, content);
+
+        SnapshotContent recycled = pool.GetSnapshotContent(usage);
+        Assert.That(recycled, Is.SameAs(content), "returned SnapshotContent should be recycled, not reallocated");
     }
 
     [Test]

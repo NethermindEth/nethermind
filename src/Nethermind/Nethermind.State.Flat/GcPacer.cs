@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
@@ -25,6 +26,10 @@ public static class GcPacer
     {
         if (Interlocked.CompareExchange(ref s_started, 1, 0) != 0) return false;
 
+        // Thread.Sleep(TimeSpan) rejects millisecond values above int.MaxValue; clamp the sleep-driving
+        // intervals so an out-of-range setting can't turn a paced loop into a busy exception-retry loop.
+        intervalMs = Math.Clamp(intervalMs, 1, int.MaxValue);
+
         Thread thread = new(() => Run(intervalMs, warmupSeconds * 1000, gen2IntervalMs))
         {
             // Must stay at normal priority: below-normal starves under saturated block processing.
@@ -35,7 +40,8 @@ public static class GcPacer
 
         if (gen0IntervalMs > 0)
         {
-            Thread gen0Thread = new(() => RunGen0(gen0IntervalMs))
+            long gen0Interval = Math.Clamp(gen0IntervalMs, 1, int.MaxValue);
+            Thread gen0Thread = new(() => RunGen0(gen0Interval))
             {
                 IsBackground = true,
                 Name = "GC Pacer gen0",
@@ -57,7 +63,9 @@ public static class GcPacer
 
                 if (GC.CollectionCount(0) == lastGen0Count)
                 {
-                    GC.Collect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    // Route through the scheduler so a paced tick can't induce a collection while block
+                    // processing holds a no-GC region (DisableGcOnNewPayload); it no-ops in that window.
+                    GCScheduler.Instance.GCCollect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
                 }
 
                 lastGen0Count = GC.CollectionCount(0);
@@ -88,9 +96,11 @@ public static class GcPacer
 
                 if (GC.CollectionCount(1) == lastGen1Count)
                 {
+                    // Route through the scheduler so a paced tick can't induce a collection while block
+                    // processing holds a no-GC region (DisableGcOnNewPayload); it no-ops in that window.
                     // Must stay blocking:false: a blocking induced collection waits behind an
                     // in-flight background gen2 and wedges this thread.
-                    GC.Collect(1, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    GCScheduler.Instance.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false);
                 }
 
                 lastGen1Count = GC.CollectionCount(1);
@@ -116,11 +126,26 @@ public static class GcPacer
                     else if (pendingBgcSinceIndex < 0 &&
                              uptime.ElapsedMilliseconds - lastGen2AtMs >= (warmup ? Math.Max(gen2IntervalMs / 4, 5000) : gen2IntervalMs))
                     {
-                        pendingBgcSinceIndex = background.Index;
-                        pendingBgcAtMs = uptime.ElapsedMilliseconds;
-                        GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
-                        lastGen2Count = GC.CollectionCount(2);
-                        lastGen2AtMs = uptime.ElapsedMilliseconds;
+                        long bgIndexBefore = background.Index;
+                        int gen2Before = GC.CollectionCount(2);
+                        // Route through the scheduler so it no-ops inside a block-processing no-GC region.
+                        if (GCScheduler.Instance.GCCollect(2, GCCollectionMode.Forced, blocking: false, compacting: false))
+                        {
+                            int gen2After = GC.CollectionCount(2);
+                            lastGen2Count = gen2After;
+                            lastGen2AtMs = uptime.ElapsedMilliseconds;
+
+                            // A blocking:false request can still run as a full blocking gen2 (e.g. concurrent
+                            // GC disabled): it completes inline and advances CollectionCount(2) synchronously
+                            // while the background index never moves for it. Only latch on the background index
+                            // when a real background collection was actually scheduled, otherwise pacing stays
+                            // suppressed until the 180s stale timeout.
+                            if (gen2After == gen2Before)
+                            {
+                                pendingBgcSinceIndex = bgIndexBefore;
+                                pendingBgcAtMs = uptime.ElapsedMilliseconds;
+                            }
+                        }
                     }
                 }
             }
