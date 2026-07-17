@@ -31,7 +31,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
     // and account/code header leaves from the single-threaded account flush both land here (their
     // sub-index bands never overlap). UpdateRootHash drains it into the write batch.
-    private readonly PbtTransientResource _transient;
+    private readonly PbtWriteBatchBuilder _writeBatchBuilder;
 
     // deliberately not pooled: PbtCodeDb captures this by reference and StateProvider.CommitCodeAsync
     // ends in a Task.Run joined only on the success paths, so a writer orphaned by a failed block
@@ -58,7 +58,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _commitTarget = commitTarget;
         _resourcePool = resourcePool;
         _usage = usage;
-        _transient = resourcePool.GetTransientResource(usage);
+        _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
@@ -96,7 +96,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     {
         if (!_rootDirty) return;
 
-        using PbtWriteBatch changes = _transient.DrainToWriteBatch();
+        using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
         _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance).ToHash256();
         _rootDirty = false;
     }
@@ -143,7 +143,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     }
 
     /// <remarks>
-    /// Returns the transient, whose reset hands back the stem-change maps no fold claimed: a scope
+    /// Returns the builder, whose reset hands back the stem-change maps no fold claimed: a scope
     /// abandoned with pending writes — an exception mid-block, or a branch dropped before its final
     /// <see cref="UpdateRootHash"/> — would otherwise lose them to the GC rather than the pool.
     /// Idempotent, so a double dispose cannot return anything twice.
@@ -156,11 +156,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         {
             // reset here rather than leaning on the pool doing it: the drain is the fix, not an
             // incidental property of how the pool happens to recycle
-            _transient.Reset();
+            _writeBatchBuilder.Reset();
         }
         finally
         {
-            _resourcePool.ReturnTransientResource(_usage, _transient);
+            _resourcePool.ReturnWriteBatchBuilder(_usage, _writeBatchBuilder);
             Bundle.Dispose();
         }
     }
@@ -186,35 +186,24 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             : PriorCodeSize(headerStem);
         byte[][]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
 
-        // Set may promote the pooled map to a larger variant, returning the old one to the pool, so
-        // this account's leaves accumulate on a local and the store-back happens in the finally:
-        // leaving a promoted-away map in the dictionary would hand a pooled map two owners.
-        IPbtStemChanges header = _transient.RentStemChanges(headerStem);
-        try
-        {
-            Span<byte> basicData = stackalloc byte[32];
-            PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-            header = header.Set(PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
-            header = header.Set(PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
+        Span<byte> basicData = stackalloc byte[32];
+        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+        _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
+        _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
 
-            if (chunks is null) return;
+        if (chunks is null) return;
 
-            int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
-            for (int i = 0; i < headerChunks; i++)
-            {
-                header = header.Set(PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
-            }
-        }
-        finally
+        int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
+        for (int i = 0; i < headerChunks; i++)
         {
-            _transient.StoreStemChanges(headerStem, header);
+            _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
         }
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            _transient.SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
+            _writeBatchBuilder.SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
         }
     }
 
@@ -310,7 +299,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             }
 
             // single-writer per stem: this address's storage is flushed by one worker
-            scope._transient.SetLeaf(stem, subIndex, SlotLeaf(word));
+            scope._writeBatchBuilder.SetLeaf(stem, subIndex, SlotLeaf(word));
             scope.SetSlot(address, index, word);
         }
 

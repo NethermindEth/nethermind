@@ -15,9 +15,9 @@ public interface IPbtResourcePool
     /// </summary>
     void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
 
-    /// <summary>Rents an empty scratch for a scope's uncommitted per-block state.</summary>
-    PbtTransientResource GetTransientResource(PbtResourcePool.Usage usage);
+    /// <summary>Rents an empty builder for a scope's uncommitted per-block state.</summary>
+    PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
 
     /// <inheritdoc cref="ReturnSnapshotContent"/>
-    void ReturnTransientResource(PbtResourcePool.Usage usage, PbtTransientResource transient);
+    void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder);
 }

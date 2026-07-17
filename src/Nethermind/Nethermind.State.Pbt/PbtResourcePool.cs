@@ -48,9 +48,9 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
-    public PbtTransientResource GetTransientResource(Usage usage) => _categories[usage].GetTransientResource();
+    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage) => _categories[usage].GetWriteBatchBuilder();
 
-    public void ReturnTransientResource(Usage usage, PbtTransientResource transient) => _categories[usage].ReturnTransientResource(transient);
+    public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
 
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
@@ -116,14 +116,14 @@ public class PbtResourcePool : IPbtResourcePool
         }
     }
 
-    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int transientPoolSize)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writeBatchBuilderPoolSize)
     {
         private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // one scope holds one transient at a time, and only main processing and the read-only envs
+        // one scope holds one builder at a time, and only main processing and the read-only envs
         // ever open scopes, so the layer sizing does not apply here
-        private readonly ConcurrentStackPool<PbtTransientResource> _transientPool = new(transientPoolSize);
+        private readonly ConcurrentStackPool<PbtWriteBatchBuilder> _builderPool = new(writeBatchBuilderPoolSize);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
-        private readonly PooledResourceLabel _transientLabel = new(usage.ToString(), nameof(PbtTransientResource));
+        private readonly PooledResourceLabel _builderLabel = new(usage.ToString(), nameof(PbtWriteBatchBuilder));
 
         public PbtSnapshotContent GetSnapshotContent()
         {
@@ -146,24 +146,24 @@ public class PbtResourcePool : IPbtResourcePool
             Metrics.CachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
         }
 
-        public PbtTransientResource GetTransientResource()
+        public PbtWriteBatchBuilder GetWriteBatchBuilder()
         {
-            Metrics.ActivePooledResource.AddBy(_transientLabel, 1);
-            if (_transientPool.TryGet(out PbtTransientResource? transient))
+            Metrics.ActivePooledResource.AddBy(_builderLabel, 1);
+            if (_builderPool.TryGet(out PbtWriteBatchBuilder? builder))
             {
-                Metrics.CachedPooledResource[_transientLabel] = _transientPool.PooledItemCount;
-                return transient;
+                Metrics.CachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
+                return builder;
             }
 
-            Metrics.CreatedPooledResource.AddBy(_transientLabel, 1);
-            return new PbtTransientResource();
+            Metrics.CreatedPooledResource.AddBy(_builderLabel, 1);
+            return new PbtWriteBatchBuilder();
         }
 
-        public void ReturnTransientResource(PbtTransientResource transient)
+        public void ReturnWriteBatchBuilder(PbtWriteBatchBuilder builder)
         {
-            Metrics.ActivePooledResource.AddBy(_transientLabel, -1);
-            _transientPool.Return(transient);
-            Metrics.CachedPooledResource[_transientLabel] = _transientPool.PooledItemCount;
+            Metrics.ActivePooledResource.AddBy(_builderLabel, -1);
+            _builderPool.Return(builder);
+            Metrics.CachedPooledResource[_builderLabel] = _builderPool.PooledItemCount;
         }
     }
 
