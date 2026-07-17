@@ -306,6 +306,7 @@
             justify-content: center;
             gap: 12px;
             padding: 24px;
+            box-sizing: border-box;
             cursor: zoom-out;
             animation: fade 0.12s ease-out;
         }
@@ -1567,6 +1568,7 @@
         const nftCache = new Map();        // `${address}|${chainId}|${collection}` -> { count, ids, thumbs }
         const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
         const openCollectionRenderers = new Set(); // re-render callbacks for open collection lightboxes (art-source changes)
+        const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
@@ -1628,16 +1630,17 @@
             const next = offchainQueue.shift();
             if (next) next(); else offchainActive--;
         }
-        async function fetchOffchain(url, tries = 3) {
+        async function fetchOffchain(url, tries = 3, signal) {
             await offchainAcquire();
             try {
                 for (let attempt = 0; ; attempt++) {
+                    if (signal?.aborted) throw new Error('aborted'); // e.g. the collection was closed — stop retrying
                     try {
-                        const res = await fetch(url);
+                        const res = await fetch(url, { signal });
                         // retry transient failures (5xx, 429, network); don't retry hard 4xx
                         if (res.ok || attempt >= tries - 1 || (res.status >= 400 && res.status < 500 && res.status !== 429)) return res;
                     } catch (e) {
-                        if (attempt >= tries - 1) throw e;
+                        if (attempt >= tries - 1 || signal?.aborted) throw e;
                     }
                     await new Promise((r) => setTimeout(r, 500 * (attempt + 1) * (attempt + 1))); // 500ms, 2s, 4.5s
                 }
@@ -1754,23 +1757,33 @@
 
         // decodes token metadata for a slice of ids into thumbnails. On-chain (data:) metadata is used always;
         // off-chain (ipfs://) metadata + art is resolved via the local IPFS gateway only when the user opted in.
-        async function fetchThumbsForIds(node, collection, ids, kind) {
+        async function fetchThumbsForIds(node, collection, ids, kind, signal) {
+            const keyBase = node.chainId + '|' + collection.address.toLowerCase() + '|';
+            const result = new Array(ids.length);
+            const miss = [];
+            // reuse already-fetched thumbs (re-resolving art for the current sources) — reopening is instant
+            ids.forEach((id, i) => {
+                const c = artCache.get(keyBase + id);
+                if (c) { applyArtSource(c, collection); result[i] = c; } else miss.push(i);
+            });
+            if (!miss.length) return result;
+
             const sel = kind === 'erc1155' ? SEL_ERC1155_URI : SEL_TOKEN_URI;
-            const uris = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: sel + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
-            return Promise.all(ids.map(async (id, i) => {
-                let uri = decodeAbiString(uris[i]);
+            const uris = await rpcBatch(miss.map((i) => ['eth_call', [{ to: collection.address, data: sel + pad32(ids[i].toString(16)) }, 'latest']]), node.rpcPath);
+            const fetched = await Promise.all(miss.map(async (i, k) => {
+                let uri = decodeAbiString(uris[k]);
                 // ERC-1155 uri() may template the id as a 64-hex lowercase string
-                if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', id.toString(16).padStart(64, '0'));
+                if (uri && kind === 'erc1155' && uri.includes('{id}')) uri = uri.replaceAll('{id}', ids[i].toString(16).padStart(64, '0'));
                 let metadata = parseOnChainMetadata(uri);
-                // opt-in: fetch off-chain metadata JSON via an enabled art source (IPFS gateway or HTTPS)
+                // opt-in: fetch off-chain metadata JSON via an enabled art source (bounded + retrying)
                 if (!metadata && uri) {
                     const murl = resolveArtUri(uri);
-                    if (murl && !murl.startsWith('data:')) { try { const res = await fetchOffchain(murl); if (res.ok) metadata = await res.json(); } catch { metadata = null; } }
+                    if (murl && !murl.startsWith('data:')) { try { const res = await fetchOffchain(murl, 3, signal); if (res.ok) metadata = await res.json(); } catch { metadata = null; } }
                 }
                 // Store the raw (unresolved) art URIs + metadata so applyArtSource can (re)compute the
                 // renderable art on demand — e.g. when the art-source toggles change, without refetching.
                 const thumb = {
-                    id: id.toString(),
+                    id: ids[i].toString(),
                     metaUri: uri || null,
                     metaFetched: !!metadata,
                     rawImage: typeof metadata?.image === 'string' ? metadata.image : null,
@@ -1781,10 +1794,17 @@
                     attributes: Array.isArray(metadata?.attributes) ? metadata.attributes : null,
                 };
                 applyArtSource(thumb, collection);
-                // auto-pin the fetched IPFS metadata/art to the local node (no-op unless enabled)
                 pinIpfs(thumb.metaUri); pinIpfs(thumb.rawImage); pinIpfs(thumb.rawAnim);
                 return thumb;
             }));
+            fetched.forEach((thumb, k) => {
+                result[miss[k]] = thumb;
+                // cache only once the metadata is actually in hand (art resolution is then deterministic from the
+                // raw URIs + current sources). Thumbs whose metadata couldn't be fetched (source off / transient
+                // failure) are left uncached so they re-fetch on reopen or when a source is enabled.
+                if (thumb.metaFetched) artCache.set(keyBase + ids[miss[k]], thumb);
+            });
+            return result;
         }
 
         // An <img> for NFT art that retries a couple of times on error before giving up (off-chain gateways/
@@ -2118,6 +2138,7 @@
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'collection-panel');
             collectionOpen++;
+            const abort = new AbortController(); // closing cancels in-flight art fetches so they don't slow later views
 
             const head = el('div', 'collection-head');
             const titleEl = el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + opts.titleSuffix);
@@ -2186,9 +2207,11 @@
                     timer = null;
                     const group = [...pending].filter((c) => !c.dataset.loaded); pending.clear();
                     for (let k = 0; k < group.length; k += NFT_GRID_CHUNK) {
+                        if (abort.signal.aborted) return; // collection closed — stop loading
                         const chunk = group.slice(k, k + NFT_GRID_CHUNK);
                         let loaded;
-                        try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind); } catch { continue; }
+                        try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind, abort.signal); } catch { continue; }
+                        if (abort.signal.aborted) return;
                         for (let j = 0; j < chunk.length; j++) {
                             chunk[j].dataset.loaded = '1';
                             chunk[j].classList.remove('loading-cell');
@@ -2247,7 +2270,8 @@
             openCollectionRenderers.add(reRenderArt);
 
             const onKey = (e) => { if (e.key === 'Escape') close(); };
-            function close() { if (io) io.disconnect(); openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); document.removeEventListener('keydown', onKey); }
+            let closedOnce = false;
+            function close() { if (closedOnce) return; closedOnce = true; abort.abort(); if (io) io.disconnect(); openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); document.removeEventListener('keydown', onKey); }
             overlay.append(panel);
             overlay.onclick = () => close();
             panel.onclick = (e) => e.stopPropagation();
@@ -3793,7 +3817,7 @@
             const GATEWAY_KEY = 'nethermind.portfolio.ipfsgateway';
             const AUTOPIN_KEY = 'nethermind.portfolio.autopin';
             const WATCH_KEY = 'nethermind.portfolio.watchcollapsed';
-            autoPin = localStorage.getItem(AUTOPIN_KEY) === '1'; // default off
+            autoPin = localStorage.getItem(AUTOPIN_KEY) !== '0'; // default on (only acts when Local IPFS is enabled)
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
             hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
             displayMode = localStorage.getItem(DISPLAYMODE_KEY)
@@ -3840,16 +3864,27 @@
             };
             const onArtChange = () => {
                 localStorage.setItem(ART_KEY, JSON.stringify(artSources));
-                // Re-resolve already-fetched thumbs in place (no cache clear / refetch → no flicker) and
-                // re-render inline previews. Placeholders (not yet fetched) are left as-is.
+                // 1) Re-resolve already-fetched thumbs in place (instant, no flicker) and re-render previews.
+                // 2) Re-fetch each collection's inline preview so art that a newly-enabled source unlocks
+                //    (its metadata wasn't fetched before) appears on the dashboard without a full reload.
                 for (const node of enabledNodes()) {
                     for (const entry of mergedAddresses()) {
                         for (const collection of stateOf(node.chainId).nfts) {
                             const key = entry.address + '|' + node.chainId + '|' + collection.address.toLowerCase();
                             const c = nftCache.get(key);
-                            if (c) for (const t of (c.thumbs || [])) if (t && 'metaFetched' in t) applyArtSource(t, collection);
+                            if (!c) continue;
+                            for (const t of (c.thumbs || [])) if (t && 'metaFetched' in t) applyArtSource(t, collection);
                             const box = document.querySelector(`[data-thumbs="${key}"]`);
                             if (box) fillThumbs(box, c, node, entry.address, collection);
+                            if ((c.ids || []).length) (async () => {
+                                try {
+                                    const loaded = await fetchThumbsForIds(node, collection, c.ids.slice(0, MAX_NFT_THUMBS), c.kind);
+                                    if (nftCache.get(key) !== c) return; // collection changed underneath us
+                                    for (let j = 0; j < loaded.length; j++) c.thumbs[j] = loaded[j];
+                                    const b = document.querySelector(`[data-thumbs="${key}"]`);
+                                    if (b) fillThumbs(b, c, node, entry.address, collection);
+                                } catch { /* preview art is cosmetic */ }
+                            })();
                         }
                     }
                 }
