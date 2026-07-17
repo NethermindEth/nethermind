@@ -580,6 +580,58 @@ public class StemTrieTests
         }
 
         AssertChainsAreMaximal(harness);
+        AssertStatsMatchSubtreeCounts(harness);
+    }
+
+    /// <summary>
+    /// Every stored node's statistics count the stems its subtree actually holds
+    /// (<see cref="PbtSubtreeStats"/>).
+    /// </summary>
+    /// <remarks>
+    /// The rebuild comparison above already pins these, statistics being part of an encoding it
+    /// compares byte for byte — but only as a byte that differs. Counting the stems says which node
+    /// mis-hoisted, and how far out it is. The root's count is checked against the leaf blobs as well:
+    /// a stem has exactly one, so the store says how many stems there are without walking the trie at
+    /// all.
+    /// </remarks>
+    private static void AssertStatsMatchSubtreeCounts(PbtTreeHarness harness) =>
+        Assert.That(CountStems(harness, TrieNodeKey.Root), Is.EqualTo(harness.Blobs.Count), "the root subtree is every stem");
+
+    /// <summary>
+    /// The stems under <paramref name="key"/>, counted from the store rather than hoisted, asserting
+    /// on the way that the blob there says the same.
+    /// </summary>
+    private static long CountStems(PbtTreeHarness harness, in TrieNodeKey key)
+    {
+        if (!harness.Nodes.TryGetValue(key, out byte[]? blob)) return 0;
+
+        if (PbtNodeChain.IsChain(blob))
+        {
+            PbtNodeChain chain = PbtNodeChain.Decode(blob, key.Depth);
+            long reached = CountStems(harness, chain.TargetKey);
+            Assert.That(chain.Stats.StemCount, Is.EqualTo(reached), $"run at {key}");
+            return reached;
+        }
+
+        // A stem sits at whichever position is its shortest unique prefix, boundary or inner, so every
+        // position is visited; only a boundary internal roots a blob of its own to descend into.
+        PbtTrieNodeGroup group = PbtTrieNodeGroup.Decode(blob);
+        long counted = 0;
+        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        {
+            switch (group.KindAt(position))
+            {
+                case PbtTrieNodeGroup.NodeKind.Stem:
+                    counted++;
+                    break;
+                case PbtTrieNodeGroup.NodeKind.Internal when PbtTrieNodeGroup.IsBoundaryPosition(position):
+                    counted += CountStems(harness, key.ChildGroup(PbtTrieNodeGroup.BoundarySlot(position)));
+                    break;
+            }
+        }
+
+        Assert.That(group.Stats.StemCount, Is.EqualTo(counted), $"group at {key}");
+        return counted;
     }
 
     /// <summary>

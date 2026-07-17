@@ -18,11 +18,17 @@ namespace Nethermind.Pbt;
 /// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
 /// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is a
 /// leading format byte, then two little-endian 32-bit bitmaps over the positions — presence and
-/// stem — followed by one entry per present position in ascending position order: a 32-byte cached
+/// stem — then the group's <see cref="PbtSubtreeStats"/>, followed by one entry per present position
+/// in ascending position order: a 32-byte cached
 /// hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root for a
 /// stem node (the stem node hash is derived, never stored). Entry offsets and the total length
 /// follow from the bitmaps, keeping the encoding deterministic. A stem position has no present positions below it in the group and
 /// no child groups below it. An empty group encodes to zero bytes, the store's removal marker.
+/// <para>
+/// The header counts stems twice over, and means a different thing by each: the stem bitmap says
+/// which of <em>this tile's</em> positions hold a stem node, while <see cref="Stats"/> counts the
+/// stems of the <em>whole subtree</em>, the ones below this group's child groups included.
+/// </para>
 /// </remarks>
 public readonly ref struct PbtTrieNodeGroup
 {
@@ -134,7 +140,8 @@ public readonly ref struct PbtTrieNodeGroup
 
     private const int PresenceOffset = sizeof(byte);
     private const int StemsOffset = PresenceOffset + sizeof(uint);
-    private const int HeaderLength = StemsOffset + sizeof(uint);
+    private const int StatsOffset = StemsOffset + sizeof(uint);
+    private const int HeaderLength = StatsOffset + PbtSubtreeStats.EncodedLength;
     private const int HashLength = 32;
 
     /// <summary>Largest encoding: all 31 positions present, 16 of them stems (each stem terminates a disjoint boundary range).</summary>
@@ -164,6 +171,12 @@ public readonly ref struct PbtTrieNodeGroup
 
     /// <summary>True for the default group, the absence sentinel; a stored group is never empty.</summary>
     public bool IsEmpty => _data.IsEmpty;
+
+    /// <summary>
+    /// What the subtree rooted at this group amounts to; the empty group's, an absent subtree's, is
+    /// <c>default</c>.
+    /// </summary>
+    public PbtSubtreeStats Stats => IsEmpty ? default : PbtSubtreeStats.Read(_data[StatsOffset..]);
 
     /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
     /// <param name="position">
@@ -303,16 +316,22 @@ public readonly ref struct PbtTrieNodeGroup
         public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
 
         /// <summary>
-        /// Writes the format byte and the bitmap header, and returns the encoded length; 0 when
-        /// nothing was appended, which the caller stores as a removal.
+        /// Writes the format byte and the header — the bitmaps, and the <paramref name="stats"/> of the
+        /// subtree the group roots — and returns the encoded length; 0 when nothing was appended, which
+        /// the caller stores as a removal.
         /// </summary>
-        public readonly int Finish()
+        /// <param name="stats">
+        /// The whole subtree's, which the walk that appended the nodes cannot know: the stems below a
+        /// boundary slot the walk left alone are never read. The producer hoists it instead.
+        /// </param>
+        public readonly int Finish(in PbtSubtreeStats stats)
         {
             if (_presence == 0) return 0;
 
             _destination[0] = FormatByte;
             BinaryPrimitives.WriteUInt32LittleEndian(_destination[PresenceOffset..], _presence);
             BinaryPrimitives.WriteUInt32LittleEndian(_destination[StemsOffset..], _stems);
+            stats.Write(_destination[StatsOffset..]);
             return _offset;
         }
 

@@ -47,11 +47,16 @@ public class PbtTrieNodeGroupTests
         slots[PbtTrieNodeGroup.BoundaryPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
         slots[PbtTrieNodeGroup.BoundaryPosition(1)] = PbtTrieNodeGroup.StemSlot(stemB, rootB);
 
+        // the subtree holds more stems than this group's two stem nodes: the boundary internal at slot 0
+        // points at a child group holding the rest
+        PbtSubtreeStats stats = new(9);
+
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        int length = Encode(slots, encoded);
-        Assert.That(length, Is.EqualTo(9 + 5 * 32 + 2 * 31));
+        int length = Encode(slots, stats, encoded);
+        Assert.That(length, Is.EqualTo(15 + 5 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+        Assert.That(decoded.Stats, Is.EqualTo(stats));
         PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
@@ -64,11 +69,12 @@ public class PbtTrieNodeGroupTests
 
         // deterministic: re-encoding the decoded group reproduces the bytes exactly
         byte[] reencoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        Assert.That(Encode(roundTripped, reencoded), Is.EqualTo(length));
+        Assert.That(Encode(roundTripped, decoded.Stats, reencoded), Is.EqualTo(length));
         Assert.That(reencoded.AsSpan(0, length).SequenceEqual(encoded.AsSpan(0, length)));
 
-        // an empty group encodes to nothing (the store's removal marker)
-        Assert.That(new PbtTrieNodeGroup.Builder(encoded).Finish(), Is.EqualTo(0));
+        // an empty group encodes to nothing (the store's removal marker), whatever it is told it holds
+        Assert.That(new PbtTrieNodeGroup.Builder(encoded).Finish(stats), Is.EqualTo(0));
+        Assert.That(default(PbtTrieNodeGroup).Stats, Is.EqualTo(default(PbtSubtreeStats)), "an absent subtree holds nothing");
 
         // validation: an unknown format byte, position bit 31, a stem bit without its presence bit,
         // and a length that does not match the bitmaps are all rejected
@@ -93,7 +99,7 @@ public class PbtTrieNodeGroupTests
     /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
     /// the ascending order it requires — the order the updater's post-order rebuild appends in.
     /// </summary>
-    private static int Encode(ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, Span<byte> destination)
+    private static int Encode(ReadOnlySpan<PbtTrieNodeGroup.ValueSlot> slots, in PbtSubtreeStats stats, Span<byte> destination)
     {
         PbtTrieNodeGroup.Builder builder = new(destination);
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
@@ -110,6 +116,6 @@ public class PbtTrieNodeGroupTests
             }
         }
 
-        return builder.Finish();
+        return builder.Finish(stats);
     }
 }

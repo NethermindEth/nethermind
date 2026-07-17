@@ -22,11 +22,12 @@ namespace Nethermind.Pbt;
 /// <see cref="PbtKeyDerivation.StorageStem"/>): every stem of a contract shares 61 bits, so each
 /// contract grows a spine of these from wherever it parts from other contracts down to bit 61.
 /// <para>
-/// The encoding is a leading format byte, the target's depth, its 31-byte path, its root hash, and
+/// The encoding is a leading format byte, the target's depth, its 31-byte path, its root hash,
 /// this chain's own node hash — a cache, as an internal node's hash is, which is what lets a parent
-/// group treat a chain child as an ordinary boundary internal. The chain's own start depth is its
-/// key's depth (see <see cref="TrieNodeKey"/>) and is not stored, so the encoding is fixed at
-/// <see cref="EncodedLength"/> bytes.
+/// group treat a chain child as an ordinary boundary internal — and the subtree's
+/// <see cref="PbtSubtreeStats"/>, a cache in the same way and for the same reason. The chain's own
+/// start depth is its key's depth (see <see cref="TrieNodeKey"/>) and is not stored, so the encoding
+/// is fixed at <see cref="EncodedLength"/> bytes.
 /// </para>
 /// <para>
 /// The canonical form <see cref="TrieUpdater"/> maintains, on which its descent relies:
@@ -48,10 +49,11 @@ public readonly ref struct PbtNodeChain
     private const int TargetPathOffset = TargetDepthOffset + sizeof(byte);
     private const int TargetHashOffset = TargetPathOffset + Stem.Length;
     private const int NodeHashOffset = TargetHashOffset + HashLength;
+    private const int StatsOffset = NodeHashOffset + HashLength;
     private const int HashLength = 32;
 
     /// <summary>Every chain encodes to the same length: only its start depth varies, and that is its key's.</summary>
-    public const int EncodedLength = NodeHashOffset + HashLength;
+    public const int EncodedLength = StatsOffset + PbtSubtreeStats.EncodedLength;
 
     private readonly ReadOnlySpan<byte> _data;
     private readonly int _startDepth;
@@ -79,6 +81,12 @@ public readonly ref struct PbtNodeChain
 
     /// <inheritdoc cref="NodeHashOf"/>
     public ValueHash256 NodeHash => NodeHashOf(_data);
+
+    /// <summary>
+    /// What the subtree this run reaches amounts to — its target group's, a run holding no stem of its
+    /// own.
+    /// </summary>
+    public PbtSubtreeStats Stats => PbtSubtreeStats.Read(_data[StatsOffset..]);
 
     /// <summary>True for an encoding headed by this type's format byte rather than <see cref="PbtTrieNodeGroup"/>'s.</summary>
     /// <remarks>
@@ -117,19 +125,22 @@ public readonly ref struct PbtNodeChain
 
     /// <summary>
     /// Writes the chain from <paramref name="startDepth"/> to the group at <paramref name="targetDepth"/>
-    /// on <paramref name="targetPath"/> whose root hashes to <paramref name="targetHash"/>, folding its
-    /// node hash on the way.
+    /// on <paramref name="targetPath"/> whose root hashes to <paramref name="targetHash"/> and whose
+    /// subtree amounts to <paramref name="stats"/>, folding its node hash on the way.
     /// </summary>
-    public static void Write(Span<byte> destination, int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash)
+    public static void Write(
+        Span<byte> destination, int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash,
+        in PbtSubtreeStats stats)
     {
         Debug.Assert(destination.Length == EncodedLength);
-        Debug.Assert(IsWellFormed(startDepth, targetDepth, targetPath, targetHash));
+        Debug.Assert(IsWellFormed(startDepth, targetDepth, targetPath, targetHash, stats));
 
         destination[0] = FormatByte;
         destination[TargetDepthOffset] = (byte)targetDepth;
         targetPath.Bytes.CopyTo(destination[TargetPathOffset..]);
         targetHash.Bytes.CopyTo(destination[TargetHashOffset..]);
         Fold(targetHash, targetPath, targetDepth, startDepth).Bytes.CopyTo(destination[NodeHashOffset..]);
+        stats.Write(destination[StatsOffset..]);
     }
 
     /// <summary>
@@ -143,7 +154,7 @@ public readonly ref struct PbtNodeChain
         if (data[0] != FormatByte) throw new InvalidDataException($"Trie node chain: unexpected format byte 0x{data[0]:x2}");
 
         PbtNodeChain chain = new(data, startDepth);
-        if (!IsWellFormed(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash))
+        if (!IsWellFormed(startDepth, chain.TargetDepth, chain.TargetPath, chain.TargetHash, chain.Stats))
         {
             throw new InvalidDataException($"Invalid trie node chain from depth {startDepth} to {chain.TargetDepth}");
         }
@@ -163,15 +174,18 @@ public readonly ref struct PbtNodeChain
     /// <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> and the target is a group depth. The start is past
     /// the root, which keeps its own spine (invariant 4). The target path is a group's, so it is
     /// zero-padded past the target, and its group is stored, so its root hash is never the empty
-    /// subtree's.
+    /// subtree's. That group is past the root and stored, so it branches (invariant 1) — two occupied
+    /// boundary slots hold a stem each at the least, which is the fewest a run can reach.
     /// </remarks>
-    private static bool IsWellFormed(int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash) =>
+    private static bool IsWellFormed(
+        int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash, in PbtSubtreeStats stats) =>
         startDepth > 0
         && startDepth < targetDepth
         && targetDepth <= PbtTrieNodeGroup.MaxGroupDepth
         && startDepth % PbtTrieNodeGroup.LevelsPerGroup == 0
         && targetDepth % PbtTrieNodeGroup.LevelsPerGroup == 0
         && targetHash != default
+        && stats.StemCount >= 2
         && TrieNodeKey.For(targetDepth, targetPath).Path == targetPath;
 
     public override string ToString() => $"{_startDepth}->{TargetDepth}:{TargetPath}";

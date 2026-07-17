@@ -24,6 +24,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
 
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
+    /// <summary>The leaf blobs, one per stem the trie holds — an emptied one is removed, not stored empty.</summary>
+    public IReadOnlyDictionary<Stem, byte[]> Blobs => _blobs;
+
     /// <summary>Every value handed to a reader, to check the leases on them were balanced.</summary>
     public IReadOnlyList<RefCountingMemory> HandedOut => _handedOut;
 

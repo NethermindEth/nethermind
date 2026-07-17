@@ -19,6 +19,11 @@ public class PbtNodeChainTests
     private static readonly Stem TargetPath = new(Bytes.FromHexString("0x0dead000000000000000000000000000000000000000000000000000000000"));
     private static readonly ValueHash256 TargetHash = new(Bytes.FromHexString("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
 
+    /// <summary>The target group branches, so a run reaches two stems at the least.</summary>
+    private static readonly PbtSubtreeStats Stats = new(3);
+
+    private const int StatsOffset = 2 + Stem.Length + 32 + 32;
+
     [Test]
     public void WriteDecodeRoundTrip_AndDiscriminatesFromAGroup()
     {
@@ -31,6 +36,7 @@ public class PbtNodeChainTests
         Assert.That(chain.TargetPath, Is.EqualTo(TargetPath));
         Assert.That(chain.TargetHash, Is.EqualTo(TargetHash));
         Assert.That(chain.TargetKey, Is.EqualTo(new TrieNodeKey(TargetDepth, TargetPath)));
+        Assert.That(chain.Stats, Is.EqualTo(Stats));
 
         // the cached node hash is the fold, and PbtNodeChain.NodeHashOf reads it without validating
         ValueHash256 folded = PbtNodeChain.Fold(TargetHash, TargetPath, TargetDepth, StartDepth);
@@ -87,6 +93,9 @@ public class PbtNodeChainTests
         new object[] { "a target past the deepest group", Corrupt(1, Stem.LengthInBits) },
         new object[] { "a target path with bits past the target", Corrupt(4, 0x01) },
         new object[] { "the empty subtree as a target hash", Zero(2 + Stem.Length, 32) },
+        // a run reaching one stem would have dissolved: that stem hoists rather than sitting under a spine
+        new object[] { "a subtree of no stems", Zero(StatsOffset, PbtSubtreeStats.EncodedLength) },
+        new object[] { "a subtree of a lone stem", Corrupt(StatsOffset, 0x01) },
     ];
 
     [TestCaseSource(nameof(Rejections))]
@@ -122,7 +131,7 @@ public class PbtNodeChainTests
     private static byte[] Encode(int startDepth, int targetDepth, in Stem targetPath, in ValueHash256 targetHash)
     {
         byte[] encoded = new byte[PbtNodeChain.EncodedLength];
-        PbtNodeChain.Write(encoded, startDepth, targetDepth, targetPath, targetHash);
+        PbtNodeChain.Write(encoded, startDepth, targetDepth, targetPath, targetHash, Stats);
         return encoded;
     }
 
@@ -132,7 +141,7 @@ public class PbtNodeChainTests
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         PbtTrieNodeGroup.Builder builder = new(encoded);
         builder.AppendInternal(PbtTrieNodeGroup.RootPosition, TargetHash);
-        return encoded[..builder.Finish()];
+        return encoded[..builder.Finish(Stats)];
     }
 
     private static ValueHash256 ReferenceRoot(ReadOnlySpan<(byte[] Key, byte[] Value)> entries)
