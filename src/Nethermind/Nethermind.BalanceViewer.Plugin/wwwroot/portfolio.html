@@ -396,25 +396,31 @@
         .view-toggle { display: flex; gap: 4px; margin: 22px 0 12px; } /* extra top gap from the Watch box */
         .view-toggle button { background: #0a0a0a; border: 1px solid var(--border-soft); color: var(--muted); border-radius: 6px; padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 13px; }
         .view-toggle button.on { color: var(--c-name); border-color: var(--accent); }
+        /* the assets list is one full-width column, not the multi-column account-card grid */
+        body.view-assets #cards { display: block; }
         .assets { display: flex; flex-direction: column; gap: 6px; }
+        :root { --asset-balw: 200px; --asset-valw: 150px; }
         .asset-row { border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
-        /* fixed, right-aligned number columns so amounts and values line up across every row and breakdown line */
-        .asset-head { display: grid; grid-template-columns: 1fr 175px 120px 18px; align-items: baseline; gap: 12px; padding: 10px 12px; cursor: pointer; }
+        /* header and breakdown lines share the SAME grid (incl. the arrow column) so numbers line up everywhere;
+           fixed right-aligned number columns keep amounts/values aligned across rows regardless of length */
+        .asset-head, .asset-part { display: grid; grid-template-columns: minmax(0, 1fr) var(--asset-balw) var(--asset-valw) 16px; align-items: baseline; gap: 12px; }
+        .asset-head { padding: 10px 12px; cursor: pointer; }
         .asset-head:hover { background: #141419; }
-        .asset-tick { color: var(--c-ticker); font-weight: 600; }
-        .asset-bal, .asset-val { text-align: right; }
+        .asset-tick { color: var(--c-ticker); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .asset-bal, .asset-val, .asset-part-bal, .asset-part-val { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .asset-bal { color: var(--c-name); }
         .asset-val { color: var(--c-total); }
         .asset-arrow { color: var(--muted); text-align: center; font-size: 11px; }
         .asset-thumbs { padding: 0 12px 10px; }
         .asset-parts { display: none; border-top: 1px solid var(--border-soft); background: #0c0c10; }
         .asset-row.open .asset-parts { display: block; }
-        .asset-part { display: grid; grid-template-columns: 1fr 175px 120px; gap: 12px; padding: 6px 30px 6px 24px; font-size: 12px; color: var(--muted); }
-        .asset-part-bal, .asset-part-val { text-align: right; }
+        .asset-part { padding: 6px 12px; font-size: 12px; color: var(--muted); }
+        .asset-part-acct { padding-left: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* indent the label only, so columns still align with the header */
         .asset-part-bal { color: var(--c-name); }
         .asset-part-val { color: var(--c-total); }
         .asset-part .expand { cursor: pointer; }
         .asset-part .expand:hover { color: var(--accent); }
+        @media (max-width: 560px) { :root { --asset-balw: 120px; --asset-valw: 96px; } .asset-head, .asset-part { gap: 8px; } }
         /* the tokens/NFTs display-mode filter applies to the assets view too */
         body.mode-nfts .asset-row.fungible { display: none; }
         body.mode-tokens .asset-row.nft { display: none; }
@@ -3535,7 +3541,7 @@
             cards.append(box);
         }
 
-        function fmtNum(n) { return n.toLocaleString('en-US', { maximumFractionDigits: 5 }); }
+        function fmtNum(n) { return n.toLocaleString('en-US', { maximumFractionDigits: n >= 1000 ? 2 : n >= 1 ? 4 : 6 }); }
 
         // one expandable asset row: header (ticker · total · value · ▾) + hidden per-account/chain breakdown
         function assetRow(kind, ticker, color, balText, valText, parts) {
@@ -3544,7 +3550,7 @@
             const tick = el('span', 'asset-tick', ticker); if (color) tick.style.color = color;
             head.append(tick);
             head.append(el('span', 'asset-bal number', balText));
-            if (valText) head.append(el('span', 'asset-val number', valText));
+            head.append(el('span', 'asset-val number', valText || '')); // always present so the arrow stays in the last column
             const arrow = el('span', 'asset-arrow', '▾');
             head.append(arrow);
             head.onclick = () => { const open = row.classList.toggle('open'); arrow.textContent = open ? '▴' : '▾'; };
@@ -3554,7 +3560,7 @@
                 const pr = el('div', 'asset-part');
                 pr.append(el('span', 'asset-part-acct', p.label));
                 pr.append(el('span', 'asset-part-bal number', p.bal));
-                if (valText && p.fiat) pr.append(el('span', 'asset-part-val number', p.fiat));
+                pr.append(el('span', 'asset-part-val number', p.fiat || ''));
                 body.append(pr);
             }
             row.append(body);
@@ -3569,7 +3575,7 @@
             const tick = el('span', 'asset-tick', g.collection.ticker); tick.style.color = tokenColor(g.collection.ticker);
             head.append(tick);
             head.append(el('span', 'asset-bal number', g.count + ' held'));
-            if (showFiat) head.append(el('span', 'asset-val', '')); // keep the value column so rows line up
+            head.append(el('span', 'asset-val', '')); // empty value column so the arrow stays in the last column
             const arrow = el('span', 'asset-arrow', '▾');
             head.append(arrow);
             head.onclick = () => { const open = row.classList.toggle('open'); arrow.textContent = open ? '▴' : '▾'; };
@@ -3592,7 +3598,7 @@
                 cnt.title = 'Show this account’s holdings';
                 cnt.onclick = () => openOwnedCollection(g.node, g.collection, p.entry.address);
                 pr.append(cnt);
-                if (showFiat) pr.append(el('span', 'asset-part-val', ''));
+                pr.append(el('span', 'asset-part-val', '')); // empty value column keeps counts aligned with the amount column
                 body.append(pr);
             }
             row.append(body);
@@ -4323,6 +4329,7 @@
             view = localStorage.getItem(VIEW_KEY) === 'assets' ? 'assets' : 'accounts';
             const applyView = () => {
                 for (const b of document.querySelectorAll('#viewToggle button')) b.classList.toggle('on', b.dataset.view === view);
+                document.body.classList.toggle('view-assets', view === 'assets'); // full-width assets list
                 renderCards();
                 recomputeTotals();
             };
