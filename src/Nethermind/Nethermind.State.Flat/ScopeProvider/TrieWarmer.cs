@@ -54,8 +54,10 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         _logger = logManager.GetClassLogger<TrieWarmer>();
 
         int configuredWorkerCount = flatDbConfig.TrieWarmerWorkerCount;
+        // 3/4 of logical cores is the measured optimum (16T EXPB sweep: 8/10/12/14 workers → 12 best,
+        // realblocks P90 −11%; beyond it warm workers start starving execution). Capped at 16 pending >16T data.
         int workerCount = configuredWorkerCount == -1
-            ? Math.Max(Environment.ProcessorCount / 2, 1)
+            ? Math.Min(Environment.ProcessorCount * 3 / 4, 16)
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
