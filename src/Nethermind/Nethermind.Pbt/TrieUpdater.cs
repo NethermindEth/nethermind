@@ -109,7 +109,10 @@ public static class TrieUpdater
             // position), and a boundary internal — the cached pointer to a child group — to its own slot.
             // Inner internals are recomputed or copied by the rebuild and are skipped. An empty group
             // reads as all-absent, seeding nothing. Each occupant stays where it already is, in this
-            // group's own encoding, under a lease of its own.
+            // group's own encoding, under a lease of its own. Iterating positions and pushing each to a
+            // slot (rather than each slot pulling its occupant leaf-then-parent) visits every stem once:
+            // a stem at an inner position routes to just the one slot its nibble selects, which a per-slot
+            // walk-up would rediscover from every slot the stem covers.
             RefList16<NodeResult> occupantBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> occupants = occupantBuffer.AsSpan();
             for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
