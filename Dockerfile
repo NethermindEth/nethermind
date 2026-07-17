@@ -33,6 +33,8 @@ WORKDIR /nethermind
 RUN apt-get update && apt-get install -y --no-install-recommends libmimalloc-dev && rm -rf /var/lib/apt/lists/*
 
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so
+ENV MIMALLOC_PURGE_DELAY=5000
+ENV MIMALLOC_EAGER_COMMIT=1
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
