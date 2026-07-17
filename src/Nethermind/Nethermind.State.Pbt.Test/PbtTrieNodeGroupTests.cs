@@ -49,7 +49,7 @@ public class PbtTrieNodeGroupTests
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         int length = Encode(slots, encoded);
-        Assert.That(length, Is.EqualTo(8 + 5 * 32 + 2 * 31));
+        Assert.That(length, Is.EqualTo(9 + 5 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
         PbtTrieNodeGroup.ValueSlot[] roundTripped = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
@@ -70,15 +70,19 @@ public class PbtTrieNodeGroupTests
         // an empty group encodes to nothing (the store's removal marker)
         Assert.That(new PbtTrieNodeGroup.Builder(encoded).Finish(), Is.EqualTo(0));
 
-        // validation: position bit 31, a stem bit without its presence bit, and a length that does
-        // not match the bitmaps are all rejected
+        // validation: an unknown format byte, position bit 31, a stem bit without its presence bit,
+        // and a length that does not match the bitmaps are all rejected
         byte[] valid = encoded[..length];
+        byte[] badFormat = (byte[])valid.Clone();
+        badFormat[0] = 0x02;
+        Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
+
         byte[] highBit = (byte[])valid.Clone();
-        highBit[3] |= 0x80;
+        highBit[4] |= 0x80;
         Assert.That(() => PbtTrieNodeGroup.Decode(highBit), Throws.TypeOf<InvalidDataException>());
 
         byte[] orphanStem = (byte[])valid.Clone();
-        orphanStem[4] |= 0x04; // stem bit for absent position 2
+        orphanStem[5] |= 0x04; // stem bit for absent position 2
         Assert.That(() => PbtTrieNodeGroup.Decode(orphanStem), Throws.TypeOf<InvalidDataException>());
 
         Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..^1)), Throws.TypeOf<InvalidDataException>());
