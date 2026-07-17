@@ -26,9 +26,16 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302-resolute@sha256:45401dde65ffc706a65841120ffdf827805eefe16852d6de1086a876c421de2e AS snmalloc-build
+RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ git ninja-build ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch 0.7.5 https://github.com/microsoft/snmalloc /snmalloc  && cmake -S /snmalloc -B /snmalloc/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSNMALLOC_BUILD_TESTING=OFF  && cmake --build /snmalloc/build --target snmallocshim
+
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67a7d26d901864866c235e7ea59966cdb8f0e680ed25ad9
 
 WORKDIR /nethermind
+
+ENV LD_PRELOAD=/nethermind/libsnmallocshim.so
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
@@ -38,5 +45,6 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 COPY scripts/entrypoint.sh .
+COPY --from=snmalloc-build /snmalloc/build/libsnmallocshim.so .
 
 ENTRYPOINT ["./entrypoint.sh"]
