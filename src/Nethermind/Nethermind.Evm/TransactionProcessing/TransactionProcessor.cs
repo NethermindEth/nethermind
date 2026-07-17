@@ -932,7 +932,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy standard = intrinsicGas.Standard;
-            TGasPolicy minimal = intrinsicGas.MinimalGas;
             TGasPolicy floorGas = intrinsicGas.FloorGas;
 
             ulong standardGasUsed = TGasPolicy.GetRemainingGas(in standard);
@@ -952,9 +951,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     $"{TxErrorMessages.GasBelowFloorDataCost}: have {tx.GasLimit}, want {floorGasUsed}");
             }
 
-            ulong minGasRequired = spec.IsEip8037Enabled
-                ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + (ulong)TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
-                : TGasPolicy.GetRemainingGas(in minimal);
+            ulong minGasRequired = intrinsicGas.MinRequiredGasLimit;
 
             return ValidateGas(tx, header, spec, in standard, minGasRequired, validate);
         }
