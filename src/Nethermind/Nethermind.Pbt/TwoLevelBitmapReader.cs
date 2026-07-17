@@ -15,8 +15,9 @@ namespace Nethermind.Pbt;
 /// The 256 leaves are split into <see cref="GroupCount"/> groups of 16. The first-level word marks
 /// which groups are occupied; each occupied group contributes one 2-byte sub-word — its 16 leaf bits
 /// copied verbatim (MSB-first) from the flat bitmap — in ascending group order. This compacts the
-/// clustered, mostly-sparse leaf occupancy from a flat 32-byte bitmap to <c>2·G + 2</c> bytes, and the
-/// trailing format byte makes the blob self-describing. Tree-structural queries stay in
+/// clustered, mostly-sparse leaf occupancy from a flat 32-byte bitmap to <c>2·G + 2</c> bytes. The
+/// trailing format byte versions the entries region that precedes this footer, which is what lets a
+/// legacy blob be read back rather than misparsed; the footer itself has never changed. Tree-structural queries stay in
 /// <see cref="StemLeafBlob"/> and run over the flat bitmap produced by <see cref="ExpandTo"/>.
 /// </remarks>
 internal readonly ref struct TwoLevelBitmapReader
@@ -25,7 +26,8 @@ internal readonly ref struct TwoLevelBitmapReader
     internal const int SubWordLength = 2;
     internal const int TopLength = 2;
     internal const int FormatLength = 1;
-    internal const byte FormatByte = 0x01;   // version sentinel, validated on decode
+    internal const byte LegacyFormatByte = 0x01;   // read-only: entries hold every live node
+    internal const byte FormatByte = 0x02;         // entries skip single-child internals
     internal const int BitmapLength = 32;    // flat expansion length
 
     private readonly ReadOnlySpan<byte> _subwords;   // 2·G bytes, ascending occupied-group order
@@ -37,11 +39,15 @@ internal readonly ref struct TwoLevelBitmapReader
         _top = top;
     }
 
+    /// <summary>Whether the non-empty <paramref name="blob"/> uses the legacy entry layout.</summary>
+    /// <remarks>The footer itself is identical across versions; only the entries region differs.</remarks>
+    public static bool IsLegacy(ReadOnlySpan<byte> blob) => blob[^1] == LegacyFormatByte;
+
     /// <summary>Parses the footer from the tail of a non-empty blob and yields the leading entries region.</summary>
-    /// <exception cref="InvalidDataException">The trailing format byte is not <see cref="FormatByte"/>.</exception>
+    /// <exception cref="InvalidDataException">The trailing format byte is neither <see cref="FormatByte"/> nor <see cref="LegacyFormatByte"/>.</exception>
     public static TwoLevelBitmapReader FromBlob(ReadOnlySpan<byte> blob, out ReadOnlySpan<byte> entries)
     {
-        if (blob[^1] != FormatByte)
+        if (blob[^1] is not (FormatByte or LegacyFormatByte))
             throw new InvalidDataException($"StemLeafBlob: unexpected format byte 0x{blob[^1]:x2}");
 
         ushort top = BinaryPrimitives.ReadUInt16LittleEndian(blob.Slice(blob.Length - TopLength - FormatLength, TopLength));
