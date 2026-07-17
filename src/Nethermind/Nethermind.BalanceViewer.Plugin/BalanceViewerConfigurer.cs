@@ -170,6 +170,10 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             context.Response.StatusCode = (int)resp.StatusCode;
             if (resp.Content.Headers.ContentType is not null)
                 context.Response.ContentType = resp.Content.Headers.ContentType.ToString();
+            // IPFS is content-addressed (the CID is the content hash), so a resolved response never changes —
+            // let the browser cache it permanently. Reopening art after a reload is then served from cache.
+            if (resp.IsSuccessStatusCode)
+                context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             await resp.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         }
         catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
