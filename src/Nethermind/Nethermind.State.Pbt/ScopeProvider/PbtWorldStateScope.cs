@@ -24,8 +24,6 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore
 {
     private readonly IPbtCommitTarget _commitTarget;
-    private readonly IPbtResourcePool _resourcePool;
-    private readonly PbtResourcePool.Usage _usage;
     private readonly bool _isReadOnly;
 
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
@@ -56,8 +54,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         _currentStateId = currentStateId;
         Bundle = bundle;
         _commitTarget = commitTarget;
-        _resourcePool = resourcePool;
-        _usage = usage;
         _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
         _rootHash = currentStateId.StateRoot.ToHash256();
@@ -143,8 +139,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
     }
 
     /// <remarks>
-    /// Returns the builder, whose reset hands back the stem-change maps no fold claimed: a scope
-    /// abandoned with pending writes — an exception mid-block, or a branch dropped before its final
+    /// Returning the builder hands back the stem-change maps no fold claimed: a scope abandoned with
+    /// pending writes — an exception mid-block, or a branch dropped before its final
     /// <see cref="UpdateRootHash"/> — would otherwise lose them to the GC rather than the pool.
     /// Idempotent, so a double dispose cannot return anything twice.
     /// </remarks>
@@ -154,13 +150,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         try
         {
-            // reset here rather than leaning on the pool doing it: the drain is the fix, not an
-            // incidental property of how the pool happens to recycle
-            _writeBatchBuilder.Reset();
+            _writeBatchBuilder.Dispose();
         }
         finally
         {
-            _resourcePool.ReturnWriteBatchBuilder(_usage, _writeBatchBuilder);
             Bundle.Dispose();
         }
     }
@@ -184,37 +177,36 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
             : !account.HasCode ? 0
             : PriorCodeSize(headerStem);
-        byte[][]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
+        byte[]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
 
-        Span<byte> basicData = stackalloc byte[32];
-        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
-        _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.BasicDataLeafKey, ToLeaf(basicData));
-        _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.CodeHashLeafKey, ToLeaf(account.CodeHash.Bytes));
+        // BASIC_DATA and CODE_HASH sit on adjacent sub-indices, so they go in as one run
+        Span<byte> basicDataAndCodeHash = stackalloc byte[2 * ValueHash256.MemorySize];
+        PbtKeyDerivation.PackBasicData(basicDataAndCodeHash[..ValueHash256.MemorySize], codeSize, account.Nonce, account.Balance);
+        account.CodeHash.Bytes.CopyTo(basicDataAndCodeHash[ValueHash256.MemorySize..]);
+        _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicDataAndCodeHash);
 
         if (chunks is null) return;
 
-        int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
-        for (int i = 0; i < headerChunks; i++)
-        {
-            _writeBatchBuilder.SetLeaf(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
-        }
+        int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+        int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
+        _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(0), ChunkRun(chunks, 0, headerChunks));
 
-        // overflow chunks (index 128+) live on their own content-addressed code-zone stems
-        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
+        // overflow chunks (index 128+) live on their own content-addressed code-zone stems, each
+        // holding a run of up to a full stem's worth before the next stem takes over
+        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            _writeBatchBuilder.SetLeaf(overflowStem, subIndex, ToLeaf(chunks[i]));
+            int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
+            _writeBatchBuilder.SetLeafRange(overflowStem, subIndex, ChunkRun(chunks, i, run));
+            i += run;
         }
     }
 
 
 
-    private static ValueHash256 ToLeaf(ReadOnlySpan<byte> value)
-    {
-        ValueHash256 leaf = default;
-        value.CopyTo(leaf.BytesAsSpan);
-        return leaf;
-    }
+    /// <summary>The <paramref name="count"/> chunks of <paramref name="chunks"/> starting at <paramref name="firstChunk"/>.</summary>
+    private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
+        chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
 
     private static ValueHash256 SlotLeaf(in EvmWord value) =>
         EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));

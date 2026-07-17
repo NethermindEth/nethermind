@@ -15,8 +15,8 @@ namespace Nethermind.State.Pbt;
 /// </summary>
 /// <remarks>
 /// Owned by one scope for its whole life. Unlike the layer content it never crosses the commit
-/// boundary — <see cref="DrainToWriteBatch"/> empties it at every fold and the scope returns it on
-/// disposal — so it belongs to the scope rather than to the bundle, which also keeps a bundle built
+/// boundary — <see cref="DrainToWriteBatch"/> empties it at every fold and <see cref="Dispose"/>
+/// returns it — so it belongs to the scope rather than to the bundle, which also keeps a bundle built
 /// only to read (an <c>eth_call</c> override reader) from renting one at all.
 /// <para>
 /// The outer map is concurrent because the parallel storage batches add stems from several threads,
@@ -28,7 +28,18 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 {
     private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
 
+    private IPbtResourcePool? _pool;
+    private PbtResourcePool.Usage _usage;
+
     public bool HasDirtyStems => !_dirtyStems.IsEmpty;
+
+    /// <summary>Records the pool <see cref="Dispose"/> returns this builder to.</summary>
+    /// <remarks>Called on every rent, since a returned builder has been detached.</remarks>
+    internal void RentedFrom(IPbtResourcePool pool, PbtResourcePool.Usage usage)
+    {
+        _pool = pool;
+        _usage = usage;
+    }
 
     /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
     /// <remarks>
@@ -44,6 +55,29 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     {
         IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
         _dirtyStems[stem] = changes.Set(subIndex, value);
+    }
+
+    /// <summary>
+    /// Folds a run of leaves — <paramref name="values"/> split into consecutive
+    /// <see cref="ValueHash256.MemorySize"/>-byte values — onto consecutive sub-indices of one stem,
+    /// starting at <paramref name="startSubIndex"/>.
+    /// </summary>
+    /// <remarks>
+    /// The batched <see cref="SetLeaf"/>: an account header writes BASIC_DATA and CODE_HASH together,
+    /// and a deployment writes up to a full stem of code chunks, so taking the change map once per run
+    /// rather than once per leaf is worth a method. Carries <see cref="SetLeaf"/>'s single-writer
+    /// requirement, and <paramref name="values"/> must fit the stem from
+    /// <paramref name="startSubIndex"/>.
+    /// </remarks>
+    public void SetLeafRange(in Stem stem, byte startSubIndex, ReadOnlySpan<byte> values)
+    {
+        IPbtStemChanges changes = _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
+        for (int i = 0; i < values.Length; i += ValueHash256.MemorySize)
+        {
+            changes = changes.Set((byte)(startSubIndex + i / ValueHash256.MemorySize), new ValueHash256(values.Slice(i, ValueHash256.MemorySize)));
+        }
+
+        _dirtyStems[stem] = changes;
     }
 
     /// <summary>Hands every dirtied stem to a fresh write batch, emptying this builder.</summary>
@@ -93,9 +127,11 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
         }
     }
 
-    /// <summary>Nothing to release beyond <see cref="Reset"/>, which the pool has already run.</summary>
-    /// <remarks>Present only so the pool can discard an instance it has no room to hold.</remarks>
-    public void Dispose()
-    {
-    }
+    /// <summary>Returns this builder to the pool it was rented from, which resets it on the way in.</summary>
+    /// <remarks>
+    /// Detaching before returning is what keeps this from recursing: the pool discards a builder it has
+    /// no room to hold by disposing it, and that lands back here with nothing left to return. It also
+    /// makes a double dispose — or a dispose of a builder that was never rented — a no-op.
+    /// </remarks>
+    public void Dispose() => Interlocked.Exchange(ref _pool, null)?.ReturnWriteBatchBuilder(_usage, this);
 }

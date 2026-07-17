@@ -16,8 +16,10 @@ public interface IPbtResourcePool
     void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
 
     /// <summary>Rents an empty builder for a scope's uncommitted per-block state.</summary>
+    /// <remarks>Disposing the builder returns it, so callers need not hold on to the pool.</remarks>
     PbtWriteBatchBuilder GetWriteBatchBuilder(PbtResourcePool.Usage usage);
 
     /// <inheritdoc cref="ReturnSnapshotContent"/>
+    /// <remarks>Called by <see cref="PbtWriteBatchBuilder.Dispose"/> rather than by whoever rented it.</remarks>
     void ReturnWriteBatchBuilder(PbtResourcePool.Usage usage, PbtWriteBatchBuilder builder);
 }

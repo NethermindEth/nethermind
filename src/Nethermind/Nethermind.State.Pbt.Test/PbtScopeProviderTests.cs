@@ -28,8 +28,9 @@ public class PbtScopeProviderTests
         await using PbtTestContext ctx = new();
         WorldState worldState = new(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
 
-        // > 128 chunks (3968 bytes) so overflow chunks land in the content-addressed code zone
-        byte[] bigCode = new byte[5000];
+        // > 128 + 256 chunks (11904 bytes) so the overflow chunks not only land in the
+        // content-addressed code zone but span more than one stem of it
+        byte[] bigCode = new byte[15000];
         for (int i = 0; i < bigCode.Length; i += 10)
         {
             bigCode[i] = 0x63; // PUSH4, to exercise the chunk PUSHDATA offsets

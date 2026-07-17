@@ -71,22 +71,22 @@ public class KeyDerivationTests
         // the EIP example: ... PUSH4 99 98 | 97 96 PUSH1 128 MSTORE — the second chunk starts
         // with 2 leading PUSHDATA bytes
         byte[] code = [.. new byte[28], 0x63, 99, 98, 97, 96, 0x60, 128, 0x52];
-        byte[][] chunks = PbtKeyDerivation.ChunkifyCode(code);
-        Assert.That(chunks, Has.Length.EqualTo(2));
-        Assert.That(chunks[0][0], Is.EqualTo(0));
-        Assert.That(chunks[0].AsSpan(1).SequenceEqual(code.AsSpan(0, 31)));
-        Assert.That(chunks[1][0], Is.EqualTo(2));
-        Assert.That(chunks[1].AsSpan(1, 5).SequenceEqual((byte[])[97, 96, 0x60, 128, 0x52]));
-        Assert.That(chunks[1].AsSpan(6).IsZero(), "padding must be zero");
+        byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
+        Assert.That(chunks, Has.Length.EqualTo(2 * PbtKeyDerivation.CodeChunkSize));
+        Assert.That(Chunk(chunks, 0)[0], Is.EqualTo(0));
+        Assert.That(Chunk(chunks, 0)[1..].SequenceEqual(code.AsSpan(0, 31)));
+        Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(2));
+        Assert.That(Chunk(chunks, 1).Slice(1, 5).SequenceEqual((byte[])[97, 96, 0x60, 128, 0x52]));
+        Assert.That(Chunk(chunks, 1)[6..].IsZero(), "padding must be zero");
 
         // PUSH32 data spanning a whole chunk is capped at 31, with the tail counted in the next chunk
         byte[] pushData = new byte[32];
         Array.Fill(pushData, (byte)0xAA);
         byte[] push32Code = [.. new byte[30], 0x7F, .. pushData];
         chunks = PbtKeyDerivation.ChunkifyCode(push32Code);
-        Assert.That(chunks, Has.Length.EqualTo(3));
-        Assert.That(chunks[1][0], Is.EqualTo(31), "a fully-PUSHDATA chunk is capped at 31");
-        Assert.That(chunks[2][0], Is.EqualTo(1), "one PUSHDATA byte remains in the last chunk");
+        Assert.That(chunks, Has.Length.EqualTo(3 * PbtKeyDerivation.CodeChunkSize));
+        Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(31), "a fully-PUSHDATA chunk is capped at 31");
+        Assert.That(Chunk(chunks, 2)[0], Is.EqualTo(1), "one PUSHDATA byte remains in the last chunk");
     }
 
     [Test]
@@ -98,6 +98,9 @@ public class KeyDerivationTests
 
         Assert.That(packed.ToHexString(), Is.EqualTo("00000000aabbccdd010203040506070899887766554433221100ffeeddccbbaa"));
     }
+
+    private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>
+        chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
 
     private static byte[] Address32(Address address) => [.. new byte[12], .. address.Bytes];
 
