@@ -325,7 +325,7 @@
             padding: 16px;
         }
 
-        .lightbox img, .lightbox video {
+        .lightbox-panel img, .lightbox-panel video {
             max-width: min(80vw, 480px);
             max-height: 58vh;
             border: 1px solid var(--border);
@@ -341,6 +341,8 @@
         .collection-grid { overflow-y: auto; padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 16px; }
         .collection-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: #0a0a0a; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
         .collection-cell img { width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; cursor: pointer; }
+        .collection-info { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-family: 'DM Mono', ui-monospace, monospace; color: var(--muted); }
+        .collection-info .collection-fact { color: var(--c-name); }
         .collection-cell .more.number { font-size: 11px; }
 
         .lightbox-noart {
@@ -1833,95 +1835,86 @@
 
         // On-chain facts for an NFT collection, opened from a Watch-bar chip (which isn't tied to one
         // account, so no per-holder detail): token standard, total supply, contract, chain.
-        async function openCollectionInfo(node, collection) {
-            const overlay = el('div', 'lightbox');
-            const panel = el('div', 'lightbox-panel');
-            const info = el('div', 'lightbox-info');
-
-            info.append(el('div', 'lightbox-title', collection.ticker || collection.name));
-            if (collection.name && collection.name !== collection.ticker) info.append(el('div', 'lightbox-sub', collection.name));
-
-            const facts = el('div', 'token-facts');
-            info.append(facts);
-            const standardEl = el('div', 'token-fact-v', '…');
-            facts.append(el('div', 'token-fact-k', 'Standard'));
-            facts.append(standardEl);
-            const supplyEl = el('div', 'token-fact-v', '…');
-            facts.append(el('div', 'token-fact-k', 'Total supply'));
-            facts.append(supplyEl);
-
-            const meta = el('div', 'lightbox-meta');
-            const copy = el('span', 'lightbox-copy', collection.address.slice(0, 6) + '…' + collection.address.slice(-4));
-            copy.title = 'Copy contract address';
-            copy.onclick = () => copyAddress(collection.address);
-            meta.append(copy);
-            meta.append(el('span', 'art-source', node.meta.name));
-            info.append(meta);
-
-            panel.append(info);
-            overlay.append(panel);
-            overlay.onclick = () => overlay.remove();
-            panel.onclick = (e) => e.stopPropagation();
-            const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
-            document.addEventListener('keydown', onKey);
-            document.body.append(overlay);
-
-            try {
-                const kind = await detectKind(node, collection);
-                standardEl.textContent = kind === 'erc1155' ? 'ERC-1155' : kind === 'none' ? '—' : 'ERC-721';
-                let supply = '—';
-                try {
-                    const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
-                    if (supplyHex && supplyHex !== '0x') supply = BigInt(supplyHex).toLocaleString('en-US');
-                } catch { /* many collections don't implement totalSupply() — leave as — */ }
-                supplyEl.textContent = supply;
-            } catch {
-                standardEl.textContent = '—';
-                supplyEl.textContent = '—';
-            }
-        }
-
-        // makes a clickable NFT thumbnail element (image, or a #id placeholder), opening the item lightbox
-        function thumbEl(thumb, collection, node) {
+        // makes a clickable NFT thumbnail element (image, or a #id placeholder). Card previews pass an
+        // onClick that opens the collection lightbox; grid cells omit it and open the single-item lightbox.
+        function thumbEl(thumb, collection, node, onClick) {
+            const handler = onClick || (() => openArt(thumb, collection, node));
             if (thumb && thumb.src) {
                 const img = el('img');
                 img.src = thumb.src;
-                img.title = (thumb.title || '') + ' (click for details)';
-                img.onclick = () => openArt(thumb, collection, node);
+                img.title = (thumb.title || '') + (onClick ? ' (click to open collection)' : ' (click for details)');
+                img.onclick = handler;
                 return img;
             }
             const span = el('span', 'more number', thumb ? thumb.title : '…');
-            if (thumb) { span.title = 'Details'; span.onclick = () => openArt(thumb, collection, node); }
+            if (thumb || onClick) { span.title = onClick ? 'Open collection' : 'Details'; span.onclick = handler; }
             return span;
         }
 
-        // inline preview: the first few thumbnails plus a "view all N" link opening the scrollable collection
+        // inline preview: the first few thumbnails plus a "view all N" link — both open the collection
         // lightbox (the full set lazy-loads there, so a big collection never renders a huge inline grid)
         function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
-            for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node));
+            const open = () => openCollection(node, collection, cached);
+            for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node, open));
             const total = cached.count ?? cached.ids?.length ?? cached.thumbs.length;
             if (total > MAX_NFT_THUMBS) {
                 const more = el('span', 'more expand', 'view all ' + total);
                 more.title = 'Open the full collection';
-                more.onclick = () => openCollection(node, owner, collection, cached);
+                more.onclick = open;
                 box.append(more);
             }
             if (cached.loading) box.append(el('span', 'more', 'loading…'));
         }
 
-        // scrollable lightbox of every NFT in a collection; each cell's art lazy-loads as it scrolls into view
-        function openCollection(node, owner, collection, cached) {
+        // Merge every pinned owner's discovered ids for a collection into one cache-shaped object, so the
+        // collection lightbox opened from a Watch chip (not tied to one account) shows all held items.
+        function collectionCacheFor(node, collection) {
+            const colKey = collection.address.toLowerCase();
+            const byId = new Map();
+            let kind = null, loading = false, found = false;
+            for (const owner of mergedAddresses()) {
+                const c = nftCache.get(owner.address + '|' + node.chainId + '|' + colKey);
+                if (!c) continue;
+                found = true;
+                kind = kind ?? c.kind;
+                loading = loading || !!c.loading;
+                (c.ids || []).forEach((id, i) => {
+                    const key = String(id);
+                    const existing = byId.get(key);
+                    const thumb = (c.thumbs || [])[i];
+                    if (!existing || (!existing.src && thumb && thumb.src)) byId.set(key, thumb || { id, src: null, title: '#' + id });
+                });
+            }
+            if (!found) return null;
+            const ids = [...byId.keys()];
+            return { ids, thumbs: ids.map((k) => byId.get(k)), count: ids.length, kind, loading };
+        }
+
+        // scrollable lightbox of every NFT in a collection (info header + lazy-loaded grid). Each cell's art
+        // loads as it nears the viewport; a generous rootMargin buffers ahead so cells fill before you reach them.
+        function openCollection(node, collection, cached) {
             const ids = cached.ids || [];
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'collection-panel');
+
             const head = el('div', 'collection-head');
             head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + (cached.count ?? ids.length)));
             const x = el('button', 'settings-x', '×');
             x.onclick = () => close();
             head.append(x);
             panel.append(head);
+
+            // info strip: token standard, total supply, contract, chain (filled in asynchronously below)
+            const infoStrip = el('div', 'collection-info');
+            const standardEl = el('span', 'collection-fact', '…');
+            const supplyEl = el('span', 'collection-fact', '');
+            const copy = el('span', 'lightbox-copy', collection.address.slice(0, 6) + '…' + collection.address.slice(-4));
+            copy.title = 'Copy contract address';
+            copy.onclick = () => copyAddress(collection.address);
+            infoStrip.append(standardEl, supplyEl, copy, el('span', 'art-source', node.meta.name));
+            panel.append(infoStrip);
 
             const grid = el('div', 'collection-grid');
             const cells = ids.map((_, i) => {
@@ -1949,11 +1942,21 @@
                     }
                 }
             };
+            // rootMargin 800px preloads roughly a screenful ahead, so spaced-out cells are filled before scrolled to
             const io = new IntersectionObserver((entries) => {
                 for (const e of entries) if (e.isIntersecting) { pending.add(Number(e.target.dataset.idx)); io.unobserve(e.target); }
-                if (pending.size && !timer) timer = setTimeout(flush, 80);
-            }, { root: grid, rootMargin: '300px' });
+                if (pending.size && !timer) timer = setTimeout(flush, 60);
+            }, { root: grid, rootMargin: '800px' });
             for (const cell of cells) if (!(cached.thumbs[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+
+            (async () => {
+                try {
+                    const kind = await detectKind(node, collection);
+                    standardEl.textContent = kind === 'erc1155' ? 'ERC-1155' : kind === 'none' ? '' : 'ERC-721';
+                    const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
+                    if (supplyHex && supplyHex !== '0x') supplyEl.textContent = BigInt(supplyHex).toLocaleString('en-US') + ' total';
+                } catch { /* standard/supply are best-effort */ }
+            })();
 
             const onKey = (e) => { if (e.key === 'Escape') close(); };
             function close() { io.disconnect(); overlay.remove(); document.removeEventListener('keydown', onKey); }
@@ -2739,12 +2742,14 @@
                 const chip = el('span', (isNft ? 'chip nft' : 'chip') + (isAuto ? ' auto' : ''));
                 const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
-                // Both chips open an info lightbox (which offers copy-address): token info for ERC-20s,
-                // collection info for NFTs.
-                ticker.onclick = isNft ? () => openCollectionInfo(node, item) : () => openTokenInfo(node, item, null);
+                // Both chips open a lightbox (which offers copy-address): the token info lightbox for ERC-20s,
+                // the collection lightbox (info + scrollable grid of held items) for NFTs.
+                ticker.onclick = isNft
+                    ? () => openCollection(node, item, collectionCacheFor(node, item) || { ids: [], thumbs: [], count: 0 })
+                    : () => openTokenInfo(node, item, null);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
-                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? ' (click for collection info)' : ` · ${item.decimals} decimals (click for token info)`);
+                chip.title = `${item.name || item.ticker} · ${node.meta.name} · ${item.address}` + (isNft ? ' (click to open collection)' : ` · ${item.decimals} decimals (click for token info)`);
                 const x = el('span', 'x', '×');
                 x.onclick = () => {
                     if (isAuto) { hideDetected(node, item, isNft); return; }
