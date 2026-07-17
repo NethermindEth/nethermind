@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -12,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -32,6 +34,8 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip8141ScenarioTests
 {
+    private const ulong BlockTimestamp = 1_000_000;
+
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
@@ -79,6 +83,39 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
+    // Spec Example 1b: a DEFAULT deploy frame installs the smart-account code at the sender address
+    // (CREATE2 through a factory) before the VERIFY frame runs against that freshly deployed code.
+    [Test]
+    public void DeployFrame_InstallsSenderCodeBeforeVerify()
+    {
+        Address factory = TestItem.AddressE;
+        byte[] runtimeCode = ApproveCode(TxFrame.ApproveExecutionAndPayment);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address smartSender = ContractAddress.From(factory, salt, initCode);
+
+        DeployContract(factory, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(smartSender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(smartSender, nonce: 0,
+            new TxFrame(TxFrame.ModeDefault, 0, factory, gasLimit: 500_000, UInt256.Zero, default),
+            SelfVerifyFrame(),
+            SenderFrame(Recipient, value: 1_000));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        Assert.That(_stateProvider.GetCode(smartSender), Is.EqualTo(runtimeCode),
+            "the deploy frame must install the smart-account code at the sender address");
+        Assert.That(receipt.Payer, Is.EqualTo(smartSender));
+        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+        Assert.That(_stateProvider.GetNonce(smartSender), Is.EqualTo(2UL),
+            "contract creation sets the account nonce to 1 and payment approval increments it");
+    }
+
     // Spec Example 3 core: the payer is a sponsor contract, not the sender — sender approves
     // execution only, the sponsor's VERIFY frame approves payment, and the receipt reports it.
     [Test]
@@ -104,48 +141,95 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sponsor), Is.Zero);
     }
 
-    // Spec Behavior, atomic batch: a failing frame unwinds the whole batch and skips the rest of it;
-    // a fully successful batch commits. Payment approval precedes the batch and survives either way.
+    // Spec Example 2: atomic approve+swap — an ERC-20-style approval frame batched with a swap
+    // frame. If the swap reverts, the approval (state and its log) must not survive: the classic
+    // dangling-approval hazard the atomic batch exists to prevent.
     [TestCase(true)]
     [TestCase(false)]
-    public void AtomicBatch_RollsBackOnFailureAndCommitsOnSuccess(bool batchFails)
+    public void AtomicApproveAndSwap_NoDanglingApprovalWhenSwapReverts(bool swapReverts)
     {
-        Address writer = TestItem.AddressE;
-        Address reverter = TestItem.AddressF;
+        Address token = TestItem.AddressE;
+        Address dex = TestItem.AddressF;
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
-        DeployContract(writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(reverter, batchFails
+        // "approve": record the allowance in slot 0 and emit an Approval-style log.
+        DeployContract(token, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .Log(0, 0)
+            .Op(Instruction.STOP).Done);
+        DeployContract(dex, swapReverts
             ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
-            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+            : Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
-            SenderFrame(writer, flags: TxFrame.AtomicBatchFlag),
-            SenderFrame(reverter, flags: TxFrame.AtomicBatchFlag),
-            SenderFrame(Recipient));
+            SenderFrame(token, flags: TxFrame.AtomicBatchFlag),
+            SenderFrame(dex));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        byte[] expectedStatuses = batchFails
-            ? [TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSkipped]
-            : [TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess];
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(expectedStatuses),
-            batchFails ? "an executed frame keeps its receipt even though its state is unwound; the rest of the batch is skipped" : null);
-        AssertStorage(writer, 0, batchFails ? UInt256.Zero : UInt256.One,
-            batchFails ? "the batch write must be rolled back" : "the committed batch write must persist");
-        if (batchFails)
-        {
-            Assert.That(receipt.FrameReceipts![3].GasUsed, Is.Zero, "skipped frames consume no gas");
-        }
+        byte[] expectedStatuses = swapReverts
+            ? [TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure]
+            : [TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess];
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(expectedStatuses));
+        AssertStorage(token, 0, swapReverts ? UInt256.Zero : UInt256.One,
+            swapReverts ? "the approval must be rolled back with the batch — no dangling allowance" : "the committed approval must persist");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
             "payment approval precedes the batch and survives its outcome");
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+
+        if (swapReverts)
+        {
+            // EIP8141-ISSUE: on batch rollback the approval log is dropped from the receipt's log
+            // union (and so from the bloom), but the per-frame receipt keeps it — the spec does not
+            // say which representation a rolled-back frame's logs should have, and the two diverge.
+            Assert.That(receipt.Logs, Is.Empty, "rolled-back batch logs must not reach the receipt log union");
+            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
+                "the per-frame receipt currently keeps the rolled-back frame's log");
+        }
+        else
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "the committed approval log lands in the receipt");
+        }
+    }
+
+    // Spec Expiry Verifier Frame: a VERIFY frame targeting EXPIRY_VERIFIER whose 8-byte big-endian
+    // calldata is the expiry timestamp; the call reverts unless block.timestamp <= expiry, and a
+    // reverted VERIFY invalidates the whole transaction.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ExpiryVerifierFrame_GatesTransactionOnBlockTimestamp(bool expired)
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, ExpiryVerifierCode());
+
+        ulong expiry = expired ? BlockTimestamp - 1 : BlockTimestamp + 1;
+        byte[] expiryData = new byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(expiryData, expiry);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 100_000, UInt256.Zero, expiryData),
+            SelfVerifyFrame(),
+            SenderFrame(Recipient, value: 1_000));
+
+        if (expired)
+        {
+            TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.False, "a reverting expiry VERIFY frame invalidates the transaction");
+        }
+        else
+        {
+            TxReceipt receipt = ProcessBlock(tx)[0];
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+        }
     }
 
     // A block mixing a regular transaction with a frame transaction: cumulative gas chains across
     // the type boundary and the frame-aware receipts root computes.
+    // EXPECTED RED until the pending EIP-2780 gas fix lands on master: any regular transaction
+    // currently burns its full gas limit and fails under 2780, which this test surfaces on purpose.
     [Test]
-    [Ignore("Any regular transaction fails with full-gas consumption under EIP-2780 on master (pending gas fix); un-ignore when it lands")]
     public void MixedBlock_LegacyAndFrameTx_CumulativeGasChainsAndReceiptsRootComputes()
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
@@ -197,10 +281,7 @@ public class Eip8141ScenarioTests
 
     private TxReceipt[] ProcessBlock(params Transaction[] transactions)
     {
-        Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
-            .WithTransactions(transactions)
-            .WithGasLimit(30_000_000).TestObject;
+        Block block = BuildBlock(transactions);
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
@@ -214,6 +295,13 @@ public class Eip8141ScenarioTests
         receiptsTracer.EndBlockTrace();
         return receiptsTracer.TxReceipts.ToArray();
     }
+
+    private static Block BuildBlock(params Transaction[] transactions) =>
+        Build.A.Block.WithNumber(1)
+            .WithTimestamp(BlockTimestamp)
+            .WithBaseFeePerGas(0)
+            .WithTransactions(transactions)
+            .WithGasLimit(30_000_000).TestObject;
 
     private void DeployContract(Address address, byte[] code, UInt256 balance = default)
     {
@@ -234,6 +322,25 @@ public class Eip8141ScenarioTests
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    // Reads the 8-byte big-endian expiry from calldata and reverts when block.timestamp exceeds it —
+    // the reference behavior of the EXPIRY_VERIFIER predeploy.
+    private static byte[] ExpiryVerifierCode() =>
+        [
+            0x60, 0x00, // PUSH1 0
+            0x35,       // CALLDATALOAD
+            0x60, 0xC0, // PUSH1 192
+            0x1C,       // SHR -> expiry
+            0x42,       // TIMESTAMP
+            0x11,       // GT -> timestamp > expiry
+            0x60, 0x0C, // PUSH1 12 (revert dest)
+            0x57,       // JUMPI
+            0x00,       // STOP
+            0x5B,       // JUMPDEST @12
+            0x60, 0x00, // PUSH1 0
+            0x60, 0x00, // PUSH1 0
+            0xFD,       // REVERT
+        ];
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
