@@ -139,7 +139,7 @@ public class PbtNodeChainTests
     private static byte[] EncodeGroup()
     {
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
-        PbtTrieNodeGroup.Builder builder = new(encoded);
+        PbtTrieNodeGroup.Builder builder = new(encoded, PbtGroupFormat.EveryLevel);
         builder.AppendInternal(PbtTrieNodeGroup.RootPosition, TargetHash);
         return encoded[..builder.Finish(Stats)];
     }
