@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Nethermind.Core;
@@ -75,6 +77,19 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
         IPbtPersistence.IWriteBatch writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
         int pending = 0;
         long accounts = 0, slots = 0;
+        Address lastAddress = Address.Zero;
+
+        // Accounts stream in ascending address order, so the current address's position in the key
+        // space is the completion fraction (addresses are ~uniform, so the top 64 bits estimate it well)
+        // — the same trick FlatTrieVerifier uses off the trie path. CurrentValue is that position out of
+        // ulong.MaxValue.
+        ProgressLogger progress = new("PBT rebuild", logManager);
+        progress.SetFormat(p =>
+        {
+            float percentage = Math.Clamp(p.CurrentValue / (float)ulong.MaxValue, 0, 1);
+            return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | {accounts,13:N0} accounts | {slots,15:N0} slots | at {lastAddress}";
+        });
+        progress.Reset(0, ulong.MaxValue);
 
         try
         {
@@ -84,6 +99,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
                 {
                     AddAccount(entry.Address, entry.Account!, entry.Code, window, writeBatch);
                     accounts++;
+                    lastAddress = entry.Address;
                 }
                 else
                 {
@@ -96,7 +112,8 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
                     currentRoot = FlushAndCommit(writeBatch, currentRoot, window);
                     writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
                     pending = 0;
-                    if (_logger.IsInfo) _logger.Info($"PBT rebuild progress: {accounts} accounts, {slots} slots, at {entry.Address}");
+                    progress.Update(BinaryPrimitives.ReadUInt64BigEndian(lastAddress.Bytes));
+                    progress.LogProgress();
                 }
             }
 
