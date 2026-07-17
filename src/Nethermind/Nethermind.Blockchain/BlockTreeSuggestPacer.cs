@@ -13,6 +13,7 @@ namespace Nethermind.Blockchain;
 /// </summary>
 public class BlockTreeSuggestPacer : IDisposable
 {
+    private readonly Lock _lock = new();
     private TaskCompletionSource? _dbBatchProcessed;
     private TaskCompletionSource? _pausedSignal;
     private ulong _blockNumberReachedToUnlock = 0;
@@ -35,9 +36,13 @@ public class BlockTreeSuggestPacer : IDisposable
     /// </summary>
     public Task WaitForPausedAsync(CancellationToken token = default)
     {
-        if (_dbBatchProcessed is not null) return Task.CompletedTask;
-        TaskCompletionSource signal = LazyInitializer.EnsureInitialized(
-            ref _pausedSignal, () => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))!;
+        TaskCompletionSource signal;
+        lock (_lock)
+        {
+            if (_dbBatchProcessed is not null) return Task.CompletedTask;
+            signal = _pausedSignal ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
         return token.CanBeCanceled
             ? signal.Task.WaitAsync(token)
             : signal.Task;
@@ -45,33 +50,47 @@ public class BlockTreeSuggestPacer : IDisposable
 
     private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
     {
-        TaskCompletionSource? completionSource = _dbBatchProcessed;
-        if (completionSource is null) return;
-        if (e.Block.Number < _blockNumberReachedToUnlock) return;
+        TaskCompletionSource? completionSource;
+        lock (_lock)
+        {
+            completionSource = _dbBatchProcessed;
+            if (completionSource is null || e.Block.Number < _blockNumberReachedToUnlock) return;
 
-        _dbBatchProcessed = null;
-        completionSource.SetResult();
+            _dbBatchProcessed = null;
+        }
+
+        completionSource.TrySetResult();
     }
 
     public async Task WaitForQueue(ulong currentBlockNumber, CancellationToken token)
     {
         ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
+        TaskCompletionSource? pauseSignal = null;
+        TaskCompletionSource? completionSource;
+
         // Head can transiently overtake the suggestion (parallel-import advance, post-FCU); wrap would pause indefinitely.
-        if (currentBlockNumber > currentHeadNumber
-            && currentBlockNumber - currentHeadNumber > _stopBatchSize
-            && _dbBatchProcessed is null)
+        lock (_lock)
         {
-            _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
-            TaskCompletionSource completionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _dbBatchProcessed = completionSource;
-            Interlocked.Exchange(ref _pausedSignal, null)?.TrySetResult();
+            if (currentBlockNumber > currentHeadNumber
+                && currentBlockNumber - currentHeadNumber > _stopBatchSize
+                && _dbBatchProcessed is null)
+            {
+                _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
+                _dbBatchProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                pauseSignal = _pausedSignal;
+                _pausedSignal = null;
+            }
+
+            completionSource = _dbBatchProcessed;
         }
 
-        if (_dbBatchProcessed is not null)
+        pauseSignal?.TrySetResult();
+
+        if (completionSource is not null)
         {
-            await using (token.Register(() => _dbBatchProcessed.TrySetCanceled()))
+            await using (token.Register(() => completionSource.TrySetCanceled()))
             {
-                await _dbBatchProcessed.Task;
+                await completionSource.Task;
             }
         }
     }

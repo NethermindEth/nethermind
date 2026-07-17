@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -31,6 +32,25 @@ public class BlockTreeSuggestPacerTests
         using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
 
         Assert.That(pacer.WaitForQueue(11, default).IsCompleted, Is.False);
+    }
+
+    [Test]
+    public async Task WaitForPausedAsync_WillCompleteWhenPacerStopsSuggesting()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
+        using CancellationTokenSource waitCts = new(TimeSpan.FromSeconds(5));
+        using CancellationTokenSource queueCts = new();
+
+        Task pausedTask = pacer.WaitForPausedAsync();
+        Task queueTask = pacer.WaitForQueue(11, queueCts.Token);
+
+        await pausedTask.WaitAsync(waitCts.Token);
+        Assert.That(queueTask.IsCompleted, Is.False);
+
+        queueCts.Cancel();
+        Assert.That(async () => await queueTask, Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
