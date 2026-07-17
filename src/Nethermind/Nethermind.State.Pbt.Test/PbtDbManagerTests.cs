@@ -156,9 +156,11 @@ public class PbtDbManagerTests
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 5;
         ctx.Coordinator.CheckPersistence();
 
-        // segments persisted up to the last CompactSize boundary at or below the finalized block
-        Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(5, roots[5])));
-        Assert.That(ctx.Repository.Count, Is.EqualTo(0));
+        // Segments persisted up to the last schedule boundary at or below the finalized block. With
+        // CompactSize 2 and no offset those are the even blocks, so block 5 is finalized but not yet
+        // on a boundary and its layer stays in memory.
+        Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
+        Assert.That(ctx.Repository.Count, Is.EqualTo(1));
 
         // the open scope keeps serving through its leased layers
         Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)500));

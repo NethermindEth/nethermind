@@ -27,6 +27,8 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new();
     public IPbtResourcePool ResourcePool { get; }
+    public IDb MetadataDb { get; } = new MemDb();
+    public PbtCompactionSchedule Schedule { get; }
     public PbtRocksDbPersistence Persistence { get; }
     public PbtPersistenceCoordinator Coordinator { get; }
     public PbtDbManager Manager { get; }
@@ -39,7 +41,8 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Config = config ?? new PbtConfig();
         Persistence = new PbtRocksDbPersistence(Db);
         ResourcePool = new PbtResourcePool(Config);
-        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, new PbtSnapshotCompactor(ResourcePool), NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);
+        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, new PbtSnapshotCompactor(ResourcePool), Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, new TestProcessExitSource(_cts), LimboLogs.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool), CodeDb);

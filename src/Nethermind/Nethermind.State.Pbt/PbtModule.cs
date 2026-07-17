@@ -39,6 +39,7 @@ public class PbtModule(IPbtConfig config) : Module
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
+            .AddSingleton<PbtCompactionSchedule>()
             .AddSingleton<PbtPersistenceCoordinator>()
             .AddSingleton<IPbtDbManager, PbtDbManager>()
             .AddSingleton<PbtStateReader>()
