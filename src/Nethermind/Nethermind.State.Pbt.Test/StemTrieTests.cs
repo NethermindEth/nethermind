@@ -508,6 +508,48 @@ public class StemTrieTests
 
     private static TestCaseData TinyFixture(string name, byte[] secondBytes) => new TestCaseData((object)secondBytes).SetArgDisplayNames(name);
 
+    /// <summary>
+    /// A rewrite in a group whose every position is present: the fifteen untouched boundary slots leave
+    /// whole subtrees of it unchanged, which the fold copies verbatim out of the stored encoding rather
+    /// than rebuilding node by node. The copy must be indistinguishable from that rebuild, which a
+    /// from-scratch fold of the same stems is what pins.
+    /// </summary>
+    [Test]
+    public void RewriteInADenseGroup_CopiesCleanSubtreesIdenticallyToAFreshFold()
+    {
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] rewritten = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        // one stem per boundary slot of the depth-4 group: they share the depth-0 nibble and differ in
+        // the depth-4 one, so that group branches sixteen ways rather than collapsing or nesting
+        List<(byte[] Key, byte[]? Value)> writes = [];
+        for (byte slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++) writes.Add(([.. MakeStem(slot, 0), 5], value));
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance);
+        harness.ApplyBatch(writes);
+
+        PbtTrieNodeGroup dense = PbtTrieNodeGroup.Decode(harness.Nodes[TrieNodeKey.Root.ChildGroup(0)]);
+        Assert.That(
+            CountPresentPositions(dense), Is.EqualTo(PbtTrieNodeGroup.PositionCount),
+            "the setup must really fill the group, or nothing here is clean enough to be copied");
+
+        writes[3] = (writes[3].Key, rewritten);
+        harness.ApplyBatch([writes[3]]);
+
+        AssertStoreMatchesFreshRebuild(harness, writes);
+    }
+
+    private static int CountPresentPositions(PbtTrieNodeGroup group)
+    {
+        int present = 0;
+        for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
+        {
+            if (group.KindAt(position) != PbtTrieNodeGroup.NodeKind.Absent) present++;
+        }
+
+        return present;
+    }
+
     /// <summary><paramref name="count"/> distinct stems that all share <paramref name="firstByte"/>, so they diverge only below depth 8.</summary>
     private static byte[][] OneFirstByte(byte firstByte, int count)
     {
