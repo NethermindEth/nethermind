@@ -24,7 +24,7 @@ namespace Nethermind.State.Pbt;
 /// single-writer.
 /// </para>
 /// </remarks>
-public sealed class PbtTransientResource : IDisposable, IResettable
+public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
 {
     private readonly ConcurrentDictionary<Stem, IPbtStemChanges> _dirtyStems = new();
 
@@ -33,7 +33,7 @@ public sealed class PbtTransientResource : IDisposable, IResettable
     /// <summary>Folds one leaf write into its stem's pooled change map.</summary>
     /// <remarks>
     /// <see cref="IPbtStemChanges.Set"/> may promote the map to a larger variant and return the old
-    /// one to the pool, so its result must always be stored back; routing single-leaf writes through
+    /// one to the pool, so its result must always be stored back; routing every leaf write through
     /// here makes forgetting that unrepresentable. Safe only while at most one thread writes a given
     /// stem: <see cref="ConcurrentDictionary{TKey,TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> may
     /// run the factory and discard its result, which would leak the rented map. That holds because
@@ -46,20 +46,7 @@ public sealed class PbtTransientResource : IDisposable, IResettable
         _dirtyStems[stem] = changes.Set(subIndex, value);
     }
 
-    /// <summary>Takes the change map for <paramref name="stem"/>, renting one if the stem is not dirty yet.</summary>
-    /// <remarks>
-    /// The batched counterpart of <see cref="SetLeaf"/>, for a caller folding several leaves onto one
-    /// stem: it accumulates on the returned reference and must hand the result back through
-    /// <see cref="StoreStemChanges"/> — in a <c>finally</c> — because a promotion returns the old map
-    /// to the pool, and leaving it here would give one pooled map two owners. Prefer
-    /// <see cref="SetLeaf"/> wherever a single leaf is written; it cannot be misused this way.
-    /// </remarks>
-    public IPbtStemChanges RentStemChanges(in Stem stem) => _dirtyStems.GetOrAdd(stem, static _ => PbtStemChanges.Rent());
-
-    /// <inheritdoc cref="RentStemChanges"/>
-    public void StoreStemChanges(in Stem stem, IPbtStemChanges changes) => _dirtyStems[stem] = changes;
-
-    /// <summary>Hands every dirtied stem to a fresh write batch, emptying this resource.</summary>
+    /// <summary>Hands every dirtied stem to a fresh write batch, emptying this builder.</summary>
     /// <remarks>
     /// Ownership of the maps passes to the batch, which returns them to the pool when disposed, so
     /// the clear is adjacent to the drain and unconditional: leaving a transferred map here as well
@@ -85,11 +72,11 @@ public sealed class PbtTransientResource : IDisposable, IResettable
         return batch;
     }
 
-    /// <summary>Returns every map still held — those a fold never claimed — and empties the resource.</summary>
+    /// <summary>Returns every map still held — those a fold never claimed — and empties the builder.</summary>
     /// <remarks>
     /// Only maps <see cref="DrainToWriteBatch"/> did not already transfer are here, which is what
     /// makes this safe to call after any number of folds. The lock-free clear is sound because a
-    /// scope returns its resource only once its parallel storage batches have been joined.
+    /// scope returns its builder only once its parallel storage batches have been joined.
     /// </remarks>
     public void Reset()
     {
