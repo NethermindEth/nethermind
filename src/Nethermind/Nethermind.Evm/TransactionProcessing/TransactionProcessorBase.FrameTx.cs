@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,9 +23,8 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// enforcing the payer gate, charging spec gas, and producing per-frame receipts.
 /// https://eips.ethereum.org/EIPS/eip-8141
 ///
-/// Remaining slices (marked EIP8141 where stubbed): EIP-3529-style refund netting inside frames
-/// (deliberately deferred — the spec is silent and the accounting is proposed upstream), shared
-/// warm/cold journal.
+/// Remaining slice (marked EIP8141 where stubbed): EIP-3529-style refund netting inside frames
+/// (deliberately deferred — the spec is silent and the accounting is proposed upstream).
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
@@ -87,11 +87,27 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         List<LogEntry> allLogs = [];
         ulong totalFrameGasUsed = 0;
 
+        // EIP-2929 warm/cold journal shared across frames (spec: Cross-frame interactions).
+        // Frame targets are warmed per frame; the sender and coinbase once per transaction, like
+        // origin/coinbase on a regular transaction. EIP8141: whether ENTRY_POINT-as-caller should
+        // be warm is unspecified — left cold.
+        using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+        if (spec.UseHotAndColdStorage)
+        {
+            if (spec.AddCoinbaseToTxAccessList)
+            {
+                accessTracker.WarmUp(header.GasBeneficiary!);
+            }
+
+            accessTracker.WarmUp(sender);
+        }
+
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
         // and j does not. On any failure inside the run, state rolls back to before the run began
         // and the remaining frames are skipped (spec: Behavior, atomic batch).
         bool inBatch = false;
         Snapshot batchStartSnapshot = default;
+        StackAccessTracker batchTracker = default;
         int batchStartLogCount = 0;
 
         for (int i = 0; i < frames.Length; i++)
@@ -104,6 +120,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 inBatch = true;
                 batchStartSnapshot = WorldState.TakeSnapshot();
+                batchTracker = accessTracker;
+                batchTracker.TakeSnapshot();
                 batchStartLogCount = allLogs.Count;
             }
 
@@ -126,7 +144,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
 
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, spec, tracer, out ulong frameGasUsed);
+            // The shared journal accumulates logs across frames; this frame's own logs start here.
+            int frameLogStart = accessTracker.Logs.Count;
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
             totalFrameGasUsed += frameGasUsed;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
@@ -135,7 +155,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.MarkFrameSucceeded(i);
             }
 
-            LogEntry[] frameLogs = frameSucceeded && substate.Logs.Count != 0 ? substate.LogsToArray() : [];
+            LogEntry[] frameLogs = frameSucceeded && accessTracker.Logs.Count > frameLogStart
+                ? accessTracker.Logs.Skip(frameLogStart).ToArray()
+                : [];
             frameReceipts[i] = new TxFrameReceipt(
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
                 frameGasUsed,
@@ -174,6 +196,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // batches of SENDER/DEFAULT operation frames only; earlier frames keep their
                     // recorded receipts while their state and logs are rolled back.
                     WorldState.Restore(batchStartSnapshot);
+                    batchTracker.Restore();
                     allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
 
                     int terminal = i;
@@ -292,7 +315,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return (ulong)zeros + (ulong)(data.Length - zeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
     {
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
@@ -328,16 +351,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.SubtractFromBalance(caller, in value, spec);
         }
 
-        // EIP8141: a fresh tracker per frame resets EIP-2929 warm/cold state, but the spec shares
-        // the warm/cold journal across frames (with per-frame revert of touches) — restructure
-        // together with the gas-accounting refinement.
-        StackAccessTracker accessTracker = new();
+        // Shared journal: snapshot before warming the frame's target so a reverting frame also
+        // reverts its warm/cold touches (spec: "If a frame reverts, warm / cold status reverts to
+        // the state before the frame").
+        StackAccessTracker frameTracker = accessTracker;
+        frameTracker.TakeSnapshot();
+        if (spec.UseHotAndColdStorage)
+        {
+            frameTracker.WarmUp(resolvedTarget);
+        }
 
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
             TGasPolicy.FromULong(frame.GasLimit),
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
-            in accessTracker,
+            in frameTracker,
             in snapshot);
 
         TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
@@ -348,6 +376,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (substate.ShouldRevert || substate.IsError)
         {
             WorldState.Restore(snapshot);
+            frameTracker.Restore();
         }
 
         return substate;

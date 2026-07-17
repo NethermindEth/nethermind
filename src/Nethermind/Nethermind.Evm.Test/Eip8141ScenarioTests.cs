@@ -259,6 +259,62 @@ public class Eip8141ScenarioTests
         }
     }
 
+    // Spec Cross-frame interactions: the EIP-2929 warm/cold journal is shared across frames — a
+    // slot touched by one frame is warm for the next.
+    [Test]
+    public void WarmColdJournal_SharedAcrossFrames_SecondTouchIsWarm()
+    {
+        Address reader = TestItem.AddressE;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(reader, Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(reader),
+            SenderFrame(reader),
+            SenderFrame(reader));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.LessThan(receipt.FrameReceipts[1].GasUsed),
+            "the slot touched by the previous frame must be warm");
+        Assert.That(receipt.FrameReceipts[3].GasUsed, Is.EqualTo(receipt.FrameReceipts[2].GasUsed),
+            "warm cost must be stable across further frames");
+    }
+
+    // Spec Cross-frame interactions: "If a frame reverts, warm / cold status reverts to the state
+    // before the frame" — a reverted frame's touches must not warm later frames.
+    [Test]
+    public void WarmColdJournal_RevertedFrameTouchesAreReverted()
+    {
+        Address probed = TestItem.AddressF;
+        Address toucherThatReverts = TestItem.AddressE;
+        Address prober = TestItem.AddressD;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(toucherThatReverts, Prepare.EvmCode
+            .PushData(probed).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(prober, Prepare.EvmCode
+            .PushData(probed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(toucherThatReverts),
+            SenderFrame(prober),
+            SenderFrame(prober));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+        }));
+        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.GreaterThan(receipt.FrameReceipts[3].GasUsed),
+            "the first probe must pay cold access — the reverted frame's touch was rolled back");
+    }
+
     // A block mixing a regular transaction with a frame transaction: cumulative gas chains across
     // the type boundary and the frame-aware receipts root computes.
     // EXPECTED RED until the pending EIP-2780 gas fix lands on master: any regular transaction
