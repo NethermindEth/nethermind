@@ -204,6 +204,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     for (int s = i + 1; s <= terminal && s < frames.Length; s++)
                     {
                         frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []);
+                        frameContext.MarkFrameSkipped(s);
                     }
 
                     i = terminal;
@@ -406,11 +407,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
             }
 
+            // The expected signature index depends on the frame's scope: execution (or both) reads
+            // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
+            // (ethereum/EIPs#11954).
+            int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
             TxFrameSignature[] signatures = frameContext.Signatures;
-            if (signatures.Length == 0
-                || signatures[0].Scheme != TxFrameSignature.SchemeSecp256k1
-                || !signatures[0].Msg.IsEmpty
-                || frameContext.ResolvedSigner(0) != resolvedTarget)
+            if (signatures.Length <= sigIndex
+                || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
+                || !signatures[sigIndex].Msg.IsEmpty
+                || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
             {
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
             }

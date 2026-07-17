@@ -183,7 +183,9 @@ public static unsafe partial class EvmInstructions
     {
         // Reading the status of the current or a future frame is an exceptional halt.
         if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
-        return stack.PushUInt32<TTracingInst>((uint)(ctx.HasFrameSucceeded(index) ? 1 : 0));
+        // 0 failure, 1 success, 2 skipped by a failed atomic batch (ethereum/EIPs#11953).
+        uint status = ctx.WasFrameSkipped(index) ? 2u : ctx.HasFrameSucceeded(index) ? 1u : 0u;
+        return stack.PushUInt32<TTracingInst>(status);
     }
 
     /// <summary>SIGPARAM (0xb4): read a signature-scoped field, or copy ARBITRARY signature bytes.</summary>

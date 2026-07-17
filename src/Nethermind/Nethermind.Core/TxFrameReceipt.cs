@@ -13,7 +13,7 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
     public const byte StatusSuccess = 1;
 
     /// <summary>Frames skipped by a failed atomic batch.</summary>
-    public const byte StatusSkipped = 3;
+    public const byte StatusSkipped = 2;
 
     public byte Status { get; } = status;
     public ulong GasUsed { get; } = gasUsed;

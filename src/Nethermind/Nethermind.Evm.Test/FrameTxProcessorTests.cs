@@ -475,6 +475,41 @@ public class FrameTxProcessorTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
+    [Test]
+    public void Execute_CodelessEoaSponsor_ReadsPaymentSignatureAtIndexOne()
+    {
+        // ethereum/EIPs#11954: a payment-only verifier reads the default-code signature at index 1,
+        // so a codeless EOA can sponsor a transaction whose sender approved execution at index 0.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        Address sponsor = TestItem.AddressB;
+        _stateProvider.CreateAccount(sponsor, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(mode: TxFrame.ModeSender, target: Recipient));
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+        ];
+        Ecdsa ecdsa = new();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures[1] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, vrs);
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor pays the gas");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+    }
+
     private TransactionResult Process(Transaction tx)
     {
         Block block = Build.A.Block.WithNumber(1)

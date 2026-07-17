@@ -41,6 +41,7 @@ public sealed class FrameTxContext(
 
     /// <summary>Per-frame success bits (MAX_FRAMES is 64), populated as frames finish.</summary>
     private ulong _frameSucceededBits;
+    private ulong _frameSkippedBits;
 
     /// <summary>EVM code only runs while some frame executes, so completed means strictly earlier.</summary>
     public bool IsFrameCompleted(int frameIndex) => frameIndex < CurrentFrameIndex;
@@ -48,6 +49,11 @@ public sealed class FrameTxContext(
     public bool HasFrameSucceeded(int frameIndex) => (_frameSucceededBits & (1UL << frameIndex)) != 0;
 
     public void MarkFrameSucceeded(int frameIndex) => _frameSucceededBits |= 1UL << frameIndex;
+
+    public bool WasFrameSkipped(int frameIndex) => (_frameSkippedBits & (1UL << frameIndex)) != 0;
+
+    public void MarkFrameSkipped(int frameIndex) => _frameSkippedBits |= 1UL << frameIndex;
+
 
     public bool SenderApproved { get; set; }
     public Address? Payer { get; set; }
