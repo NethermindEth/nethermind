@@ -809,7 +809,7 @@ public static class TrieUpdater
         /// <remarks>
         /// Mirrors the fold's walk on the masks alone — no hashing, no reads — so the group's encoding
         /// can be sized before its buffer is rented, as <see cref="StemLeafBlob.RebuildState"/> sizes a
-        /// leaf blob from its live-node counts. This is well-defined because a node's kind follows from
+        /// leaf blob from its stored-node counts. This is well-defined because a node's kind follows from
         /// <see cref="KindOf"/> over its range, which needs only the boundary masks. It must prune where
         /// the fold prunes, which is what sharing <see cref="IsCleanRange"/> keeps it doing: a range
         /// copied verbatim keeps the shape it already had.
