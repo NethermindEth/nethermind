@@ -2086,6 +2086,7 @@
                 ownedCount: c.count ?? total,
                 ownerAddr,
                 kind: c.kind,
+                eager: true, // a held set is bounded — prefetch all its art so scrolling is instant
                 pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)),
                 loadPage: (p) => {
                     const s = p * COLLECTION_PAGE_SIZE, e = Math.min(s + COLLECTION_PAGE_SIZE, total);
@@ -2255,8 +2256,24 @@
                     grid.append(cell); return cell;
                 });
                 curCells = cells; curThumbs = thumbsRef;
-                io = makeIO(ids, thumbsRef);
-                for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell); else cell.classList.remove('loading-cell');
+                for (const cell of cells) if ((thumbsRef[Number(cell.dataset.idx)] || {}).src) cell.classList.remove('loading-cell');
+                if (opts.eager) {
+                    // owned view (bounded set): prefetch ALL art top-to-bottom so scrolling is instant
+                    (async () => {
+                        for (let k = 0; k < cells.length; k += NFT_GRID_CHUNK) {
+                            if (abort.signal.aborted) return;
+                            const chunk = cells.slice(k, k + NFT_GRID_CHUNK).filter((c) => !(thumbsRef[Number(c.dataset.idx)] || {}).src);
+                            if (!chunk.length) continue;
+                            let loaded;
+                            try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind, abort.signal); } catch { continue; }
+                            if (abort.signal.aborted) return;
+                            for (let j = 0; j < chunk.length; j++) { chunk[j].dataset.loaded = '1'; chunk[j].classList.remove('loading-cell'); thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j]; chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr)); }
+                        }
+                    })();
+                } else {
+                    io = makeIO(ids, thumbsRef);
+                    for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+                }
                 grid.scrollTop = 0;
             }
 
@@ -2286,13 +2303,16 @@
                     titleEl.textContent = (collection.name || collection.ticker) + ' · ' + opts.titleSuffix;
                 }
                 buildControls();
-                try {
-                    const kind = opts.kind || await detectKind(node, collection);
-                    standardEl.textContent = kind === 'erc1155' ? 'ERC-1155' : kind === 'none' ? '' : 'ERC-721';
-                    const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
-                    if (supplyHex && supplyHex !== '0x') supplyEl.textContent = BigInt(supplyHex).toLocaleString('en-US') + ' total';
-                } catch { /* standard/supply are best-effort */ }
-                go(0);
+                go(0); // render tiles immediately — do NOT block on the info-strip RPCs below
+                // fill the info strip (standard + total supply) in the background
+                (async () => {
+                    try {
+                        const kind = opts.kind || await detectKind(node, collection);
+                        standardEl.textContent = kind === 'erc1155' ? 'ERC-1155' : kind === 'none' ? '' : 'ERC-721';
+                        const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
+                        if (supplyHex && supplyHex !== '0x') supplyEl.textContent = BigInt(supplyHex).toLocaleString('en-US') + ' total';
+                    } catch { /* standard/supply are best-effort */ }
+                })();
             })();
         }
 
