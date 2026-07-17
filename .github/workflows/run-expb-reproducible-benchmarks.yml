@@ -747,6 +747,62 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Start allocator pressure sampler
+        id: pressure-sampler
+        continue-on-error: true
+        shell: bash
+        env:
+          PRESSURE_SAMPLE_INTERVAL: "5"
+        run: |
+          set -uo pipefail
+          sampler="${RUNNER_TEMP}/pressure-sampler.sh"
+          csv="${RUNNER_TEMP}/pressure-samples.csv"
+          stopfile="${RUNNER_TEMP}/pressure-sampler.stop"
+          pkill -f "${sampler}" 2>/dev/null || true
+          rm -f "${csv}" "${stopfile}" || true
+          cat > "${sampler}" <<'PSAMPLER_EOF'
+          #!/usr/bin/env bash
+          # epoch,anon_bytes,mem_current,mem_psi_some_avg10,mem_psi_full_avg10,cpu_psi_some_avg10,cpu_usage_usec,nr_throttled
+          set -uo pipefail
+          CSV="$1"; STOPFILE="$2"; INTERVAL="${PRESSURE_SAMPLE_INTERVAL:-5}"; IMAGE="${NETHERMIND_IMAGE:-}"
+          discover() {
+            local id=""
+            [[ -n "${IMAGE}" ]] && id="$(docker ps --filter "ancestor=${IMAGE}" --format '{{.ID}}' 2>/dev/null | head -n1)"
+            [[ -z "${id}" ]] && id="$(docker ps --format '{{.ID}}|{{.Image}}' 2>/dev/null | awk -F'|' 'tolower($2) ~ /nethermind/ { print $1; exit }')"
+            printf '%s' "${id}"
+          }
+          psi_avg10() { awk -v k="$2" '$1 == k { for (i=2;i<=NF;i++) if ($i ~ /^avg10=/) { sub(/^avg10=/,"",$i); print $i; exit } }' "$1" 2>/dev/null; }
+          stat_val() { awk -v k="$2" '$1 == k { print $2; exit }' "$1" 2>/dev/null; }
+          start="$(date +%s)"; base=""
+          echo "epoch,anon,mem_current,mem_some10,mem_full10,cpu_some10,cpu_usage_usec,nr_throttled" > "${CSV}"
+          while true; do
+            [[ -e "${STOPFILE}" ]] && exit 0
+            (( $(date +%s) - start > 28800 )) && exit 0
+            if [[ -z "${base}" || ! -r "${base}/memory.stat" ]]; then
+              cid="$(discover)"
+              base=""
+              if [[ -n "${cid}" ]]; then
+                fid="$(docker inspect -f '{{.Id}}' "${cid}" 2>/dev/null)"
+                for b in "/sys/fs/cgroup/system.slice/docker-${fid}.scope" "/sys/fs/cgroup/docker/${fid}"; do
+                  [[ -r "${b}/memory.stat" ]] && base="${b}" && break
+                done
+              fi
+            fi
+            if [[ -n "${base}" ]]; then
+              anon="$(stat_val "${base}/memory.stat" anon)"
+              cur="$(cat "${base}/memory.current" 2>/dev/null)"
+              ms="$(psi_avg10 "${base}/memory.pressure" some)"; mf="$(psi_avg10 "${base}/memory.pressure" full)"
+              cs="$(psi_avg10 "${base}/cpu.pressure" some)"
+              cu="$(stat_val "${base}/cpu.stat" usage_usec)"; nt="$(stat_val "${base}/cpu.stat" nr_throttled)"
+              echo "$(date +%s),${anon:-},${cur:-},${ms:-},${mf:-},${cs:-},${cu:-},${nt:-}" >> "${CSV}"
+            fi
+            sleep "${INTERVAL}"
+          done
+          PSAMPLER_EOF
+          chmod +x "${sampler}" || true
+          nohup bash "${sampler}" "${csv}" "${stopfile}" > "${RUNNER_TEMP}/pressure-sampler.out" 2>&1 &
+          echo "Pressure sampler started for image '${NETHERMIND_IMAGE:-?}'."
+
       - name: Run expb scenarios
         id: run-expb
         continue-on-error: true
@@ -832,6 +888,43 @@ jobs:
           wait "${tee_pid}"
 
           exit "${expb_exit_code}"
+
+      - name: Stop pressure sampler and report
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          csv="${RUNNER_TEMP}/pressure-samples.csv"
+          touch "${RUNNER_TEMP}/pressure-sampler.stop"; sleep 6
+          pkill -f "${RUNNER_TEMP}/pressure-sampler.sh" 2>/dev/null || true
+          if [[ ! -s "${csv}" ]]; then echo "No pressure samples collected." >> "${GITHUB_STEP_SUMMARY}"; exit 0; fi
+          awk -F, 'NR>1 && $2 != "" {
+            n++; anon=$2; if (anon>panon) panon=anon; sanon+=anon
+            if ($3>pcur) pcur=$3
+            if ($4>pms) pms=$4; sms+=$4
+            if ($6>pcs) pcs=$6; scs+=$6
+            lastcu=$7; if (mincu==0 || $7<mincu) mincu=$7
+            lastnt=$8
+          } END {
+            if (n==0) { print "no usable samples"; exit }
+            printf "### Allocator pressure summary (n=%d samples)\n", n
+            printf "- anon RSS: peak %.2f GB, mean %.2f GB\n", panon/1e9, (sanon/n)/1e9
+            printf "- memory.current peak: %.2f GB\n", pcur/1e9
+            printf "- memory PSI some avg10: peak %.2f, mean %.3f\n", pms, sms/n
+            printf "- cpu PSI some avg10: peak %.2f, mean %.3f\n", pcs, scs/n
+            printf "- cpu usage total: %.0f s; nr_throttled(last)=%s\n", (lastcu-mincu)/1e6, lastnt
+          }' "${csv}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "pressure summary appended"
+
+      - name: Upload pressure samples
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: pressure-samples-${{ github.run_id }}-run${{ matrix.run }}-${{ matrix.payload_set }}
+          path: ${{ runner.temp }}/pressure-samples.csv
+          if-no-files-found: ignore
 
       - name: Analyze benchmark output
         id: analyze
