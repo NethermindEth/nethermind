@@ -150,10 +150,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
     }
 
-    public void WaitForIngestCompactionHeadroom()
+    public void WaitForIngestCompactionHeadroom(CancellationToken cancellationToken)
     {
         for (int i = 0; i < L0DrainMaxPolls; i++)
         {
+            if (cancellationToken.IsCancellationRequested) return;
             string? v = _rocksDb.GetProperty("rocksdb.num-files-at-level0", _columnFamily);
             if (!int.TryParse(v, out int l0Files) || l0Files < MaxL0FilesBeforeThrottle) return;
             Thread.Sleep(L0DrainPollMs);

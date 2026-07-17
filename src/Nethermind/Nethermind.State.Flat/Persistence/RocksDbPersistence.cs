@@ -29,6 +29,11 @@ public class RocksDbPersistence : IPersistence
     // Gates new reader snapshots out of the ingest commit window (per-CF ingests + pointer write), which is
     // not a single RocksDB sequence number the way a normal WriteBatch commit is.
     private readonly ReaderWriterLockSlim _ingestGate = new();
+    private readonly string? _stagingDir;
+
+    // Total budget for post-commit L0 backpressure across all ingest columns, so a graceful shutdown is not held
+    // for minutes when compaction is behind.
+    private static readonly TimeSpan IngestBackpressureBudget = TimeSpan.FromSeconds(30);
 
     public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null)
     {
@@ -39,10 +44,15 @@ public class RocksDbPersistence : IPersistence
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), _logger);
         _useSstIngestion = config?.PersistViaSstIngestion ?? false;
 
-        // Startup recovery is an explicit step gated on the flag: with SST ingestion disabled a node must neither
-        // roll a stale marker forward nor dir-scan the staging directory, so the short-circuit skips it entirely.
-        // When enabled, RecoverInterruptedIngest also reports whether the store supports ingestion at all.
-        _storeSupportsIngest = _useSstIngestion && RecoverInterruptedIngest(db, logManager);
+        // A pending ingest marker means a previous run crashed between the first ingest and the pointer advance;
+        // it must be rolled forward (and any orphaned staging files swept) whenever the store supports ingestion,
+        // regardless of whether SST ingestion is enabled *now* - otherwise a restart with the flag back off leaves
+        // the ingested columns live while the pointer stays behind, i.e. a torn flat base. Recovery therefore runs
+        // unconditionally; the flag only gates whether new persists take the ingest write path.
+        _storeSupportsIngest = RecoverInterruptedIngest(db, logManager);
+        _stagingDir = _storeSupportsIngest
+            ? ((ISstIngestible)db.GetColumnDb(FlatDbColumns.Account)).IngestStagingDir
+            : null;
     }
 
     public void Flush() => _db.Flush();
@@ -173,16 +183,36 @@ public class RocksDbPersistence : IPersistence
             _ingestGate.EnterWriteLock();
             try
             {
-                foreach (ISstIngestWriteBatch batch in batches)
+                bool completedInline = false;
+                try
                 {
-                    batch.IngestStagedFiles();
-                    columnsIngested++;
+                    foreach (ISstIngestWriteBatch batch in batches)
+                    {
+                        batch.IngestStagedFiles();
+                        columnsIngested++;
+                    }
+                }
+                catch when (columnsIngested > 0)
+                {
+                    // A later column ingest threw after an earlier one already went live: the flat base is now torn
+                    // (some columns at `to`, the pointer and the rest at `from`). Complete the commit inline, still
+                    // holding the write lock, so no snapshot ever observes that torn base - roll the durable marker
+                    // forward exactly as startup recovery does (re-ingest the staged files the failed and remaining
+                    // columns still have, then advance the pointer). If this itself throws, the outer catch keeps the
+                    // marker and files for the next persist or startup to finish; the pointer just never advances over
+                    // a torn base for live reads.
+                    if (BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)) is not { } pending) throw;
+                    RollForwardPendingIngest(_db, _stagingDir!, pending, _logger);
+                    completedInline = true;
                 }
 
-                using IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch();
-                IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
-                BasePersistence.SetCurrentState(metadata, to);
-                BasePersistence.ClearIngestMarker(metadata);
+                if (!completedInline)
+                {
+                    using IColumnsWriteBatch<FlatDbColumns> pointerBatch = _db.StartWriteBatch();
+                    IWriteBatch metadata = pointerBatch.GetColumnBatch(FlatDbColumns.Metadata);
+                    BasePersistence.SetCurrentState(metadata, to);
+                    BasePersistence.ClearIngestMarker(metadata);
+                }
             }
             finally
             {
@@ -216,8 +246,12 @@ public class RocksDbPersistence : IPersistence
         // best-effort: a throw must not surface a committed persist as a failure to the caller.
         try
         {
+            // Best-effort L0 backpressure, bounded as a whole: without a single deadline six columns each polling
+            // up to the per-column cap could hold a graceful shutdown for minutes. The state is already durable, so
+            // a shared budget just trades a little compaction headroom for a bounded stop.
+            using CancellationTokenSource backpressure = new(IngestBackpressureBudget);
             foreach (FlatDbColumns column in IngestColumns)
-                ((ISstIngestible)_db.GetColumnDb(column)).WaitForIngestCompactionHeadroom();
+                ((ISstIngestible)_db.GetColumnDb(column)).WaitForIngestCompactionHeadroom(backpressure.Token);
         }
         catch (Exception e)
         {
