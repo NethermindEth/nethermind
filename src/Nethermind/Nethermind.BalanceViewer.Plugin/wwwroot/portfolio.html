@@ -918,6 +918,7 @@
         const SEL_FEED_DECIMALS_REG = '0x58e2d3a8'; // decimals(address,address)
         const SEL_SUPPORTS_INTERFACE = '0x01ffc9a7'; // supportsInterface(bytes4)
         const SEL_TOKEN_OF_OWNER = '0x2f745c59';   // tokenOfOwnerByIndex(address,uint256)
+        const SEL_TOKEN_BY_INDEX = '0x4f6ccce7';   // tokenByIndex(uint256) — ERC-721 Enumerable, lists the whole collection
         const SEL_TOKEN_URI = '0xc87b56dd';        // tokenURI(uint256)
         const SEL_OWNER_OF = '0x6352211e';         // ownerOf(uint256)
         const SEL_ERC1155_BALANCE = '0x00fdd58e';  // balanceOf(address,uint256)
@@ -942,6 +943,7 @@
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
+        const FULL_COLLECTION_CAP = 1000;          // most ids enumerated for a whole-collection view (safety bound)
         const NFT_ART_CHUNK = 12;                  // ids per art request (also the collection view's lazy-load batch)
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
@@ -1857,7 +1859,7 @@
         function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
-            const open = () => openCollection(node, collection, cached);
+            const open = () => openOwnedCollection(node, collection, owner, cached);
             for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node, open));
             const total = cached.count ?? cached.ids?.length ?? cached.thumbs.length;
             if (total > MAX_NFT_THUMBS) {
@@ -1873,7 +1875,7 @@
         // collection lightbox opened from a Watch chip (not tied to one account) shows all held items.
         function collectionCacheFor(node, collection) {
             const colKey = collection.address.toLowerCase();
-            const byId = new Map();
+            const byId = new Map(); // string key (dedup) -> { id: original (BigInt), thumb }
             let kind = null, loading = false, found = false;
             for (const owner of mergedAddresses()) {
                 const c = nftCache.get(owner.address + '|' + node.chainId + '|' + colKey);
@@ -1885,23 +1887,66 @@
                     const key = String(id);
                     const existing = byId.get(key);
                     const thumb = (c.thumbs || [])[i];
-                    if (!existing || (!existing.src && thumb && thumb.src)) byId.set(key, thumb || { id, src: null, title: '#' + id });
+                    if (!existing || (!existing.thumb?.src && thumb && thumb.src)) byId.set(key, { id, thumb: thumb || { id, src: null, title: '#' + id } });
                 });
             }
             if (!found) return null;
-            const ids = [...byId.keys()];
-            return { ids, thumbs: ids.map((k) => byId.get(k)), count: ids.length, kind, loading };
+            const entries = [...byId.values()]; // preserve original BigInt ids so art fetch (id.toString(16)) is correct
+            return { ids: entries.map((e) => e.id), thumbs: entries.map((e) => e.thumb), count: entries.length, kind, loading };
+        }
+
+        // best synchronous label for an owner address: its resolved ENS name if known, else short address
+        function ownerDisplay(address) {
+            return reverseCache.get(address.toLowerCase()) || (address.slice(0, 6) + '…' + address.slice(-4));
+        }
+
+        // one account's holdings in a collection — title makes the "owned by" scope explicit
+        function openOwnedCollection(node, collection, ownerAddr, cached) {
+            const c = cached || nftCache.get(ownerAddr + '|' + node.chainId + '|' + collection.address.toLowerCase()) || { ids: [], thumbs: [], count: 0 };
+            openCollection(node, collection, c, ownerDisplay(ownerAddr));
+        }
+
+        // the whole collection (every minted token), enumerated on-chain. Only ERC-721 Enumerable exposes
+        // tokenByIndex; other kinds can't be listed in full, so fall back to the merged held-items view.
+        async function openFullCollection(node, collection) {
+            const kind = await detectKind(node, collection);
+            if (kind !== 'enum721') {
+                const merged = collectionCacheFor(node, collection) || { ids: [], thumbs: [], count: 0 };
+                openCollection(node, collection, merged, 'held items · full collection not listable');
+                return;
+            }
+            let total = 0;
+            try {
+                const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
+                if (supplyHex && supplyHex !== '0x') total = Number(BigInt(supplyHex));
+            } catch { /* no totalSupply — fall through with total 0 */ }
+            const n = Math.min(total, FULL_COLLECTION_CAP);
+            // enumerate in chunks so a large collection doesn't produce one oversized JSON-RPC batch
+            const ids = [];
+            for (let start = 0; start < n; start += NFT_ID_CAP) {
+                const calls = [];
+                for (let i = start; i < Math.min(start + NFT_ID_CAP, n); i++) {
+                    calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_BY_INDEX + pad32(i.toString(16)) }, 'latest']]);
+                }
+                try {
+                    // keep ids as BigInt (fetchThumbsForIds does id.toString(16); a decimal string would be
+                    // taken verbatim as hex, mislabelling every id >= 10)
+                    for (const r of await rpcBatch(calls, node.rpcPath)) { try { ids.push(BigInt(r)); } catch { /* skip unparseable */ } }
+                } catch { break; /* stop enumerating on RPC failure; show what we have */ }
+            }
+            const cached = { ids, thumbs: ids.map((id) => ({ id, src: null, title: '#' + id })), count: total, kind };
+            openCollection(node, collection, cached, total > ids.length ? `${ids.length} of ${total}` : String(total));
         }
 
         // scrollable lightbox of every NFT in a collection (info header + lazy-loaded grid). Each cell's art
         // loads as it nears the viewport; a generous rootMargin buffers ahead so cells fill before you reach them.
-        function openCollection(node, collection, cached) {
+        function openCollection(node, collection, cached, titleSuffix) {
             const ids = cached.ids || [];
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'collection-panel');
 
             const head = el('div', 'collection-head');
-            head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + (cached.count ?? ids.length)));
+            head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + (titleSuffix ?? (cached.count ?? ids.length))));
             const x = el('button', 'settings-x', '×');
             x.onclick = () => close();
             head.append(x);
@@ -1927,25 +1972,29 @@
             });
             panel.append(grid);
 
+            // Lazy-load each cell's art as it nears the viewport. `pending` holds the cell ELEMENTS (not
+            // indices): each cell's art is fetched by its own data-token-id and written back to that same
+            // element, so out-of-order intersection callbacks and concurrent flushes can never mislabel a cell.
             const pending = new Set();
             let timer = null;
             const flush = async () => {
                 timer = null;
-                const idxs = [...pending].filter((i) => !(cached.thumbs[i] && cached.thumbs[i].src));
+                const group = [...pending].filter((cell) => !cell.dataset.loaded);
                 pending.clear();
-                for (let k = 0; k < idxs.length; k += NFT_ART_CHUNK) {
-                    const batch = idxs.slice(k, k + NFT_ART_CHUNK);
+                for (let k = 0; k < group.length; k += NFT_ART_CHUNK) {
+                    const chunk = group.slice(k, k + NFT_ART_CHUNK);
                     let thumbs;
-                    try { thumbs = await fetchThumbsForIds(node, collection, batch.map((i) => ids[i]), cached.kind); } catch { continue; }
-                    for (let j = 0; j < batch.length; j++) {
-                        cached.thumbs[batch[j]] = thumbs[j];
-                        cells[batch[j]].replaceChildren(thumbEl(thumbs[j], collection, node));
+                    try { thumbs = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), cached.kind); } catch { continue; }
+                    for (let j = 0; j < chunk.length; j++) {
+                        chunk[j].dataset.loaded = '1';
+                        cached.thumbs[Number(chunk[j].dataset.idx)] = thumbs[j];
+                        chunk[j].replaceChildren(thumbEl(thumbs[j], collection, node));
                     }
                 }
             };
             // rootMargin 800px preloads roughly a screenful ahead, so spaced-out cells are filled before scrolled to
             const io = new IntersectionObserver((entries) => {
-                for (const e of entries) if (e.isIntersecting) { pending.add(Number(e.target.dataset.idx)); io.unobserve(e.target); }
+                for (const e of entries) if (e.isIntersecting) { pending.add(e.target); io.unobserve(e.target); }
                 if (pending.size && !timer) timer = setTimeout(flush, 60);
             }, { root: grid, rootMargin: '800px' });
             for (const cell of cells) if (!(cached.thumbs[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
@@ -2744,9 +2793,9 @@
                 const ticker = tickerLabel(item.ticker, node);
                 ticker.style.setProperty('--tcol', tokenColor(item.ticker));
                 // Both chips open a lightbox (which offers copy-address): the token info lightbox for ERC-20s,
-                // the collection lightbox (info + scrollable grid of held items) for NFTs.
+                // the full-collection lightbox for NFTs (the Watch bar isn't tied to one account).
                 ticker.onclick = isNft
-                    ? () => openCollection(node, item, collectionCacheFor(node, item) || { ids: [], thumbs: [], count: 0 })
+                    ? () => openFullCollection(node, item)
                     : () => openTokenInfo(node, item, null);
                 chip.append(ticker);
                 if (isNft) chip.append(el('span', 'kind', 'nft'));
@@ -2935,8 +2984,8 @@
                         const tick = el('td', 'tick copyable');
                         tick.append(tickerLabel(collection.ticker, node));
                         tick.style.setProperty('--tcol', tokenColor(collection.ticker));
-                        tick.title = collection.address + ' (click to copy)';
-                        tick.onclick = () => copyAddress(collection.address);
+                        tick.title = 'Show ' + ownerDisplay(entry.address) + '’s ' + collection.ticker;
+                        tick.onclick = () => openOwnedCollection(node, collection, entry.address);
                         tr.append(tick);
                         const count = el('td', cached ? 'bal number' : 'bal number spin', cached ? (cached.bal ?? '—') : '…');
                         count.dataset.key = node.chainId + ':nft:' + colKey;
