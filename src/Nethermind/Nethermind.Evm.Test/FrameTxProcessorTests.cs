@@ -25,8 +25,7 @@ namespace Nethermind.Evm.Test;
 /// <summary>
 /// End-to-end EIP-8141 outer-loop scenarios from the spec "Behavior" section, executed through
 /// <c>TransactionProcessor.Execute</c> under the prototype fork. Frames run with a base fee of 0 and
-/// 1 wei fees so the charged max cost equals the summed frame gas (EIP8141: max cost is still the
-/// sum-of-frame-gas approximation — intrinsic/calldata/signature terms land with gas accounting).
+/// 1 wei fees so balance assertions stay simple.
 /// State is NOT rolled back when a frame transaction turns out invalid mid-loop — in block
 /// processing an invalid transaction invalidates the block, so nothing observes that state.
 /// </summary>

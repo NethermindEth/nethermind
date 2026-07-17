@@ -22,8 +22,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// enforcing the payer gate, charging spec gas, and producing per-frame receipts.
 /// https://eips.ethereum.org/EIPS/eip-8141
 ///
-/// Remaining slices (marked EIP8141 where stubbed): atomic batches, default code, the expiry
-/// verifier runtime, EIP-3529-style refund netting inside frames, shared warm/cold journal.
+/// Remaining slices (marked EIP8141 where stubbed): EIP-3529-style refund netting inside frames
+/// (deliberately deferred — the spec is silent and the accounting is proposed upstream), shared
+/// warm/cold journal.
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {

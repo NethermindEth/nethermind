@@ -116,6 +116,40 @@ public class Eip8141ScenarioTests
             "contract creation sets the account nonce to 1 and payment approval increments it");
     }
 
+    // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
+    // + EIP-7623 token cost of frame data and signature fields + per-scheme verification cost
+    // + the gas each frame consumed. Pinned against the spec constants with known payload bytes;
+    // ARBITRARY entries cost 0 verification gas but their bytes are still calldata-priced.
+    [Test]
+    public void ChargedGas_MatchesSpecIntrinsicFormula()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = [0x00, 0x00, 0x01, 0x02];
+        byte[] witnessBytes = [0xAA, 0x00, 0xBB];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, witnessBytes)];
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        static ulong CalldataTokens(byte[] bytes)
+        {
+            ulong zeros = (ulong)bytes.Count(static b => b == 0);
+            return zeros + ((ulong)bytes.Length - zeros) * 4;
+        }
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong expected = 15_000
+                         + 2 * 475UL
+                         + (CalldataTokens(frameData) + CalldataTokens(witnessBytes)) * 4
+                         + frameGasUsed;
+        Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
+        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+            "the refund must return exactly max cost minus charged gas at the effective price");
+    }
+
     // Spec Example 3 core: the payer is a sponsor contract, not the sender — sender approves
     // execution only, the sponsor's VERIFY frame approves payment, and the receipt reports it.
     [Test]
