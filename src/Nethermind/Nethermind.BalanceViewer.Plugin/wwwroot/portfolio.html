@@ -1990,8 +1990,9 @@
             };
             imgAcquire(() => {
                 img.src = src;
-                // don't wait the full local-gateway timeout for a CID the node lacks — switch to the remote gateway fast
-                if (remoteAlt) fbTimer = setTimeout(() => { if (!done && !triedRemote) goRemote(); }, 2500);
+                // don't wait the full local-gateway timeout for a CID the node lacks — switch to the remote gateway
+                // fast (local cache hits return well under this; content that needs a p2p fetch is what's slow)
+                if (remoteAlt) fbTimer = setTimeout(() => { if (!done && !triedRemote) goRemote(); }, 1200);
             });
             return img;
         }

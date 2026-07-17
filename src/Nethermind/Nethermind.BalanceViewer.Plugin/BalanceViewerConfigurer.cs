@@ -192,7 +192,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     // POST /portfolio-ipfs-pin/{cid} — pins the CID on the user's own Kubo node (auto-pin viewed art). Opt-in
     // from the UI, and only when Local IPFS is enabled. This is NOT a general node-API proxy: only pin/add is
     // ever issued and only the URL-encoded CID is forwarded, so the browser can't reach other Kubo commands.
-    private async Task ServePinAsync(HttpContext context)
+    private Task ServePinAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(PinPathPrefix, out PathString remaining);
         string cid = remaining.Value?.TrimStart('/') ?? string.Empty;
@@ -200,20 +200,21 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         if (cid.Length is 0 or > 256 || !cid.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_'))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            return;
+            return Task.CompletedTask;
         }
 
-        try
-        {
-            using HttpResponseMessage resp = await IpfsClient.PostAsync(
-                $"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null, context.RequestAborted);
-            context.Response.StatusCode = resp.IsSuccessStatusCode ? StatusCodes.Status204NoContent : StatusCodes.Status502BadGateway;
-        }
-        catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
-        {
-            // no local Kubo RPC API (5001) reachable — auto-pin is best-effort, so just report the failure
-            if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
-        }
+        // Fire-and-forget on the node: the pin must run to completion even if the browser navigates away (tying it
+        // to the request would cancel in-flight pins on reload/close), and Kubo may take a while to fetch the
+        // content, which shouldn't block the response. Auto-pin is best-effort, so acknowledge immediately.
+        _ = PinAsync(cid);
+        context.Response.StatusCode = StatusCodes.Status202Accepted;
+        return Task.CompletedTask;
+    }
+
+    private static async Task PinAsync(string cid)
+    {
+        try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null); }
+        catch { /* best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved */ }
     }
 
     private async Task ProxyAsync(HttpContext context)
