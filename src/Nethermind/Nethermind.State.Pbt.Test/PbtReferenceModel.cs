@@ -31,16 +31,17 @@ internal static class PbtReferenceModel
 
         if (code is { Length: > 0 })
         {
-            byte[][] chunks = PbtKeyDerivation.ChunkifyCode(code);
-            for (int i = 0; i < chunks.Length && i < PbtKeyDerivation.HeaderCodeChunks; i++)
+            byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
+            int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+            for (int i = 0; i < chunkCount && i < PbtKeyDerivation.HeaderCodeChunks; i++)
             {
-                Set(model, headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), chunks[i]);
+                Set(model, headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), Chunk(chunks, i));
             }
 
-            for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
+            for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount; i++)
             {
                 Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(codeHash, i, out byte subIndex);
-                Set(model, overflowStem, subIndex, chunks[i]);
+                Set(model, overflowStem, subIndex, Chunk(chunks, i));
             }
         }
     }
@@ -90,6 +91,10 @@ internal static class PbtReferenceModel
 
         return new ValueHash256(reference.Merkelize());
     }
+
+    /// <summary>One chunk of a <see cref="PbtKeyDerivation.ChunkifyCode"/> run, copied out — the model owns what it stores.</summary>
+    private static byte[] Chunk(byte[] chunks, int chunkId) =>
+        chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize).ToArray();
 
     private static void Set(Dictionary<string, byte[]> model, in Stem stem, byte subIndex, byte[] value)
     {

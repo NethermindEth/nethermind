@@ -48,7 +48,12 @@ public class PbtResourcePool : IPbtResourcePool
 
     public void ReturnSnapshotContent(Usage usage, PbtSnapshotContent content) => _categories[usage].ReturnSnapshotContent(content);
 
-    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage) => _categories[usage].GetWriteBatchBuilder();
+    public PbtWriteBatchBuilder GetWriteBatchBuilder(Usage usage)
+    {
+        PbtWriteBatchBuilder builder = _categories[usage].GetWriteBatchBuilder();
+        builder.RentedFrom(this, usage);
+        return builder;
+    }
 
     public void ReturnWriteBatchBuilder(Usage usage, PbtWriteBatchBuilder builder) => _categories[usage].ReturnWriteBatchBuilder(builder);
 

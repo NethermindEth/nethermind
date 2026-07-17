@@ -154,18 +154,19 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
 
         if (code is not { Length: > 0 }) return;
 
-        byte[][] chunks = PbtKeyDerivation.ChunkifyCode(code);
-        int headerChunks = Math.Min(chunks.Length, PbtKeyDerivation.HeaderCodeChunks);
+        byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
+        int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+        int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
         for (int i = 0; i < headerChunks; i++)
         {
-            SetLeaf(window, headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(chunks[i]));
+            SetLeaf(window, headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(Chunk(chunks, i)));
         }
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems
-        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunks.Length; i++)
+        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount; i++)
         {
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            SetLeaf(window, overflowStem, subIndex, ToLeaf(chunks[i]));
+            SetLeaf(window, overflowStem, subIndex, ToLeaf(Chunk(chunks, i)));
         }
     }
 
@@ -185,6 +186,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
             SetLeaf(window, stem, subIndex, SlotLeaf(word));
         }
     }
+
+    private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>
+        chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
 
     private static void SetLeaf(Dictionary<Stem, Dictionary<byte, ValueHash256>> window, in Stem stem, byte subIndex, in ValueHash256 leaf)
     {

@@ -30,6 +30,9 @@ public static class PbtKeyDerivation
     /// <summary>Number of code chunks embedded in the account header stem.</summary>
     public const int HeaderCodeChunks = StemSubtreeWidth - CodeOffset;
 
+    /// <summary>Size of one code chunk, which is one leaf value.</summary>
+    public const int CodeChunkSize = 32;
+
     private const int PushOffset = 95;
     private const byte Push1 = PushOffset + 1;
     private const byte Push32 = PushOffset + 32;
@@ -141,13 +144,14 @@ public static class PbtKeyDerivation
     }
 
     /// <summary>
-    /// Splits code into 32-byte chunks: one leading byte counting the chunk's leading PUSHDATA
-    /// bytes (capped at 31) followed by 31 code bytes, zero-padded at the end.
+    /// Splits code into <see cref="CodeChunkSize"/>-byte chunks: one leading byte counting the chunk's
+    /// leading PUSHDATA bytes (capped at 31) followed by 31 code bytes, zero-padded at the end.
     /// </summary>
-    public static byte[][] ChunkifyCode(ReadOnlySpan<byte> code)
+    /// <returns>The chunks laid out back to back, so that a run of them can be written as one span.</returns>
+    public static byte[] ChunkifyCode(ReadOnlySpan<byte> code)
     {
         int chunkCount = (code.Length + 30) / 31;
-        byte[][] chunks = new byte[chunkCount][];
+        byte[] chunks = new byte[chunkCount * CodeChunkSize];
         if (chunkCount == 0) return chunks;
 
         // pushDataRemaining[i] = how many PUSHDATA bytes remain from position i (0 when i is an opcode)
@@ -168,11 +172,9 @@ public static class PbtKeyDerivation
         for (int i = 0; i < chunkCount; i++)
         {
             int start = i * 31;
-            byte[] chunk = new byte[32];
+            Span<byte> chunk = chunks.AsSpan(i * CodeChunkSize, CodeChunkSize);
             chunk[0] = Math.Min(pushDataRemaining[start], (byte)31);
-            ReadOnlySpan<byte> slice = code[start..Math.Min(start + 31, code.Length)];
-            slice.CopyTo(chunk.AsSpan(1));
-            chunks[i] = chunk;
+            code[start..Math.Min(start + 31, code.Length)].CopyTo(chunk[1..]);
         }
 
         return chunks;
