@@ -747,6 +747,15 @@ jobs:
           uv tool install --force --from "${expb_source}" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
+      - name: Probe host hugepage/THP capability
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo N/A)"
+          echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || echo N/A)"
+          echo "nr_hugepages(2M): $(cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 2>/dev/null || echo N/A)"
+          echo "free_hugepages(2M): $(cat /sys/kernel/mm/hugepages/hugepages-2048kB/free_hugepages 2>/dev/null || echo N/A)"
+
       - name: Start allocator pressure sampler
         id: pressure-sampler
         continue-on-error: true
