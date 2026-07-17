@@ -754,7 +754,7 @@
                 body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params })
             });
             const json = await res.json();
-            if (json.error) throw new Error(json.error.message || 'RPC error');
+            if (json.error) { const e = new Error(json.error.message || 'RPC error'); e.code = json.error.code; throw e; }
             return json.result;
         }
 
@@ -1579,6 +1579,7 @@
         const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
         const enumPageCache = new Map();   // `${chainId}|${collection}|${page}` -> [BigInt] enum721 ids, so reopening skips tokenByIndex
         const supplyCache = new Map();     // `${chainId}|${collection}` -> totalSupply, so reopening doesn't recount
+        const prunedChains = new Set();    // chainIds whose node returned 4444 (pruned logs) — skip further from-genesis scans
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
@@ -1792,6 +1793,15 @@
             } catch { return []; }
         }
 
+        // eth_getLogs that detects a pruned-history node (EIP-4444, code 4444) and remembers it, so a from-genesis
+        // scan isn't retried against a node that has pruned the logs — that just spams the node with 4444 errors,
+        // and the token ids genuinely can't be listed there anyway. Returns null when the logs aren't available.
+        async function scanLogs(node, filter) {
+            if (prunedChains.has(node.chainId)) return null;
+            try { return await rpc('eth_getLogs', [filter], node.rpcPath); }
+            catch (e) { if (e && e.code === 4444) prunedChains.add(node.chainId); return null; }
+        }
+
         // the token ids an owner currently holds in a collection (capped), by kind
         async function heldTokenIds(node, collection, owner, kind, count) {
             if (kind === 'enum721') {
@@ -1804,17 +1814,19 @@
             const range = { fromBlock: '0x0', toBlock: 'latest', address: collection.address };
             const candidates = new Set();
             if (kind === 'plain721') {
-                const logs = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_TOPIC, null, ownerTopic] }], node.rpcPath).catch(() => []);
-                for (const log of logs || []) if (log.topics?.length === 4) { try { candidates.add(BigInt(log.topics[3])); } catch { } }
+                const logs = await scanLogs(node, { ...range, topics: [TRANSFER_TOPIC, null, ownerTopic] });
+                if (logs === null) return []; // pruned/unavailable — ids can't be listed
+                for (const log of logs) if (log.topics?.length === 4) { try { candidates.add(BigInt(log.topics[3])); } catch { } }
                 const ids = [...candidates].slice(0, NFT_ID_CAP);
                 const owners = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_OWNER_OF + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
                 return ids.filter((id, i) => { try { return owners[i] && ('0x' + owners[i].slice(-40)).toLowerCase() === owner.toLowerCase(); } catch { return false; } });
             }
             // erc1155: ids live in log data, not topics
-            const single = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_SINGLE_TOPIC, null, null, ownerTopic] }], node.rpcPath).catch(() => []);
-            for (const log of single || []) { try { candidates.add(BigInt('0x' + log.data.slice(2, 66))); } catch { } }
-            const batch = await rpc('eth_getLogs', [{ ...range, topics: [TRANSFER_BATCH_TOPIC, null, null, ownerTopic] }], node.rpcPath).catch(() => []);
-            for (const log of batch || []) for (const id of parseBatchIds(log.data)) candidates.add(id);
+            const single = await scanLogs(node, { ...range, topics: [TRANSFER_SINGLE_TOPIC, null, null, ownerTopic] });
+            if (single === null) return [];
+            for (const log of single) { try { candidates.add(BigInt('0x' + log.data.slice(2, 66))); } catch { } }
+            const batch = (await scanLogs(node, { ...range, topics: [TRANSFER_BATCH_TOPIC, null, null, ownerTopic] })) || [];
+            for (const log of batch) for (const id of parseBatchIds(log.data)) candidates.add(id);
             const ids = [...candidates].slice(0, NFT_ID_CAP);
             const bals = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_ERC1155_BALANCE + pad32(owner) + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
             return ids.filter((id, i) => { try { return BigInt(bals[i]) > 0n; } catch { return false; } });
@@ -2421,11 +2433,15 @@
                 try { res = await opts.loadPage(p); } catch { grid.replaceChildren(el('div', 'collection-loading', 'failed to load')); return; }
                 const ids = res.ids || [], seed = res.seed || [];
                 if (!ids.length) {
-                    // held count is known but no ids could be listed — usually a pruned-log node (mainnet ancient
-                    // barrier) for plain ERC-721/1155, or a collection with no totalSupply for the full view
+                    // held count is known but no ids could be listed — usually a pruned-log node (ancient barrier)
+                    // for plain ERC-721/1155, or a collection with no totalSupply for the full view. When we've
+                    // actually seen a 4444 from this node, say so definitively rather than guessing.
+                    const pruned = prunedChains.has(node.chainId);
                     const msg = opts.ownedCount
-                        ? opts.ownedCount + ' held, but the token ids couldn’t be listed (this node may have pruned older logs)'
-                        : 'No items to show';
+                        ? opts.ownedCount + (pruned
+                            ? ' held, but this node has pruned the older logs, so the token ids can’t be listed'
+                            : ' held, but the token ids couldn’t be listed')
+                        : (pruned ? 'Token ids can’t be listed — this node has pruned the older logs' : 'No items to show');
                     grid.replaceChildren(el('div', 'collection-loading', msg));
                     return;
                 }
