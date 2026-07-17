@@ -1,0 +1,23 @@
+name: alloc-image-probe
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image ref to probe
+        required: true
+        default: nethermindeth/nethermind:test-alloc-jemalloc-pkg
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe native libs in image
+        run: |
+          IMG="${{ inputs.image }}"
+          docker pull "$IMG"
+          docker image inspect "$IMG" --format 'digest: {{index .RepoDigests 0}}'
+          echo "=== natives in /nethermind:"
+          docker run --rm --entrypoint /bin/sh "$IMG" -c 'ls -la /nethermind/librocksdb* 2>/dev/null; ls -la /nethermind/runtimes/linux-x64/native/ 2>/dev/null || true'
+          echo "=== allocator libs present:"
+          docker run --rm --entrypoint /bin/sh "$IMG" -c 'ls -la /usr/lib/x86_64-linux-gnu/ | grep -Ei "jemalloc|snappy|bz2|lz4|zstd|libz\.so" || true'
+          echo "=== ld.so resolution of librocksdb-jemalloc.so:"
+          docker run --rm --entrypoint /bin/sh "$IMG" -c 'p=$(ls /nethermind/librocksdb-jemalloc.so /nethermind/runtimes/linux-x64/native/librocksdb-jemalloc.so 2>/dev/null | head -1); echo "path=$p"; /lib64/ld-linux-x86-64.so.2 --list "$p" 2>&1 | head -25'
