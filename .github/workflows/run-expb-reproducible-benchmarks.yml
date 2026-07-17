@@ -761,6 +761,8 @@ jobs:
           docker run --rm --entrypoint /bin/sh "${NETHERMIND_IMAGE}" -c 'ls -la /nethermind/librocksdb* 2>/dev/null; ls /nethermind/runtimes/linux-x64/native/ 2>/dev/null || true'
           echo "=== allocator/compression libs in image:"
           docker run --rm --entrypoint /bin/sh "${NETHERMIND_IMAGE}" -c 'ls /usr/lib/x86_64-linux-gnu/ | grep -Ei "jemalloc|snappy|bz2|lz4|zstd|^libz\.so" || echo NONE'
+          echo "=== FORCE-LOAD librocksdb-jemalloc.so (real dlopen error if any):"
+          docker run --rm -e LD_PRELOAD=/nethermind/librocksdb-jemalloc.so --entrypoint /bin/sh "${NETHERMIND_IMAGE}" -c 'echo force-load-ok' 2>&1 | head -5 || true
           echo "=== ld.so resolution of librocksdb-jemalloc.so:"
           docker run --rm --entrypoint /bin/sh "${NETHERMIND_IMAGE}" -c 'p=$(ls /nethermind/librocksdb-jemalloc.so /nethermind/runtimes/linux-x64/native/librocksdb-jemalloc.so 2>/dev/null | head -1); echo "path=${p:-NOT-FOUND}"; [ -n "$p" ] && /lib64/ld-linux-x86-64.so.2 --list "$p" 2>&1 | head -30'
 
