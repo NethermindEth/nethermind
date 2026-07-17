@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -128,6 +130,60 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.Content.Slots[(destroyed, (UInt256)3)], Is.EqualTo(Word(0x33)));
     }
 
+    /// <summary>
+    /// The levels nest without anything coordinating them. Each block merges the width its number
+    /// calls for, and because a wide window prefers the compacted edges below it, the 8-wide merge at
+    /// block 8 consumes the 4-wide at 4 and the 2-wide at 6 rather than re-walking 8 base layers. A
+    /// read at the head then crosses the whole span in one hop.
+    /// </summary>
+    [Test]
+    public void Compaction_NestsItsLevels_AndTheWalkCrossesThemInOneHop()
+    {
+        PbtSnapshotRepository repository = new();
+        PbtSnapshotCompactor compactor = NewCompactor(repository);
+
+        for (ulong block = 1; block <= 8; block++)
+        {
+            PbtSnapshotContent layer = new();
+            layer.Slots[(TestItem.AddressA, UInt256.Zero)] = Word((byte)block);
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), layer, _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            compactor.DoCompactSnapshot(State(block));
+        }
+
+        // 2, 4, 6 and 8 are the aligned blocks; the odd ones merge nothing
+        Assert.That(repository.CompactedCount, Is.EqualTo(4));
+
+        using PbtSnapshotPooledList chain = new(8);
+        Assert.That(repository.TryLeaseChain(State(8), State(0), chain), Is.True);
+        Assert.That(chain.Count, Is.EqualTo(1), "the 8-wide layer at block 8 spans the whole window");
+        Assert.That(chain[0].From, Is.EqualTo(State(0)));
+        Assert.That(chain[0].Content.Slots[(TestItem.AddressA, UInt256.Zero)], Is.EqualTo(Word(8)), "and carries the newest value across it");
+    }
+
+    /// <summary>
+    /// A walk that cannot use the wide edge steps through the narrow ones instead. This is why the
+    /// base layers stay when a compacted layer spans them: a state between two boundaries is still
+    /// reachable, and taking a wide edge that overshoots would land below the floor.
+    /// </summary>
+    [Test]
+    public void Walk_AimingInsideACompactedSpan_FallsBackToTheBaseLayers()
+    {
+        PbtSnapshotRepository repository = new();
+        PbtSnapshotCompactor compactor = NewCompactor(repository);
+
+        for (ulong block = 1; block <= 4; block++)
+        {
+            repository.TryAdd(new PbtSnapshot(State(block - 1), State(block), new PbtSnapshotContent(), _pool, PbtResourcePool.Usage.MainBlockProcessing));
+            compactor.DoCompactSnapshot(State(block));
+        }
+
+        // block 4 carries a 4-wide layer straight to block 0, which overshoots a floor at block 1
+        using PbtSnapshotPooledList chain = new(4);
+        Assert.That(repository.TryLeaseChain(State(4), State(1), chain), Is.True);
+        Assert.That(chain.Count, Is.EqualTo(3), "one 2-wide layer and one base layer, not the 4-wide one");
+        Assert.That(chain[0].From, Is.EqualTo(State(1)));
+    }
+
     /// <summary>The merged layer's content is rented for the width actually merged, and returns there.</summary>
     [Test]
     public void Compact_ReturnsTheMergedContent_ToTheSizeClassOfTheMergedWidth()
@@ -160,8 +216,14 @@ public class PbtSnapshotCompactorTests
             chain.Add(new PbtSnapshot(State((ulong)i + 1), State((ulong)i + 2), layers[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
 
-        return new PbtSnapshotCompactor(_pool).Compact(chain);
+        return NewCompactor(new PbtSnapshotRepository()).Compact(chain);
     }
+
+    private PbtSnapshotCompactor NewCompactor(PbtSnapshotRepository repository) =>
+        new(_pool, new PbtCompactionSchedule(new MemDb(), Config, LimboLogs.Instance), repository, Config);
+
+    // offset 0 pins which blocks align; left to itself it is rolled per node and the levels move
+    private static readonly PbtConfig Config = new() { CompactSize = 16, CompactionOffset = 0 };
 
     private static StateId State(ulong blockNumber)
     {
