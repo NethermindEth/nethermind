@@ -1905,10 +1905,20 @@
             const img = el('img');
             if (!src || src.startsWith('data:')) { if (src) img.src = src; else onFail(); return img; }
             const bust = (n) => src + (src.includes('?') ? '&' : '?') + '_retry=' + n;
+            // When Local IPFS is primary but the Remote gateway is also enabled, fall back to it for a CID the local
+            // node can't serve. The CID is still auto-pinned (pinIpfs, at fetch time), so once the local node has
+            // it, future loads are local again — the public gateway is only touched while the content is missing.
+            const PROXY = 'portfolio-ipfs/';
+            const remoteAlt = (src.startsWith(PROXY) && artSources.localIpfs && artSources.remoteGateway) ? (ipfsRemoteGateway + src.slice(PROXY.length)) : null;
+            let triedRemote = false;
             if (!eager) {
                 img.loading = 'lazy';
                 let t = 0;
-                img.onerror = () => { if (t < 2) { t++; setTimeout(() => { img.src = bust(t); }, 700 * t); } else onFail(); };
+                img.onerror = () => {
+                    if (remoteAlt && !triedRemote) { triedRemote = true; img.src = remoteAlt; return; }
+                    if (!remoteAlt && t < 2) { t++; setTimeout(() => { img.src = bust(t); }, 700 * t); return; }
+                    onFail();
+                };
                 img.src = src;
                 return img;
             }
@@ -1916,8 +1926,9 @@
             const finish = () => { if (!done) { done = true; imgRelease(); } };
             img.onload = finish;
             img.onerror = () => {
-                if (tries < 1) { tries++; setTimeout(() => { img.src = bust(tries); }, 700); } // one retry re-triggers the fetch, holding the slot
-                else { finish(); onFail(); }
+                if (remoteAlt && !triedRemote) { triedRemote = true; img.src = remoteAlt; return; } // fall back to the public gateway
+                if (!remoteAlt && tries < 1) { tries++; setTimeout(() => { img.src = bust(tries); }, 700); return; } // local retry re-triggers the node
+                finish(); onFail();
             };
             imgAcquire(() => { img.src = src; });
             return img;
