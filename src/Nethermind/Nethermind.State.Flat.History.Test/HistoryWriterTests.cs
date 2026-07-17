@@ -347,6 +347,24 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void Seeded_genesis_allocations_read_at_every_height()
+    {
+        _writer.SeedGenesis([new(AddrA, new Account(0, 1000))]);
+
+        bool atGenesis = _reader.TryGetAccount(0, AddrA, out AccountStruct genesisAccount);
+        bool atLater = _reader.TryGetAccount(7, AddrA, out AccountStruct laterAccount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.HasHistoryForBlock(0), Is.True);
+            Assert.That(atGenesis, Is.True);
+            Assert.That(genesisAccount.Balance, Is.EqualTo((UInt256)1000));
+            Assert.That(atLater, Is.True);
+            Assert.That(laterAccount.Balance, Is.EqualTo((UInt256)1000));
+        }
+    }
+
+    [Test]
     public void Flag_on_keeps_tip_reads_correct_and_populates_history()
     {
         const int blockCount = 6;

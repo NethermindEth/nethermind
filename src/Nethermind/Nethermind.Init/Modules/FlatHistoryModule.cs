@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -28,5 +30,6 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<HistoryReader>(),
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric));
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
+            .AddStep(typeof(SeedFlatHistoryGenesis));
 }

@@ -112,6 +112,33 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         _anyCaptured = true;
     }
 
+    /// <summary>
+    /// Seeds the genesis (block 0) changeset from the chain's initial allocations. The capture walk can only lease
+    /// in-memory snapshots, so on a node whose history predates genesis capture block 0 is unrecoverable at runtime;
+    /// its state is fully derivable from the chain spec instead.
+    /// </summary>
+    [SkipLocalsInit]
+    public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations)
+    {
+        if (!_enabled) return;
+
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
+        IWriteBatch accountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        IWriteBatch accountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
+
+        Span<byte> blockKey = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(blockKey, 0);
+        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
+
+        Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        foreach (KeyValuePair<Address, Account> allocation in allocations)
+        {
+            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, allocation.Key.ToAccountPath);
+            using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(allocation.Value);
+            _accountHistory.RecordChange(0, flatKey, value, accountHistory, accountChangeMarkers);
+        }
+    }
+
     [SkipLocalsInit]
     private void CaptureBlock(ulong block, Snapshot snapshot)
     {
