@@ -33,6 +33,7 @@ WORKDIR /nethermind
 RUN apt-get update && apt-get install -y --no-install-recommends libjemalloc2 && rm -rf /var/lib/apt/lists/*
 
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV MALLOC_CONF=background_thread:true,thp:always,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
