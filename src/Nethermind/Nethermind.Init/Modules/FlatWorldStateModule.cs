@@ -10,6 +10,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Steps;
@@ -143,6 +144,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
         if (flatDbConfig.HistoryEnabled)
         {
+            // Long-finality Phase-2 conversion removes the per-block in-memory base snapshots the history capture
+            // walk records from, before finality reaches them — whole ranges would silently drop out of history.
+            if (flatDbConfig.EnableLongFinality)
+            {
+                throw new InvalidConfigurationException(
+                    $"{nameof(IFlatDbConfig)}.{nameof(IFlatDbConfig.HistoryEnabled)} requires {nameof(IFlatDbConfig)}.{nameof(IFlatDbConfig.EnableLongFinality)} to be false: " +
+                    "per-block history cannot be captured from ranges converted to persisted snapshots.", -1);
+            }
+
             builder.AddModule(new FlatHistoryModule());
         }
     }

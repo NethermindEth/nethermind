@@ -22,7 +22,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
     bool EnablePreimageRecording { get; set; }
 
-    [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
+    [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work. Requires EnableLongFinality to be false: per-block history cannot be captured from ranges converted to persisted snapshots.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
