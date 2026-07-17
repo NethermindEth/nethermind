@@ -188,15 +188,11 @@ namespace Nethermind.Xdc
             {
                 if (!_running) return;
 
-                // OnNewHeadBlock samples CurrentRound before taking this lock and NewRoundSetEvent
-                // handlers can be delivered out of order, so an older round may arrive here after a
-                // newer one was scheduled; starting it would cancel the newer round's task and
-                // forfeit its proposal.
+                // OnNewHeadBlock and NewRoundSetEvent handlers can be delivered out of order
                 if (_scheduledRound != NoRound && round < _scheduledRound) return;
 
                 if (round != _scheduledRound)
-                    // A round advance obsoletes any in-flight proposal build for the previous
-                    // round; same-round restarts must leave the build running (see TryPropose).
+                    // Same-round restarts must leave the build running (see TryPropose).
                     _buildCts?.Cancel();
 
                 _scheduledRound = round;
@@ -272,8 +268,7 @@ namespace Nethermind.Xdc
 
             if (!TryAdvance(ref _highestSelfMinedRound, round)) return;
 
-            // The round is claimed: a cancelled build could no longer be retried, so the build
-            // survives same-round restarts and is aborted only by shutdown or a higher round.
+            // Only cancel the build if a higher round is scheduled; otherwise, let it finish and propose the block.
             CancellationTokenSource buildCts;
             lock (_lockObject)
             {
