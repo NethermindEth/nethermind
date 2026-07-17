@@ -54,7 +54,9 @@ public static class PbtStoreExtensions
 /// <c>PatriciaTree.BulkSet</c>): the write entries — one per stem, already grouped by the producer —
 /// are never globally sorted; instead each group radix-partitions its own range in place into the
 /// sixteen boundary slots by the four stem bits at its depth, so a single recursive descent walks
-/// every shared prefix only once. A range that
+/// every shared prefix only once. A producer that emits its entries already bucketed for the topmost
+/// levels — the only ones whose partition touches every entry — hands their bounds over in the batch
+/// (<see cref="PbtWriteBatch.Buckets"/>), and those levels skip the work entirely. A range that
 /// collapses to a single stem folds that stem's
 /// leaf blob and hands the stem node up to be placed at its shortest unique prefix by the bottom-up
 /// rebuild of the enclosing groups; hashes are computed on the way back up. Groups and blobs are
@@ -75,9 +77,10 @@ public static class TrieUpdater
     {
         public ValueHash256 Run(PbtWriteBatch changes)
         {
-            // No global sort: each group radix-partitions its own range in place during the descent.
+            // No global sort: each group radix-partitions its own range in place during the descent,
+            // bar the levels the producer already bucketed for it.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
-            using NodeResult root = ApplyGroup(TrieNodeKey.Root, changes.Entries, rootData, out _);
+            using NodeResult root = ApplyGroup(TrieNodeKey.Root, changes.Entries, rootData, changes.Buckets, out _);
             return root.NodeHash();
         }
 
@@ -95,8 +98,11 @@ public static class TrieUpdater
         /// The group's stored encoding, which the caller owns and this keeps no lease on beyond the
         /// call: the occupants read out of it take their own.
         /// </param>
+        /// <param name="precalculatedBuckets"><inheritdoc cref="ApplyToOccupants" path="/param[@name='precalculatedBuckets']"/></param>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private NodeResult ApplyGroup(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData, out bool changed)
+        private NodeResult ApplyGroup(
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData,
+            ReadOnlySpan<int> precalculatedBuckets, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -138,7 +144,8 @@ public static class TrieUpdater
             }
 
             NodeResult root = ApplyToOccupants(
-                key, entries, existing, occupants, existing[PbtTrieNodeGroup.RootPosition].NodeHash(), out changed);
+                key, entries, existing, occupants, existing[PbtTrieNodeGroup.RootPosition].NodeHash(),
+                precalculatedBuckets, out changed);
             Release(occupants, handedUp: -1);
             return root;
         }
@@ -150,8 +157,11 @@ public static class TrieUpdater
         /// stem shares, so that stem's node is built here, out of its leaf blob, without descending;
         /// otherwise the pushed stem and the writes are routed on down together.
         /// </summary>
+        /// <param name="precalculatedBuckets"><inheritdoc cref="ApplyToOccupants" path="/param[@name='precalculatedBuckets']"/></param>
         /// <param name="changed"><inheritdoc cref="ApplyToOccupants" path="/param[@name='changed']"/></param>
-        private NodeResult ApplyPushed(in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in NodeResult pushed, out bool changed)
+        private NodeResult ApplyPushed(
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in NodeResult pushed,
+            ReadOnlySpan<int> precalculatedBuckets, out bool changed)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -188,7 +198,8 @@ public static class TrieUpdater
             Span<NodeResult> occupants = occupantBuffer.AsSpan();
             if (pushed.Kind == NodeKind.Stem) occupants[NibbleOf(pushed.Stem, depth)] = pushed.Lease();
 
-            NodeResult root = ApplyToOccupants(key, entries, default, occupants, pushed.NodeHash(), out changed);
+            NodeResult root = ApplyToOccupants(
+                key, entries, default, occupants, pushed.NodeHash(), precalculatedBuckets, out changed);
             Release(occupants, handedUp: -1);
             return root;
         }
@@ -218,6 +229,11 @@ public static class TrieUpdater
         /// whether a stored blob must be removed.
         /// </param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
+        /// <param name="precalculatedBuckets">
+        /// The bucket table levels the producer already partitioned <paramref name="entries"/> into, this
+        /// group's own being the last of them (<see cref="PbtWriteBatch.BucketTableLength"/>); empty once
+        /// the descent runs past them, from where each group partitions its range itself.
+        /// </param>
         /// <param name="changed">
         /// Set to <c>false</c> when the writes leave this group's root node identical to <paramref name="before"/>
         /// (all writes were no-ops), letting the parent reuse its cached hash and skip its own rewrite;
@@ -225,12 +241,24 @@ public static class TrieUpdater
         /// </param>
         private NodeResult ApplyToOccupants(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, PbtTrieNodeGroup existing,
-            Span<NodeResult> occupants, in ValueHash256 beforeHash, out bool changed)
+            Span<NodeResult> occupants, in ValueHash256 beforeHash, ReadOnlySpan<int> precalculatedBuckets,
+            out bool changed)
         {
             int depth = key.Depth;
 
-            Span<int> bounds = stackalloc int[PbtTrieNodeGroup.BoundarySlots + 1];
-            Partition(entries, depth, bounds);
+            // A precalculated level is already a bounds array over this very range, so it is read where it
+            // lies; only a range the producer left unbucketed is partitioned here.
+            Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride];
+            scoped ReadOnlySpan<int> bounds;
+            if (precalculatedBuckets.IsEmpty)
+            {
+                Partition(entries, depth, computed);
+                bounds = computed;
+            }
+            else
+            {
+                bounds = precalculatedBuckets[^PbtWriteBatch.LevelStride..];
+            }
 
             // The boundary results drive both the rebuild and its shape: `occupied` and `stems` fix
             // every node's kind (see GroupRebuild), and `changedMask` folds to a range's
@@ -254,13 +282,14 @@ public static class TrieUpdater
                     // a stored child group descends with its own content, no stem pushed down
                     TrieNodeKey childKey = key.ChildGroup(slot);
                     using RefCountingMemory? childData = store.GetTrieNode(childKey);
-                    results[slot] = ApplyGroup(childKey, bucket, childData, out bool childChanged);
+                    results[slot] = ApplyGroup(childKey, bucket, childData, ChildBuckets(precalculatedBuckets, slot), out bool childChanged);
                     if (childChanged) changedMask |= 1u << slot;
                 }
                 else
                 {
                     // an empty subtree or a lone stem: push the occupant (stem or absent) on down
-                    results[slot] = ApplyPushed(key.ChildGroup(slot), bucket, occupants[slot], out bool childChanged);
+                    results[slot] = ApplyPushed(
+                        key.ChildGroup(slot), bucket, occupants[slot], ChildBuckets(precalculatedBuckets, slot), out bool childChanged);
                     if (childChanged) changedMask |= 1u << slot;
                 }
 
@@ -512,6 +541,23 @@ public static class TrieUpdater
             bool isEmpty = newBlob.IsEmpty;
             store.SetLeafBlob(stem, newBlob.Take());
             return isEmpty;
+        }
+
+        /// <summary>
+        /// The precalculated bucket level for the child group under boundary slot <paramref name="slot"/>,
+        /// or empty when <paramref name="buckets"/> is the last level the producer bucketed.
+        /// </summary>
+        /// <remarks>
+        /// The levels are laid out coarsest-last, each one <see cref="PbtWriteBatch.LevelStride"/> wide per
+        /// group it describes, so the finer levels of a slot's subtree are the slice at its own index — and
+        /// what remains after this group's own level divides evenly among the sixteen slots.
+        /// </remarks>
+        private static ReadOnlySpan<int> ChildBuckets(ReadOnlySpan<int> buckets, int slot)
+        {
+            int childLength = buckets.Length <= PbtWriteBatch.LevelStride
+                ? 0
+                : (buckets.Length - PbtWriteBatch.LevelStride) / PbtTrieNodeGroup.BoundarySlots;
+            return childLength == 0 ? default : buckets.Slice(slot * childLength, childLength);
         }
 
         /// <summary>

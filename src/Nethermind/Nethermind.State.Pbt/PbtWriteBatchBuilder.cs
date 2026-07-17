@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -118,18 +119,41 @@ public sealed class PbtWriteBatchBuilder : IDisposable, IResettable
     /// would give one pooled map two owners, and a later block's writes would silently surface under
     /// an unrelated stem. If a hand-off throws mid-drain the untransferred maps are dropped to the
     /// GC instead — a lost map costs an allocation, a doubly-returned one costs correctness.
+    /// <para>
+    /// The shard key being the stem's first byte makes it the two nibbles the tree's first two levels
+    /// partition on, so draining the shards in order hands the batch its entries already bucketed for
+    /// those levels — the two that touch every entry. Recording the bounds here, which costs only the
+    /// counts the walk passes anyway, is what lets <see cref="TrieUpdater"/> skip re-deriving them.
+    /// The nesting tracks each nibble's start so its group's ends can be local to it, as the table's
+    /// layout requires.
+    /// </para>
     /// </remarks>
     public PbtWriteBatch DrainToWriteBatch()
     {
-        PbtWriteBatch batch = new(estimatedStems: DirtyStemCount);
+        ArrayPoolList<int> buckets = new(PbtWriteBatch.BucketTableLength, PbtWriteBatch.BucketTableLength);
+        PbtWriteBatch batch = new(estimatedStems: DirtyStemCount, buckets);
         try
         {
-            foreach (Shard shard in _shards)
+            Span<int> table = buckets.AsSpan();
+            Span<int> nibbles = table[PbtWriteBatch.ByteLevelLength..];
+            nibbles[0] = 0;
+            int nibbleStart = 0;
+            for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
             {
-                foreach ((Stem stem, IPbtStemChanges leaves) in shard.Stems)
+                Span<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
+                group[0] = 0;
+                for (int low = 0; low < PbtTrieNodeGroup.BoundarySlots; low++)
                 {
-                    batch.Add(stem, leaves);
+                    foreach ((Stem stem, IPbtStemChanges leaves) in _shards[(nibble << 4) | low].Stems)
+                    {
+                        batch.Add(stem, leaves);
+                    }
+
+                    group[low + 1] = batch.Count - nibbleStart;
                 }
+
+                nibbles[nibble + 1] = batch.Count;
+                nibbleStart = batch.Count;
             }
         }
         finally
