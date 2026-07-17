@@ -393,22 +393,28 @@
         /* very large accounts: cap the card body height and scroll, so one whale can't push everything else away */
         .card-scroll { max-height: 70vh; overflow-y: auto; }
         /* Accounts / Assets view switch + the aggregated Assets view */
-        .view-toggle { display: flex; gap: 4px; margin: 0 0 12px; }
+        .view-toggle { display: flex; gap: 4px; margin: 22px 0 12px; } /* extra top gap from the Watch box */
         .view-toggle button { background: #0a0a0a; border: 1px solid var(--border-soft); color: var(--muted); border-radius: 6px; padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 13px; }
         .view-toggle button.on { color: var(--c-name); border-color: var(--accent); }
         .assets { display: flex; flex-direction: column; gap: 6px; }
         .asset-row { border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
-        .asset-head { display: grid; grid-template-columns: 1fr auto auto 18px; align-items: baseline; gap: 12px; padding: 10px 12px; cursor: pointer; }
+        /* fixed, right-aligned number columns so amounts and values line up across every row and breakdown line */
+        .asset-head { display: grid; grid-template-columns: 1fr 175px 120px 18px; align-items: baseline; gap: 12px; padding: 10px 12px; cursor: pointer; }
         .asset-head:hover { background: #141419; }
         .asset-tick { color: var(--c-ticker); font-weight: 600; }
+        .asset-bal, .asset-val { text-align: right; }
         .asset-bal { color: var(--c-name); }
         .asset-val { color: var(--c-total); }
         .asset-arrow { color: var(--muted); text-align: center; font-size: 11px; }
+        .asset-thumbs { padding: 0 12px 10px; }
         .asset-parts { display: none; border-top: 1px solid var(--border-soft); background: #0c0c10; }
         .asset-row.open .asset-parts { display: block; }
-        .asset-part { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 6px 12px 6px 24px; font-size: 12px; color: var(--muted); }
+        .asset-part { display: grid; grid-template-columns: 1fr 175px 120px; gap: 12px; padding: 6px 30px 6px 24px; font-size: 12px; color: var(--muted); }
+        .asset-part-bal, .asset-part-val { text-align: right; }
         .asset-part-bal { color: var(--c-name); }
         .asset-part-val { color: var(--c-total); }
+        .asset-part .expand { cursor: pointer; }
+        .asset-part .expand:hover { color: var(--accent); }
         /* the tokens/NFTs display-mode filter applies to the assets view too */
         body.mode-nfts .asset-row.fungible { display: none; }
         body.mode-tokens .asset-row.nft { display: none; }
@@ -1960,15 +1966,20 @@
                 img.src = src;
                 return img;
             }
-            let tries = 0, done = false;
-            const finish = () => { if (!done) { done = true; imgRelease(); } };
+            let tries = 0, done = false, fbTimer = null;
+            const finish = () => { if (!done) { done = true; clearTimeout(fbTimer); imgRelease(); } };
             img.onload = finish;
             img.onerror = () => {
+                clearTimeout(fbTimer);
                 if (remoteAlt && !triedRemote) { triedRemote = true; img.src = remoteAlt; return; } // fall back to the public gateway
                 if (!remoteAlt && tries < 1) { tries++; setTimeout(() => { img.src = bust(tries); }, 700); return; } // local retry re-triggers the node
                 finish(); onFail();
             };
-            imgAcquire(() => { img.src = src; });
+            imgAcquire(() => {
+                img.src = src;
+                // don't wait the full local-gateway timeout for a CID the node lacks — switch to the remote gateway fast
+                if (remoteAlt) fbTimer = setTimeout(() => { if (!done && !triedRemote) { triedRemote = true; img.src = remoteAlt; } }, 2500);
+            });
             return img;
         }
 
@@ -3493,24 +3504,24 @@
                 box.append(assetRow('fungible', a.ticker, a.color, fmtNum(a.balNum), showFiat && a.value8 ? formatFiat(a.value8) : (showFiat ? '—' : ''), a.parts));
             }
 
-            // NFT collections, grouped by ticker (count summed; no fiat)
-            const nft = new Map(); // ticker -> { ticker, count, parts }
+            // NFT collections, grouped by (chain, collection) so previews + links stay concrete; count summed
+            // across the accounts that hold it. A collection is chain-specific, so this is still "across accounts".
+            const nftGroups = new Map(); // chainId|addr -> { node, collection, count, parts: [{ entry, count }] }
             for (const entry of addresses) {
                 for (const node of enabledNodes()) {
                     for (const collection of stateOf(node.chainId).nfts) {
                         const c = cache.get(entry.address + '|' + node.chainId + ':nft:' + collection.address.toLowerCase());
                         const cnt = c && c.bal && c.bal !== '0' ? Number(String(c.bal).replace(/,/g, '')) : 0;
                         if (!cnt) continue;
-                        let a = nft.get(collection.ticker);
-                        if (!a) { a = { ticker: collection.ticker, count: 0, parts: [] }; nft.set(collection.ticker, a); }
-                        a.count += cnt;
-                        a.parts.push({ label: (labelFor(entry) || shortAddr(entry.address)) + ' · ' + node.meta.name, bal: c.bal, fiat: '' });
+                        const gk = node.chainId + '|' + collection.address.toLowerCase();
+                        let g = nftGroups.get(gk);
+                        if (!g) { g = { node, collection, count: 0, parts: [] }; nftGroups.set(gk, g); }
+                        g.count += cnt;
+                        g.parts.push({ entry, count: cnt });
                     }
                 }
             }
-            for (const a of [...nft.values()].sort((x, y) => y.count - x.count)) {
-                box.append(assetRow('nft', a.ticker, tokenColor(a.ticker), a.count + ' held', '', a.parts));
-            }
+            for (const g of [...nftGroups.values()].sort((x, y) => y.count - x.count)) box.append(nftAssetRow(g, showFiat));
 
             if (!box.children.length) box.append(el('div', 'empty', 'No balances yet.'));
             cards.append(box);
@@ -3536,6 +3547,44 @@
                 pr.append(el('span', 'asset-part-acct', p.label));
                 pr.append(el('span', 'asset-part-bal number', p.bal));
                 if (valText && p.fiat) pr.append(el('span', 'asset-part-val number', p.fiat));
+                body.append(pr);
+            }
+            row.append(body);
+            return row;
+        }
+
+        // NFT asset row: header + an always-visible preview strip (merged across accounts, like the account cards)
+        // that opens the full collection, plus an expandable per-account breakdown.
+        function nftAssetRow(g, showFiat) {
+            const row = el('div', 'asset-row nft');
+            const head = el('div', 'asset-head');
+            const tick = el('span', 'asset-tick', g.collection.ticker); tick.style.color = tokenColor(g.collection.ticker);
+            head.append(tick);
+            head.append(el('span', 'asset-bal number', g.count + ' held'));
+            if (showFiat) head.append(el('span', 'asset-val', '')); // keep the value column so rows line up
+            const arrow = el('span', 'asset-arrow', '▾');
+            head.append(arrow);
+            head.onclick = () => { const open = row.classList.toggle('open'); arrow.textContent = open ? '▴' : '▾'; };
+            row.append(head);
+
+            const merged = collectionCacheFor(g.node, g.collection) || { thumbs: [], count: g.count };
+            const strip = el('div', 'thumbs asset-thumbs');
+            for (const t of (merged.thumbs || []).slice(0, MAX_NFT_THUMBS)) strip.append(thumbEl(t, g.collection, g.node, null));
+            const more = el('span', 'more expand', 'view all ' + (merged.count ?? g.count));
+            more.title = 'Open the collection';
+            more.onclick = () => openFullCollection(g.node, g.collection);
+            strip.append(more);
+            row.append(strip);
+
+            const body = el('div', 'asset-parts');
+            for (const p of g.parts) {
+                const pr = el('div', 'asset-part');
+                pr.append(el('span', 'asset-part-acct', (labelFor(p.entry) || shortAddr(p.entry.address)) + ' · ' + g.node.meta.name));
+                const cnt = el('span', 'asset-part-bal number expand', p.count + ' held');
+                cnt.title = 'Show this account’s holdings';
+                cnt.onclick = () => openOwnedCollection(g.node, g.collection, p.entry.address);
+                pr.append(cnt);
+                if (showFiat) pr.append(el('span', 'asset-part-val', ''));
                 body.append(pr);
             }
             row.append(body);
@@ -4328,12 +4377,18 @@
                     ? 'Privacy mode: only on-chain art. Click to also load IPFS / web art.'
                     : 'Loading off-chain art (IPFS / web). Click to return to privacy mode (on-chain only).';
             }
-            privacyToggle.onclick = () => {
+            privacyToggle.onclick = async () => {
                 const anyOn = artSources.https || artSources.localIpfs || artSources.remoteGateway;
                 if (!anyOn && !confirm('Load off-chain NFT art?\n\nThis fetches metadata and images from IPFS and web servers, revealing your IP address and which NFTs you view to those third parties. On-chain art always loads privately.\n\nEnable IPFS + web art sources?')) return;
-                const on = !anyOn;
-                artSources.https = artSources.localIpfs = artSources.remoteGateway = on;
-                setHttps.checked = setLocalIpfs.checked = setRemoteGw.checked = on;
+                if (!anyOn) {
+                    // entering full mode: HTTPS + remote gateway always; Local IPFS only if a local gateway is
+                    // present (otherwise it's a dead source that just delays the remote fallback)
+                    try { localIpfsAvailable = (await fetch('portfolio-ipfs/bafkqaaa')).ok; } catch { localIpfsAvailable = false; }
+                    artSources.https = true; artSources.remoteGateway = true; artSources.localIpfs = localIpfsAvailable;
+                } else {
+                    artSources.https = artSources.localIpfs = artSources.remoteGateway = false;
+                }
+                setHttps.checked = artSources.https; setLocalIpfs.checked = artSources.localIpfs; setRemoteGw.checked = artSources.remoteGateway;
                 updateAutoPinRow();
                 updatePrivacyToggle();
                 onArtChange();
