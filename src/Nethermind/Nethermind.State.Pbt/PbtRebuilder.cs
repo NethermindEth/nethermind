@@ -65,7 +65,7 @@ public readonly record struct RebuildEntry
 public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager, IPbtConfig config)
 {
     /// <summary>Entries (accounts + slots) buffered before a window is folded into the tree and committed.</summary>
-    internal int FlushEntryInterval { get; init; } = 128_000;
+    internal int FlushEntryInterval { get; init; } = 1_000_000;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
