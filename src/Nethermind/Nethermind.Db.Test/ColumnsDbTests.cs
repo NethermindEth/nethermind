@@ -92,6 +92,25 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void FixedLengthMultiGet_PreservesInputOrderAndMissingValues()
+    {
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        column.Set([1, 2], [10]);
+        column.Set([3, 4], [30]);
+        byte[] keys = [3, 4, 5, 6, 1, 2];
+        byte[]?[] values = new byte[]?[3];
+        long readsBefore = _db.GatherMetric().TotalReads;
+
+        column.MultiGet(keys, 2, values);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values, Is.EqualTo(new byte[]?[] { [30], null, [10] }));
+            Assert.That(_db.GatherMetric().TotalReads - readsBefore, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
     public void TestWriteBatch_WriteToAllColumn()
     {
         IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch();

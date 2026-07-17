@@ -90,6 +90,26 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
     }
 
+    public void MultiGet(byte[][] keys, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+    {
+        if (keys.Length != values.Length)
+            throw new ArgumentException("Keys and values must have the same length.", nameof(values));
+
+        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
+        _mainDb.MultiGet(keys, values, _columnFamily, readOptions);
+    }
+
+    public void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+    {
+        if (keyLength <= 0)
+            throw new ArgumentOutOfRangeException(nameof(keyLength));
+        if (keys.Length != values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+
+        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
+        _mainDb.MultiGet(keys, keyLength, values, _columnFamily, readOptions);
+    }
+
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
