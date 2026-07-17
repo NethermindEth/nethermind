@@ -390,7 +390,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public BlockHeader? ResetStateRootToBestSuggested()
         {
-            _stateSyncPivot.UpdateHeaderForcefully();
+            // _stateSyncPivot.UpdateHeaderForcefully();
 
             BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 

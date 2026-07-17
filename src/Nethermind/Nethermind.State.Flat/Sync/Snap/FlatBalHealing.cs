@@ -26,8 +26,8 @@ public class FlatBalHealing(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     ITrieReassembler trieReassembler,
-    ITreeSyncStore store,
     IPersistence persistence,
+    ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ILogManager logManager
     // IVerifyTrieStarter? verifyTrieStarter = null
@@ -48,7 +48,7 @@ public class FlatBalHealing(
 
             if (_logger.IsInfo) _logger.Info($"All {toApply.Count} BALs present for the pivot range.");
 
-            // VerifyStorageCompleteness(updatedStorageAccounts, token);
+            VerifyStorageCompleteness(updatedStorageAccounts, token);
 
             Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorageAccounts);
             // StateId from;
@@ -76,7 +76,8 @@ public class FlatBalHealing(
                 return Task.FromResult(false);
             }
 
-            store.FinalizeSync(lastPivot);
+            store.GetHashCode();
+            // store.FinalizeSync(lastPivot);
 
             return Task.FromResult(true);
         }
