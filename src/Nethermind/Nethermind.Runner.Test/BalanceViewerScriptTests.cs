@@ -439,7 +439,7 @@ public class BalanceViewerScriptTests
         // an NFT with on-chain metadata but no on-chain art still opens a lightbox with name, description, and traits
         object result = engine.Evaluate("""
             (function () {
-                const thumb = { id: '7', src: null, name: 'Mouse #7', description: 'a mouse',
+                const thumb = { id: '7', src: null, metaFetched: true, name: 'Mouse #7', description: 'a mouse',
                     attributes: [{ trait_type: 'hat', value: 'No Hat' }, { trait_type: 'neck', value: 'Plain' }] };
                 const collection = { address: '0x000000000000000000000000000000000000dEaD', ticker: 'MICE', name: 'Anonymice' };
                 openArt(thumb, collection, { meta: {} });
@@ -475,7 +475,7 @@ public class BalanceViewerScriptTests
                 const node = { meta: {} };
                 function subOf(name) {
                     document.body.children.length = 0;
-                    openArt({ id: '16', src: null, name }, collection, node);
+                    openArt({ id: '16', src: null, metaFetched: true, name }, collection, node);
                     return __texts(document.body.children[0]);
                 }
                 const full = subOf('Anonymice #16');
