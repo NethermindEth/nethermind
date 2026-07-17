@@ -173,11 +173,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         // 6 covers peak concurrency: six column batches alive per persist, one persist in flight.
         private static readonly ArrayPool<byte> _slabPool = ArrayPool<byte>.Create(SlabSize, 1024);
         private static readonly ArrayPool<Entry> _entryPool = ArrayPool<Entry>.Create(1 << 22, 6);
+        // Dedicated pool for the slab-reference list backing so the per-persist list allocation stays off the shared
+        // pool; sized to the worst-case 1024 slabs over the six concurrent column batches of a single in-flight persist.
+        private static readonly ArrayPool<byte[]> _slabListPool = ArrayPool<byte[]>.Create(1024, 6);
         private static readonly EnvOptions _envOptions = new();
 
         private readonly ColumnDb _columnDb;
         private readonly EntryComparer _comparer;
-        private readonly List<byte[]> _slabs = [];
+        private readonly ArrayPoolList<byte[]> _slabs = new(_slabListPool, 16);
         private readonly ArrayPoolList<string> _stagedFiles = new(4);
         private Entry[] _index = _entryPool.Rent(1 << 16);
         private int _count;
@@ -400,7 +403,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             {
                 if (slab.Length == SlabSize) _slabPool.Return(slab);
             }
-            _slabs.Clear();
+            _slabs.Dispose();
             _entryPool.Return(_index);
             _index = [];
             _stagedFiles.Dispose();
