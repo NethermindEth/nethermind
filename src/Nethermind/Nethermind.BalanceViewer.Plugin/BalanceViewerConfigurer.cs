@@ -64,10 +64,14 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     private static readonly PathString DetectProxyPathPrefix = new("/portfolio-detect-rpc");
     private static readonly PathString DetectPath = new("/portfolio-detect");
     private static readonly PathString IpfsPathPrefix = new("/portfolio-ipfs");
+    private static readonly PathString PinPathPrefix = new("/portfolio-ipfs-pin");
 
     // Opt-in only: the UI calls this exclusively after the user enables IPFS (with a privacy prompt). Forwards
     // to a local Kubo gateway so off-chain NFT art can be rendered without the browser talking to a third party.
     private const string IpfsGateway = "http://127.0.0.1:8080";
+    // Local Kubo RPC API, used only for the single hardcoded pin/add operation (auto-pin viewed art). Not a
+    // general proxy — only the CID is forwarded, so the browser can't drive arbitrary node-API commands.
+    private const string IpfsApi = "http://127.0.0.1:5001";
     private static readonly HttpClient IpfsClient = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     private static readonly JsonSerializerOptions JsonOpts =
@@ -94,8 +98,9 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         bool isDetectGet = HttpMethods.IsGet(context.Request.Method) && path == DetectPath;
         bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
         bool isDetectDelete = HttpMethods.IsDelete(context.Request.Method) && path == DetectPath;
+        bool isPin = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(PinPathPrefix);
         bool isIpfs = HttpMethods.IsGet(context.Request.Method) && path.StartsWithSegments(IpfsPathPrefix);
-        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete && !isIpfs)
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete && !isIpfs && !isPin)
         {
             return next(context);
         }
@@ -107,6 +112,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
+        if (isPin) return ServePinAsync(context);
         if (isIpfs) return ServeIpfsAsync(context);
         if (isNodesList) return ServeNodesAsync(context);
         if (isProxy) return ProxyAsync(context);
@@ -169,6 +175,33 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
         {
             // no local gateway, or it couldn't resolve the CID — the UI falls back to a placeholder
+            if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
+        }
+    }
+
+    // POST /portfolio-ipfs-pin/{cid} — pins the CID on the user's own Kubo node (auto-pin viewed art). Opt-in
+    // from the UI, and only when Local IPFS is enabled. This is NOT a general node-API proxy: only pin/add is
+    // ever issued and only the URL-encoded CID is forwarded, so the browser can't reach other Kubo commands.
+    private async Task ServePinAsync(HttpContext context)
+    {
+        context.Request.Path.StartsWithSegments(PinPathPrefix, out PathString remaining);
+        string cid = remaining.Value?.TrimStart('/') ?? string.Empty;
+        // accept only a CID (optionally with a subpath): base32/58 chars, '/', '.', '-', '_'; reject anything else
+        if (cid.Length is 0 or > 256 || !cid.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_'))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        try
+        {
+            using HttpResponseMessage resp = await IpfsClient.PostAsync(
+                $"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null, context.RequestAborted);
+            context.Response.StatusCode = resp.IsSuccessStatusCode ? StatusCodes.Status204NoContent : StatusCodes.Status502BadGateway;
+        }
+        catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            // no local Kubo RPC API (5001) reachable — auto-pin is best-effort, so just report the failure
             if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
         }
     }

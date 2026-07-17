@@ -336,14 +336,35 @@
 
         /* scrollable collection lightbox */
         .collection-panel { display: flex; flex-direction: column; width: min(94vw, 640px); max-height: 88vh; background: #101012; border: 1px solid var(--border); border-radius: 10px; cursor: default; overflow: hidden; }
-        .collection-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-        .collection-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 14px; color: var(--c-name); }
+        .collection-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .collection-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 14px; color: var(--c-name); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        .collection-head .settings-x { flex-shrink: 0; }
         /* fixed 96px square cells (not aspect-ratio on 1fr tracks, which under-reserves the row height and overlaps) */
         .collection-grid { overflow-y: auto; padding: 16px; display: grid; grid-template-columns: repeat(auto-fill, 96px); grid-auto-rows: 96px; gap: 16px; justify-content: center; }
         .collection-cell { display: flex; align-items: center; justify-content: center; background: #0a0a0a; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
         .collection-cell img { width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; cursor: pointer; }
         .collection-info { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-family: 'DM Mono', ui-monospace, monospace; color: var(--muted); }
         .collection-info .collection-fact { color: var(--c-name); }
+        .collection-info .lightbox-copy { white-space: nowrap; flex-shrink: 0; } /* keep the address intact next to long names */
+        .collection-link { color: var(--accent); cursor: pointer; }
+        .collection-link:hover { text-decoration: underline; }
+        .collection-controls { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+        .collection-jump { width: 96px; background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 12px; padding: 4px 8px; }
+        .collection-arrow { background: #0a0a0a; border: 1px solid var(--border); border-radius: 5px; color: var(--c-name); font-size: 13px; cursor: pointer; padding: 3px 10px; }
+        .collection-arrow:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+        .collection-arrow:disabled { opacity: 0.35; cursor: default; }
+        .collection-page { font-size: 12px; font-family: 'DM Mono', ui-monospace, monospace; color: var(--muted); min-width: 96px; text-align: center; }
+        .collection-loading { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 12px; padding: 24px; }
+        /* grid cell states for NFTs without a renderable image */
+        .collection-cell .cell-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center; cursor: pointer; padding: 4px; }
+        .collection-cell .cell-id { color: var(--c-ticker); font-size: 12px; }
+        .collection-cell .cell-hint { font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+        .collection-cell .cell-off .cell-hint { color: var(--accent); }
+        .collection-cell .cell-loading { animation: cellpulse 1.1s ease-in-out infinite; }
+        @keyframes cellpulse { 0%,100% { opacity: 0.35; } 50% { opacity: 0.7; } }
+        .lightbox-owner { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+        .lightbox-owner-k { text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
+        .lightbox-owner .lightbox-copy { white-space: normal; word-break: break-word; }
         .collection-cell .more.number { font-size: 11px; }
 
         .lightbox-noart {
@@ -606,6 +627,8 @@
                 <div class="setting-note">Fetches directly from the NFT's server, revealing your IP and holdings to it.</div>
                 <label class="setting-row" id="localIpfsRow"><span>Local IPFS <span id="localIpfsState" class="setting-badge"></span></span><span class="switch"><input type="checkbox" id="setLocalIpfs"><span class="slider"></span></span></label>
                 <div class="setting-note">Uses your own IPFS node; content it lacks is fetched from peers, revealing which CIDs you view.</div>
+                <label class="setting-row" id="autoPinRow" style="display: none"><span>Auto-pin viewed art</span><span class="switch"><input type="checkbox" id="setAutoPin"><span class="slider"></span></span></label>
+                <div class="setting-note" id="autoPinNote" style="display: none">Pins the IPFS art you view to your own node so it stays available (and helps serve it to the network).</div>
                 <label class="setting-row"><span>IPFS remote gateway</span><span class="switch"><input type="checkbox" id="setRemoteGw"><span class="slider"></span></span></label>
                 <div class="setting-note">Uses a public gateway, which sees your IP and which NFTs you view.</div>
                 <input id="ipfsGatewayInput" class="setting-input number" placeholder="https://ipfs.io/ipfs/" spellcheck="false" />
@@ -943,7 +966,7 @@
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
-        const FULL_COLLECTION_CAP = 1000;          // most ids enumerated for a whole-collection view (safety bound)
+        const COLLECTION_PAGE_SIZE = 200;          // items per page in the collection lightbox (enumerated per page)
         const NFT_ART_CHUNK = 12;                  // ids per art request (also the collection view's lazy-load batch)
 
         const PRICE_DECIMALS = 8n;      // Chainlink USD-quote feeds use 8 decimals by convention
@@ -1542,6 +1565,7 @@
         // old receipts will surface only recently-acquired ids.
         const nftCache = new Map();        // `${address}|${chainId}|${collection}` -> { count, ids, thumbs }
         const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
+        const openCollectionRenderers = new Set(); // re-render callbacks for open collection lightboxes (art-source changes)
         let nftRefreshing = false;
 
         function parseOnChainMetadata(uri) {
@@ -1576,6 +1600,46 @@
             }
             if (/^https?:\/\//i.test(uri)) return artSources.https ? uri : null;
             return null;
+        }
+
+        // Auto-pin: when enabled (and Local IPFS is on), ask the local node to pin the CID of art the user
+        // views, so it stays available. Fire-and-forget, deduped per session; the plugin only issues pin/add.
+        function pinIpfs(uri) {
+            if (!autoPin || !artSources.localIpfs) return;
+            const cid = ipfsPath(uri);
+            if (!cid || pinnedCids.has(cid)) return;
+            pinnedCids.add(cid);
+            fetch('portfolio-ipfs-pin/' + cid, { method: 'POST' }).then((r) => { if (!r.ok) pinnedCids.delete(cid); }).catch(() => pinnedCids.delete(cid));
+        }
+
+        // where a URI's bytes live: on-chain (data:), IPFS, or an HTTPS server — used for the art badge/state
+        function artKind(uri) {
+            if (typeof uri !== 'string') return null;
+            if (uri.startsWith('data:')) return 'on-chain';
+            if (ipfsPath(uri)) return 'IPFS';
+            if (/^https?:\/\//i.test(uri)) return 'HTTPS';
+            return null;
+        }
+
+        // (Re)computes a thumb's renderable art from its stored raw URIs and the current art sources, so
+        // toggling a source updates thumbs in place (no refetch → no flicker). Sets:
+        //   artState: 'loaded' (renderable) | 'disabled' (off-chain art, its source is off) | 'none' (no art)
+        //   offKind:  when disabled, which source (IPFS/HTTPS) would render it
+        function applyArtSource(thumb, collection) {
+            thumb.src = thumb.rawImage ? resolveArtUri(thumb.rawImage) : null;
+            thumb.anim = null; thumb.animType = null;
+            if (thumb.rawAnim) { const t = mediaType(thumb.rawAnim, thumb.animFormat); if (t) { const r = resolveArtUri(thumb.rawAnim); if (r) { thumb.anim = r; thumb.animType = t; } } }
+            const primary = thumb.rawImage || (thumb.animType ? thumb.rawAnim : null);
+            thumb.source = primary ? artKind(primary) : null;
+            const offchainArt = (thumb.rawImage && artKind(thumb.rawImage) !== 'on-chain')
+                || (thumb.rawAnim && artKind(thumb.rawAnim) !== 'on-chain')
+                // metadata itself is off-chain and wasn't fetched (so its art is unknown but gated by a source)
+                || (!thumb.rawImage && !thumb.rawAnim && thumb.metaUri && artKind(thumb.metaUri) && artKind(thumb.metaUri) !== 'on-chain' && !thumb.metaFetched);
+            if (thumb.src || thumb.anim) thumb.artState = 'loaded';
+            else if (offchainArt) thumb.artState = 'disabled';
+            else thumb.artState = 'none';
+            thumb.offKind = thumb.artState === 'disabled' ? (artKind(thumb.rawImage || thumb.rawAnim || thumb.metaUri) || 'off-chain') : null;
+            thumb.title = thumb.src || thumb.anim ? (thumb.name || collection.ticker + ' #' + thumb.id) : '#' + thumb.id;
         }
 
         // classifies an animation_url as playable video/audio, preferring the metadata format hint
@@ -1657,37 +1721,30 @@
                     const murl = resolveArtUri(uri);
                     if (murl && !murl.startsWith('data:')) { try { metadata = await (await fetch(murl)).json(); } catch { metadata = null; } }
                 }
-                const name = typeof metadata?.name === 'string' ? metadata.name : null;
-                const image = typeof metadata?.image === 'string' ? metadata.image : null;
-                // on-chain (data:) art always resolves; off-chain art only via an enabled source
-                const src = image ? resolveArtUri(image) : null;
-                // richer media (animation_url): video/audio played in the lightbox, resolved via the same sources
-                let anim = null, animType = null;
-                const au = typeof metadata?.animation_url === 'string' ? metadata.animation_url : null;
-                if (au) { const t = mediaType(au, metadata?.animation_details?.format); if (t) { const r = resolveArtUri(au); if (r) { anim = r; animType = t; } } }
-                // where the media lives, for the lightbox badge (image if present, else the animation)
-                const primary = image || (anim ? au : null);
-                const source = !primary ? null : primary.startsWith('data:') ? 'on-chain' : ipfsPath(primary) ? 'IPFS' : /^https?:\/\//i.test(primary) ? 'HTTPS' : null;
-                // carry the metadata (name / description / traits) so the lightbox can show it even when the art
-                // is off-chain (and its source is off) or absent
-                return {
+                // Store the raw (unresolved) art URIs + metadata so applyArtSource can (re)compute the
+                // renderable art on demand — e.g. when the art-source toggles change, without refetching.
+                const thumb = {
                     id: id.toString(),
-                    src,
-                    source,
-                    anim,
-                    animType,
-                    title: src ? (name || collection.ticker + ' #' + id) : '#' + id,
-                    name,
+                    metaUri: uri || null,
+                    metaFetched: !!metadata,
+                    rawImage: typeof metadata?.image === 'string' ? metadata.image : null,
+                    rawAnim: typeof metadata?.animation_url === 'string' ? metadata.animation_url : null,
+                    animFormat: metadata?.animation_details?.format ?? null,
+                    name: typeof metadata?.name === 'string' ? metadata.name : null,
                     description: typeof metadata?.description === 'string' ? metadata.description : null,
                     attributes: Array.isArray(metadata?.attributes) ? metadata.attributes : null,
                 };
+                applyArtSource(thumb, collection);
+                // auto-pin the fetched IPFS metadata/art to the local node (no-op unless enabled)
+                pinIpfs(thumb.metaUri); pinIpfs(thumb.rawImage); pinIpfs(thumb.rawAnim);
+                return thumb;
             }));
         }
 
         // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
         // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
         // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
-        function openArt(thumb, collection, node) {
+        function openArt(thumb, collection, node, owner) {
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'lightbox-panel');
 
@@ -1705,7 +1762,10 @@
                 img.alt = thumb.name || '';
                 panel.append(img);
             } else {
-                panel.append(el('div', 'lightbox-noart', thumb.animType === 'audio' ? '♪ audio' : 'no on-chain image'));
+                const note = thumb.animType === 'audio' ? '♪ audio'
+                    : thumb.artState === 'disabled' ? (thumb.offKind || 'off-chain') + ' art — enable in settings'
+                        : 'no on-chain image';
+                panel.append(el('div', 'lightbox-noart', note));
             }
             if (thumb.animType === 'audio' && thumb.anim) {
                 const a = el('audio');
@@ -1736,6 +1796,28 @@
                 }
                 if (grid.children.length) info.append(grid);
             }
+
+            // owner row: the account it was opened under, else resolved on demand via ownerOf (ERC-721)
+            const ownerRow = el('div', 'lightbox-owner');
+            info.append(ownerRow);
+            const showOwner = (addr) => {
+                if (!addr || /^0x0{40}$/i.test(addr)) return;
+                ownerRow.append(el('span', 'lightbox-owner-k', 'Owner'));
+                const oc = el('span', 'lightbox-copy', ownerDisplay(addr));
+                oc.title = addr + ' (click to copy)';
+                oc.onclick = () => copyAddress(addr);
+                ownerRow.append(oc);
+            };
+            if (owner) showOwner(owner);
+            else (async () => {
+                try {
+                    const kind = await detectKind(node, collection);
+                    if (kind !== 'erc1155') {
+                        const r = await rpc('eth_call', [{ to: collection.address, data: SEL_OWNER_OF + pad32(BigInt(thumb.id).toString(16)) }, 'latest'], node.rpcPath);
+                        if (r && r.length >= 66) showOwner('0x' + r.slice(-40));
+                    }
+                } catch { /* owner is best-effort */ }
+            })();
 
             const meta = el('div', 'lightbox-meta');
             const shortAddr = collection.address.slice(0, 6) + '…' + collection.address.slice(-4);
@@ -1838,19 +1920,26 @@
 
         // On-chain facts for an NFT collection, opened from a Watch-bar chip (which isn't tied to one
         // account, so no per-holder detail): token standard, total supply, contract, chain.
-        // makes a clickable NFT thumbnail element (image, or a #id placeholder). Card previews pass an
-        // onClick that opens the collection lightbox; grid cells omit it and open the single-item lightbox.
-        function thumbEl(thumb, collection, node, onClick) {
-            const handler = onClick || (() => openArt(thumb, collection, node));
+        // Makes a clickable NFT cell that opens the single-item lightbox. A cell shows the art when
+        // renderable, else the token id plus a state hint: loading (not fetched yet), "no art" (none in
+        // metadata), or "<IPFS/HTTPS> off" (off-chain art whose source is disabled — enable it in settings).
+        function thumbEl(thumb, collection, node, owner) {
+            const open = () => openArt(thumb, collection, node, owner);
             if (thumb && thumb.src) {
                 const img = el('img');
                 img.src = thumb.src;
-                img.title = (thumb.title || '') + (onClick ? ' (click to open collection)' : ' (click for details)');
-                img.onclick = handler;
+                img.title = (thumb.title || ('#' + (thumb.id ?? ''))) + ' (click for details)';
+                img.onclick = open;
                 return img;
             }
-            const span = el('span', 'more number', thumb ? thumb.title : '…');
-            if (thumb || onClick) { span.title = onClick ? 'Open collection' : 'Details'; span.onclick = handler; }
+            const span = el('span', 'more number cell-state');
+            if (!thumb) { span.textContent = '…'; return span; }
+            span.append(el('span', 'cell-id', '#' + thumb.id));
+            span.title = 'Details';
+            span.onclick = open;
+            if (thumb.artState === undefined) span.classList.add('cell-loading'); // not fetched yet
+            else if (thumb.artState === 'disabled') { span.classList.add('cell-off'); span.append(el('span', 'cell-hint', (thumb.offKind || 'off-chain') + ' off')); }
+            else if (thumb.artState === 'none') span.append(el('span', 'cell-hint', 'no art'));
             return span;
         }
 
@@ -1859,13 +1948,13 @@
         function fillThumbs(box, cached, node, owner, collection) {
             box.replaceChildren();
             if (!cached) return;
-            const open = () => openOwnedCollection(node, collection, owner, cached);
-            for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node, open));
+            // a thumbnail opens that single NFT; "view all" opens this account's holdings in the collection
+            for (const thumb of cached.thumbs.slice(0, MAX_NFT_THUMBS)) box.append(thumbEl(thumb, collection, node, owner));
             const total = cached.count ?? cached.ids?.length ?? cached.thumbs.length;
             if (total > MAX_NFT_THUMBS) {
                 const more = el('span', 'more expand', 'view all ' + total);
-                more.title = 'Open the full collection';
-                more.onclick = open;
+                more.title = 'Open this account’s holdings in the collection';
+                more.onclick = () => openOwnedCollection(node, collection, owner, cached);
                 box.append(more);
             }
             if (cached.loading) box.append(el('span', 'more', 'loading…'));
@@ -1900,19 +1989,38 @@
             return reverseCache.get(address.toLowerCase()) || (address.slice(0, 6) + '…' + address.slice(-4));
         }
 
-        // one account's holdings in a collection — title makes the "owned by" scope explicit
+        // one account's holdings in a collection. Ids are already known (from nftCache), paged client-side.
         function openOwnedCollection(node, collection, ownerAddr, cached) {
             const c = cached || nftCache.get(ownerAddr + '|' + node.chainId + '|' + collection.address.toLowerCase()) || { ids: [], thumbs: [], count: 0 };
-            openCollection(node, collection, c, ownerDisplay(ownerAddr));
+            const ids = c.ids || [], seed = c.thumbs || [], total = ids.length;
+            openCollection(node, collection, {
+                titleSuffix: 'of ' + ownerDisplay(ownerAddr),
+                ownedCount: c.count ?? total,
+                ownerAddr,
+                kind: c.kind,
+                pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)),
+                loadPage: (p) => {
+                    const s = p * COLLECTION_PAGE_SIZE, e = Math.min(s + COLLECTION_PAGE_SIZE, total);
+                    return { ids: ids.slice(s, e), seed: seed.slice(s, e) };
+                },
+                onViewFull: () => openFullCollection(node, collection),
+            });
         }
 
-        // the whole collection (every minted token), enumerated on-chain. Only ERC-721 Enumerable exposes
-        // tokenByIndex; other kinds can't be listed in full, so fall back to the merged held-items view.
+        // the whole collection (every minted token). ERC-721 Enumerable exposes tokenByIndex, so each page is
+        // enumerated on demand (handles arbitrarily large collections); other kinds can't be fully listed, so
+        // fall back to the merged held-items view.
         async function openFullCollection(node, collection) {
             const kind = await detectKind(node, collection);
             if (kind !== 'enum721') {
                 const merged = collectionCacheFor(node, collection) || { ids: [], thumbs: [], count: 0 };
-                openCollection(node, collection, merged, 'held items · full collection not listable');
+                const ids = merged.ids || [], seed = merged.thumbs || [];
+                openCollection(node, collection, {
+                    titleSuffix: 'held · not fully listable',
+                    ownerAddr: null, kind: merged.kind,
+                    pageCount: Math.max(1, Math.ceil(ids.length / COLLECTION_PAGE_SIZE)),
+                    loadPage: (p) => { const s = p * COLLECTION_PAGE_SIZE, e = Math.min(s + COLLECTION_PAGE_SIZE, ids.length); return { ids: ids.slice(s, e), seed: seed.slice(s, e) }; },
+                });
                 return;
             }
             let total = 0;
@@ -1920,84 +2028,148 @@
                 const supplyHex = await rpc('eth_call', [{ to: collection.address, data: SEL_TOTAL_SUPPLY }, 'latest'], node.rpcPath);
                 if (supplyHex && supplyHex !== '0x') total = Number(BigInt(supplyHex));
             } catch { /* no totalSupply — fall through with total 0 */ }
-            const n = Math.min(total, FULL_COLLECTION_CAP);
-            // enumerate in chunks so a large collection doesn't produce one oversized JSON-RPC batch
-            const ids = [];
-            for (let start = 0; start < n; start += NFT_ID_CAP) {
-                const calls = [];
-                for (let i = start; i < Math.min(start + NFT_ID_CAP, n); i++) {
-                    calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_BY_INDEX + pad32(i.toString(16)) }, 'latest']]);
-                }
-                try {
-                    // keep ids as BigInt (fetchThumbsForIds does id.toString(16); a decimal string would be
-                    // taken verbatim as hex, mislabelling every id >= 10)
-                    for (const r of await rpcBatch(calls, node.rpcPath)) { try { ids.push(BigInt(r)); } catch { /* skip unparseable */ } }
-                } catch { break; /* stop enumerating on RPC failure; show what we have */ }
-            }
-            const cached = { ids, thumbs: ids.map((id) => ({ id, src: null, title: '#' + id })), count: total, kind };
-            openCollection(node, collection, cached, total > ids.length ? `${ids.length} of ${total}` : String(total));
+            openCollection(node, collection, {
+                titleSuffix: String(total),
+                ownerAddr: null, kind, jump: true,
+                pageCount: Math.max(1, Math.ceil(total / COLLECTION_PAGE_SIZE)),
+                loadPage: async (p) => {
+                    const start = p * COLLECTION_PAGE_SIZE, end = Math.min(start + COLLECTION_PAGE_SIZE, total);
+                    const calls = [];
+                    for (let i = start; i < end; i++) calls.push(['eth_call', [{ to: collection.address, data: SEL_TOKEN_BY_INDEX + pad32(i.toString(16)) }, 'latest']]);
+                    const ids = [];
+                    // keep ids BigInt so fetchThumbsForIds' id.toString(16) is real hex
+                    try { for (const r of await rpcBatch(calls, node.rpcPath)) { try { ids.push(BigInt(r)); } catch { /* skip */ } } } catch { /* leave partial */ }
+                    return { ids, seed: [] };
+                },
+            });
         }
 
-        // scrollable lightbox of every NFT in a collection (info header + lazy-loaded grid). Each cell's art
-        // loads as it nears the viewport; a generous rootMargin buffers ahead so cells fill before you reach them.
-        function openCollection(node, collection, cached, titleSuffix) {
-            const ids = cached.ids || [];
+        // Paginated collection lightbox (info header + one page of a lazy-loaded grid). Art loads as cells
+        // enter the viewport (visible-first, so wherever you are is prioritised); a jump-to-# input opens any
+        // token directly. `opts.loadPage(p)` returns { ids: [BigInt], seed: [thumb|null] } for page p.
+        function openCollection(node, collection, opts) {
             const overlay = el('div', 'lightbox');
             const panel = el('div', 'collection-panel');
 
             const head = el('div', 'collection-head');
-            head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + (titleSuffix ?? (cached.count ?? ids.length))));
+            head.append(el('span', 'collection-title', (collection.name || collection.ticker) + ' · ' + opts.titleSuffix));
             const x = el('button', 'settings-x', '×');
             x.onclick = () => close();
             head.append(x);
             panel.append(head);
 
-            // info strip: token standard, total supply, contract, chain (filled in asynchronously below)
             const infoStrip = el('div', 'collection-info');
             const standardEl = el('span', 'collection-fact', '…');
             const supplyEl = el('span', 'collection-fact', '');
+            if (opts.ownedCount != null) infoStrip.append(el('span', 'collection-fact', opts.ownedCount + ' owned'));
+            infoStrip.append(standardEl, supplyEl);
             const copy = el('span', 'lightbox-copy', collection.address.slice(0, 6) + '…' + collection.address.slice(-4));
-            copy.title = 'Copy contract address';
+            copy.title = collection.address + ' (click to copy)';
             copy.onclick = () => copyAddress(collection.address);
-            infoStrip.append(standardEl, supplyEl, copy, el('span', 'art-source', node.meta.name));
+            infoStrip.append(copy, el('span', 'art-source', node.meta.name));
+            if (opts.onViewFull) {
+                const link = el('span', 'collection-link', 'view full collection');
+                link.onclick = () => { close(); opts.onViewFull(); };
+                infoStrip.append(link);
+            }
             panel.append(infoStrip);
 
+            // controls: jump-to-# (full view) + pagination arrows
+            let page = 0;
+            const controls = el('div', 'collection-controls');
+            if (opts.jump) {
+                const jin = el('input', 'collection-jump');
+                jin.type = 'text'; jin.inputMode = 'numeric'; jin.placeholder = 'go to #';
+                jin.onkeydown = async (e) => {
+                    if (e.key !== 'Enter') return;
+                    let idBig; try { idBig = BigInt(jin.value.trim()); } catch { return; }
+                    jin.disabled = true;
+                    try { const [t] = await fetchThumbsForIds(node, collection, [idBig], opts.kind); openArt(t, collection, node, opts.ownerAddr); }
+                    catch { setStatus('Could not load #' + jin.value.trim(), true); }
+                    finally { jin.disabled = false; jin.value = ''; }
+                };
+                controls.append(jin);
+            }
+            let pageLabel = null, prevBtn = null, nextBtn = null;
+            if (opts.pageCount > 1) {
+                prevBtn = el('button', 'collection-arrow', '◀');
+                pageLabel = el('span', 'collection-page', '');
+                nextBtn = el('button', 'collection-arrow', '▶');
+                prevBtn.onclick = () => { if (page > 0) go(page - 1); };
+                nextBtn.onclick = () => { if (page < opts.pageCount - 1) go(page + 1); };
+                controls.append(prevBtn, pageLabel, nextBtn);
+            }
+            if (controls.children.length) panel.append(controls);
+
             const grid = el('div', 'collection-grid');
-            const cells = ids.map((_, i) => {
-                const cell = el('div', 'collection-cell');
-                cell.dataset.idx = String(i);
-                cell.append(thumbEl(cached.thumbs[i], collection, node));
-                grid.append(cell);
-                return cell;
-            });
             panel.append(grid);
 
-            // Lazy-load each cell's art as it nears the viewport. `pending` holds the cell ELEMENTS (not
-            // indices): each cell's art is fetched by its own data-token-id and written back to that same
-            // element, so out-of-order intersection callbacks and concurrent flushes can never mislabel a cell.
-            const pending = new Set();
-            let timer = null;
-            const flush = async () => {
-                timer = null;
-                const group = [...pending].filter((cell) => !cell.dataset.loaded);
-                pending.clear();
-                for (let k = 0; k < group.length; k += NFT_ART_CHUNK) {
-                    const chunk = group.slice(k, k + NFT_ART_CHUNK);
-                    let thumbs;
-                    try { thumbs = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), cached.kind); } catch { continue; }
-                    for (let j = 0; j < chunk.length; j++) {
-                        chunk[j].dataset.loaded = '1';
-                        cached.thumbs[Number(chunk[j].dataset.idx)] = thumbs[j];
-                        chunk[j].replaceChildren(thumbEl(thumbs[j], collection, node));
+            // per-page lazy-load: `pending` holds cell ELEMENTS; each cell's art is fetched by its own id and
+            // written back to that element, so out-of-order intersection callbacks can never mislabel a cell.
+            let io = null, curCells = [], curThumbs = [];
+            const makeIO = (ids, thumbsRef) => {
+                const pending = new Set(); let timer = null;
+                const flush = async () => {
+                    timer = null;
+                    const group = [...pending].filter((c) => !c.dataset.loaded); pending.clear();
+                    for (let k = 0; k < group.length; k += NFT_ART_CHUNK) {
+                        const chunk = group.slice(k, k + NFT_ART_CHUNK);
+                        let loaded;
+                        try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind); } catch { continue; }
+                        for (let j = 0; j < chunk.length; j++) {
+                            chunk[j].dataset.loaded = '1';
+                            thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j];
+                            chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr));
+                        }
                     }
+                };
+                const obs = new IntersectionObserver((entries) => {
+                    for (const e of entries) if (e.isIntersecting) { pending.add(e.target); obs.unobserve(e.target); }
+                    if (pending.size && !timer) timer = setTimeout(flush, 60);
+                }, { root: grid, rootMargin: '800px' });
+                return obs;
+            };
+
+            async function go(p) {
+                page = p;
+                if (io) io.disconnect();
+                if (pageLabel) pageLabel.textContent = 'page ' + (p + 1) + ' of ' + opts.pageCount;
+                if (prevBtn) prevBtn.disabled = p === 0;
+                if (nextBtn) nextBtn.disabled = p === opts.pageCount - 1;
+                grid.replaceChildren(el('div', 'collection-loading', 'loading…'));
+                let res;
+                try { res = await opts.loadPage(p); } catch { grid.replaceChildren(el('div', 'collection-loading', 'failed to load')); return; }
+                const ids = res.ids || [], seed = res.seed || [];
+                if (!ids.length) {
+                    // held count is known but no ids could be listed — usually a pruned-log node (mainnet ancient
+                    // barrier) for plain ERC-721/1155, or a collection with no totalSupply for the full view
+                    const msg = opts.ownedCount
+                        ? opts.ownedCount + ' held, but the token ids couldn’t be listed (this node may have pruned older logs)'
+                        : 'No items to show';
+                    grid.replaceChildren(el('div', 'collection-loading', msg));
+                    return;
+                }
+                const thumbsRef = ids.map((id, i) => seed[i] || { id, title: '#' + id, src: null });
+                grid.replaceChildren();
+                const cells = ids.map((id, i) => {
+                    const cell = el('div', 'collection-cell'); cell.dataset.idx = String(i);
+                    cell.append(thumbEl(thumbsRef[i], collection, node, opts.ownerAddr));
+                    grid.append(cell); return cell;
+                });
+                curCells = cells; curThumbs = thumbsRef;
+                io = makeIO(ids, thumbsRef);
+                for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+                grid.scrollTop = 0;
+            }
+
+            // re-resolve already-fetched thumbs' art in place when the art sources change (no refetch/flicker)
+            const reRenderArt = () => {
+                for (let i = 0; i < curCells.length; i++) {
+                    const t = curThumbs[i];
+                    if (t && 'metaFetched' in t) { applyArtSource(t, collection); curCells[i].dataset.loaded = '1'; curCells[i].replaceChildren(thumbEl(t, collection, node, opts.ownerAddr)); }
                 }
             };
-            // rootMargin 800px preloads roughly a screenful ahead, so spaced-out cells are filled before scrolled to
-            const io = new IntersectionObserver((entries) => {
-                for (const e of entries) if (e.isIntersecting) { pending.add(e.target); io.unobserve(e.target); }
-                if (pending.size && !timer) timer = setTimeout(flush, 60);
-            }, { root: grid, rootMargin: '800px' });
-            for (const cell of cells) if (!(cached.thumbs[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+            openCollectionRenderers.add(reRenderArt);
 
             (async () => {
                 try {
@@ -2009,12 +2181,13 @@
             })();
 
             const onKey = (e) => { if (e.key === 'Escape') close(); };
-            function close() { io.disconnect(); overlay.remove(); document.removeEventListener('keydown', onKey); }
+            function close() { if (io) io.disconnect(); openCollectionRenderers.delete(reRenderArt); overlay.remove(); document.removeEventListener('keydown', onKey); }
             overlay.append(panel);
             overlay.onclick = () => close();
             panel.onclick = (e) => e.stopPropagation();
             document.addEventListener('keydown', onKey);
             document.body.append(overlay);
+            go(0);
         }
 
         async function refreshNftThumbs() {
@@ -2338,6 +2511,8 @@
         // off-chain NFT art sources — all opt-in, default off (on-chain art always shows)
         const artSources = { https: false, localIpfs: false, remoteGateway: false };
         let localIpfsAvailable = false;     // whether a local IPFS gateway was detected
+        let autoPin = false;                // pin viewed IPFS art to the local node (only when Local IPFS is on)
+        const pinnedCids = new Set();       // CIDs already pin-requested this session (avoid duplicate requests)
         const IPFS_REMOTE_GATEWAY_DEFAULT = 'https://ipfs.io/ipfs/';
         let ipfsRemoteGateway = IPFS_REMOTE_GATEWAY_DEFAULT; // configurable in settings
         let nodeDetectBusy = false;         // guards against overlapping nodeDetect passes
@@ -3534,7 +3709,9 @@
             const DISPLAYMODE_KEY = 'nethermind.portfolio.displaymode';
             const ART_KEY = 'nethermind.portfolio.artsources';
             const GATEWAY_KEY = 'nethermind.portfolio.ipfsgateway';
+            const AUTOPIN_KEY = 'nethermind.portfolio.autopin';
             const WATCH_KEY = 'nethermind.portfolio.watchcollapsed';
+            autoPin = localStorage.getItem(AUTOPIN_KEY) === '1'; // default off
             detectEnabled = localStorage.getItem(DETECT_KEY) !== '0'; // default on
             hideSpam = localStorage.getItem(HIDESPAM_KEY) !== '0';    // default on
             displayMode = localStorage.getItem(DISPLAYMODE_KEY)
@@ -3581,11 +3758,34 @@
             };
             const onArtChange = () => {
                 localStorage.setItem(ART_KEY, JSON.stringify(artSources));
-                nftCache.clear(); refreshNftThumbs(); // re-resolve art with the new sources
+                // Re-resolve already-fetched thumbs in place (no cache clear / refetch → no flicker) and
+                // re-render inline previews. Placeholders (not yet fetched) are left as-is.
+                for (const node of enabledNodes()) {
+                    for (const entry of mergedAddresses()) {
+                        for (const collection of stateOf(node.chainId).nfts) {
+                            const key = entry.address + '|' + node.chainId + '|' + collection.address.toLowerCase();
+                            const c = nftCache.get(key);
+                            if (c) for (const t of (c.thumbs || [])) if (t && 'metaFetched' in t) applyArtSource(t, collection);
+                            const box = document.querySelector(`[data-thumbs="${key}"]`);
+                            if (box) fillThumbs(box, c, node, entry.address, collection);
+                        }
+                    }
+                }
+                for (const r of openCollectionRenderers) r(); // re-render any open collection lightbox
             };
+            // auto-pin row is only relevant (and only shown) when Local IPFS is enabled
+            const setAutoPin = $('setAutoPin');
+            setAutoPin.checked = autoPin;
+            const updateAutoPinRow = () => {
+                const show = artSources.localIpfs ? '' : 'none';
+                $('autoPinRow').style.display = show;
+                $('autoPinNote').style.display = show;
+            };
+            setAutoPin.onchange = () => { autoPin = setAutoPin.checked; localStorage.setItem(AUTOPIN_KEY, autoPin ? '1' : '0'); };
             setHttps.onchange = () => { artSources.https = setHttps.checked; onArtChange(); };
-            setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; onArtChange(); };
+            setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; updateAutoPinRow(); onArtChange(); };
             setRemoteGw.onchange = () => { artSources.remoteGateway = setRemoteGw.checked; onArtChange(); };
+            updateAutoPinRow();
 
             const gwInput = $('ipfsGatewayInput');
             gwInput.value = ipfsRemoteGateway;
@@ -3664,6 +3864,7 @@
                 setLocalIpfs.disabled = !localIpfsAvailable;
                 $('localIpfsRow').classList.toggle('disabled', !localIpfsAvailable);
                 if (!localIpfsAvailable && setLocalIpfs.checked) { setLocalIpfs.checked = false; artSources.localIpfs = false; }
+                updateAutoPinRow(); // auto-pin only applies when Local IPFS is on
 
                 // log-index status on the connected node (recommend / syncing / enabled)
                 const note = $('logIndexNotice');
