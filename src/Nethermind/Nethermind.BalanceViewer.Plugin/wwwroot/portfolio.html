@@ -1572,71 +1572,44 @@
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
-        // ---------- Persistent cache (IndexedDB) — survives page reload ----------
-        // Two stores, both holding only immutable data so nothing can go stale:
-        //   meta — resolved NFT metadata for content-addressed tokenURIs (data:/ipfs://), keyed chainId|collection|id.
-        //   img  — the raw bytes of loaded art, keyed by exact URL, so reopening after a soft refresh doesn't
-        //          re-download (which showed as black tiles). Bounded FIFO so it can't grow without limit.
-        // Everything degrades gracefully: if IndexedDB is unavailable every call resolves to null/no-op and the
-        // in-memory caches + network path take over. HTTPS tokenURIs (which can change on reveal) are never stored.
+        // ---------- Persistent metadata cache (IndexedDB) — survives page reload ----------
+        // Stores resolved NFT metadata for content-addressed tokenURIs (data:/ipfs://) only, keyed
+        // chainId|collection|id — immutable, so nothing can go stale. This is what made collections go black on a
+        // soft refresh: the image URL was unknown until metadata was re-fetched. Image *bytes* are left to the
+        // browser HTTP cache (the IPFS proxy sends immutable Cache-Control), which is faster and progressive —
+        // routing them through IndexedDB blobs was slower than native <img> loading. Degrades gracefully: if
+        // IndexedDB is unavailable every call resolves to null/no-op. HTTPS tokenURIs (re-revealable) aren't stored.
         const IDB_NAME = 'portfolio-cache';
-        const IDB_IMG_CAP = 4000;
         let idbPromise;
         function idbOpen() {
             if (idbPromise !== undefined) return idbPromise;
             idbPromise = new Promise((resolve) => {
                 let req;
-                try { req = indexedDB.open(IDB_NAME, 1); } catch { resolve(null); return; }
+                try { req = indexedDB.open(IDB_NAME, 2); } catch { resolve(null); return; }
                 req.onupgradeneeded = () => {
                     const db = req.result;
                     if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
-                    if (!db.objectStoreNames.contains('img')) db.createObjectStore('img', { keyPath: 'url' }).createIndex('seq', 'seq');
+                    if (db.objectStoreNames.contains('img')) db.deleteObjectStore('img'); // v1 image blobs — dropped, HTTP cache handles bytes
                 };
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => resolve(null);
             });
-            navigator.storage?.persist?.().catch(() => { }); // ask the browser not to evict our cache
             return idbPromise;
         }
-        function idbGet(store, key) {
-            return idbOpen().then((db) => db && new Promise((res) => {
-                try { const r = db.transaction(store, 'readonly').objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }
-                catch { res(null); }
-            }));
-        }
-        function idbGetMeta(key) { return idbGet('meta', key); }
-        function idbPutMeta(key, value) {
-            return idbOpen().then((db) => { if (!db) return; try { db.transaction('meta', 'readwrite').objectStore('meta').put(value, key); } catch { } });
-        }
-        async function idbGetImg(url) { const r = await idbGet('img', url); return r?.blob || null; }
-        function idbPutImg(url, blob) {
+        // Fetch many metadata entries in a single readonly transaction (per-key transactions were ~2.4x slower).
+        function idbGetManyMeta(keys) {
             return idbOpen().then((db) => {
-                if (!db) return;
-                try {
-                    const os = db.transaction('img', 'readwrite').objectStore('img');
-                    os.put({ url, blob, seq: Date.now() });
-                    const cnt = os.count();
-                    cnt.onsuccess = () => { // opportunistic FIFO eviction once over the cap
-                        let over = cnt.result - IDB_IMG_CAP;
-                        if (over <= 0) return;
-                        const cur = os.index('seq').openCursor();
-                        cur.onsuccess = () => { const c = cur.result; if (c && over-- > 0) { c.delete(); c.continue(); } };
-                    };
-                } catch { }
+                if (!db || !keys.length) return keys.map(() => null);
+                return new Promise((resolve) => {
+                    let os;
+                    try { os = db.transaction('meta', 'readonly').objectStore('meta'); } catch { resolve(keys.map(() => null)); return; }
+                    const out = new Array(keys.length); let done = 0;
+                    keys.forEach((k, i) => { const r = os.get(k); r.onsuccess = () => { out[i] = r.result || null; if (++done === keys.length) resolve(out); }; r.onerror = () => { out[i] = null; if (++done === keys.length) resolve(out); }; });
+                });
             });
         }
-        // Durable image bytes for an art URL: IndexedDB hit, else fetch-and-store. Returns null when the bytes
-        // can't be read (data: URIs, or opaque cross-origin responses) — the caller then loads via <img src>.
-        async function artBlobGet(url) {
-            const hit = await idbGetImg(url);
-            if (hit) return hit;
-            try {
-                const res = await fetch(url);
-                if (!res.ok) return null; // opaque cross-origin (no CORS) reports status 0 -> fall back to <img>
-                const blob = await res.blob();
-                if (blob.size > 0 && blob.type.startsWith('image')) { idbPutImg(url, blob); return blob; }
-            } catch { }
-            return null;
+        function idbPutMeta(key, value) {
+            return idbOpen().then((db) => { if (!db) return; try { db.transaction('meta', 'readwrite').objectStore('meta').put(value, key); } catch { } });
         }
 
         function parseOnChainMetadata(uri) {
@@ -1852,7 +1825,7 @@
             });
             if (!miss.length) return result;
             // then the persistent metadata cache (immutable tokenURIs) — a soft refresh reopens without re-fetching
-            const persisted = await Promise.all(miss.map((i) => idbGetMeta(keyBase + ids[i])));
+            const persisted = await idbGetManyMeta(miss.map((i) => keyBase + ids[i]));
             const stillMiss = [];
             miss.forEach((i, k) => {
                 const m = persisted[k];
@@ -1907,30 +1880,21 @@
             return result;
         }
 
-        // An <img> for NFT art. Off-chain art is served from the durable IndexedDB blob cache when possible, so it
-        // survives a soft refresh instead of re-downloading (which showed as black tiles); a cache miss fetches the
-        // bytes once and stores them. Bytes that can't be read (data: URIs, opaque cross-origin) load via <img src>,
-        // which retries a couple of times on transient gateway/server failures (cache-busted) before onFail().
+        // An <img> for NFT art that retries a couple of times on error before giving up (off-chain gateways/
+        // servers often fail transiently under load). Retries add a cache-buster to force a fresh request;
+        // on-chain data: URIs never retry. Calls onFail() once retries are exhausted. Loads natively (the browser
+        // starts immediately, decodes progressively and serves from its HTTP cache on reload — the IPFS proxy
+        // marks responses immutable), which is faster than routing bytes through IndexedDB.
         function artImg(src, onFail) {
             const img = el('img');
             let tries = 0;
-            const directWithRetry = () => {
-                img.onerror = () => {
-                    if (src && !src.startsWith('data:') && tries < 2) {
-                        tries++;
-                        setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
-                    } else onFail();
-                };
-                img.src = src;
+            img.onerror = () => {
+                if (src && !src.startsWith('data:') && tries < 2) {
+                    tries++;
+                    setTimeout(() => { img.src = src + (src.includes('?') ? '&' : '?') + '_retry=' + tries; }, 700 * tries);
+                } else onFail();
             };
-            if (!src || src.startsWith('data:')) { directWithRetry(); return img; }
-            artBlobGet(src).then((blob) => {
-                if (!blob) { directWithRetry(); return; }
-                const url = URL.createObjectURL(blob);
-                img.onload = () => URL.revokeObjectURL(url);
-                img.onerror = () => { URL.revokeObjectURL(url); directWithRetry(); }; // corrupt blob -> network fallback
-                img.src = url;
-            });
+            img.src = src;
             return img;
         }
 
@@ -2368,22 +2332,24 @@
                 });
                 curCells = cells; curThumbs = thumbsRef;
                 for (const cell of cells) if ((thumbsRef[Number(cell.dataset.idx)] || {}).src) cell.classList.remove('loading-cell');
+                // Art loads visible-first: the observer fires immediately for on-screen cells (and pre-loads within
+                // 800px of the viewport as you scroll), so whatever you're looking at is prioritised.
+                io = makeIO(ids, thumbsRef);
+                for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
                 if (opts.eager) {
-                    // owned view (bounded set): prefetch ALL art top-to-bottom so scrolling is instant
-                    (async () => {
+                    // owned view (bounded set): after the visible cells have a head start, backfill the rest in the
+                    // background so scrolling stays instant. Cells the observer already loaded are skipped.
+                    setTimeout(async () => {
                         for (let k = 0; k < cells.length; k += NFT_GRID_CHUNK) {
                             if (abort.signal.aborted) return;
-                            const chunk = cells.slice(k, k + NFT_GRID_CHUNK).filter((c) => !(thumbsRef[Number(c.dataset.idx)] || {}).src);
+                            const chunk = cells.slice(k, k + NFT_GRID_CHUNK).filter((c) => !c.dataset.loaded && !(thumbsRef[Number(c.dataset.idx)] || {}).src);
                             if (!chunk.length) continue;
                             let loaded;
                             try { loaded = await fetchThumbsForIds(node, collection, chunk.map((c) => ids[Number(c.dataset.idx)]), opts.kind, abort.signal); } catch { continue; }
                             if (abort.signal.aborted) return;
-                            for (let j = 0; j < chunk.length; j++) { chunk[j].dataset.loaded = '1'; chunk[j].classList.remove('loading-cell'); thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j]; chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr)); }
+                            for (let j = 0; j < chunk.length; j++) { if (chunk[j].dataset.loaded) continue; chunk[j].dataset.loaded = '1'; chunk[j].classList.remove('loading-cell'); thumbsRef[Number(chunk[j].dataset.idx)] = loaded[j]; chunk[j].replaceChildren(thumbEl(loaded[j], collection, node, opts.ownerAddr)); }
                         }
-                    })();
-                } else {
-                    io = makeIO(ids, thumbsRef);
-                    for (const cell of cells) if (!(thumbsRef[Number(cell.dataset.idx)] || {}).src) io.observe(cell);
+                    }, 350);
                 }
                 grid.scrollTop = 0;
             }
