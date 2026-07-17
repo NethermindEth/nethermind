@@ -64,13 +64,14 @@ public class BlockTreeSuggestPacer : IDisposable
 
     public async Task WaitForQueue(ulong currentBlockNumber, CancellationToken token)
     {
-        ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
         TaskCompletionSource? pauseSignal = null;
         TaskCompletionSource? completionSource;
 
         // Head can transiently overtake the suggestion (parallel-import advance, post-FCU); wrap would pause indefinitely.
+        // Pair the head snapshot with the event callback so a new batch cannot miss an already-raised head update.
         lock (_lock)
         {
+            ulong currentHeadNumber = _blockTree.Head?.Number ?? 0;
             if (currentBlockNumber > currentHeadNumber
                 && currentBlockNumber - currentHeadNumber > _stopBatchSize
                 && _dbBatchProcessed is null)

@@ -56,6 +56,64 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
+    public async Task WillNotMissHeadUpdateWhenStartingBatch()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block currentHead = Build.A.Block.WithNumber(0).TestObject;
+        TaskCompletionSource headRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseHeadRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int firstHeadRead = 1;
+        blockTree.Head.Returns(_ =>
+        {
+            Block snapshot = Volatile.Read(ref currentHead);
+            if (Interlocked.Exchange(ref firstHeadRead, 0) != 0)
+            {
+                headRead.TrySetResult();
+                releaseHeadRead.Task.GetAwaiter().GetResult();
+            }
+
+            return snapshot;
+        });
+
+        TaskCompletionSource headEventStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseHeadEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        blockTree.NewHeadBlock += (_, _) =>
+        {
+            headEventStarted.TrySetResult();
+            releaseHeadEvent.Task.GetAwaiter().GetResult();
+        };
+
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
+        TaskCompletionSource headEventHandled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        blockTree.NewHeadBlock += (_, _) => headEventHandled.TrySetResult();
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+
+        Task queueTask = Task.Run(() => pacer.WaitForQueue(11, cts.Token));
+        try
+        {
+            await headRead.Task.WaitAsync(cts.Token);
+            Volatile.Write(ref currentHead, Build.A.Block.WithNumber(6).TestObject);
+            Task headEventTask = Task.Run(() => blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(currentHead)));
+            await headEventStarted.Task.WaitAsync(cts.Token);
+
+            releaseHeadEvent.TrySetResult();
+            await Task.Delay(100, cts.Token);
+            Assert.That(headEventHandled.Task.IsCompleted, Is.False);
+
+            releaseHeadRead.TrySetResult();
+
+            await headEventTask.WaitAsync(cts.Token);
+            await queueTask.WaitAsync(cts.Token);
+        }
+        finally
+        {
+            releaseHeadEvent.TrySetResult();
+            releaseHeadRead.TrySetResult();
+            cts.Cancel();
+        }
+    }
+
+    [Test]
     public void WillOnlyUnblockOnceHeadReachHighEnough()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
