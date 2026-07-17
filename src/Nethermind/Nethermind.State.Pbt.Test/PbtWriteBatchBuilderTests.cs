@@ -86,6 +86,72 @@ public class PbtWriteBatchBuilderTests
         }
     }
 
+    /// <summary>
+    /// The drain hands over the bucket bounds the tree's first two levels would otherwise derive: the
+    /// entries ascend by stem first byte, the nibble level bounds them by that byte's high nibble, and
+    /// each byte group bounds its own nibble's slice — counted from that nibble's start, which is what
+    /// lets the descent take a group as its bounds unchanged.
+    /// </summary>
+    [Test]
+    public void DrainRecordsTheBucketBoundsOfBothLevels()
+    {
+        // empty shards leading, trailing and mid-group, and several stems sharing a shard
+        byte[] firstBytes = [0x00, 0x00, 0x0F, 0x10, 0x80, 0x80, 0x80, 0xFF];
+
+        using PbtWriteBatchBuilder builder = new();
+        for (int i = 0; i < firstBytes.Length; i++) builder.SetLeaf(TestStem(firstBytes[i], i), 0, Value(i));
+
+        using PbtWriteBatch batch = builder.DrainToWriteBatch();
+        Assert.That(batch.Count, Is.EqualTo(firstBytes.Length));
+
+        ReadOnlySpan<int> table = batch.Buckets;
+        Assert.That(table.Length, Is.EqualTo(PbtWriteBatch.BucketTableLength));
+
+        // the whole scheme rests on this: the drain emits its entries grouped by first byte, ascending
+        for (int i = 1; i < batch.Count; i++)
+        {
+            Assert.That(batch.Entries[i].Stem.Bytes[0], Is.GreaterThanOrEqualTo(batch.Entries[i - 1].Stem.Bytes[0]));
+        }
+
+        ReadOnlySpan<int> nibbles = table[PbtWriteBatch.ByteLevelLength..];
+        Assert.That(nibbles[0], Is.Zero);
+        for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
+        {
+            int expected = 0;
+            foreach (byte first in firstBytes)
+            {
+                if (first >> 4 <= nibble) expected++;
+            }
+
+            Assert.That(nibbles[nibble + 1], Is.EqualTo(expected), $"nibble level bound {nibble}");
+        }
+
+        for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
+        {
+            ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
+            Assert.That(group[0], Is.Zero, $"byte group {nibble} counts from its own nibble");
+            for (int low = 0; low < PbtTrieNodeGroup.BoundarySlots; low++)
+            {
+                int expected = 0;
+                foreach (byte first in firstBytes)
+                {
+                    if (first >> 4 == nibble && (first & 0xF) <= low) expected++;
+                }
+
+                Assert.That(group[low + 1], Is.EqualTo(expected), $"byte group {nibble} bound {low}");
+            }
+        }
+    }
+
+    /// <summary>A batch a producer fills itself carries no buckets, leaving the descent to partition its entries.</summary>
+    [Test]
+    public void HandBuiltBatch_CarriesNoBuckets()
+    {
+        using PbtWriteBatch batch = new(estimatedStems: 1, buckets: null);
+        batch.Add(TestStem(0x80, 1), PbtStemChanges.Rent().Set(0, Value(0)));
+        Assert.That(batch.Buckets.IsEmpty);
+    }
+
     private static void AssertEntry(PbtWriteBatch batch, in Stem stem, byte[] expectedSubIndices)
     {
         IPbtStemChanges changes = Changes(batch, stem);

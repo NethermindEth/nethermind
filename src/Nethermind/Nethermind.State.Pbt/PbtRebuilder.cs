@@ -121,7 +121,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager)
     {
         if (window.Count > 0)
         {
-            using PbtWriteBatch changes = new(window.Count);
+            using PbtWriteBatch changes = new(window.Count, buckets: null);
             foreach ((Stem stem, Dictionary<byte, ValueHash256> leaves) in window)
             {
                 IPbtStemChanges stemChanges = PbtStemChanges.Rent();

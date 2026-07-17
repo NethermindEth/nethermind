@@ -65,9 +65,32 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider) : 
             changes = (changes ?? PbtStemChanges.Rent()).Set(key[Stem.Length], leaf);
         }
 
-        using PbtWriteBatch batch = new(estimatedStems: grouped.Count);
+        using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider);
+        return _root;
+    }
+
+    /// <summary>
+    /// <inheritdoc cref="ApplyBatch" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// Routes the writes through the production <see cref="PbtWriteBatchBuilder"/>, whose drain groups
+    /// them by stem first byte and hands the updater the resulting bucket bounds — the path
+    /// <see cref="ApplyBatch"/>, which builds its batch unordered, never takes.
+    /// </remarks>
+    public ValueHash256 ApplyDrainedBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        using PbtWriteBatchBuilder builder = new();
+        foreach ((byte[] key, byte[]? value) in writes)
+        {
+            ValueHash256 leaf = default;
+            value?.CopyTo(leaf.BytesAsSpan);
+            builder.SetLeaf(new Stem(key.AsSpan(0, Stem.Length)), key[Stem.Length], leaf);
+        }
+
+        using PbtWriteBatch batch = builder.DrainToWriteBatch();
         _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider);
         return _root;
     }

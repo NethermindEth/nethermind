@@ -61,7 +61,7 @@ public class StemTrieTests
         Stem stem = new(new byte[31]);
         ValueHash256 value = new(Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111"));
 
-        using PbtWriteBatch batch = new(estimatedStems: 2);
+        using PbtWriteBatch batch = new(estimatedStems: 2, buckets: null);
         batch.Add(stem, PbtStemChanges.Rent().Set(5, value));
         batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
 
@@ -235,6 +235,93 @@ public class StemTrieTests
         Assert.That(root, Is.EqualTo(ReferenceRoot(ModelEntries(model))));
 
         AssertStoreMatchesFreshRebuild(harness, ModelEntries(model));
+    }
+
+    /// <summary>
+    /// A batch drained from the production builder folds to exactly the tree an unordered, hand-built
+    /// batch folds to. The drain hands over the bucket bounds for the first two levels instead of
+    /// letting the descent derive them, which is only sound if the two agree — and a disagreement
+    /// would surface as a silently wrong state root, not as a failure, so both the root and the stored
+    /// nodes are compared.
+    /// </summary>
+    [TestCaseSource(nameof(BucketOrderFixtures))]
+    public void DrainedBatch_FoldsIdenticallyToAHandBuiltBatch(byte[][] stems)
+    {
+        PbtTreeHarness handBuilt = new(PooledRefCountingMemoryProvider.Instance);
+        PbtTreeHarness drained = new(PooledRefCountingMemoryProvider.Instance);
+
+        // insert every stem, rewrite every stem, then delete every other one — so the drained path
+        // also folds the hoists and blob removals a delete drives, not just inserts
+        for (int round = 0; round < 3; round++)
+        {
+            List<(byte[], byte[]?)> writes = [];
+            for (int i = 0; i < stems.Length; i++)
+            {
+                byte[]? value = null;
+                if (round != 2 || i % 2 != 0)
+                {
+                    value = new byte[32];
+                    value.AsSpan().Fill((byte)(round + i + 1));
+                }
+
+                writes.Add(([.. stems[i], (byte)(i & 0xFF)], value));
+            }
+
+            ValueHash256 expected = handBuilt.ApplyBatch(writes);
+            Assert.That(drained.ApplyDrainedBatch(writes), Is.EqualTo(expected), $"root mismatch in round {round}");
+            AssertSameNodes(drained, handBuilt, round);
+        }
+    }
+
+    /// <summary>Stem sets that stress how a drained batch buckets its first two levels.</summary>
+    private static IEnumerable<TestCaseData> BucketOrderFixtures()
+    {
+        // one shard: both levels put the whole batch in a single bucket
+        yield return Fixture("a single stem", OneFirstByte(0x80, 1));
+        yield return Fixture("one first byte, diverging below depth 8", OneFirstByte(0x80, 20));
+
+        // every shard, so every bucket of both levels is occupied
+        byte[][] everyByte = new byte[256][];
+        for (int i = 0; i < everyByte.Length; i++) everyByte[i] = MakeStem((byte)i, 0);
+        yield return Fixture("every first byte", everyByte);
+
+        // the extremes alone: the longest runs of empty shards, and the widest gap between a byte
+        // group's nibble-local ends and the batch-global ones
+        yield return Fixture("first bytes at the extremes", [MakeStem(0x00, 0), MakeStem(0xFF, 0)]);
+
+        // empty shards leading, trailing, and inside a nibble group
+        byte[] sparse = [0x00, 0x0F, 0x10, 0x7F, 0x80, 0xF0, 0xFF];
+        byte[][] sparseStems = new byte[sparse.Length][];
+        for (int i = 0; i < sparse.Length; i++) sparseStems[i] = MakeStem(sparse[i], 0);
+        yield return Fixture("sparse first bytes", sparseStems);
+    }
+
+    private static TestCaseData Fixture(string name, byte[][] stems) => new TestCaseData((object)stems).SetArgDisplayNames(name);
+
+    /// <summary><paramref name="count"/> distinct stems that all share <paramref name="firstByte"/>, so they diverge only below depth 8.</summary>
+    private static byte[][] OneFirstByte(byte firstByte, int count)
+    {
+        byte[][] stems = new byte[count][];
+        for (int i = 0; i < count; i++) stems[i] = MakeStem(firstByte, (byte)i);
+        return stems;
+    }
+
+    /// <summary>A stem in the shard <paramref name="firstByte"/> keys, told apart from its shard-mates by <paramref name="tail"/>.</summary>
+    private static byte[] MakeStem(byte firstByte, byte tail)
+    {
+        byte[] stem = new byte[Stem.Length];
+        stem[0] = firstByte;
+        stem[^1] = tail;
+        return stem;
+    }
+
+    private static void AssertSameNodes(PbtTreeHarness actual, PbtTreeHarness expected, int round)
+    {
+        Assert.That(actual.Nodes.Keys, Is.EquivalentTo(expected.Nodes.Keys), $"node set mismatch in round {round}");
+        foreach ((TrieNodeKey key, byte[] node) in expected.Nodes)
+        {
+            Assert.That(actual.Nodes[key], Is.EqualTo(node), $"node {key} differs in round {round}");
+        }
     }
 
     /// <summary>
