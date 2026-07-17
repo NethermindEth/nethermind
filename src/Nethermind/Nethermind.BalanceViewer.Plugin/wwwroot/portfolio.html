@@ -392,6 +392,26 @@
         .lightbox-untrack:hover { color: var(--danger); }
         /* very large accounts: cap the card body height and scroll, so one whale can't push everything else away */
         .card-scroll { max-height: 70vh; overflow-y: auto; }
+        /* Accounts / Assets view switch + the aggregated Assets view */
+        .view-toggle { display: flex; gap: 4px; margin: 0 0 12px; }
+        .view-toggle button { background: #0a0a0a; border: 1px solid var(--border-soft); color: var(--muted); border-radius: 6px; padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 13px; }
+        .view-toggle button.on { color: var(--c-name); border-color: var(--accent); }
+        .assets { display: flex; flex-direction: column; gap: 6px; }
+        .asset-row { border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
+        .asset-head { display: grid; grid-template-columns: 1fr auto auto 18px; align-items: baseline; gap: 12px; padding: 10px 12px; cursor: pointer; }
+        .asset-head:hover { background: #141419; }
+        .asset-tick { color: var(--c-ticker); font-weight: 600; }
+        .asset-bal { color: var(--c-name); }
+        .asset-val { color: var(--c-total); }
+        .asset-arrow { color: var(--muted); text-align: center; font-size: 11px; }
+        .asset-parts { display: none; border-top: 1px solid var(--border-soft); background: #0c0c10; }
+        .asset-row.open .asset-parts { display: block; }
+        .asset-part { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 6px 12px 6px 24px; font-size: 12px; color: var(--muted); }
+        .asset-part-bal { color: var(--c-name); }
+        .asset-part-val { color: var(--c-total); }
+        /* the tokens/NFTs display-mode filter applies to the assets view too */
+        body.mode-nfts .asset-row.fungible { display: none; }
+        body.mode-tokens .asset-row.nft { display: none; }
         .lightbox-desc { font-size: 12px; color: var(--c-name); line-height: 1.45; white-space: pre-wrap; }
         .lightbox-traits { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 2px; }
         .lightbox-traits .trait { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; overflow: hidden; }
@@ -573,6 +593,7 @@
         </div>
         <div id="chainToggles"></div>
         <div class="toggles">
+            <button id="privacyToggle" class="zero-toggle" title="Privacy mode"><span class="glyph">🛡️</span></button>
             <button id="settingsBtn" class="zero-toggle" title="Settings"><span class="glyph">⚙️</span></button>
         </div>
         <div class="total" id="totalBox">
@@ -661,6 +682,10 @@
         </div>
     </div>
 
+    <div id="viewToggle" class="view-toggle">
+        <button data-view="accounts">Accounts</button>
+        <button data-view="assets">Assets</button>
+    </div>
     <div id="cards"></div>
 
     <script>
@@ -1547,6 +1572,7 @@
         const assetKeysFor = (chainId) => ['native'].concat(tokensOf(chainId).map((t) => t.address.toLowerCase()));
 
         function recomputeTotals() {
+            if (view === 'assets') renderAssetsView(); // the aggregated view rebuilds from the fresh cache
             if (!anyFiat()) return;
             let grand = 0n;
             let any = false;
@@ -1946,6 +1972,47 @@
             return img;
         }
 
+        // ---------- deep links: mirror the open collection / NFT lightbox in the URL hash ----------
+        // #collection/<chainId>/<address> or #nft/<chainId>/<address>/<tokenId>. Changing the hash never reloads
+        // the page. Opening a lightbox pushes its hash (so the URL is shareable/bookmarkable and Back closes it);
+        // closing restores the hash of whatever remains open beneath. applyHash() is idempotent — a hash we set
+        // ourselves already matches the stack top, so it's a no-op; only a real Back/forward/paste reconciles.
+        const deepStack = []; // [{ key, closeDom }], top = last; the hash mirrors the top entry
+        function deepOpen(key, closeDom) { const entry = { key, closeDom }; deepStack.push(entry); location.hash = key; return entry; }
+        function deepClose(entry, reflect) {
+            const i = deepStack.lastIndexOf(entry);
+            if (i < 0) return;
+            deepStack.splice(i, 1);
+            entry.closeDom();
+            if (reflect) {
+                const top = deepStack[deepStack.length - 1];
+                if (top) location.hash = top.key; else history.replaceState(null, '', location.pathname + location.search);
+            }
+        }
+        function nodeForChain(chainId) { return nodes.find((n) => n.chainId === chainId) || null; }
+        function collectionObjFor(node, addr) {
+            const a = addr.toLowerCase();
+            return stateOf(node.chainId).nfts.find((c) => c.address.toLowerCase() === a) || { address: addr, ticker: shortAddr(addr), name: null };
+        }
+        function applyHash() {
+            const h = decodeURIComponent(location.hash.slice(1));
+            // Back/forward: close any open deep lightboxes whose hash no longer matches (don't re-reflect the hash,
+            // the browser already changed it).
+            while (deepStack.length && deepStack[deepStack.length - 1].key !== h) deepClose(deepStack[deepStack.length - 1], false);
+            if (!h || (deepStack.length && deepStack[deepStack.length - 1].key === h)) return;
+            const p = h.split('/');
+            if (p[0] === 'collection' && p.length >= 3) {
+                const node = nodeForChain(Number(p[1])); if (node) openFullCollection(node, collectionObjFor(node, p[2]));
+            } else if (p[0] === 'nft' && p.length >= 4) {
+                const node = nodeForChain(Number(p[1])); if (!node) return;
+                let id; try { id = BigInt(p[3]); } catch { return; }
+                openArt({ id: id.toString(), title: '#' + id }, collectionObjFor(node, p[2]), node, null);
+            }
+        }
+        window.addEventListener('hashchange', applyHash);
+        // one Escape handler for the whole deep-link stack, so Esc closes only the topmost lightbox (not all at once)
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && deepStack.length) deepClose(deepStack[deepStack.length - 1], true); });
+
         // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
         // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
         // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
@@ -2052,10 +2119,9 @@
             })();
 
             overlay.append(panel);
-            overlay.onclick = () => overlay.remove();
+            const entry = deepOpen('nft/' + node.chainId + '/' + collection.address + '/' + cur.id, () => overlay.remove());
+            overlay.onclick = () => deepClose(entry, true);
             panel.onclick = (e) => e.stopPropagation(); // keep clicks inside (e.g. the copy-address control) from closing
-            const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
-            document.addEventListener('keydown', onKey);
             document.body.append(overlay);
         }
 
@@ -2468,12 +2534,12 @@
             };
             openCollectionRenderers.add(reRenderArt);
 
-            const onKey = (e) => { if (e.key === 'Escape') close(); };
-            function close() { if (closed) return; closed = true; openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); document.removeEventListener('keydown', onKey); }
+            function closeDom() { if (closed) return; closed = true; openCollectionRenderers.delete(reRenderArt); collectionOpen = Math.max(0, collectionOpen - 1); overlay.remove(); }
+            const close = () => deepClose(entry, true); // mirror close through the deep-link stack (restores the hash)
             overlay.append(panel);
             overlay.onclick = () => close();
             panel.onclick = (e) => e.stopPropagation();
-            document.addEventListener('keydown', onKey);
+            const entry = deepOpen('collection/' + node.chainId + '/' + collection.address, closeDom);
             document.body.append(overlay);
 
             // resolve async meta (if any), then wire controls, fill the info strip, and render page 0
@@ -3385,7 +3451,98 @@
             }
         }
 
+        let view = 'accounts';              // 'accounts' (per-address cards) | 'assets' (aggregated across all)
+
+        // dispatcher: every renderCards() call site renders whichever view is active
         function renderCards() {
+            if (view === 'assets') renderAssetsView(); else renderAccountCards();
+        }
+
+        // Assets view: one row per fungible asset (by ticker) and per NFT collection, summed across every pinned
+        // address and enabled chain, each expandable to show the account/chain composition.
+        function renderAssetsView() {
+            const cards = $('cards');
+            cards.replaceChildren();
+            const addresses = mergedAddresses();
+            if (addresses.length === 0) {
+                cards.append(el('div', 'empty', 'No pinned addresses yet — add one above to start watching balances.'));
+                return;
+            }
+            const showFiat = anyFiat();
+            const box = el('div', 'assets');
+
+            // fungible tokens + native, grouped by ticker
+            const fung = new Map(); // ticker -> { ticker, color, value8, balNum, parts: [{ label, bal, fiat }] }
+            for (const entry of addresses) {
+                for (const node of enabledNodes()) {
+                    for (const key of assetKeysFor(node.chainId)) {
+                        const cached = cache.get(entry.address + '|' + node.chainId + ':' + key);
+                        if (!cached || cached.bal === null || cached.bal === undefined || cached.bal === '0') continue;
+                        const token = key === 'native' ? null : tokensOf(node.chainId).find((t) => t.address.toLowerCase() === key);
+                        const ticker = key === 'native' ? node.meta.ticker : (token?.ticker || key.slice(0, 6));
+                        let a = fung.get(ticker);
+                        if (!a) { a = { ticker, color: key === 'native' ? null : tokenColor(ticker), value8: 0n, balNum: 0, parts: [] }; fung.set(ticker, a); }
+                        if (cached.value8 !== null && cached.value8 !== undefined) a.value8 += cached.value8;
+                        const n = parseFloat(String(cached.bal).replace(/,/g, '')); if (!isNaN(n)) a.balNum += n;
+                        a.parts.push({ label: (labelFor(entry) || shortAddr(entry.address)) + ' · ' + node.meta.name, bal: cached.bal, fiat: cached.fiat });
+                    }
+                }
+            }
+            const fungSorted = [...fung.values()].sort((x, y) => (y.value8 > x.value8 ? 1 : y.value8 < x.value8 ? -1 : x.ticker.localeCompare(y.ticker)));
+            for (const a of fungSorted) {
+                box.append(assetRow('fungible', a.ticker, a.color, fmtNum(a.balNum), showFiat && a.value8 ? formatFiat(a.value8) : (showFiat ? '—' : ''), a.parts));
+            }
+
+            // NFT collections, grouped by ticker (count summed; no fiat)
+            const nft = new Map(); // ticker -> { ticker, count, parts }
+            for (const entry of addresses) {
+                for (const node of enabledNodes()) {
+                    for (const collection of stateOf(node.chainId).nfts) {
+                        const c = cache.get(entry.address + '|' + node.chainId + ':nft:' + collection.address.toLowerCase());
+                        const cnt = c && c.bal && c.bal !== '0' ? Number(String(c.bal).replace(/,/g, '')) : 0;
+                        if (!cnt) continue;
+                        let a = nft.get(collection.ticker);
+                        if (!a) { a = { ticker: collection.ticker, count: 0, parts: [] }; nft.set(collection.ticker, a); }
+                        a.count += cnt;
+                        a.parts.push({ label: (labelFor(entry) || shortAddr(entry.address)) + ' · ' + node.meta.name, bal: c.bal, fiat: '' });
+                    }
+                }
+            }
+            for (const a of [...nft.values()].sort((x, y) => y.count - x.count)) {
+                box.append(assetRow('nft', a.ticker, tokenColor(a.ticker), a.count + ' held', '', a.parts));
+            }
+
+            if (!box.children.length) box.append(el('div', 'empty', 'No balances yet.'));
+            cards.append(box);
+        }
+
+        function fmtNum(n) { return n.toLocaleString('en-US', { maximumFractionDigits: 5 }); }
+
+        // one expandable asset row: header (ticker · total · value · ▾) + hidden per-account/chain breakdown
+        function assetRow(kind, ticker, color, balText, valText, parts) {
+            const row = el('div', 'asset-row ' + kind);
+            const head = el('div', 'asset-head');
+            const tick = el('span', 'asset-tick', ticker); if (color) tick.style.color = color;
+            head.append(tick);
+            head.append(el('span', 'asset-bal number', balText));
+            if (valText) head.append(el('span', 'asset-val number', valText));
+            const arrow = el('span', 'asset-arrow', '▾');
+            head.append(arrow);
+            head.onclick = () => { const open = row.classList.toggle('open'); arrow.textContent = open ? '▴' : '▾'; };
+            row.append(head);
+            const body = el('div', 'asset-parts');
+            for (const p of parts) {
+                const pr = el('div', 'asset-part');
+                pr.append(el('span', 'asset-part-acct', p.label));
+                pr.append(el('span', 'asset-part-bal number', p.bal));
+                if (valText && p.fiat) pr.append(el('span', 'asset-part-val number', p.fiat));
+                body.append(pr);
+            }
+            row.append(body);
+            return row;
+        }
+
+        function renderAccountCards() {
             const cards = $('cards');
             cards.replaceChildren();
             const addresses = mergedAddresses();
@@ -4103,6 +4260,19 @@
                 localStorage.removeItem(NFTONLY_KEY); // superseded
                 applyDisplayMode();
             };
+
+            // Accounts / Assets view switch
+            const VIEW_KEY = 'nethermind.portfolio.view';
+            view = localStorage.getItem(VIEW_KEY) === 'assets' ? 'assets' : 'accounts';
+            const applyView = () => {
+                for (const b of document.querySelectorAll('#viewToggle button')) b.classList.toggle('on', b.dataset.view === view);
+                renderCards();
+                recomputeTotals();
+            };
+            for (const b of document.querySelectorAll('#viewToggle button')) {
+                b.onclick = () => { view = b.dataset.view; localStorage.setItem(VIEW_KEY, view); applyView(); };
+            }
+            applyView();
             const onArtChange = () => {
                 localStorage.setItem(ART_KEY, JSON.stringify(artSources));
                 // 1) Re-resolve already-fetched thumbs in place (instant, no flicker) and re-render previews.
@@ -4130,6 +4300,7 @@
                     }
                 }
                 for (const r of openCollectionRenderers) r(); // re-render any open collection lightbox
+                updatePrivacyToggle(); // keep the header privacy toggle in sync with the individual switches
             };
             // auto-pin row is only relevant (and only shown) when Local IPFS is enabled
             const setAutoPin = $('setAutoPin');
@@ -4144,6 +4315,30 @@
             setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; updateAutoPinRow(); onArtChange(); };
             setRemoteGw.onchange = () => { artSources.remoteGateway = setRemoteGw.checked; onArtChange(); };
             updateAutoPinRow();
+
+            // Privacy master toggle (next to Settings): privacy = only on-chain art (all off-chain sources off,
+            // the default). Leaving privacy fetches art from IPFS/web servers — revealing the viewer's IP and which
+            // NFTs they view — so it's gated behind a confirmation. Returning to privacy needs none.
+            const privacyToggle = $('privacyToggle');
+            function updatePrivacyToggle() {
+                const off = !(artSources.https || artSources.localIpfs || artSources.remoteGateway);
+                privacyToggle.classList.toggle('on', !off);
+                privacyToggle.querySelector('.glyph').textContent = off ? '🛡️' : '🖼️';
+                privacyToggle.title = off
+                    ? 'Privacy mode: only on-chain art. Click to also load IPFS / web art.'
+                    : 'Loading off-chain art (IPFS / web). Click to return to privacy mode (on-chain only).';
+            }
+            privacyToggle.onclick = () => {
+                const anyOn = artSources.https || artSources.localIpfs || artSources.remoteGateway;
+                if (!anyOn && !confirm('Load off-chain NFT art?\n\nThis fetches metadata and images from IPFS and web servers, revealing your IP address and which NFTs you view to those third parties. On-chain art always loads privately.\n\nEnable IPFS + web art sources?')) return;
+                const on = !anyOn;
+                artSources.https = artSources.localIpfs = artSources.remoteGateway = on;
+                setHttps.checked = setLocalIpfs.checked = setRemoteGw.checked = on;
+                updateAutoPinRow();
+                updatePrivacyToggle();
+                onArtChange();
+            };
+            updatePrivacyToggle();
 
             const gwInput = $('ipfsGatewayInput');
             gwInput.value = ipfsRemoteGateway;
@@ -4300,6 +4495,7 @@
             renderFeed();
             pollHead();
             setInterval(pollHead, 12000);
+            applyHash(); // open a collection/NFT if the URL carries a deep-link hash
         }
 
         // guard lets tests load the pure functions without a DOM (see BalanceViewerScriptTests)
