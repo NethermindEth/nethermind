@@ -14,10 +14,6 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
-using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
-    Nethermind.State.Flat.Io.NoOpPin>;
 
 namespace Nethermind.State.Flat.Test;
 
