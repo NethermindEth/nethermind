@@ -232,6 +232,9 @@ public class HeaderValidatorTests
     [TestCase(30_000_000, 5, 20_000_000, true, TestName = "Eip8198_activation_block_exact_scaled_limit_is_valid")]
     [TestCase(30_000_000, 5, 20_000_001, false, TestName = "Eip8198_activation_block_above_scaled_limit_is_invalid")]
     [TestCase(30_000_000, 5, 19_999_999, false, TestName = "Eip8198_activation_block_below_scaled_limit_is_invalid")]
+    [TestCase(long.MaxValue, 5, 6_148_914_691_236_517_204, true, TestName = "Eip8198_activation_block_max_parent_gas_limit_does_not_overflow")]
+    [TestCase(5000, 5, 5000, true, TestName = "Eip8198_activation_block_scaled_limit_is_clamped_to_min_gas_limit")]
+    [TestCase(5000, 5, 3333, false, TestName = "Eip8198_activation_block_below_min_gas_limit_is_invalid")]
     public void When_gaslimit_is_on_eip8198_activation(long parentGasLimit, long forkBlock, long gasLimit, bool expectedResult)
     {
         OverridableReleaseSpec preForkSpec = new(Osaka.Instance) { IsEip8198Enabled = false };

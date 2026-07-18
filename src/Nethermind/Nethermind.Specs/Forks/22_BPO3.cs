@@ -3,7 +3,7 @@
 
 namespace Nethermind.Specs.Forks;
 
-public class BPO3() : NamedReleaseSpec<BPO3>(Amsterdam.Instance)
+public class BPO3() : NamedReleaseSpec<BPO3>(Bogota.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)
     {

@@ -266,7 +266,7 @@ namespace Nethermind.Consensus.Validators
             IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
             if (spec.IsEip8198Enabled && !parentSpec.IsEip8198Enabled)
             {
-                long expectedGasLimit = parent.GasLimit * (long)spec.SlotDurationMs / (long)parentSpec.SlotDurationMs;
+                long expectedGasLimit = Eip8198Constants.ScaleGasLimit(parent.GasLimit, spec.SlotDurationMs, parentSpec.SlotDurationMs, spec.MinGasLimit);
                 if (header.GasLimit != expectedGasLimit)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit should be parent gas limit scaled by slot duration change when EIP-8198 is activated. Expected: {expectedGasLimit}, actual: {header.GasLimit}");

@@ -3,6 +3,7 @@
 
 using System.IO;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -41,6 +42,19 @@ public class ForkTests
 
                 Assert.That(property.GetValue(forkLatest), Is.EqualTo(property.GetValue(chainSpecLatest)), property.Name);
             }
+        }
+    }
+
+    [Test]
+    public void Bogota_scales_blob_schedule_by_slot_duration_ratio()
+    {
+        IReleaseSpec bogota = Bogota.Instance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bogota.MaxBlobCount, Is.EqualTo(14));
+            Assert.That(bogota.TargetBlobCount, Is.EqualTo(9));
+            Assert.That(bogota.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)7789780));
         }
     }
 }

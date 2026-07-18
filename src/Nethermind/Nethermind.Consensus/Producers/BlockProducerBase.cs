@@ -213,7 +213,7 @@ namespace Nethermind.Consensus.Producers
             long gasLimit = payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent);
             if (newSpec.IsEip8198Enabled && !parentSpec.IsEip8198Enabled)
             {
-                gasLimit = parent.GasLimit * (long)newSpec.SlotDurationMs / (long)parentSpec.SlotDurationMs;
+                gasLimit = Eip8198Constants.ScaleGasLimit(parent.GasLimit, newSpec.SlotDurationMs, parentSpec.SlotDurationMs, newSpec.MinGasLimit);
             }
             BlockHeader header = new(
                 parent.Hash!,
