@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
@@ -45,13 +44,13 @@ public class FlatHistoryModuleTests
         }
     }
 
-    // Long-finality Phase-2 conversion removes the per-block bases the capture walk records from, so the
-    // combination would silently drop ranges from history; it must be rejected at startup, not degrade at runtime.
+    // Long-finality Phase-2 conversion moves per-block bases to the persisted tier, and the capture walk leases
+    // them from there; the combination is supported and must wire up.
     [Test]
-    public void History_with_long_finality_is_rejected_at_startup()
+    public void History_with_long_finality_builds_the_component_graph()
     {
         using FlatTestContainer container = new(new FlatDbConfig { HistoryEnabled = true, EnableLongFinality = true });
 
-        Assert.That(() => container.Repository, Throws.InstanceOf<InvalidConfigurationException>());
+        Assert.That(() => container.Repository, Throws.Nothing);
     }
 }

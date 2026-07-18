@@ -214,18 +214,24 @@ public class HistoryWriterTests
     }
 
     // Slot written @1, killed @2 by a per-slot clear (tombstone) or a self-destruct (range-delete in the live
-    // column, so only the clear marker can kill the @1 value), re-written @3.
-    [TestCase(0ul, null, false)]
-    [TestCase(1ul, "0a", false)]
-    [TestCase(2ul, null, false)]
-    [TestCase(3ul, "0c", false)]
-    [TestCase(4ul, "0c", false)]
-    [TestCase(0ul, null, true)]
-    [TestCase(1ul, "0a", true)]
-    [TestCase(2ul, null, true)]
-    [TestCase(3ul, "0c", true)]
-    [TestCase(4ul, "0c", true)]
-    public void Storage_killed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex, bool viaSelfDestruct)
+    // column, so only the clear marker can kill the @1 value), re-written @3. The kill block optionally lives in
+    // the persisted tier (converted by long-finality Phase 2), so the walk crosses tiers mid-range.
+    [TestCase(0ul, null, false, false)]
+    [TestCase(1ul, "0a", false, false)]
+    [TestCase(2ul, null, false, false)]
+    [TestCase(3ul, "0c", false, false)]
+    [TestCase(4ul, "0c", false, false)]
+    [TestCase(0ul, null, true, false)]
+    [TestCase(1ul, "0a", true, false)]
+    [TestCase(2ul, null, true, false)]
+    [TestCase(3ul, "0c", true, false)]
+    [TestCase(4ul, "0c", true, false)]
+    [TestCase(0ul, null, true, true)]
+    [TestCase(1ul, "0a", true, true)]
+    [TestCase(2ul, null, true, true)]
+    [TestCase(3ul, "0c", true, true)]
+    [TestCase(4ul, "0c", true, true)]
+    public void Storage_killed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex, bool viaSelfDestruct, bool killBlockConverted)
     {
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         if (viaSelfDestruct)
@@ -233,6 +239,7 @@ public class HistoryWriterTests
         else
             CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, null)]);
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
+        if (killBlockConverted) ConvertToPersistedTier(2);
 
         _writer.CaptureUpTo(StateAt(3), _repository);
 
@@ -361,6 +368,35 @@ public class HistoryWriterTests
             Assert.That(genesisAccount.Balance, Is.EqualTo((UInt256)1000));
             Assert.That(atLater, Is.True);
             Assert.That(laterAccount.Balance, Is.EqualTo((UInt256)1000));
+        }
+    }
+
+    // The range mixes tiers deliberately — blocks 2-3 converted to the persisted tier, blocks 1 and 4 in memory —
+    // and block 2 also deletes AddrB, so the account tombstone round-trips through the persisted format.
+    [Test]
+    public void Capture_over_converted_range_reads_persisted_bases()
+    {
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1)), (AddrB, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2)), (AddrB, null)], storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 4))]);
+        ConvertToPersistedTier(2);
+        ConvertToPersistedTier(3);
+
+        _writer.CaptureUpTo(StateAt(4), _repository);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong block = 1; block <= 4; block++)
+            {
+                Assert.That(_reader.HasHistoryForBlock(block), Is.True, $"block {block} must be available");
+                Assert.That(_reader.TryGetAccount(block, AddrA, out AccountStruct account), Is.True, $"account must resolve at block {block}");
+                Assert.That(account.Balance, Is.EqualTo((UInt256)block), $"balance at block {block} must be that block's own value");
+            }
+
+            AssertStorageAt(2, Slot1, "0a");
+            Assert.That(_reader.TryGetAccount(1, AddrB, out _), Is.True, "AddrB must exist before its deletion");
+            Assert.That(_reader.TryGetAccount(2, AddrB, out _), Is.False, "AddrB's deletion must round-trip through the persisted base");
         }
     }
 
@@ -518,6 +554,18 @@ public class HistoryWriterTests
 
         Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
         _repository.AddStateId(StateAt(0));
+    }
+
+    private void ConvertToPersistedTier(ulong block)
+    {
+        Assert.That(_repository.TryLeaseInMemoryState(StateAt(block), SnapshotTier.InMemoryBase, out Snapshot? snapshot), Is.True,
+            $"precondition: block {block} base must be in memory to convert");
+        using (snapshot)
+        {
+            _tier.Loader.ConvertAndRegister(snapshot!);
+        }
+
+        _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
     }
 
     private static StateId StateAt(ulong blockNumber)

@@ -670,6 +670,14 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public bool HasBasePersistedSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
+    public bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (_base.TryGet(to, out snapshot) && snapshot.TryAcquire()) return true;
+
+        snapshot = null;
+        return false;
+    }
+
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {
         get

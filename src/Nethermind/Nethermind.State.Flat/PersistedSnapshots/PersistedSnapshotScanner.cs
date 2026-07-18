@@ -23,10 +23,16 @@ public static class PersistedSnapshotScanner
     /// caller owns the session lifetime — it must outlive the returned scanner and any enumerator
     /// derived from it.
     /// </summary>
-    public static PersistedSnapshotScanner<WholeReadSession, WholeReadSessionReader, NoOpPin> ForWholeRead(
-        WholeReadSession session, PersistedSnapshot snapshot) =>
+    public static WholeReadScanner ForWholeRead(WholeReadSession session, PersistedSnapshot snapshot) =>
         new(session, snapshot);
 }
+
+/// <summary>
+/// The <see cref="PersistedSnapshotScanner{TSource,TReader,TPin}"/> instantiation over a
+/// <see cref="WholeReadSession"/>, named so consumers don't need a fully-qualified generic alias.
+/// </summary>
+public sealed class WholeReadScanner(WholeReadSession session, PersistedSnapshot snapshot)
+    : PersistedSnapshotScanner<WholeReadSession, WholeReadSessionReader, NoOpPin>(session, snapshot);
 
 /// <summary>
 /// Streaming scan over a persisted snapshot's single-level <see cref="SortedTable"/>, surfacing the
@@ -35,7 +41,7 @@ public static class PersistedSnapshotScanner
 /// sorted order). Generic over the byte-reader source so the traversal isn't bound to a specific
 /// reader; the caller guarantees the underlying region stays valid for the scanner's lifetime.
 /// </summary>
-public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
+public class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource source, PersistedSnapshot snapshot)
     where TSource : IByteReaderSource<TReader, TPin>
     where TReader : IByteReader<TPin>, allows ref struct
     where TPin : struct, IBufferPin, allows ref struct

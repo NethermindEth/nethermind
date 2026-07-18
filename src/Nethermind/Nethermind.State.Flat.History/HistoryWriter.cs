@@ -10,6 +10,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Flat.History;
 
@@ -24,6 +26,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
     private readonly StorageClearStore _storageClears;
+    private readonly IDb _availableBlocks;
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
     private readonly ILogger _logger;
@@ -53,6 +56,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
             history.GetColumnDb(FlatHistoryColumns.StorageHistory),
             history.GetColumnDb(FlatHistoryColumns.StorageChangeSets));
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
+        _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
     }
 
     public ulong LastCapturedBlock => _lastCapturedBlock;
@@ -65,12 +69,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     /// <remarks>
     /// Walks backwards through the per-block base snapshots' <see cref="Snapshot.From"/> links — each base is
     /// exactly one block's changeset, so the walk follows persistedHead's canonical chain, one lease at a time,
-    /// allocating nothing. The first capture runs down to genesis, whose From is the
-    /// <see cref="StateId.PreGenesis"/> sentinel; a resume stops once past the last-captured block. Advancing the
-    /// watermark past an early stop is safe for reads — availability is driven by the per-block
-    /// <c>AvailableBlocks</c> markers, never the watermark — but a block durably persisted and never captured
-    /// (a crash between persist and capture) leaves a hole through which a later as-of read floor-seeks to a stale
-    /// earlier value; closing it requires capturing in the same batch as the flat persist.
+    /// allocating nothing. A base whose in-memory copy was converted away by long-finality Phase 2 is leased from
+    /// the persisted tier instead — conversion registers each base individually, so per-block granularity survives
+    /// on disk. The first capture runs down to genesis, whose From is the <see cref="StateId.PreGenesis"/> sentinel;
+    /// a resume stops once past the last-captured block. Advancing the watermark past an early stop is safe for
+    /// reads — availability is driven by the per-block <c>AvailableBlocks</c> markers, never the watermark.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
@@ -83,25 +86,35 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         ulong lastCaptured = _lastCapturedBlock;
 
         StateId current = persistedHead;
-        while (current != StateId.PreGenesis
-               && (!resuming || current.BlockNumber > lastCaptured)
-               && snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
+        while (current != StateId.PreGenesis && (!resuming || current.BlockNumber > lastCaptured))
         {
-            StateId parent;
-            using (snapshot)
+            if (snapshotRepository.TryLeaseInMemoryState(current, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
             {
-                CaptureBlock(current.BlockNumber, snapshot);
-                parent = snapshot.From;
+                using (snapshot)
+                {
+                    CaptureBlock(current.BlockNumber, snapshot);
+                    current = snapshot.From;
+                }
             }
-
-            current = parent;
+            else if (snapshotRepository.TryLeaseBasePersistedSnapshot(current, out PersistedSnapshot? persisted))
+            {
+                using (persisted)
+                {
+                    CaptureBlock(current.BlockNumber, persisted);
+                    current = persisted.From;
+                }
+            }
+            else
+            {
+                break;
+            }
         }
 
-        // A lease miss before the genesis/resume floor is the documented crash-gap; surface it rather than let it
-        // widen silently.
+        // A lease miss at an already-captured block is the expected restart resume (the watermark is process-local);
+        // an uncaptured one is a genuine gap a later as-of read floor-seeks past, so surface it.
         bool reachedFloor = current == StateId.PreGenesis || (resuming && current.BlockNumber <= lastCaptured);
-        if (!reachedFloor && _logger.IsWarn)
-            _logger.Warn($"History capture stopped early at {current}: its in-memory base is no longer leasable. Blocks down to {(resuming ? lastCaptured + 1 : 0)} are left uncaptured and will report no history.");
+        if (!reachedFloor && !IsBlockCaptured(current.BlockNumber) && _logger.IsWarn)
+            _logger.Warn($"History capture stopped early at {current}, which was never captured: as-of reads for keys last changed there may resolve to an earlier value.");
 
         MarkCaptured(target);
     }
@@ -112,11 +125,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         _anyCaptured = true;
     }
 
+    [SkipLocalsInit]
+    private bool IsBlockCaptured(ulong block)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return _availableBlocks.KeyExists(key);
+    }
+
     /// <summary>
     /// Seeds the genesis (block 0) changeset from the chain's initial allocations. The capture walk can only lease
-    /// in-memory snapshots, so a node that did not run history capture through genesis can never recover block 0 at
-    /// runtime; its state is fully derivable from the chain spec instead, and it anchors the floor every dormant
-    /// genesis allocation floor-seeks to.
+    /// snapshots produced since history was enabled, so a node that did not run history capture through genesis can
+    /// never recover block 0 at runtime; its state is fully derivable from the chain spec instead, and it anchors
+    /// the floor every dormant genesis allocation floor-seeks to.
     /// </summary>
     [SkipLocalsInit]
     public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations)
@@ -124,19 +145,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         if (!_enabled) return;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-        IWriteBatch accountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch accountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
-
-        Span<byte> blockKey = stackalloc byte[sizeof(ulong)];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(blockKey, 0);
-        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
+        HistoryColumnBatches columns = new(batch);
+        MarkBlockAvailable(batch, 0);
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         foreach (KeyValuePair<Address, Account> allocation in allocations)
         {
-            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, allocation.Key.ToAccountPath);
-            using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(allocation.Value);
-            _accountHistory.RecordChange(0, flatKey, value, accountHistory, accountChangeMarkers);
+            RecordAccount(0, allocation.Key.ToAccountPath, allocation.Value, accountKey, in columns);
         }
     }
 
@@ -144,41 +159,22 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
     private void CaptureBlock(ulong block, Snapshot snapshot)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-
-        IWriteBatch accountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
-        IWriteBatch accountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
-        IWriteBatch storageHistory = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
-        IWriteBatch storageChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets);
-
-        Span<byte> blockKey = stackalloc byte[sizeof(ulong)];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(blockKey, block);
-        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
+        HistoryColumnBatches columns = new(batch);
+        MarkBlockAvailable(batch, block);
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
-        IWriteBatch storageClears = batch.GetColumnBatch(FlatHistoryColumns.StorageClears);
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
         {
             // Value == true means the account had no persisted storage before the destruct; PersistenceManager
             // skips the flat range-delete in that case, so there is nothing in history to shadow either.
             if (destructed.Value) continue;
 
-            ValueHash256 destructedAddrHash = destructed.Key.Key.ToAccountPath;
-            _storageClears.RecordClear(block, BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, destructedAddrHash), storageClears);
+            _storageClears.RecordClear(block, BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, destructed.Key.Key.ToAccountPath), columns.StorageClears);
         }
 
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
         {
-            ValueHash256 addrHash = change.Key.Key.ToAccountPath;
-            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, addrHash);
-
-            if (change.Value is null)
-            {
-                _accountHistory.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, accountHistory, accountChangeMarkers);
-                continue;
-            }
-
-            using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(change.Value);
-            _accountHistory.RecordChange(block, flatKey, value, accountHistory, accountChangeMarkers);
+            RecordAccount(block, change.Key.Key.ToAccountPath, change.Value, accountKey, in columns);
         }
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
@@ -186,17 +182,90 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
         {
             (Address addr, UInt256 slot) = change.Key.Key;
-            ValueHash256 addrHash = addr.ToAccountPath;
-            ValueHash256 slotHash = ValueKeccak.Zero;
-            StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKey, addrHash, slotHash);
-
-            // A removed slot, or one stripped to empty (zero), is a tombstone — matching the flat column,
-            // which removes / stores an empty value in the same cases.
-            int written = change.Value is SlotValue value
-                ? BaseFlatPersistence.EncodeSlotValue(value, _rlpWrapSlots, storageValue)
-                : 0;
-            _storageHistory.RecordChange(block, flatKey, storageValue[..written], storageHistory, storageChangeMarkers);
+            RecordStorage(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, in columns);
         }
+    }
+
+    /// <summary>
+    /// Captures a block whose in-memory base was converted to the persisted tier by long-finality Phase 2 — the
+    /// persisted base holds the same one-block changeset.
+    /// </summary>
+    [SkipLocalsInit]
+    private void CaptureBlock(ulong block, PersistedSnapshot snapshot)
+    {
+        using WholeReadSession session = snapshot.BeginWholeReadSession();
+        WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
+
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
+        HistoryColumnBatches columns = new(batch);
+        MarkBlockAvailable(batch, block);
+
+        Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+        Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
+        {
+            ValueHash256 addrHash = entry.Address.ToAccountPath;
+
+            if (entry.SelfDestructFlag is false)
+            {
+                _storageClears.RecordClear(block, BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, addrHash), columns.StorageClears);
+            }
+
+            if (entry.HasAccount)
+            {
+                RecordAccount(block, addrHash, entry.Account, accountKey, in columns);
+            }
+
+            foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
+            {
+                RecordStorage(block, addrHash, slot.Slot, slot.Value, storageKey, storageValue, in columns);
+            }
+        }
+    }
+
+    private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, Span<byte> keyBuffer, scoped in HistoryColumnBatches columns)
+    {
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(keyBuffer, addrHash);
+
+        if (account is null)
+        {
+            _accountHistory.RecordChange(block, flatKey, ReadOnlySpan<byte>.Empty, columns.AccountHistory, columns.AccountChangeMarkers);
+            return;
+        }
+
+        using ArrayPoolSpan<byte> value = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+        _accountHistory.RecordChange(block, flatKey, value, columns.AccountHistory, columns.AccountChangeMarkers);
+    }
+
+    private void RecordStorage(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, scoped in HistoryColumnBatches columns)
+    {
+        ValueHash256 slotHash = ValueKeccak.Zero;
+        StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrHash, slotHash);
+
+        // A removed slot, or one stripped to empty (zero), is a tombstone — matching the flat column,
+        // which removes / stores an empty value in the same cases.
+        int written = value is SlotValue slotValue
+            ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
+            : 0;
+        _storageHistory.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory, columns.StorageChangeMarkers);
+    }
+
+    [SkipLocalsInit]
+    private static void MarkBlockAvailable(IColumnsWriteBatch<FlatHistoryColumns> batch, ulong block)
+    {
+        Span<byte> blockKey = stackalloc byte[sizeof(ulong)];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(blockKey, block);
+        batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks).Set(blockKey, Array.Empty<byte>());
+    }
+
+    private readonly ref struct HistoryColumnBatches(IColumnsWriteBatch<FlatHistoryColumns> batch)
+    {
+        public readonly IWriteBatch AccountHistory = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
+        public readonly IWriteBatch AccountChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.AccountChangeSets);
+        public readonly IWriteBatch StorageHistory = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
+        public readonly IWriteBatch StorageChangeMarkers = batch.GetColumnBatch(FlatHistoryColumns.StorageChangeSets);
+        public readonly IWriteBatch StorageClears = batch.GetColumnBatch(FlatHistoryColumns.StorageClears);
     }
 }
