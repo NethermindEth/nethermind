@@ -397,8 +397,8 @@
         }
 
         .lightbox-info { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-        .lightbox-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 15px; color: var(--c-name); }
-        .lightbox-sub { font-size: 12px; color: var(--muted); }
+        .lightbox-title { font-family: 'DM Mono', ui-monospace, monospace; font-size: 15px; color: var(--c-name); overflow-wrap: anywhere; }
+        .lightbox-sub { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
         .lightbox-untrack { cursor: pointer; color: var(--muted); font-size: 12px; }
         .lightbox-untrack:hover { color: var(--danger); }
         /* very large accounts: cap the card body height and scroll, so one whale can't push everything else away */
@@ -522,10 +522,21 @@
         .card td.tick { color: var(--tcol, var(--c-ticker)); width: 72px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .card td.tick.copyable { cursor: pointer; }
         .card td.tick.copyable:hover { color: var(--accent); }
-        .card td.fiat { text-align: right; color: var(--c-fiat); width: 110px; font-size: 12px; padding-left: 16px; }
+        .card td.fiat { text-align: right; color: var(--c-fiat); width: 110px; max-width: 130px; font-size: 12px; padding-left: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .card tr.cardTotal td { border-top: 1px solid var(--border-soft); }
         .card tr.cardTotal td.tick { color: var(--muted); }
         .card tr.cardTotal td.fiat { color: var(--c-total); }
+        /* mobile: shrink number-heavy text and cap number columns so a whale account fits without horizontal scroll.
+           Placed after the base .card td rules above so it wins on source order at equal specificity. */
+        @media (max-width: 480px) {
+            body { overflow-x: hidden; } /* belt-and-suspenders: no accidental horizontal scroll */
+            header .total .number { font-size: 13px; }
+            .card td.bal { font-size: 12px; max-width: 150px; white-space: nowrap; }
+            .card td.fiat { font-size: 11px; padding-left: 8px; max-width: 108px; }
+            .card td.tick { width: 60px; max-width: 96px; font-size: 12px; }
+            .asset-head, .asset-part { font-size: 12px; }
+            .lightbox-title { font-size: 14px; }
+        }
 
         #status {
             min-height: 18px;
@@ -550,6 +561,8 @@
 
         .feed-item .when { color: var(--border); min-width: 72px; }
         .feed-item .what { flex: 1; color: #b9c0de; }
+        .feed-item .feed-copy { cursor: pointer; color: var(--muted); padding: 0 4px; }
+        .feed-item .feed-copy:hover { color: var(--accent); }
         .feed-item .x { cursor: pointer; padding: 0 4px; }
         .feed-item .x:hover { color: var(--danger); }
 
@@ -1023,6 +1036,7 @@
         const TRANSFER_BATCH_TOPIC = '0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb';
         const MAX_NFT_THUMBS = 4;                  // thumbnails shown before the collection is expanded
         const NFT_ID_CAP = 200;                    // most owned ids we try to discover per collection
+        const LOG_SPLIT_MIN = 50000n;              // smallest getLogs span scanLogsRange will split down to (~1 week)
         const COLLECTION_PAGE_SIZE = 200;          // items per page in the collection lightbox (enumerated per page)
         const NFT_GRID_CHUNK = 48;                 // art fetched per round-trip in the open collection grid (larger = fewer round-trips)
         const NFT_ART_CHUNK = 12;                  // ids per art request (also the collection view's lazy-load batch)
@@ -1629,7 +1643,6 @@
         const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
         const enumPageCache = new Map();   // `${chainId}|${collection}|${page}` -> [BigInt] enum721 ids, so reopening skips tokenByIndex
         const supplyCache = new Map();     // `${chainId}|${collection}` -> totalSupply, so reopening doesn't recount
-        const prunedChains = new Set();    // chainIds whose node returned 4444 (pruned logs) — skip further from-genesis scans
         let nftRefreshing = false;
         let collectionOpen = 0;            // open collection lightboxes — background NFT refresh pauses so their art loads first
 
@@ -1847,25 +1860,18 @@
             } catch { return []; }
         }
 
-        // eth_getLogs that detects a pruned-history node (EIP-4444, code 4444) and remembers it, so a from-genesis
-        // scan isn't retried against a node that has pruned the logs — that just spams the node with 4444 errors,
-        // and the token ids genuinely can't be listed there anyway. Returns null when the logs aren't available.
-        async function scanLogs(node, filter) {
-            if (prunedChains.has(node.chainId)) return null;
-            try { return await rpc('eth_getLogs', [filter], node.rpcPath); }
-            catch (e) { if (e && e.code === 4444) prunedChains.add(node.chainId); return null; }
-        }
-
         // The lowest block eth_getLogs will serve on a history-pruned node (cached per chain; 0 = full history).
-        // Found by binary-searching the boundary where a `[b -> latest]` query stops returning "pruned history
-        // unavailable" (4444) or "log index not ready" (-32016); a no-match topic keeps each probe cheap. The id
-        // scan starts here instead of genesis — otherwise a range that dips below retained history is rejected
-        // wholesale (returning zero ids, i.e. the "held N, but ids couldn't be listed" symptom).
+        // Found by binary-searching the boundary where a single-block query stops returning "pruned history
+        // unavailable" (4444). A single block (not `[b -> latest]`) probes the PHYSICAL receipt floor without also
+        // tripping on the LogIndex band above it; a no-match topic keeps each probe cheap. The id scan starts here
+        // instead of genesis — otherwise a range dipping below retained history is rejected wholesale (zero ids =
+        // the "held N, but ids couldn't be listed" symptom).
         async function logFloor(node) {
             if (nodeLogFloor.has(node.chainId)) return nodeLogFloor.get(node.chainId);
             const noMatch = '0x' + 'f'.repeat(64);
             const servable = async (b) => {
-                try { await rpc('eth_getLogs', [{ fromBlock: '0x' + b.toString(16), toBlock: 'latest', topics: [noMatch] }], node.rpcPath); return true; }
+                const h = '0x' + b.toString(16);
+                try { await rpc('eth_getLogs', [{ fromBlock: h, toBlock: h, topics: [noMatch] }], node.rpcPath); return true; }
                 catch (e) { return !(e && (e.code === 4444 || e.code === -32016)); }
             };
             if (await servable(0n)) { nodeLogFloor.set(node.chainId, 0n); return 0n; }
@@ -1877,6 +1883,25 @@
             return hi;
         }
 
+        // getLogs across [from, to] resiliently. Some nodes reject a single range that straddles their LogIndex
+        // floor with 4444 / -32016 even though the receipts are present and narrower sub-ranges each serve fine
+        // (one side via the index, the other via a direct receipt scan). Split on that error and recurse: large
+        // sub-ranges each succeed in one shot, so only the range straddling the boundary keeps splitting. A range
+        // genuinely below the retained floor stays 4444 down to LOG_SPLIT_MIN and simply contributes nothing.
+        async function scanLogsRange(node, filter, from, to, out) {
+            let logs;
+            try { logs = await rpc('eth_getLogs', [{ ...filter, fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16) }], node.rpcPath); }
+            catch (e) {
+                if (e && (e.code === 4444 || e.code === -32016) && to - from > LOG_SPLIT_MIN) {
+                    const mid = (from + to) >> 1n;
+                    await scanLogsRange(node, filter, from, mid, out);
+                    await scanLogsRange(node, filter, mid + 1n, to, out);
+                }
+                return; // 4444 at the min span, or any other error → this sub-range contributes nothing
+            }
+            out.push(...logs);
+        }
+
         // the token ids an owner currently holds in a collection (capped), by kind
         async function heldTokenIds(node, collection, owner, kind, count) {
             if (kind === 'enum721') {
@@ -1886,21 +1911,24 @@
                 return (await rpcBatch(calls, node.rpcPath)).filter(Boolean).map((x) => BigInt(x));
             }
             const ownerTopic = '0x' + pad32(owner);
-            const range = { fromBlock: '0x' + (await logFloor(node)).toString(16), toBlock: 'latest', address: collection.address };
+            const from = await logFloor(node);
+            let head; try { head = BigInt(node.head ?? await rpc('eth_blockNumber', [], node.rpcPath)); } catch { return []; }
+            const base = { address: collection.address };
             const candidates = new Set();
             if (kind === 'plain721') {
-                const logs = await scanLogs(node, { ...range, topics: [TRANSFER_TOPIC, null, ownerTopic] });
-                if (logs === null) return []; // pruned/unavailable — ids can't be listed
+                const logs = [];
+                await scanLogsRange(node, { ...base, topics: [TRANSFER_TOPIC, null, ownerTopic] }, from, head, logs);
                 for (const log of logs) if (log.topics?.length === 4) { try { candidates.add(BigInt(log.topics[3])); } catch { } }
                 const ids = [...candidates].slice(0, NFT_ID_CAP);
                 const owners = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_OWNER_OF + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
                 return ids.filter((id, i) => { try { return owners[i] && ('0x' + owners[i].slice(-40)).toLowerCase() === owner.toLowerCase(); } catch { return false; } });
             }
             // erc1155: ids live in log data, not topics
-            const single = await scanLogs(node, { ...range, topics: [TRANSFER_SINGLE_TOPIC, null, null, ownerTopic] });
-            if (single === null) return [];
+            const single = [];
+            await scanLogsRange(node, { ...base, topics: [TRANSFER_SINGLE_TOPIC, null, null, ownerTopic] }, from, head, single);
             for (const log of single) { try { candidates.add(BigInt('0x' + log.data.slice(2, 66))); } catch { } }
-            const batch = (await scanLogs(node, { ...range, topics: [TRANSFER_BATCH_TOPIC, null, null, ownerTopic] })) || [];
+            const batch = [];
+            await scanLogsRange(node, { ...base, topics: [TRANSFER_BATCH_TOPIC, null, null, ownerTopic] }, from, head, batch);
             for (const log of batch) for (const id of parseBatchIds(log.data)) candidates.add(id);
             const ids = [...candidates].slice(0, NFT_ID_CAP);
             const bals = await rpcBatch(ids.map((id) => ['eth_call', [{ to: collection.address, data: SEL_ERC1155_BALANCE + pad32(owner) + pad32(id.toString(16)) }, 'latest']]), node.rpcPath);
@@ -2558,9 +2586,9 @@
                 const ids = res.ids || [], seed = res.seed || [];
                 if (!ids.length) {
                     // held count is known but no ids could be listed — usually a pruned-log node (ancient barrier)
-                    // for plain ERC-721/1155, or a collection with no totalSupply for the full view. When we've
-                    // actually seen a 4444 from this node, say so definitively rather than guessing.
-                    const pruned = prunedChains.has(node.chainId);
+                    // for plain ERC-721/1155 whose transfers predate the retained floor, or a collection with no
+                    // totalSupply for the full view. A non-zero discovered log floor means this node prunes history.
+                    const pruned = (nodeLogFloor.get(node.chainId) ?? 0n) > 0n;
                     const msg = opts.ownedCount
                         ? opts.ownedCount + (pruned
                             ? ' held, but this node has pruned the older logs, so the token ids can’t be listed'
@@ -2815,6 +2843,12 @@
                 const row = el('div', 'feed-item');
                 row.append(el('span', 'when number', timeAgo(item.t)));
                 row.append(el('span', 'what', '🔔 ' + item.title + ' ' + item.body));
+                if (item.addr) {
+                    const cp = el('span', 'feed-copy', '⧉');
+                    cp.title = item.addr + ' (click to copy)';
+                    cp.onclick = () => copyAddress(item.addr);
+                    row.append(cp);
+                }
                 const x = el('span', 'x', '×');
                 x.title = 'Dismiss';
                 x.onclick = () => {
@@ -2827,8 +2861,8 @@
             }
         }
 
-        async function notify(title, body) {
-            feed.unshift({ t: Date.now(), title, body });
+        async function notify(title, body, addr) {
+            feed.unshift({ t: Date.now(), title, body, addr: addr || null });
             feed.length = Math.min(feed.length, FEED_LIMIT);
             localStorage.setItem(FEED_KEY, JSON.stringify(feed));
             renderFeed();
@@ -2894,14 +2928,14 @@
 
                 // facts per (watched address | tx hash) so one tx yields one notification
                 const facts = new Map();
-                const addFact = (watchedAddr, txHash, kind, text) => {
+                const addFact = (watchedAddr, txHash, kind, text, addr = null) => {
                     const key = watchedAddr + '|' + txHash;
                     if (!facts.has(key)) facts.set(key, { out: null, in: null, other: [] });
                     const f = facts.get(key);
                     if (kind === 'out' && f.out === null) f.out = text;
                     else if (kind === 'in' && f.in === null) f.in = text;
-                    else if (kind === 'approval') f.other.unshift(text);
-                    else if (kind === 'other') f.other.push(text);
+                    else if (kind === 'approval') f.other.unshift({ text, addr });
+                    else if (kind === 'other') f.other.push({ text, addr });
                 };
 
                 for (let b = 0; b < blockCalls.length; b++) {
@@ -2911,7 +2945,7 @@
                         if (txFrom && isWatched(txFrom)) {
                             if (value > 0n) addFact(txFrom, tx.hash, 'out', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
                             if (!txTo) addFact(txFrom, tx.hash, 'other', 'deployed a contract');
-                            else if (tx.input && tx.input !== '0x') addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)));
+                            else if (tx.input && tx.input !== '0x') addFact(txFrom, tx.hash, 'other', 'interacted with contract ' + shortAddr(checksum(txTo)), checksum(txTo));
                         }
                         if (txTo && isWatched(txTo) && value > 0n) addFact(txTo, tx.hash, 'in', formatUnits(tx.value, 18) + ' ' + node.meta.ticker);
                     }
@@ -2922,7 +2956,7 @@
                     const spender = shortAddr(checksum('0x' + log.topics[2].slice(-40)));
                     const meta = tokenMetaCache.get(node.chainId + '|' + log.address.toLowerCase());
                     addFact('0x' + log.topics[1].slice(-40), log.transactionHash, 'approval',
-                        'approved ' + spender + ' for ' + (meta?.ticker ?? shortAddr(checksum(log.address))));
+                        'approved ' + spender + ' for ' + (meta?.ticker ?? shortAddr(checksum(log.address))), checksum(log.address));
                 }
 
                 const chainSuffix = multi() ? ' · ' + node.meta.name : '';
@@ -2933,7 +2967,7 @@
                     if (f.out && f.in) notify(who, `swapped ${f.out} for ${f.in}` + chainSuffix);
                     else if (f.out) notify(who, 'sent ' + f.out + chainSuffix);
                     else if (f.in) notify(who, 'received ' + f.in + chainSuffix);
-                    else if (f.other.length) notify(who, f.other[0] + chainSuffix);
+                    else if (f.other.length) notify(who, f.other[0].text + chainSuffix, f.other[0].addr);
                 }
             } catch { /* activity scan is best-effort; next poll retries from the new head */ }
             finally { node.scanning = false; }
