@@ -519,6 +519,9 @@ public static partial class TrieUpdater
             // A group that folds to nothing, or to a lone stem hoisting into the parent, encodes to
             // nothing: there is no blob to rebuild, and its key — now holding no group — is one the parent
             // removes. The hoisted result is handed straight up, taking its lease with it.
+            // Only deletes get here, by emptying a frame or leaving it a single stem: ApplyGroup for a
+            // stored group — the root included, whose empty result clears the root key — and
+            // ApplyPushedStem for a frame that holds no group of its own.
             if (rootKind != NodeKind.Internal && !(isRoot && rootKind == NodeKind.Stem))
             {
                 int hoistedSlot = rootKind == NodeKind.Absent ? -1 : BitOperations.TrailingZeroCount(occupied);
