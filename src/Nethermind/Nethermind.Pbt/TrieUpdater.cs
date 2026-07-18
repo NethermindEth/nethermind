@@ -107,14 +107,6 @@ public static partial class TrieUpdater
             Chain = 3,
         }
 
-        /// <summary>What the store holds at a frame's own key, which its content alone no longer tells it.</summary>
-        /// <remarks>
-        /// A frame reached through <see cref="ApplyChainSplit"/> has a blob but reads as the empty
-        /// group, since a chain is no group's encoding — so "a blob is stored here" and "there are
-        /// cached hashes to reuse" have to be asked separately.
-        /// </remarks>
-        private enum StoredBlob : byte { None, Group, Chain }
-
         public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes)
         {
             // No global sort: each group radix-partitions its own range in place during the descent,
@@ -156,7 +148,7 @@ public static partial class TrieUpdater
             in ValueHash256 beforeHash, ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             if (existingData is not null && PbtNodeChain.IsChain(existingData.GetSpan()))
-                ApplyChain(key, entries, existingData.GetSpan(), StoredBlob.Chain, precalculatedBuckets, ref result, out changed, out delta);
+                ApplyChain(key, entries, existingData.GetSpan(), precalculatedBuckets, ref result, out changed, out delta);
             else
                 ApplyGroup(key, entries, existingData, beforeHash, precalculatedBuckets, ref result, out changed, out delta);
         }
@@ -255,10 +247,9 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            StoredBlob stored = existingData is null ? StoredBlob.None : StoredBlob.Group;
             StoredOccupants occupants = new(existing, existingData);
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, existing, stored, results, shape, beforeHash, existing.Stats, out changed, out delta);
+            result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
         }
 
         /// <summary>
@@ -331,7 +322,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, default, StoredBlob.None, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
+            result = RebuildNode(key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
         }
 
         /// <summary>The group's boundary shape once its touched slots are resolved: the masks and the stat delta the rebuild reads.</summary>
@@ -434,7 +425,7 @@ public static partial class TrieUpdater
                 else if (occupant.Kind == ResultKind.Chain)
                 {
                     // the run ApplyChainSplit seeded below itself, which no key holds
-                    ApplyChain(childKey, bucket, occupant.ChainData, StoredBlob.None, childBuckets, ref result, out childChanged, out childDelta);
+                    ApplyChain(childKey, bucket, occupant.ChainData, childBuckets, ref result, out childChanged, out childDelta);
                 }
                 else
                 {
@@ -492,7 +483,7 @@ public static partial class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         private NodeResult RebuildNode<TOccupants>(
-            in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing, StoredBlob stored,
+            in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing,
             Span<NodeResult> results, in GroupShape shape,
             in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, out bool changed, out PbtSubtreeStats delta)
             where TOccupants : IOccupants, allows ref struct
@@ -543,9 +534,9 @@ public static partial class TrieUpdater
             // `stems` — hence the shape — those of `existing`, every hash the fold would cache is the one
             // already encoded, and an unchanged child hash is an unchanged subtree, so the statistics in
             // the header hoist nothing either. That makes the rewrite below a no-op too, which its guard
-            // concludes only after building the encoding it then drops. Only a stored group qualifies: a
-            // run split into a group (ApplyChainSplit's `stored != Group`) always has a fresh blob to plant.
-            if (changedMask == 0 && stored == StoredBlob.Group)
+            // concludes only after building the encoding it then drops. Only a frame with a stored group
+            // encoding qualifies: a seeded one has no such blob to leave in place, so it always plants.
+            if (changedMask == 0 && occupants.HasStoredEncoding)
             {
                 Debug.Assert(
                     existing.KindAt(PbtTrieNodeGroup.RootPosition) == NodeKind.Absent,
@@ -613,7 +604,7 @@ public static partial class TrieUpdater
 
             // This group's own encoding is handed up for the parent to plant, unless the writes left it
             // byte-identical to what is stored, when it is dropped and the existing blob stays.
-            RefCountingMemory? ownBlob = changed || stored != StoredBlob.Group ? memory : null;
+            RefCountingMemory? ownBlob = changed || !occupants.HasStoredEncoding ? memory : null;
             if (ownBlob is null) ((IDisposable)memory).Dispose();
             return rootFold.IsStored
                 ? NodeResult.StemNode(rootStem, rootSubtreeRoot, ownBlob)
