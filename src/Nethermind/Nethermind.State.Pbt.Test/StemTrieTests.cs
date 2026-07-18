@@ -312,6 +312,94 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(harness.Nodes[chains[0]], Has.Length.EqualTo(PbtNodeChain.EncodedLength));
     }
 
+    // Three stems sharing bits [0, 100): the batch skips from its shallow frame straight to the group at
+    // depth 100 where they part, rather than walking the twenty-four single-child groups between. What
+    // that group hands back is what the run folds around, so which entries carry a value covers all three
+    // of its exits.
+    [TestCase(0b111, 3)] // every stem lives: the group branches, and the run is minted onto it
+    [TestCase(0b011, 2)] // the far stem is a delete: the group collapses onto one child, whose run this absorbs
+    [TestCase(0b001, 1)] // only the base stem lives: it hoists out and the run dissolves
+    public void BatchSharingAPrefix_FoldsToTheReferenceTreeWhateverTheBranchGroupHandsBack(int liveMask, int expectedStems)
+    {
+        const int branchBit = 100;
+        const int deepBit = 140;
+
+        byte[] stemBase = new byte[31];
+        byte[] stemDeep = new byte[31];
+        stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
+        byte[] stemFar = new byte[31];
+        stemFar[branchBit >> 3] = (byte)(1 << (7 - (branchBit & 7)));
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+        List<(byte[], byte[]?)> writes =
+        [
+            ([.. stemBase, 5], (liveMask & 0b001) != 0 ? value : null),
+            ([.. stemDeep, 6], (liveMask & 0b010) != 0 ? value : null),
+            ([.. stemFar, 7], (liveMask & 0b100) != 0 ? value : null),
+        ];
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(harness, writes);
+        Assert.That(harness.Blobs, Has.Count.EqualTo(expectedStems));
+    }
+
+    [Test]
+    public void PushedStemBoundsTheJump()
+    {
+        // A stem already in the trie is pushed down as the batch descends, and it is as much of the
+        // subtree as the writes are: the writes below part only at bit 140, but the pushed stem parts
+        // from them at 60, so that is where the run has to stop. Jumping to where the writes alone part
+        // would carry the pushed stem past its own divergence and drop it.
+        const int pushedBit = 60;
+        const int deepBit = 140;
+
+        byte[] stemBase = new byte[31];
+        byte[] stemDeep = new byte[31];
+        stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
+        byte[] stemPushed = new byte[31];
+        stemPushed[pushedBit >> 3] = (byte)(1 << (7 - (pushedBit & 7)));
+        byte[] value = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        (byte[], byte[]?) pushed = ([.. stemPushed, 3], value);
+        List<(byte[], byte[]?)> writes = [([.. stemBase, 5], value), ([.. stemDeep, 6], value)];
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        harness.ApplyBatch([pushed]);
+
+        // the lone stem is now the occupant the writes meet on their way down
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot([pushed, .. writes])));
+        AssertStoreMatchesFreshRebuild(harness, [pushed, .. writes]);
+    }
+
+    [Test]
+    public void TwoContractsStorage_EachGetsItsOwnRun()
+    {
+        // Each contract's stems share their own 61-bit prefix and nothing of the other's beyond the depth
+        // their address hashes part at, so the two runs are jumped to independently rather than merged.
+        byte[] value = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
+        List<(byte[], byte[]?)> writes = [];
+        foreach (Address contract in new[] { TestItem.AddressA, TestItem.AddressB })
+        {
+            for (int slot = 0; slot < 3; slot++)
+            {
+                writes.Add((PbtKeyDerivation.StorageKey(contract, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), value));
+            }
+        }
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(harness, writes);
+
+        // one run per contract, each reaching the depth-60 group where its own suffix starts branching
+        TrieNodeKey[] chains = [.. harness.Nodes.Keys.Where(key => PbtNodeChain.IsChain(harness.Nodes[key]))];
+        Assert.That(chains, Has.Length.EqualTo(2));
+        foreach (TrieNodeKey key in chains)
+        {
+            Assert.That(PbtNodeChain.Decode(harness.Nodes[key], key.Depth).TargetDepth, Is.EqualTo(60));
+        }
+    }
+
     [Test]
     public void DeleteOnlyBatchOnEmptyTree_AndInPlaceStemUpdate()
     {
