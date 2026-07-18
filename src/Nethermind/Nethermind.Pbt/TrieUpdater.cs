@@ -84,16 +84,16 @@ public static partial class TrieUpdater
 
     private sealed partial class Updater(
         IPbtStore store, IRefCountingMemoryProvider memoryProvider, in PbtUpdateOptions options,
-        PbtWriteBatch batch, int minEntriesPerTask)
+        PbtWriteBatch batch, int minEntriesPerTask, Updater.TaskBudget budget)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
 
-        /// <summary>How many subtree tasks each worker is given room to have queued at once.</summary>
+        /// <summary>How many subtree tasks each worker is given room to have in flight at once.</summary>
         /// <remarks>
-        /// A slot descends on a task of its own once its share of the batch reaches
-        /// <c>1 / (Parallelism * TasksPerWorker)</c>, and the shares of a frame's slots sum to its own, so
-        /// this bounds the whole descent to that many tasks however the stems fall. Some headroom over one
+        /// Sets both halves of the spawn decision: a slot is worth a task once its share of the batch
+        /// reaches <c>1 / (Parallelism * TasksPerWorker)</c>, and <see cref="TaskBudget"/> holds that many
+        /// permits, so the size test and the budget run out at about the same point. Some headroom over one
         /// task per worker is what keeps every worker fed when the subtrees turn out uneven.
         /// </remarks>
         private const int TasksPerWorker = 4;
@@ -113,17 +113,23 @@ public static partial class TrieUpdater
 
         private readonly PbtUpdateOptions _options = options;
 
-        /// <summary>The updater for one batch, with the smallest slot it is to descend on a task worked out.</summary>
+        /// <summary>
+        /// The updater for one batch, with the smallest slot it is to descend on a task worked out and the
+        /// budget of tasks it may have in flight opened.
+        /// </summary>
         public static Updater ForBatch(
-            IPbtStore store, IRefCountingMemoryProvider memoryProvider, in PbtUpdateOptions options, PbtWriteBatch batch) =>
-            new(store, memoryProvider, options, batch,
-                options.Parallelism <= 1
-                    ? NoParallelism
-                    : Math.Max(MinEntriesToParallelize, batch.Count / (options.Parallelism * TasksPerWorker)));
+            IPbtStore store, IRefCountingMemoryProvider memoryProvider, in PbtUpdateOptions options, PbtWriteBatch batch)
+        {
+            int workers = options.Parallelism;
+            return new(
+                store, memoryProvider, options, batch,
+                workers <= 1 ? NoParallelism : Math.Max(MinEntriesToParallelize, batch.Count / (workers * TasksPerWorker)),
+                new TaskBudget(workers * TasksPerWorker));
+        }
 
         /// <summary>The same updater over the same batch, writing into <paramref name="other"/>.</summary>
-        /// <remarks>What a frame hands a subtree it is about to descend on a thread of its own — see <see cref="BufferedPbtStore"/>.</remarks>
-        private Updater WithStore(IPbtStore other) => new(other, memoryProvider, _options, batch, minEntriesPerTask);
+        /// <remarks>What a frame hands a subtree it descends behind a buffer — see <see cref="BufferedPbtStore"/>.</remarks>
+        private Updater WithStore(IPbtStore other) => new(other, memoryProvider, _options, batch, minEntriesPerTask, budget);
 
         /// <summary>
         /// What a boundary result turned out to be. The first three mirror <see cref="NodeKind"/>;
@@ -512,18 +518,21 @@ public static partial class TrieUpdater
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             AssertTouchedMaskMatchesBounds(touchedMask, bounds);
 
-            // The slots whose subtree is worth a thread of its own. When there is one, every touched slot of
-            // this frame — those descending right here included — writes into a buffer of its own rather
-            // than the store, which this frame replays once they are all back: nothing writes to the store,
-            // and so nothing reads a store mid-write, while a task is in flight.
-            uint spawnMask = SpawnMask(touchedMask, bounds);
-            SlotWork?[]? work = spawnMask == 0 ? null : new SlotWork?[PbtTrieNodeGroup.BoundarySlots];
-
             RefList16<SlotOutcome> outcomeBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<SlotOutcome> outcomes = outcomeBuffer.AsSpan();
 
+            // The slots handed to a buffered store rather than settled straight into `outcomes`, which are
+            // allocated only if the frame ever spawns — a descent that does not is left as it was.
+            SlotWork?[]? work = null;
+            uint bufferedMask = 0;
+            TaskBudget taskBudget = budget;
+
             // The frame's range as an offset into the batch, so each slot's own range can be handed over as one.
             int frameOffset = SpanOffset(batch.EntryArray, entries);
+
+            // How much of the frame's range is settled or handed to a task, which says whether anything is
+            // left for this thread once the slot in hand is accounted for.
+            int accountedEntries = 0;
             for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(touched);
@@ -535,27 +544,55 @@ public static partial class TrieUpdater
                     childPlan.Precalculated.IsEmpty ? 0 : SpanOffset(batch.BucketArray!, childPlan.Precalculated),
                     childPlan.Precalculated.Length, childPlan.BranchDepth);
 
+                accountedEntries += range.EntryLength;
+
+                // Cheapest test first, and it is the only one a serial descent ever runs: its threshold is
+                // past any bucket length, so the slot falls through on that one compare. Then whether this
+                // slot accounts for the whole of the frame's range, in which case it stays here — handing
+                // it over would leave this thread with nothing but the wait — and only then the budget, the
+                // one test that costs an interlocked write.
+                if (range.EntryLength >= minEntriesPerTask && accountedEntries < entries.Length && taskBudget.TryTake())
+                {
+                    work ??= new SlotWork?[PbtTrieNodeGroup.BoundarySlots];
+                    BufferedPbtStore buffer = new(store);
+                    Updater worker = WithStore(buffer);
+                    SlotWork slotWork = new(buffer);
+                    work[slot] = slotWork;
+                    bufferedMask |= 1u << slot;
+                    slotWork.Task = Task.Run(() =>
+                    {
+                        try
+                        {
+                            slotWork.Outcome = worker.DescendSlot(childKey, range, occupant);
+                        }
+                        finally
+                        {
+                            taskBudget.Return();
+                        }
+                    });
+
+                    continue;
+                }
+
                 if (work is null)
                 {
+                    // nothing of this frame's is in flight yet, so this descends straight into the store,
+                    // exactly as a serial descent does
                     outcomes[slot] = DescendSlot(childKey, range, occupant);
                     continue;
                 }
 
-                BufferedPbtStore buffer = new(store);
-                Updater worker = WithStore(buffer);
-                SlotWork slotWork = new(buffer);
-                work[slot] = slotWork;
-                if ((spawnMask >> slot & 1) != 0)
-                {
-                    slotWork.Task = Task.Run(() => { slotWork.Outcome = worker.DescendSlot(childKey, range, occupant); });
-                }
-                else
-                {
-                    slotWork.Outcome = worker.DescendSlot(childKey, range, occupant);
-                }
+                // A task is in flight, so even a slot this thread descends itself writes into a buffer:
+                // the store must not be written while a task is reading it. The slots settled before the
+                // first spawn were settled while nothing was.
+                BufferedPbtStore inlineBuffer = new(store);
+                SlotWork inlineWork = new(inlineBuffer);
+                work[slot] = inlineWork;
+                bufferedMask |= 1u << slot;
+                inlineWork.Outcome = WithStore(inlineBuffer).DescendSlot(childKey, range, occupant);
             }
 
-            if (work is not null) Join(work, touchedMask, outcomes);
+            if (work is not null) Join(work, bufferedMask, outcomes);
 
             uint changedMask = 0;
             uint storedChildMask = 0;
@@ -646,27 +683,33 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// The slots of <paramref name="touchedMask"/> whose share of the batch earns them a task of their
-        /// own: none when the descent is to stay on one thread, and none when the frame has a single touched
-        /// slot, there being nothing for a task to run alongside.
+        /// How many subtree tasks one batch's descent may have in flight at once, shared by every frame of it.
         /// </summary>
-        private uint SpawnMask(uint touchedMask, ReadOnlySpan<int> bounds)
+        /// <remarks>
+        /// A permit is taken as a task is spawned and returned as it finishes, so a frame deep in the tree
+        /// finds the budget spent while the top of the descent is still fanning out and settles for
+        /// descending its slots itself, rather than queueing work behind the tasks already running. The dip
+        /// below zero a lost race leaves is transient and costs at most a spawn that would have been allowed.
+        /// </remarks>
+        internal sealed class TaskBudget(int permits)
         {
-            if (minEntriesPerTask == NoParallelism || BitOperations.PopCount(touchedMask) < 2) return 0;
+            private int _remaining = permits;
 
-            uint mask = 0;
-            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            /// <summary>Takes a permit, or reports that none was free to take.</summary>
+            public bool TryTake()
             {
-                int slot = BitOperations.TrailingZeroCount(touched);
-                if (bounds[slot + 1] - bounds[slot] >= minEntriesPerTask) mask |= 1u << slot;
+                if (Interlocked.Decrement(ref _remaining) >= 0) return true;
+
+                Interlocked.Increment(ref _remaining);
+                return false;
             }
 
-            return mask;
+            public void Return() => Interlocked.Increment(ref _remaining);
         }
 
         /// <summary>
-        /// Waits for every slot this frame handed to a task, replays what its slots wrote into the store
-        /// behind their buffers, and gathers their outcomes into <paramref name="outcomes"/>.
+        /// Waits for every slot this frame handed to a task, replays what its buffered slots wrote into the
+        /// store behind their buffers, and gathers their outcomes into <paramref name="outcomes"/>.
         /// </summary>
         /// <remarks>
         /// Replayed in slot order, so the store is written the same values in the same order however the
@@ -674,10 +717,10 @@ public static partial class TrieUpdater
         /// task is never left writing into a buffer this is draining, and the buffers are drained or dropped
         /// either way, their writes holding leases no one else will release.
         /// </remarks>
-        private static void Join(SlotWork?[] work, uint touchedMask, Span<SlotOutcome> outcomes)
+        private static void Join(SlotWork?[] work, uint bufferedMask, Span<SlotOutcome> outcomes)
         {
             ExceptionDispatchInfo? failure = null;
-            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            for (uint touched = bufferedMask; touched != 0; touched &= touched - 1)
             {
                 Task? task = work[BitOperations.TrailingZeroCount(touched)]!.Task;
                 if (task is null) continue;
@@ -693,7 +736,7 @@ public static partial class TrieUpdater
                 }
             }
 
-            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            for (uint touched = bufferedMask; touched != 0; touched &= touched - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(touched);
                 SlotWork slotWork = work[slot]!;
