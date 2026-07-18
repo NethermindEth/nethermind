@@ -230,7 +230,7 @@
         body.mode-nfts #totalBox { display: none !important; } /* beats the inline display:flex set on refresh */
         body.mode-tokens .nft-row { display: none; } /* tokens-only view */
 
-        header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: baseline; }
+        header .toggles { margin-left: auto; display: flex; gap: 8px; align-items: center; }
         button.zero-toggle {
             border: 1px solid var(--border);
             padding: 4px 9px;
@@ -240,6 +240,10 @@
         }
 
         button.zero-toggle.on { color: var(--accent); border-color: var(--accent); }
+        /* privacy toggle: an incognito mark (hat + glasses), lit when privacy is on, dimmed when off-chain art loads */
+        #privacyToggle { display: inline-flex; align-items: center; }
+        .privacy-icon { display: block; }
+        #privacyToggle:not(.on) .privacy-icon { opacity: 0.5; }
 
         .chip {
             display: inline-flex;
@@ -605,7 +609,7 @@
         </div>
         <div id="chainToggles"></div>
         <div class="toggles">
-            <button id="privacyToggle" class="zero-toggle" title="Privacy mode"><span class="glyph">🛡️</span></button>
+            <button id="privacyToggle" class="zero-toggle" title="Privacy mode"><svg class="privacy-icon" viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M6.9 9.1c.55-2.9 2.3-4.6 5.1-4.6s4.55 1.7 5.1 4.6c.1.53-.34.9-.85.78C14.9 9.5 13.5 9.3 12 9.3s-2.9.2-4.25.58c-.51.12-.95-.25-.85-.78z"/><rect x="3" y="9.4" width="18" height="1.9" rx=".95"/><circle cx="8.1" cy="15.4" r="2.9"/><circle cx="15.9" cy="15.4" r="2.9"/><rect x="10.3" y="14.7" width="3.4" height="1.4" rx=".7"/></svg></button>
             <button id="settingsBtn" class="zero-toggle" title="Settings"><span class="glyph">⚙️</span></button>
         </div>
         <div class="total" id="totalBox">
@@ -960,7 +964,7 @@
             },
             10200: { name: 'Chiado', ticker: 'xDAI', ens: false, tag: 'CHI', logo: 'logos/gnosis.png' },
             10: {
-                name: 'Optimism', ticker: 'ETH', ens: false, tag: 'OP', logo: 'logos/ethereum-logo.svg',
+                name: 'Optimism', ticker: 'ETH', ens: false, tag: 'OP', logo: 'logos/optimism-logo.svg',
                 feeds: OP_FEEDS,
                 currencies: ['USD', 'EUR'],
                 // Uniswap V3 (canonical factory, also deployed on Optimism) for tokens without a standalone feed
@@ -4390,12 +4394,11 @@
             // NFTs they view — so it's gated behind a confirmation. Returning to privacy needs none.
             const privacyToggle = $('privacyToggle');
             function updatePrivacyToggle() {
-                const off = !(artSources.https || artSources.localIpfs || artSources.remoteGateway);
-                privacyToggle.classList.toggle('on', !off);
-                privacyToggle.querySelector('.glyph').textContent = off ? '🛡️' : '🖼️';
-                privacyToggle.title = off
-                    ? 'Privacy mode: only on-chain art. Click to also load IPFS / web art.'
-                    : 'Loading off-chain art (IPFS / web). Click to return to privacy mode (on-chain only).';
+                const priv = !(artSources.https || artSources.localIpfs || artSources.remoteGateway);
+                privacyToggle.classList.toggle('on', priv); // incognito lit when privacy is active, dimmed when off
+                privacyToggle.title = priv
+                    ? 'Privacy mode ON — on-chain art only. Click to also load IPFS / web art.'
+                    : 'Privacy mode OFF — loading off-chain art (IPFS / web). Click to return to privacy.';
             }
             privacyToggle.onclick = async () => {
                 const anyOn = artSources.https || artSources.localIpfs || artSources.remoteGateway;
