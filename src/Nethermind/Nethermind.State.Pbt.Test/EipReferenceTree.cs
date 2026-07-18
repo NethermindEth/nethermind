@@ -44,8 +44,6 @@ public sealed class EipReferenceTree
 
     private static object Insert(object? node, byte[] stem, byte subIndex, byte[] value, int depth)
     {
-        if (depth >= 248) throw new InvalidOperationException("depth must be less than 248");
-
         if (node is null)
         {
             RefStemNode created = new(stem);
@@ -64,6 +62,10 @@ public sealed class EipReferenceTree
 
             return SplitLeaf(stemNode, stemBits, ToBits(stemNode.Stem), subIndex, value, depth);
         }
+
+        // Two stems parting only at the last bit split at depth 247, leaving their stem nodes at 248 —
+        // legal, and handled above. Only an internal node there would be, every bit being spent.
+        if (depth >= 248) throw new InvalidOperationException("depth must be less than 248");
 
         RefInternalNode internalNode = (RefInternalNode)node;
         if (stemBits[depth] == 0)

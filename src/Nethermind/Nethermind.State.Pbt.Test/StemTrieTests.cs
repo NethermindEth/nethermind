@@ -70,6 +70,36 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(harness.Nodes, Is.Empty);
     }
 
+    /// <summary>
+    /// Two stems parting only at the last bit put their stem nodes at depth 248, as deep as a stem can
+    /// sit. A later write to one of them descends the whole 248 levels to reach it, so the tree must
+    /// take it there — the case a depth guard is quickest to reject.
+    /// </summary>
+    [Test]
+    public void StemsPartingAtTheLastBit_TakeFurtherSubIndices()
+    {
+        byte[] stemA = new byte[31];
+        byte[] stemB = new byte[31];
+        stemB[30] = 1; // bit 247, the last bit of a stem
+        byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+        byte[] valueC = Bytes.FromHexString("0x3333333333333333333333333333333333333333333333333333333333333333");
+
+        // the split lands before the second sub-index, so that write descends past every internal node
+        // the split built rather than merging at the root
+        (byte[] Key, byte[]? Value)[] entries =
+        [
+            ([.. stemA, 5], valueA),
+            ([.. stemB, 7], valueB),
+            ([.. stemA, 6], valueC),
+        ];
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        ValueHash256 root = harness.ApplyBatch(entries);
+        Assert.That(root, Is.EqualTo(ReferenceRoot(entries)));
+        AssertStoreMatchesFreshRebuild(harness, entries);
+    }
+
     [Test]
     public void UnmergedStem_IsRejectedOnceTheDescentRunsOutOfStem()
     {
@@ -308,6 +338,8 @@ public class StemTrieTests(PbtGroupFormat format)
     [TestCase(1)]
     [TestCase(42)]
     [TestCase(1337)]
+    [TestCase(4)] // seeds whose stem pool parts two stems at the last bit, which used to trip the
+    [TestCase(5)] // reference tree's depth guard before it could merge a second sub-index
     public void RandomBatches_MatchEipReference_AndStoreStaysCanonical(int seed)
     {
         Random rng = new(seed);
