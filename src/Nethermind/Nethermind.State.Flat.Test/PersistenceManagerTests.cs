@@ -899,6 +899,43 @@ public class PersistenceManagerTests
         Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(16UL));
     }
 
+    // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
+    // range permanently absent from history on every shutdown.
+    [Test]
+    public void FlushToPersistence_WithCaptureHook_CapturesTheFlushedRange()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> historyDb = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
+        HistoryWriter historyWriter = new(historyDb, historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            historyWriter);
+
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = manager.FlushToPersistence();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.EqualTo(to));
+            Assert.That(historyWriter.LastCapturedBlock, Is.EqualTo(16UL), "the flushed range must be captured before it is pruned");
+        }
+    }
+
     [Test]
     public async Task AddToPersistence_WhenCaptureHookThrows_StillPersists()
     {

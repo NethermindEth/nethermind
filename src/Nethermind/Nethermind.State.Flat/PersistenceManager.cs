@@ -438,6 +438,7 @@ public class PersistenceManager(
                 using PersistedSnapshot persistedScope = persisted;
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
                 PersistPersistedSnapshot(persisted);
+                CaptureHistory(persisted.To);
                 CurrentPersistedStateId = persisted.To;
                 currentPersistedState = CurrentPersistedStateId;
                 snapshotRepository.RemoveStatesUntil(persisted.To.BlockNumber);
@@ -450,6 +451,7 @@ public class PersistenceManager(
 
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
             PersistSnapshot(snapshotToPersist);
+            CaptureHistory(snapshotToPersist.To);
             CurrentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = CurrentPersistedStateId;
             snapshotRepository.RemoveStatesUntil(snapshotToPersist.To.BlockNumber);
