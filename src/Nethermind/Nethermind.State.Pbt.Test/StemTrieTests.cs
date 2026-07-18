@@ -274,7 +274,8 @@ public class StemTrieTests(PbtGroupFormat format)
 
         // The prefix runs to bit 60, so every contract's storage produces this same shape: one run from
         // the root group down to the depth-60 group where the suffix starts branching. That is fourteen
-        // groups — 14 * (9 + 5 * 32) = 2366 bytes of single-child levels — held in 97.
+        // groups — 14 * (9 + 4 * 32) = 1918 bytes of single-child levels, each group's root folded away —
+        // held in 97.
         Assert.That(chains[0].Depth, Is.EqualTo(PbtTrieNodeGroup.LevelsPerGroup));
         Assert.That(chain.TargetDepth, Is.EqualTo(60));
         Assert.That(levels / PbtTrieNodeGroup.LevelsPerGroup, Is.EqualTo(14));
@@ -536,10 +537,12 @@ public class StemTrieTests(PbtGroupFormat format)
         harness.ApplyBatch(writes);
 
         // every stem lands on a boundary slot here, so a dense group stores exactly the positions its
-        // format keeps — all thirty-one, or the twenty-one an interleaved group does not fold away
+        // format keeps, bar the folded root — all thirty below it, or the twenty an interleaved group
+        // does not fold away
         int storedPositions = 0;
         for (int position = 0; position < PbtTrieNodeGroup.PositionCount; position++)
         {
+            if (position == PbtTrieNodeGroup.RootPosition) continue;
             if (!PbtTrieNodeGroup.IsSkippedPosition(format, position)) storedPositions++;
         }
 
@@ -552,6 +555,35 @@ public class StemTrieTests(PbtGroupFormat format)
         harness.ApplyBatch([writes[3]]);
 
         AssertStoreMatchesFreshRebuild(harness, writes);
+    }
+
+    /// <summary>
+    /// No group stores its own internal root: it is folded and cached in the parent's boundary slot, so a
+    /// branching root group reads as rootless while the tree still folds to the reference root. A lone
+    /// stem is the root group's exception — with no parent to hoist into, it is kept, at its boundary slot.
+    /// </summary>
+    [Test]
+    public void GroupRoot_InternalIsFoldedNotStored_ButARootStemSurvives()
+    {
+        byte[] value = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+        // a lone stem is the whole tree: it is stored at its boundary position — never the folded root
+        // position — a stem being the one node nothing recomputes
+        (byte[], byte[]?)[] single = [([.. MakeStem(0x00, 0), 5], value)];
+        PbtTreeHarness one = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(one.ApplyBatch(single), Is.EqualTo(ReferenceRoot(single)));
+        PbtTrieNodeGroup rootGroup = PbtTrieNodeGroup.Decode(one.Nodes[TrieNodeKey.Root]);
+        Assert.That(rootGroup.KindAt(PbtTrieNodeGroup.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "the root position is never stored");
+        Assert.That(rootGroup.KindAt(PbtTrieNodeGroup.BoundaryPosition(0)), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), "the lone stem sits at its boundary slot");
+
+        // two stems parting in the top four bits branch the root group, so its internal root is folded
+        // away and never stored — yet the tree still folds to the reference root
+        (byte[], byte[]?)[] branch = [([.. MakeStem(0x00, 0), 5], value), ([.. MakeStem(0x10, 0), 5], value)];
+        PbtTreeHarness two = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(two.ApplyBatch(branch), Is.EqualTo(ReferenceRoot(branch)));
+        Assert.That(
+            PbtTrieNodeGroup.Decode(two.Nodes[TrieNodeKey.Root]).KindAt(PbtTrieNodeGroup.RootPosition),
+            Is.EqualTo(PbtTrieNodeGroup.NodeKind.Absent), "a branching group's internal root is folded, not stored");
     }
 
     private static int CountPresentPositions(PbtTrieNodeGroup group)
@@ -623,10 +655,12 @@ public class StemTrieTests(PbtGroupFormat format)
 
         TrackingMemoryProvider provider = new();
         PbtTreeHarness harness = new(provider, format);
-        harness.ApplyBatch(writes);
+        ValueHash256 before = harness.ApplyBatch(writes);
 
         int rentsBefore = provider.Rented.Count;
-        harness.ApplyBatch([([.. target, 5], value)]);
+        // the root group's own root is folded, not stored, so its unchanged hash reaches the caller by
+        // value — a no-op rewrite must still return the true root, not the zero one an absent entry reads as
+        Assert.That(harness.ApplyBatch([([.. target, 5], value)]), Is.EqualTo(before), "a no-op rewrite returns the same root");
         return (provider.Rented.Count - rentsBefore, harness.Nodes.Count);
     }
 
