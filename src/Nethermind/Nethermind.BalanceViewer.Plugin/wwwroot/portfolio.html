@@ -4471,7 +4471,22 @@
                 $('autoPinRow').style.display = show;
                 $('autoPinNote').style.display = show;
             };
-            setAutoPin.onchange = () => { autoPin = setAutoPin.checked; localStorage.setItem(AUTOPIN_KEY, autoPin ? '1' : '0'); };
+            setAutoPin.onchange = () => {
+                // Turning auto-pin off unpins everything already pinned to the node (and reclaims the space) —
+                // otherwise disabling pinning would leave the accumulated art pinned forever. Confirm first: the
+                // art is re-fetched from the network when next viewed, and orphaned CIDs may not come back.
+                if (!setAutoPin.checked) {
+                    if (!confirm('Unpin all art already pinned to your node and free the space? It will be re-fetched from the network when you view it again.')) {
+                        setAutoPin.checked = true; // keep pinning on
+                        return;
+                    }
+                    pinnedCids.clear();
+                    fetch('portfolio-ipfs-pin', { method: 'DELETE' }).catch(() => { });
+                    setStatus('Unpinning all art from your node…');
+                }
+                autoPin = setAutoPin.checked;
+                localStorage.setItem(AUTOPIN_KEY, autoPin ? '1' : '0');
+            };
             setHttps.onchange = () => { artSources.https = setHttps.checked; onArtChange(); };
             setLocalIpfs.onchange = () => { artSources.localIpfs = setLocalIpfs.checked; updateAutoPinRow(); onArtChange(); };
             setRemoteGw.onchange = () => { artSources.remoteGateway = setRemoteGw.checked; onArtChange(); };

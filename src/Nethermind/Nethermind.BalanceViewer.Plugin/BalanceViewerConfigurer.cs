@@ -103,8 +103,9 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         bool isDetectPost = HttpMethods.IsPost(context.Request.Method) && path == DetectPath;
         bool isDetectDelete = HttpMethods.IsDelete(context.Request.Method) && path == DetectPath;
         bool isPin = HttpMethods.IsPost(context.Request.Method) && path.StartsWithSegments(PinPathPrefix);
+        bool isUnpinAll = HttpMethods.IsDelete(context.Request.Method) && path == PinPathPrefix; // disabling auto-pin
         bool isIpfs = HttpMethods.IsGet(context.Request.Method) && path.StartsWithSegments(IpfsPathPrefix);
-        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete && !isIpfs && !isPin)
+        if (!isStaticFile && !isNodesList && !isProxy && !isDetectProxy && !isDetectGet && !isDetectPost && !isDetectDelete && !isIpfs && !isPin && !isUnpinAll)
         {
             return next(context);
         }
@@ -117,6 +118,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         }
 
         if (isPin) return ServePinAsync(context);
+        if (isUnpinAll) return ServeUnpinAllAsync(context);
         if (isIpfs) return ServeIpfsAsync(context);
         if (isNodesList) return ServeNodesAsync(context);
         if (isProxy) return ProxyAsync(context);
@@ -221,6 +223,36 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     {
         try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null); }
         catch { /* best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved */ }
+    }
+
+    // DELETE /portfolio-ipfs-pin — unpins every recursive pin and reclaims the space. Issued when the user turns
+    // auto-pin off, so disabling pinning frees the art it accumulated. Detached (may unpin thousands + GC), 202.
+    private Task ServeUnpinAllAsync(HttpContext context)
+    {
+        _ = UnpinAllAsync();
+        context.Response.StatusCode = StatusCodes.Status202Accepted;
+        return Task.CompletedTask;
+    }
+
+    private static async Task UnpinAllAsync()
+    {
+        try
+        {
+            using HttpResponseMessage lsResp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/ls?type=recursive", content: null);
+            if (!lsResp.IsSuccessStatusCode) return;
+            using JsonDocument doc = JsonDocument.Parse(await lsResp.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("Keys", out JsonElement keys))
+            {
+                foreach (JsonProperty pin in keys.EnumerateObject())
+                {
+                    try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(pin.Name)}", content: null); }
+                    catch { /* best-effort per pin */ }
+                }
+            }
+            // reclaim the now-unpinned blocks from disk
+            try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); } catch { }
+        }
+        catch { /* best-effort: no local Kubo RPC (5001) */ }
     }
 
     private async Task ProxyAsync(HttpContext context)
