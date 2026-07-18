@@ -107,7 +107,8 @@ public static partial class TrieUpdater
         /// <summary>
         /// Applies <paramref name="entries"/> to a run that branches inside the group at
         /// <paramref name="key"/>, making that group real: the rest of the run becomes its one seeded
-        /// occupant and the ordinary descent takes over. When the group sits below
+        /// occupant — ridden into the boundary results here, no encoding holding it — and the ordinary
+        /// descent takes over. When the group sits below
         /// <paramref name="prefixDepth"/>, the split node is folded back into the run prefix reaching down
         /// to it.
         /// </summary>
@@ -145,7 +146,18 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, precalculatedBuckets, results);
-            NodeResult split = RebuildNode(key, occupants, default, results, shape, directChild ? 0u : occupantsOccupied, chain.NodeHash, chain.Stats, out changed, out delta);
+            // The seeded run is held by no key and no encoding, so nothing can read it back later: it
+            // rides on in `results` unless the descent already refreshed its slot.
+            if ((shape.TouchedMask >> targetSlot & 1) == 0)
+            {
+                NodeResult seeded = seed;
+
+                // only a run's result keeps hold of the memory, so only it takes a lease of its own — a
+                // boundary internal promotes to a pure value, leaving the seed's lease with the seed
+                results[targetSlot] = seeded.Lease();
+            }
+
+            NodeResult split = RebuildNode(key, occupants, default, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
             if (prefixDepth == depth) return split;
 
             // The branch fell in a deeper group than the run's start, so the split node hangs below a run
