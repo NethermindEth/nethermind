@@ -145,7 +145,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, directChild ? 0u : occupantsOccupied, precalculatedBuckets, results);
-            NodeResult split = RebuildNode(key, occupants, stored, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
+            NodeResult split = RebuildNode(key, occupants, default, stored, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
             if (prefixDepth == depth) return split;
 
             // The branch fell in a deeper group than the run's start, so the split node hangs below a run
