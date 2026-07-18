@@ -235,8 +235,8 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             StoredOccupants occupants = new(existing, existingData);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, precalculatedBuckets, results);
+            result = RebuildNode(key, occupants, existing, results, shape, occupantsChain: 0, beforeHash, existing.Stats, out changed, out delta);
         }
 
         /// <summary>
@@ -308,8 +308,8 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, precalculatedBuckets, results);
+            result = RebuildNode(key, occupants, default, results, shape, occupantsChain: 0, pushed.NodeHash(), beforeStats, out changed, out delta);
         }
 
         /// <summary>The group's boundary shape once its touched slots are resolved: the masks and the stat delta the rebuild reads.</summary>
@@ -319,9 +319,8 @@ public static partial class TrieUpdater
         /// <summary>
         /// Descends only the non-empty buckets of the group at <paramref name="key"/>, applying each touched
         /// slot's writes to its child and settling the result into <paramref name="results"/>, and returns
-        /// the group's boundary shape for <see cref="RebuildNode"/> to settle. An untouched slot keeps its
-        /// occupant, read on demand from the existing encoding or the seed; a seeded run, and every node when
-        /// there is no existing to read a value back from, rides on in its result.
+        /// the group's boundary shape for <see cref="RebuildNode"/> to settle. An untouched slot is left
+        /// alone entirely — it keeps its occupant, which the settle reads on demand.
         /// </summary>
         /// <param name="occupants">
         /// The frame's boundary occupants, read on demand by slot as the descent needs them: a
@@ -330,7 +329,6 @@ public static partial class TrieUpdater
         /// </param>
         /// <param name="occupantsOccupied">The occupied slots as a bitmap; the descent refreshes only the ones a write touches.</param>
         /// <param name="occupantsStems">Which of <paramref name="occupantsOccupied"/> hold a stem.</param>
-        /// <param name="occupantsChain">Which of <paramref name="occupantsOccupied"/> hold a seeded run.</param>
         /// <param name="precalculatedBuckets">
         /// The bucket table levels the producer already partitioned <paramref name="entries"/> into, this
         /// group's own being the last of them (<see cref="PbtWriteBatch.BucketTableLength"/>); empty once
@@ -338,7 +336,7 @@ public static partial class TrieUpdater
         /// </param>
         private GroupShape ResolveBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            uint occupantsOccupied, uint occupantsStems, uint occupantsChain,
+            uint occupantsOccupied, uint occupantsStems,
             ReadOnlySpan<int> precalculatedBuckets, Span<NodeResult> results)
             where TOccupants : IOccupants, allows ref struct
         {
@@ -367,22 +365,6 @@ public static partial class TrieUpdater
             // and an empty bucket leaves its slot's boundaries where they are.
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             Debug.Assert(touchedMask == DeriveTouchedMask(bounds), "the cached touched mask disagrees with its level's bounds");
-
-            // A slot no write touches is normally left out of `results` altogether: the settle reads it
-            // back from `occupants`, or folds it out of the stored encoding. Two kinds cannot be read back
-            // that way, so they are copied across now, while the occupants are still to hand:
-            //   - a seeded run, whose blob exists only in memory until an ancestor plants it;
-            //   - every occupied slot of a frame with no stored encoding, which leaves the rebuild's fold
-            //     nothing but `results` to read a boundary out of.
-            uint mustCarry = occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied);
-            for (uint carried = mustCarry & ~touchedMask; carried != 0; carried &= carried - 1)
-            {
-                int slot = BitOperations.TrailingZeroCount(carried);
-
-                // Only a run's result keeps hold of the memory, so only it needs a lease of its own; a stem
-                // or an internal promotes to a by-value result, copied straight out of the encoding.
-                results[slot] = (occupantsChain >> slot & 1) != 0 ? occupants[slot].Lease() : occupants[slot];
-            }
 
             // Every touched slot is resolved below, so its old kind is gone whatever the write leaves there:
             // drop them all in one pass and let each slot set its own bits anew as it lands.
@@ -444,7 +426,9 @@ public static partial class TrieUpdater
         /// Settles this frame's node from the boundary <paramref name="results"/> and their
         /// <paramref name="shape"/> that <see cref="ResolveBoundaries"/> produced — collapse to a run, hoist
         /// a stem, skip an unchanged group, or fold a fresh one — and persists each child's blob, returning
-        /// the node now occupying this frame's key.
+        /// the node now occupying this frame's key. An untouched slot is read back from
+        /// <paramref name="occupants"/> on demand, bar the two kinds carried into
+        /// <paramref name="results"/> up front because nothing can read them back later.
         /// </summary>
         /// <remarks>
         /// One call per group frame, from each of the three that resolve one:
@@ -459,6 +443,7 @@ public static partial class TrieUpdater
         /// </remarks>
         /// <param name="occupants"><inheritdoc cref="ResolveBoundaries" path="/param[@name='occupants']"/></param>
         /// <param name="existing">The stored group encoding the frame descends from, or the empty group for a seeded frame.</param>
+        /// <param name="occupantsChain">Which of the frame's occupied slots hold a seeded run, as the descent found them.</param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
         /// <param name="beforeStats">
         /// What this frame's subtree amounted to before the writes, which <paramref name="delta"/> is
@@ -477,7 +462,7 @@ public static partial class TrieUpdater
         /// </param>
         private NodeResult RebuildNode<TOccupants>(
             in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing,
-            Span<NodeResult> results, in GroupShape shape,
+            Span<NodeResult> results, in GroupShape shape, uint occupantsChain,
             in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, out bool changed, out PbtSubtreeStats delta)
             where TOccupants : IOccupants, allows ref struct
         {
@@ -494,6 +479,28 @@ public static partial class TrieUpdater
             // count the subtree's content, and none of removing, collapsing or rebuilding moves a stem.
             delta = shape.Deltas;
             PbtSubtreeStats afterStats = beforeStats + shape.Deltas;
+
+            // A slot no write touched is normally absent from `results`: everything below reads it back from
+            // `occupants`, or folds it out of the stored encoding. Two kinds cannot be read back that way, so
+            // they are carried in before the first of those reads:
+            //   - a seeded run, whose blob exists only in memory until an ancestor plants it;
+            //   - every occupied slot of a frame with no stored encoding, which leaves the fold below
+            //     nothing but `results` to read a boundary out of.
+            // `occupied` is the shape the descent left, but masking to the untouched slots makes it the one
+            // it started from: the descent only ever refreshes bits of `touchedMask`.
+            uint mustCarry = occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied);
+            for (uint carried = mustCarry & ~touchedMask; carried != 0; carried &= carried - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(carried);
+                NodeResult carriedResult = occupants[slot];
+
+                // Only a run's result keeps hold of the memory, so only it takes a lease of its own — one
+                // it releases in its own time, leaving the occupant's with its source. A stem or an
+                // internal promotes to a by-value result, copied straight out of the encoding.
+                if ((occupantsChain >> slot & 1) != 0) carriedResult = carriedResult.Lease();
+
+                results[slot] = carriedResult;
+            }
 
             // A group left with one internal child is a run of single-child levels: five nodes that all
             // change whenever its one leaf does, and that nothing reads on their own. It stores as a
@@ -810,13 +817,6 @@ public static partial class TrieUpdater
 
             private PbtTrieNodeGroup.Slot Slot =>
                 _memory is null ? default : PbtTrieNodeGroup.SlotAt(_memory.GetSpan(), ToNodeKind(_node.Kind), _node.Offset);
-
-            /// <summary>Takes a second lease on the node, for another owner to release in its own time.</summary>
-            public Occupant Lease()
-            {
-                _memory?.AcquireLease();
-                return this;
-            }
 
             public void Dispose() => ((IDisposable?)_memory)?.Dispose();
         }
