@@ -329,11 +329,15 @@ public static partial class TrieUpdater
                 Debug.Assert(depth > 0, "a run starts past the root (invariant 4)");
                 TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, stem);
 
+                // The same frame again at the group the entries part in, which is the ordinary descent from
+                // there down: the jump cannot fire a second time, its own partition finding a branch at
+                // that very depth. The pushed occupant rides along to be placed there rather than here.
                 NodeResult inner = default;
                 ApplyPushedStem(branchKey, entries, pushed, default, ref inner, out _, out delta);
 
-                // The run reaching down to it is this frame's node, and a run's node hash is its path's, so
-                // it is only the same node the pushed occupant was once it starts where that one did.
+                // A run's node hash is its path's, unlike a stem's, so the inner frame's answer to whether
+                // it changed is about a node starting at the wrong depth. It is settled here instead, once
+                // the run reaching down from this frame is what the pushed occupant is compared against.
                 result = WrapIntoChain(depth, branchKey, inner, innerBlobStored: false, beforeStats + delta);
                 changed = result.NodeHash() != pushed.NodeHash();
                 return;
@@ -1050,7 +1054,12 @@ public static partial class TrieUpdater
         /// <see cref="PbtWriteBatch.TouchedMaskIndex"/> mask, in the same shape a precalculated level
         /// arrives in.
         /// </param>
-        /// <returns><inheritdoc cref="BranchGroupDepth" path="/summary"/></returns>
+        /// <returns>
+        /// The depth of the group where <paramref name="entries"/> first part from one another: this
+        /// group's own whenever two of them fall in different buckets, and a deeper one when they all
+        /// share its nibble — the levels between hold a single child apiece, so a caller free to skip
+        /// them can jump straight to the group that branches.
+        /// </returns>
         private static int Partition(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Span<int> bounds = level[..PbtWriteBatch.BoundsLength];
@@ -1060,15 +1069,32 @@ public static partial class TrieUpdater
             // range is almost always one or a few entries. The count-and-permute below costs its
             // sixteen-wide passes whether it buckets one entry or a hundred, so the tiny ranges that
             // dominate take a sort network instead.
-            if (entries.Length <= TinyRange)
-            {
-                SortTiny(entries, depth, level);
-                return BranchGroupDepth(entries, depth, (uint)level[PbtWriteBatch.TouchedMaskIndex]);
-            }
+            if (entries.Length <= TinyRange) return SortTiny(entries, depth, level);
 
             Span<int> counts = stackalloc int[PbtTrieNodeGroup.BoundarySlots];
             counts.Clear();
-            for (int i = 0; i < entries.Length; i++) counts[NibbleOf(entries[i].Stem, depth)]++;
+
+            // The pass that buckets the range doubles as the search for where it parts, both wanting the
+            // same walk over the same stems: a stem's bucket is its nibble here, and the range's shared
+            // prefix is the shortest any of them shares with a fixed member of it. Once one entry parts
+            // inside this group's own four levels there is no deeper jump left to find, so the search
+            // falls away and leaves the count to run on alone.
+            Stem reference = entries[0].Stem;
+            int floor = depth + PbtTrieNodeGroup.LevelsPerGroup;
+            int splitDepth = Stem.LengthInBits;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                Stem stem = entries[i].Stem;
+                counts[NibbleOf(stem, depth)]++;
+                if (splitDepth > floor)
+                {
+                    // FirstDifferingBit reports -1 for a stem that never parts — the reference against
+                    // itself, or a duplicate — which as an unsigned compare reads as past everything, which
+                    // is what never parting means, as it does in ApplyChain.
+                    int diff = stem.FirstDifferingBit(reference, depth);
+                    if ((uint)diff < (uint)splitDepth) splitDepth = diff;
+                }
+            }
 
             int total = 0;
             uint touched = 0;
@@ -1084,7 +1110,11 @@ public static partial class TrieUpdater
 
             // One populated bucket holds every entry already, whatever their order, so the permutation
             // below is a no-op that still costs its head array and its sixteen-wide walk.
-            if (BitOperations.IsPow2(touched)) return BranchGroupDepth(entries, depth, touched);
+            if (BitOperations.IsPow2(touched))
+            {
+                Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
+                return splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1);
+            }
 
             // In-place American-flag permutation: each swap places one entry into its final bucket.
             Span<int> heads = stackalloc int[PbtTrieNodeGroup.BoundarySlots];
@@ -1110,38 +1140,6 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// The depth of the group where <paramref name="entries"/> first part from one another: the group
-        /// at <paramref name="depth"/> itself whenever two of them fall in different buckets, and a deeper
-        /// one when they all share its nibble, as <paramref name="touched"/> says.
-        /// </summary>
-        /// <remarks>
-        /// The levels between hold a single child apiece — a run, which a binary trie has no extension node
-        /// for — so a caller free to skip them can jump straight to the group that branches. Finding it
-        /// mirrors <see cref="ApplyChain"/>'s split scan, against the first entry rather than a run's path,
-        /// and stops as soon as no deeper jump is possible.
-        /// </remarks>
-        private static int BranchGroupDepth(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, uint touched)
-        {
-            if (!BitOperations.IsPow2(touched)) return depth;
-
-            // Sharing the nibble puts the branch past this group at least; identical stems never part at
-            // all, which the duplicate-stem check further down is left to reject.
-            int floor = depth + PbtTrieNodeGroup.LevelsPerGroup;
-            Stem reference = entries[0].Stem;
-            int splitDepth = Stem.LengthInBits;
-            for (int i = 1; i < entries.Length && splitDepth > floor; i++)
-            {
-                // FirstDifferingBit reports -1 for a stem that never parts, which as an unsigned compare
-                // reads as past everything — which is what never parting means, as it does in ApplyChain.
-                int diff = entries[i].Stem.FirstDifferingBit(reference, depth);
-                if ((uint)diff < (uint)splitDepth) splitDepth = diff;
-            }
-
-            Debug.Assert(splitDepth >= floor, "one populated bucket means nothing parts within this group");
-            return splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1);
-        }
-
-        /// <summary>
         /// <inheritdoc cref="Partition" path="/summary"/> For a range of at most <see cref="TinyRange"/>
         /// entries, which a sorting network on the nibble orders in as many compare-and-swaps.
         /// </summary>
@@ -1150,7 +1148,7 @@ public static partial class TrieUpdater
         /// a contiguous run, so the bounds fill as a handful of vectorized spans rather than a per-slot
         /// loop over a counts array.
         /// </remarks>
-        private static void SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
+        private static int SortTiny(Span<PbtWriteBatch.StemEntry> entries, int depth, Span<int> level)
         {
             Debug.Assert(!entries.IsEmpty && entries.Length <= TinyRange);
 
@@ -1158,11 +1156,20 @@ public static partial class TrieUpdater
 
             Span<int> nibbleBuffer = stackalloc int[TinyRange];
             Span<int> nibbles = nibbleBuffer[..entries.Length];
+
+            // Read before the network below reorders them, which the search is indifferent to: the range
+            // shares whatever the shortest prefix any of them shares with a fixed member is, whichever
+            // member that is.
+            Stem reference = entries[0].Stem;
+            int splitDepth = Stem.LengthInBits;
             uint touched = 0;
             for (int i = 0; i < nibbles.Length; i++)
             {
-                nibbles[i] = NibbleOf(entries[i].Stem, depth);
+                Stem stem = entries[i].Stem;
+                nibbles[i] = NibbleOf(stem, depth);
                 touched |= 1u << nibbles[i];
+                int diff = stem.FirstDifferingBit(reference, depth);
+                if ((uint)diff < (uint)splitDepth) splitDepth = diff;
             }
 
             level[PbtWriteBatch.TouchedMaskIndex] = (int)touched;
@@ -1183,6 +1190,10 @@ public static partial class TrieUpdater
             bounds[..(nibbles[0] + 1)].Clear();
             for (int i = 1; i < nibbles.Length; i++) bounds[(nibbles[i - 1] + 1)..(nibbles[i] + 1)].Fill(i);
             bounds[(nibbles[^1] + 1)..].Fill(nibbles.Length);
+
+            // Parting inside this group's own four levels rounds back down to it, which is what says the
+            // range branches here and there is nothing to jump over.
+            return splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1);
         }
 
         /// <summary>Orders <paramref name="entries"/> <paramref name="i"/> and <paramref name="j"/> by their nibble.</summary>
