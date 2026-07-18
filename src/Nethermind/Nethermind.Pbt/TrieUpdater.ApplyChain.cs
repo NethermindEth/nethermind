@@ -56,7 +56,7 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
-            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData, StoredBlob stored,
+            in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData,
             ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
@@ -100,7 +100,7 @@ public static partial class TrieUpdater
             bool branchesHere = branchDepth == depth;
             result = ApplyChainSplit(
                 branchesHere ? key : TrieNodeKey.For(branchDepth, targetPath), depth, entries, chain,
-                branchesHere ? stored : StoredBlob.None, branchesHere ? precalculatedBuckets : default,
+                branchesHere ? precalculatedBuckets : default,
                 out changed, out delta);
         }
 
@@ -120,7 +120,7 @@ public static partial class TrieUpdater
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private NodeResult ApplyChainSplit(
-            in TrieNodeKey key, int prefixDepth, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain, StoredBlob stored,
+            in TrieNodeKey key, int prefixDepth, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
             ReadOnlySpan<int> precalculatedBuckets, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
@@ -145,7 +145,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, directChild ? 0u : occupantsOccupied, precalculatedBuckets, results);
-            NodeResult split = RebuildNode(key, occupants, default, stored, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
+            NodeResult split = RebuildNode(key, occupants, default, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
             if (prefixDepth == depth) return split;
 
             // The branch fell in a deeper group than the run's start, so the split node hangs below a run
