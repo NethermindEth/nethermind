@@ -170,8 +170,11 @@ public static partial class TrieUpdater
         /// </summary>
         private interface IOccupants
         {
-            /// <summary>The stored group the occupants read back from, or the empty group for a seeded frame.</summary>
-            PbtTrieNodeGroup Existing { get; }
+            /// <summary>
+            /// Whether the occupants sit on a stored group encoding, which an untouched slot's value can be
+            /// read back out of later; a seeded frame has none, so its occupants must ride on in the results.
+            /// </summary>
+            bool HasStoredEncoding { get; }
 
             /// <summary>The occupant at boundary <paramref name="slot"/>, or <c>default</c> when the slot holds none.</summary>
             Occupant this[int slot] { get; }
@@ -180,17 +183,18 @@ public static partial class TrieUpdater
         /// <summary>The occupants of a stored group, each read straight out of its encoding at the slot's fixed boundary position.</summary>
         private readonly ref struct StoredOccupants(PbtTrieNodeGroup existing, RefCountingMemory? existingData) : IOccupants
         {
+            private readonly PbtTrieNodeGroup _existing = existing;
             private readonly RefCountingMemory? _existingData = existingData;
 
-            public PbtTrieNodeGroup Existing { get; } = existing;
+            public bool HasStoredEncoding => !_existing.IsEmpty;
 
             public Occupant this[int slot]
             {
                 get
                 {
                     int position = PbtTrieNodeGroup.BoundaryPosition(slot);
-                    NodeKind kind = Existing.KindAt(position);
-                    return kind == NodeKind.Absent ? default : new Occupant(new NodeRef(ToResultKind(kind), Existing.EntryOffset(position)), _existingData);
+                    NodeKind kind = _existing.KindAt(position);
+                    return kind == NodeKind.Absent ? default : new Occupant(new NodeRef(ToResultKind(kind), _existing.EntryOffset(position)), _existingData);
                 }
             }
         }
@@ -201,7 +205,7 @@ public static partial class TrieUpdater
             private readonly Occupant _seed = seed;
             private readonly int _seedSlot = seedSlot;
 
-            public PbtTrieNodeGroup Existing => default;
+            public bool HasStoredEncoding => false;
 
             public Occupant this[int slot] => slot == _seedSlot ? _seed : default;
         }
@@ -264,7 +268,7 @@ public static partial class TrieUpdater
             StoredBlob stored = existingData is null ? StoredBlob.None : StoredBlob.Group;
             StoredOccupants occupants = new(existing, existingData);
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, stored, results, shape, beforeHash, existing.Stats, out changed, out delta);
+            result = RebuildNode(key, occupants, existing, stored, results, shape, beforeHash, existing.Stats, out changed, out delta);
         }
 
         /// <summary>
@@ -337,7 +341,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, 0, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, StoredBlob.None, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
+            result = RebuildNode(key, occupants, default, StoredBlob.None, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
         }
 
         /// <summary>The group's boundary shape once its touched slots are resolved: the masks and the stat delta the rebuild reads.</summary>
@@ -401,7 +405,7 @@ public static partial class TrieUpdater
             // two kinds that must ride on in `results`: a seeded run, whose blob an ancestor has to plant,
             // and — with no existing group to read a value back from — every occupied slot, which the
             // rebuild can then only fold out of `results`.
-            for (uint carried = (occupantsChain | (occupants.Existing.IsEmpty ? occupied : 0)) & ~touchedMask; carried != 0; carried &= carried - 1)
+            for (uint carried = (occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied)) & ~touchedMask; carried != 0; carried &= carried - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(carried);
                 results[slot] = (occupantsChain >> slot & 1) != 0 ? occupants[slot].Lease() : occupants[slot];
@@ -467,6 +471,7 @@ public static partial class TrieUpdater
         /// the node now occupying this frame's key.
         /// </summary>
         /// <param name="occupants"><inheritdoc cref="ResolveBoundaries" path="/param[@name='occupants']"/></param>
+        /// <param name="existing">The stored group encoding the frame descends from, or the empty group for a seeded frame.</param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
         /// <param name="beforeStats">
         /// What this frame's subtree amounted to before the writes, which <paramref name="delta"/> is
@@ -484,7 +489,7 @@ public static partial class TrieUpdater
         /// descent leave that child unread — an absolute count could not.
         /// </param>
         private NodeResult RebuildNode<TOccupants>(
-            in TrieNodeKey key, in TOccupants occupants, StoredBlob stored,
+            in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing, StoredBlob stored,
             Span<NodeResult> results, in GroupShape shape,
             in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, out bool changed, out PbtSubtreeStats delta)
             where TOccupants : IOccupants, allows ref struct
@@ -540,7 +545,7 @@ public static partial class TrieUpdater
             if (changedMask == 0 && stored == StoredBlob.Group)
             {
                 Debug.Assert(
-                    occupants.Existing.KindAt(PbtTrieNodeGroup.RootPosition) == NodeKind.Absent,
+                    existing.KindAt(PbtTrieNodeGroup.RootPosition) == NodeKind.Absent,
                     "the root position holds no entry: an internal root is folded, and a lone stem sits at its boundary");
                 Debug.Assert(shape.Deltas.IsZero, "an unchanged child hash is an unchanged subtree, which moves no statistic");
                 changed = false;
@@ -552,7 +557,7 @@ public static partial class TrieUpdater
                 if (rootKind == NodeKind.Stem)
                 {
                     Debug.Assert(isRoot, "only the root group keeps a lone stem; elsewhere it hoists out");
-                    PbtTrieNodeGroup.Slot rootSlot = occupants.Existing[PbtTrieNodeGroup.BoundaryPosition(BitOperations.TrailingZeroCount(occupied))];
+                    PbtTrieNodeGroup.Slot rootSlot = existing[PbtTrieNodeGroup.BoundaryPosition(BitOperations.TrailingZeroCount(occupied))];
                     return NodeResult.StemNode(rootSlot.Stem, rootSlot.Hash);
                 }
                 return NodeResult.Internal(beforeHash);
@@ -566,13 +571,13 @@ public static partial class TrieUpdater
             int changedCount = 0;
             for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
             {
-                if ((occupied >> slot & 1) != 0 && ((changedMask >> slot & 1) != 0 || occupants.Existing.IsEmpty))
+                if ((occupied >> slot & 1) != 0 && ((changedMask >> slot & 1) != 0 || !occupants.HasStoredEncoding))
                 {
                     changedBoundaries[changedCount++] = (slot, new Boundary(results[slot].Hash, (stems >> slot & 1) != 0 ? results[slot].Stem : default));
                 }
             }
 
-            (FoldedNode rootFold, ValueHash256 rootHash, RefCountingMemory memory) = RebuildGroup(changedBoundaries[..changedCount], occupants.Existing, occupied, stems, changedMask, afterStats);
+            (FoldedNode rootFold, ValueHash256 rootHash, RefCountingMemory memory) = RebuildGroup(changedBoundaries[..changedCount], existing, occupied, stems, changedMask, afterStats);
 
             // A stem root's stem and subtree root are read out of the fresh encoding while it is still held;
             // an internal root has no entry, its hash coming from the fold via rootHash instead.
