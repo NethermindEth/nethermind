@@ -12,7 +12,6 @@ on:
         options:
           - 'all'
           - devp2p
-          - ethereum/consensus
           - ethereum/eest
           - ethereum/engine
           - ethereum/graphql
@@ -29,7 +28,7 @@ on:
         type: choice
         options: ['0', '1', '2', '3', '4', '5']
       parallelism:
-        description: Parallelism
+        description: Hive parallelism (--sim.parallelism)
         required: true
         default: 4
         type: number
@@ -47,6 +46,15 @@ on:
         required: false
         default: master
         type: string
+      max-parallel:
+        description: Maximum concurrent matrix jobs (blank = no cap)
+        required: false
+        type: number
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   DEFAULT_PARALLELISM: 4
@@ -58,51 +66,68 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - id: matrix
+      - name: Build matrix
+        id: matrix
         run: |
-          if [[ "${{ github.event_name }}" == "push" || "${{ github.event.inputs.test-suite }}" == "all" ]]; then
-            # engine-withdrawals at parallelism 2: the 128-block primary build takes
-            # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
-            # test timeout before the syncing client starts.
-            # engine-cancun and engine-api split into two runners each (I* vs non-I*)
-            # to reduce contention.
-            # engine-[^acw] catches exchange-capabilities and any future engine suites.
-            {
-              echo 'matrix<<MATRIX_END'
-              echo '[
-                {"suite":"ethereum/engine", "limit":"engine-cancun/^I", "parallelism":3, "name":"engine-cancun-i"},
-                {"suite":"ethereum/engine", "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
-                {"suite":"ethereum/engine", "limit":"engine-api/^I", "parallelism":3, "name":"engine-api-i"},
-                {"suite":"ethereum/engine", "limit":"engine-api/^[^I]", "parallelism":3, "name":"engine-api-other"},
-                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2, "name":"engine-withdrawals"},
-                {"suite":"ethereum/engine", "limit":"engine-auth", "parallelism":2, "name":"engine-auth"},
-                {"suite":"ethereum/engine", "limit":"engine-[^acw]", "parallelism":2, "name":"engine-other"},
-                {"suite":"ethereum/graphql"},
-                {"suite":"ethereum/rpc-compat"},
-                {"suite":"ethereum/sync"}
-              ]'
-              echo 'MATRIX_END'
-            } >> "$GITHUB_OUTPUT"
-          else
-            echo 'matrix=[{"suite":"${{ github.event.inputs.test-suite }}","limit":"${{ github.event.inputs.limit }}","parallelism":${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}}]' >> "$GITHUB_OUTPUT"
+          event="${{ github.event_name }}"
+          ref="${{ github.ref }}"
+          suite_input='${{ github.event.inputs.test-suite }}'
+          limit_input='${{ github.event.inputs.limit }}'
+          parallelism='${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}'
+
+          need_static=false
+          if [[ "$event" == "push" ]]; then
+            if [[ "$ref" == "refs/heads/master" || "$ref" == refs/tags/* ]]; then
+              need_static=true
+            fi
+          elif [[ "$event" == "pull_request" || "$event" == "workflow_call" ]]; then
+            need_static=true
+          elif [[ "$event" == "workflow_dispatch" ]]; then
+            need_static=true
           fi
 
-  test:
-    name: Build and run tests (${{ matrix.name || matrix.suite }})
-    needs: setup
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.matrix) }}
-    steps:
-      - name: Set up parameters
-        run: |
-          echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
-          echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
-          echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
-          echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
+          matrix='[]'
+          if [[ "$need_static" == "true" ]]; then
+            if [[ "$event" == "workflow_dispatch" && "$suite_input" != "all" ]]; then
+              matrix=$(jq -cn \
+                --arg suite "$suite_input" \
+                --arg limit "$limit_input" \
+                --argjson p "$parallelism" \
+                '[{suite:$suite, limit:$limit, parallelism:$p, name:$suite}]')
+            else
+              # engine-withdrawals at parallelism 2: the 128-block primary build takes
+              # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
+              # test timeout before the syncing client starts.
+              # engine-cancun and engine-api split into two runners each (I* vs non-I*)
+              # to reduce contention.
+              # engine-[^acw] catches exchange-capabilities and any future engine suites.
+              matrix='[
+                {"suite":"ethereum/engine",     "limit":"engine-cancun/^I",    "parallelism":3, "name":"engine-cancun-i"},
+                {"suite":"ethereum/engine",     "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
+                {"suite":"ethereum/engine",     "limit":"engine-api/^I",       "parallelism":3, "name":"engine-api-i"},
+                {"suite":"ethereum/engine",     "limit":"engine-api/^[^I]",    "parallelism":3, "name":"engine-api-other"},
+                {"suite":"ethereum/engine",     "limit":"engine-withdrawals",  "parallelism":2, "name":"engine-withdrawals"},
+                {"suite":"ethereum/engine",     "limit":"engine-auth",         "parallelism":2, "name":"engine-auth"},
+                {"suite":"ethereum/engine",     "limit":"engine-[^acw]",       "parallelism":2, "name":"engine-other"},
+                {"suite":"ethereum/graphql",    "limit":"", "parallelism":4, "name":"graphql"},
+                {"suite":"ethereum/rpc-compat", "limit":"", "parallelism":4, "name":"rpc-compat"},
+                {"suite":"ethereum/sync",       "limit":"", "parallelism":4, "name":"sync"}
+              ]'
+            fi
+          fi
 
+          {
+            echo "matrix<<MATRIX_END"
+            echo "$matrix"
+            echo "MATRIX_END"
+          } >> "$GITHUB_OUTPUT"
+
+  build-image:
+    name: Build Nethermind image
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
         with:
@@ -119,7 +144,43 @@ jobs:
           context: nethermind
           file: nethermind/Dockerfile
           tags: nethermind:test-${{ github.sha }}
-          outputs: type=docker,dest=/tmp/image.tar
+          outputs: type=docker,dest=${{ github.workspace }}/image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-image-${{ github.run_id }}
+          path: image.tar
+          retention-days: 1
+
+  test:
+    name: Run Hive (${{ matrix.name || matrix.suite }})
+    needs: [setup, build-image]
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(github.event.inputs.max-parallel || '256') }}
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    env:
+      LOG_LEVEL: ${{ github.event.inputs.log-level || '3' }}
+      BUILDARG: ${{ github.event.inputs.buildarg || '' }}
+      HIVE_REPO: ${{ github.event.inputs.hive-repo || 'ethereum/hive' }}
+      HIVE_BRANCH: ${{ github.event.inputs.hive-branch || 'master' }}
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: nethermind-image-${{ github.run_id }}
+
+      - name: Load Docker image
+        run: docker load --input image.tar
 
       - name: Check out Hive repository
         uses: actions/checkout@v6
@@ -135,18 +196,17 @@ jobs:
         working-directory: hive
         run: go build .
 
-      - name: Load Docker image
-        run: docker load --input /tmp/image.tar
-
       - name: Run Hive
         continue-on-error: true
         working-directory: hive
+        env:
+          LIMIT: ${{ matrix.limit }}
         run: |
           HIVE_ARGS="--client nethermind
             --sim ${{ matrix.suite }}
             --sim.loglevel $LOG_LEVEL
             --sim.parallelism ${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
-          [[ -n "${{ matrix.limit }}" ]] && HIVE_ARGS+=" --sim.limit ${{ matrix.limit }}"
+          [[ -n "$LIMIT" ]] && HIVE_ARGS+=" --sim.limit $LIMIT"
           [[ -n "$BUILDARG" ]] && HIVE_ARGS+=" --sim.buildarg \"$BUILDARG\""
           ./hive $HIVE_ARGS
 

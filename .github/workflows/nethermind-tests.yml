@@ -406,3 +406,9 @@ jobs:
           files: coverage.cobertura.xml
           disable_search: true
           fail_ci_if_error: true
+
+  hive-tests:
+    name: Hive tests
+    needs: tests-summary
+    if: github.event_name == 'pull_request' && needs.tests-summary.result == 'success'
+    uses: ./.github/workflows/hive-tests.yml
