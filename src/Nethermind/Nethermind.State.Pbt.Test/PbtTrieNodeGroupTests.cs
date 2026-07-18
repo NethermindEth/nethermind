@@ -32,19 +32,18 @@ public class PbtTrieNodeGroupTests
             Assert.That(PbtTrieNodeGroup.BoundarySlot(position), Is.EqualTo(slot));
         }
 
-        // a representative mix: the root internal, an inner internal at a kept level, an inner stem at
-        // a skipped one (stems are stored wherever they land), a boundary internal and a boundary stem
-        // (ancestry invariants are the updater's concern, not the codec's)
+        // a representative mix: an inner internal at a kept level, an inner stem at a skipped one (stems
+        // are stored wherever they land), a boundary internal and a boundary stem. The root position is
+        // left absent — no group stores its internal root (ancestry invariants are the updater's concern,
+        // not the codec's)
         Stem stemA = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
         Stem stemB = new(Bytes.FromHexString("0x22222222222222222222222222222222222222222222222222222222222222"));
-        ValueHash256 hashA = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         ValueHash256 hashB = new(Bytes.FromHexString("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
         ValueHash256 hashC = new(Bytes.FromHexString("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
         ValueHash256 rootA = new(Bytes.FromHexString("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"));
         ValueHash256 rootB = new(Bytes.FromHexString("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
 
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
-        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hashA);
         slots[13] = PbtTrieNodeGroup.InternalSlot(hashB);
         slots[29] = PbtTrieNodeGroup.StemSlot(stemA, rootA);
         slots[PbtTrieNodeGroup.BoundaryPosition(0)] = PbtTrieNodeGroup.InternalSlot(hashC);
@@ -56,7 +55,7 @@ public class PbtTrieNodeGroupTests
 
         byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
         int length = Encode(slots, stats, encoded, format);
-        Assert.That(length, Is.EqualTo(15 + 5 * 32 + 2 * 31));
+        Assert.That(length, Is.EqualTo(15 + 4 * 32 + 2 * 31));
 
         PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
         Assert.That(decoded.Stats, Is.EqualTo(stats));
@@ -157,7 +156,6 @@ public class PbtTrieNodeGroupTests
         PbtSubtreeStats stats = new(2);
 
         PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
-        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
         slots[14] = PbtTrieNodeGroup.InternalSlot(hash); // level 1: skipped
 
         // the every-level format is what such an encoding can only be, and it still decodes
@@ -178,6 +176,40 @@ public class PbtTrieNodeGroupTests
             PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, stemLength));
             Assert.That(decoded.KindAt(14), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
             Assert.That(decoded[14].Stem, Is.EqualTo(stem), $"{format}");
+        }
+    }
+
+    /// <summary>
+    /// The group root's internal node is folded and cached in the parent's boundary slot, so no group
+    /// stores it — while a stem may occupy the root position, and must survive. Both hold whatever the
+    /// format: the root skip is orthogonal to the format byte.
+    /// </summary>
+    [Test]
+    public void RejectsAnInternalNodeAtTheRootPosition_ButKeepsAStem()
+    {
+        ValueHash256 hash = new(Bytes.FromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        Stem stem = new(Bytes.FromHexString("0x11111111111111111111111111111111111111111111111111111111111111"));
+        PbtSubtreeStats stats = new(1);
+
+        PbtTrieNodeGroup.ValueSlot[] slots = new PbtTrieNodeGroup.ValueSlot[PbtTrieNodeGroup.PositionCount];
+        byte[] encoded = new byte[PbtTrieNodeGroup.MaxEncodedLength];
+
+        // an internal node stored at the root position is rejected in either format
+        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.InternalSlot(hash);
+        foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
+        {
+            int length = Encode(slots, stats, encoded, format);
+            Assert.That(() => PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length)), Throws.TypeOf<InvalidDataException>(), $"{format}");
+        }
+
+        // a stem at the root position is legal in both and round-trips: nothing recomputes a stem
+        slots[PbtTrieNodeGroup.RootPosition] = PbtTrieNodeGroup.StemSlot(stem, hash);
+        foreach (PbtGroupFormat format in (PbtGroupFormat[])[PbtGroupFormat.EveryLevel, PbtGroupFormat.Interleaved])
+        {
+            int length = Encode(slots, stats, encoded, format);
+            PbtTrieNodeGroup decoded = PbtTrieNodeGroup.Decode(encoded.AsSpan(0, length));
+            Assert.That(decoded.KindAt(PbtTrieNodeGroup.RootPosition), Is.EqualTo(PbtTrieNodeGroup.NodeKind.Stem), $"{format}");
+            Assert.That(decoded[PbtTrieNodeGroup.RootPosition].Stem, Is.EqualTo(stem), $"{format}");
         }
     }
 

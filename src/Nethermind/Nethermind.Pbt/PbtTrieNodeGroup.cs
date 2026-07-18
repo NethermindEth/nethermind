@@ -42,9 +42,12 @@ public enum PbtGroupFormat : byte
 /// stem — then the group's <see cref="PbtSubtreeStats"/>, followed by one entry per present position
 /// in ascending position order: a 32-byte cached
 /// hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root for a
-/// stem node (the stem node hash is derived, never stored). Entry offsets and the total length
-/// follow from the bitmaps, keeping the encoding deterministic. A stem position has no present positions below it in the group and
-/// no child groups below it. An empty group encodes to zero bytes, the store's removal marker.
+/// stem node (the stem node hash is derived, never stored). The internal node at the group root
+/// (position 30) is not stored either: it is folded from its children and already cached in the
+/// parent group's boundary slot, so only a stem may occupy the root position. Entry offsets and the
+/// total length follow from the bitmaps, keeping the encoding deterministic. A stem position has no
+/// present positions below it in the group and no child groups below it. An empty group encodes to
+/// zero bytes, the store's removal marker.
 /// <para>
 /// The header counts stems twice over, and means a different thing by each: the stem bitmap says
 /// which of <em>this tile's</em> positions hold a stem node, while <see cref="Stats"/> counts the
@@ -169,7 +172,11 @@ public readonly ref struct PbtTrieNodeGroup
     private const int HeaderLength = StatsOffset + PbtSubtreeStats.EncodedLength;
     private const int HashLength = 32;
 
-    /// <summary>Largest encoding: all 31 positions present, 16 of them stems (each stem terminates a disjoint boundary range).</summary>
+    /// <summary>
+    /// An upper bound on an encoding's length: all 31 positions present, 16 of them stems (each stem
+    /// terminates a disjoint boundary range). An over-estimate now that the root position holds no
+    /// stored internal node; buffers are sized by the exact <see cref="EncodedLength"/>.
+    /// </summary>
     public const int MaxEncodedLength = HeaderLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
 
     /// <summary>
@@ -365,6 +372,14 @@ public readonly ref struct PbtTrieNodeGroup
         if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
         {
             throw new InvalidDataException("Invalid trie node group bitmaps");
+        }
+
+        // The root's internal node is folded from its children and already cached in the parent group's
+        // boundary slot, so it is never stored — whatever the format. Only a stem, which nothing
+        // recomputes, may occupy the root position.
+        if ((presence & (1u << RootPosition) & ~stems) != 0)
+        {
+            throw new InvalidDataException("Trie node group stores an internal node at the root position");
         }
 
         // An interleaved group folds its odd levels' internal nodes rather than storing them, so a
