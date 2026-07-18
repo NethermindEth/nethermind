@@ -144,8 +144,8 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, directChild ? 0u : occupantsOccupied, precalculatedBuckets, results);
-            NodeResult split = RebuildNode(key, occupants, default, results, shape, chain.NodeHash, chain.Stats, out changed, out delta);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, precalculatedBuckets, results);
+            NodeResult split = RebuildNode(key, occupants, default, results, shape, directChild ? 0u : occupantsOccupied, chain.NodeHash, chain.Stats, out changed, out delta);
             if (prefixDepth == depth) return split;
 
             // The branch fell in a deeper group than the run's start, so the split node hangs below a run
