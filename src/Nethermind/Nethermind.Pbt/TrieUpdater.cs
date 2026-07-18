@@ -29,19 +29,6 @@ public interface IPbtStore
     void SetLeafBlob(in Stem stem, RefCountingMemory? blob);
 }
 
-public static class PbtStoreExtensions
-{
-    /// <summary>
-    /// Copies a value handed to an <see cref="IPbtStore"/> write into a fresh array and releases the
-    /// lease that came with it, for a store that keeps its values as arrays; a removal
-    /// (<c>null</c>) copies to <c>null</c>.
-    /// </summary>
-    public static byte[]? ToArrayAndRelease(this RefCountingMemory? memory)
-    {
-        using (memory) return memory?.GetSpan().ToArray();
-    }
-}
-
 /// <summary>
 /// Applies a batch of EIP-8297 tree-key writes and returns the new root. It folds each affected
 /// stem's leaf blob (<see cref="StemLeafBlob"/>), then maintains the top-level binary trie of stems
@@ -381,13 +368,19 @@ public static partial class TrieUpdater
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             Debug.Assert(touchedMask == DeriveTouchedMask(bounds), "the cached touched mask disagrees with its level's bounds");
 
-            // Untouched slots are read back from `occupants` on demand wherever the settle needs them, bar
-            // two kinds that must ride on in `results`: a seeded run, whose blob an ancestor has to plant,
-            // and — with no existing group to read a value back from — every occupied slot, which the
-            // rebuild can then only fold out of `results`.
-            for (uint carried = (occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied)) & ~touchedMask; carried != 0; carried &= carried - 1)
+            // A slot no write touches is normally left out of `results` altogether: the settle reads it
+            // back from `occupants`, or folds it out of the stored encoding. Two kinds cannot be read back
+            // that way, so they are copied across now, while the occupants are still to hand:
+            //   - a seeded run, whose blob exists only in memory until an ancestor plants it;
+            //   - every occupied slot of a frame with no stored encoding, which leaves the rebuild's fold
+            //     nothing but `results` to read a boundary out of.
+            uint mustCarry = occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied);
+            for (uint carried = mustCarry & ~touchedMask; carried != 0; carried &= carried - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(carried);
+
+                // Only a run's result keeps hold of the memory, so only it needs a lease of its own; a stem
+                // or an internal promotes to a by-value result, copied straight out of the encoding.
                 results[slot] = (occupantsChain >> slot & 1) != 0 ? occupants[slot].Lease() : occupants[slot];
             }
 
