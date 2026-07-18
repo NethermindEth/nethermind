@@ -86,12 +86,15 @@ public class PbtTrieNodeGroupTests
         badFormat[0] = 0xFF;
         Assert.That(() => PbtTrieNodeGroup.Decode(badFormat), Throws.TypeOf<InvalidDataException>());
 
+        // the bitmaps sit in the trailer: presence, then stems, then the six-byte stats
+        int trailer = length - (4 + 4 + PbtSubtreeStats.EncodedLength);
+
         byte[] highBit = (byte[])valid.Clone();
-        highBit[4] |= 0x80;
+        highBit[trailer + 3] |= 0x80;
         Assert.That(() => PbtTrieNodeGroup.Decode(highBit), Throws.TypeOf<InvalidDataException>());
 
         byte[] orphanStem = (byte[])valid.Clone();
-        orphanStem[5] |= 0x04; // stem bit for absent position 2
+        orphanStem[trailer + 4] |= 0x04; // stem bit for absent position 2
         Assert.That(() => PbtTrieNodeGroup.Decode(orphanStem), Throws.TypeOf<InvalidDataException>());
 
         Assert.That(() => PbtTrieNodeGroup.Decode(valid.AsSpan(..^1)), Throws.TypeOf<InvalidDataException>());

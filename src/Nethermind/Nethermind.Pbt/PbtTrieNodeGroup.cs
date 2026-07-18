@@ -38,18 +38,19 @@ public enum PbtGroupFormat : byte
 /// Positions follow the <see cref="StemLeafBlob"/> post-order numbering: boundary slot <c>i</c>
 /// sits at <c>2i - popcount(i)</c>, the group root at 30, and a subtree covering <c>w</c> boundary
 /// slots at position <c>p</c> has its children at <c>p - w</c> and <c>p - 1</c>. The encoding is a
-/// leading format byte, then two little-endian 32-bit bitmaps over the positions — presence and
-/// stem — then the group's <see cref="PbtSubtreeStats"/>, followed by one entry per present position
-/// in ascending position order: a 32-byte cached
-/// hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root for a
-/// stem node (the stem node hash is derived, never stored). The internal node at the group root
-/// (position 30) is not stored either: it is folded from its children and already cached in the
-/// parent group's boundary slot, so only a stem may occupy the root position. Entry offsets and the
-/// total length follow from the bitmaps, keeping the encoding deterministic. A stem position has no
-/// present positions below it in the group and no child groups below it. An empty group encodes to
-/// zero bytes, the store's removal marker.
+/// leading format byte, then one entry per present position in ascending position order — a 32-byte
+/// cached hash for an internal node, or the 31-byte stem followed by its 32-byte leaf-subtree root
+/// for a stem node (the stem node hash is derived, never stored) — and last a trailer of two
+/// little-endian 32-bit bitmaps over the positions, presence and stem, then the group's
+/// <see cref="PbtSubtreeStats"/>. The bitmaps trail the entries rather than lead them because a
+/// producer only knows them once it has walked the group; see <see cref="Builder"/>. The internal
+/// node at the group root (position 30) is not stored either: it is folded from its children and
+/// already cached in the parent group's boundary slot, so only a stem may occupy the root position.
+/// Entry offsets and the total length follow from the bitmaps, keeping the encoding deterministic.
+/// A stem position has no present positions below it in the group and no child groups below it.
+/// An empty group encodes to zero bytes, the store's removal marker.
 /// <para>
-/// The header counts stems twice over, and means a different thing by each: the stem bitmap says
+/// The trailer counts stems twice over, and means a different thing by each: the stem bitmap says
 /// which of <em>this tile's</em> positions hold a stem node, while <see cref="Stats"/> counts the
 /// stems of the <em>whole subtree</em>, the ones below this group's child groups included.
 /// </para>
@@ -166,10 +167,16 @@ public readonly ref struct PbtTrieNodeGroup
     /// <summary>The deepest group root depth; that group's boundary is the 248-bit stem level, where every node is a stem.</summary>
     public const int MaxGroupDepth = Stem.LengthInBits - LevelsPerGroup;
 
-    private const int PresenceOffset = sizeof(byte);
-    private const int StemsOffset = PresenceOffset + sizeof(uint);
-    private const int StatsOffset = StemsOffset + sizeof(uint);
-    private const int HeaderLength = StatsOffset + PbtSubtreeStats.EncodedLength;
+    private const int EntriesOffset = sizeof(byte);
+
+    /// <summary>Offsets within the trailer, the bytes an encoding ends with.</summary>
+    private const int PresenceTrailerOffset = 0;
+    private const int StemsTrailerOffset = PresenceTrailerOffset + sizeof(uint);
+    private const int StatsTrailerOffset = StemsTrailerOffset + sizeof(uint);
+    private const int TrailerLength = StatsTrailerOffset + PbtSubtreeStats.EncodedLength;
+
+    /// <summary>What an encoding spends on everything but its entries: the format byte and the trailer.</summary>
+    private const int OverheadLength = EntriesOffset + TrailerLength;
     private const int HashLength = 32;
 
     /// <summary>
@@ -177,7 +184,7 @@ public readonly ref struct PbtTrieNodeGroup
     /// terminates a disjoint boundary range). An over-estimate now that the root position holds no
     /// stored internal node; buffers are sized by the exact <see cref="EncodedLength"/>.
     /// </summary>
-    public const int MaxEncodedLength = HeaderLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
+    public const int MaxEncodedLength = OverheadLength + PositionCount * HashLength + BoundarySlots * Stem.Length;
 
     /// <summary>
     /// The encoded length of the group described by the bitmaps <paramref name="presence"/> and
@@ -185,7 +192,7 @@ public readonly ref struct PbtTrieNodeGroup
     /// its stem as well.
     /// </summary>
     public static int EncodedLength(uint presence, uint stems) =>
-        HeaderLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
+        OverheadLength + BitOperations.PopCount(presence) * HashLength + BitOperations.PopCount(stems) * Stem.Length;
 
     /// <summary>Bit set at <see cref="BoundaryPosition"/>(i) for each boundary slot i.</summary>
     private const uint BoundaryPositionsMask = 0x06CD8D9Bu;
@@ -239,7 +246,7 @@ public readonly ref struct PbtTrieNodeGroup
     /// What the subtree rooted at this group amounts to; the empty group's, an absent subtree's, is
     /// <c>default</c>.
     /// </summary>
-    public PbtSubtreeStats Stats => IsEmpty ? default : PbtSubtreeStats.Read(_data[StatsOffset..]);
+    public PbtSubtreeStats Stats => IsEmpty ? default : PbtSubtreeStats.Read(_data[^PbtSubtreeStats.EncodedLength..]);
 
     /// <summary>Reads the node at <paramref name="position"/> on demand, borrowing from the wrapped span.</summary>
     /// <param name="position">
@@ -282,7 +289,7 @@ public readonly ref struct PbtTrieNodeGroup
     internal int EntryOffset(int position)
     {
         uint below = (1u << position) - 1;
-        return HeaderLength
+        return EntriesOffset
             + BitOperations.PopCount(_presence & below) * HashLength
             + BitOperations.PopCount(_stems & below) * Stem.Length;
     }
@@ -316,10 +323,11 @@ public readonly ref struct PbtTrieNodeGroup
     /// where the entries below it end, which <see cref="EntryOffset"/> gives whether or not
     /// <see cref="FirstSubtreePosition"/> itself holds a node, and <paramref name="presence"/> and
     /// <paramref name="stems"/> (from <see cref="SubtreeBitmaps"/>) pin its length — so neither needs a
-    /// walk to find.
+    /// walk to find. <see cref="EncodedLength"/> counts a whole encoding's overhead, which a run of
+    /// entries carries none of.
     /// </remarks>
     internal ReadOnlySpan<byte> SubtreeEntries(int position, int width, uint presence, uint stems) =>
-        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(presence, stems) - HeaderLength);
+        _data.Slice(EntryOffset(FirstSubtreePosition(position, width)), EncodedLength(presence, stems) - OverheadLength);
 
     /// <summary>
     /// Reads the node of kind <paramref name="kind"/> whose entry starts at <paramref name="offset"/>
@@ -390,7 +398,7 @@ public readonly ref struct PbtTrieNodeGroup
     /// </summary>
     public static PbtTrieNodeGroup Decode(ReadOnlySpan<byte> data)
     {
-        if (data.Length < HeaderLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
+        if (data.Length < OverheadLength) throw new InvalidDataException($"Trie node group too short: {data.Length} bytes");
 
         PbtGroupFormat format = (PbtGroupFormat)data[0];
         if (format is not (PbtGroupFormat.EveryLevel or PbtGroupFormat.Interleaved))
@@ -398,8 +406,9 @@ public readonly ref struct PbtTrieNodeGroup
             throw new InvalidDataException($"Trie node group: unexpected format byte 0x{data[0]:x2}");
         }
 
-        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(data[PresenceOffset..]);
-        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(data[StemsOffset..]);
+        ReadOnlySpan<byte> trailer = data[^TrailerLength..];
+        uint presence = BinaryPrimitives.ReadUInt32LittleEndian(trailer[PresenceTrailerOffset..]);
+        uint stems = BinaryPrimitives.ReadUInt32LittleEndian(trailer[StemsTrailerOffset..]);
         if (presence >> PositionCount != 0 || (stems & ~presence) != 0)
         {
             throw new InvalidDataException("Invalid trie node group bitmaps");
@@ -436,18 +445,30 @@ public readonly ref struct PbtTrieNodeGroup
     /// <remarks>
     /// Nodes must be appended in ascending position order — the order a post-order walk of the group
     /// visits them, and the order the encoding stores them in — which makes each entry's offset
-    /// implicit in the append cursor: no offset math is needed while building, and the bitmap header
-    /// is backfilled by <see cref="Finish"/> once the walk is done. An appended entry keeps a stable
-    /// offset, so a producer can read a node back through <see cref="SlotAt"/> instead of carrying
-    /// hashes up its walk by value.
+    /// implicit in the append cursor: no offset math is needed while building. An appended entry keeps
+    /// a stable offset, so a producer can read a node back through <see cref="SlotAt"/> instead of
+    /// carrying hashes up its walk by value.
+    /// <para>
+    /// The bitmaps are only known once the walk is done, which is why they sit in the trailer rather
+    /// than at the front: <see cref="Finish"/> appends them where the entries ended, leaving the whole
+    /// encoding a single forward pass. Backfilling a leading header instead would write back over
+    /// bytes the write has already streamed past, which no prefetcher helps with.
+    /// </para>
     /// </remarks>
-    public ref struct Builder(Span<byte> destination, PbtGroupFormat format)
+    public ref struct Builder
     {
-        private readonly Span<byte> _destination = destination;
-        private readonly PbtGroupFormat _format = format;
+        private readonly Span<byte> _destination;
+        private readonly PbtGroupFormat _format;
         private uint _presence;
         private uint _stems;
-        private int _offset = HeaderLength;
+        private int _offset = EntriesOffset;
+
+        public Builder(Span<byte> destination, PbtGroupFormat format)
+        {
+            _destination = destination;
+            _format = format;
+            destination[0] = (byte)format;
+        }
 
         /// <summary>Appends the internal node at <paramref name="position"/>, returning its entry offset.</summary>
         public int AppendInternal(int position, in ValueHash256 hash)
@@ -503,9 +524,9 @@ public readonly ref struct PbtTrieNodeGroup
         public readonly Slot SlotAt(NodeKind kind, int offset) => PbtTrieNodeGroup.SlotAt(_destination, kind, offset);
 
         /// <summary>
-        /// Writes the format byte and the header — the bitmaps, and the <paramref name="stats"/> of the
-        /// subtree the group roots — and returns the encoded length; 0 when nothing was appended, which
-        /// the caller stores as a removal.
+        /// Appends the trailer — the bitmaps, and the <paramref name="stats"/> of the subtree the group
+        /// roots — and returns the encoded length; 0 when nothing was appended, which the caller stores
+        /// as a removal.
         /// </summary>
         /// <param name="stats">
         /// The whole subtree's, which the walk that appended the nodes cannot know: the stems below a
@@ -515,11 +536,11 @@ public readonly ref struct PbtTrieNodeGroup
         {
             if (_presence == 0) return 0;
 
-            _destination[0] = (byte)_format;
-            BinaryPrimitives.WriteUInt32LittleEndian(_destination[PresenceOffset..], _presence);
-            BinaryPrimitives.WriteUInt32LittleEndian(_destination[StemsOffset..], _stems);
-            stats.Write(_destination[StatsOffset..]);
-            return _offset;
+            Span<byte> trailer = _destination.Slice(_offset, TrailerLength);
+            BinaryPrimitives.WriteUInt32LittleEndian(trailer[PresenceTrailerOffset..], _presence);
+            BinaryPrimitives.WriteUInt32LittleEndian(trailer[StemsTrailerOffset..], _stems);
+            stats.Write(trailer[StatsTrailerOffset..]);
+            return _offset + TrailerLength;
         }
 
         private void MarkPresent(int position)
