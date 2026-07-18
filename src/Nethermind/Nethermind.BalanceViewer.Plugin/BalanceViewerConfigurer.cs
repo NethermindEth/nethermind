@@ -125,7 +125,13 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         if (isDetectPost) return ServeDetectPostAsync(context);
         if (isDetectDelete)
         {
-            detection.Clear();
+            // ?chainId=<id>&address=<0x…> drops one account (the per-account rescan button, so it re-walks from
+            // head); with no params it drops everything (developer/diagnostic, e.g. bvClearDetectionCache).
+            string? delAddress = context.Request.Query["address"];
+            if (!string.IsNullOrEmpty(delAddress) && long.TryParse(context.Request.Query["chainId"], out long delChainId))
+                detection.Remove(delChainId, delAddress);
+            else
+                detection.Clear();
             context.Response.StatusCode = StatusCodes.Status204NoContent;
             return Task.CompletedTask;
         }

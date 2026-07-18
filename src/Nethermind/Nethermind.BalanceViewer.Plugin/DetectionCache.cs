@@ -37,6 +37,9 @@ public interface IDetectionCache
     /// <summary>Stores (overwrites) the entry for the account on the chain and persists it.</summary>
     void Put(long chainId, string address, DetectionEntry entry);
 
+    /// <summary>Drops the cached entry for one account so its next scan re-walks from the head, and persists.</summary>
+    void Remove(long chainId, string address);
+
     /// <summary>Drops every cached entry and the backing file. Intended for developer/diagnostic use.</summary>
     void Clear();
 }
@@ -87,6 +90,11 @@ public sealed class DetectionCache : IDetectionCache
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();
         Save();
+    }
+
+    public void Remove(long chainId, string address)
+    {
+        if (_entries.TryRemove(Key(chainId, address), out _)) Save();
     }
 
     public void Clear()

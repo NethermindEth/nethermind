@@ -280,6 +280,13 @@
         .scan-spin.paused::before { content: '⏸'; }
         .scan-spin.paused:hover { color: var(--accent); }
         .scan-spin.paused:hover::before { content: '▶'; }
+        /* idle: a rescan affordance (⟳); clicking re-detects the account, turning this into the spinner above */
+        .scan-spin.idle {
+            display: inline-block; margin: 0 3px; vertical-align: middle; cursor: pointer;
+            width: auto; height: auto; border: none; animation: none; font-size: 12px; line-height: 1; color: var(--muted); opacity: 0.5;
+        }
+        .scan-spin.idle::before { content: '⟳'; }
+        .scan-spin.idle:hover { color: var(--accent); opacity: 1; }
 
         .thumbs {
             display: flex;
@@ -1617,6 +1624,7 @@
         // old receipts will surface only recently-acquired ids.
         const nftCache = new Map();        // `${address}|${chainId}|${collection}` -> { count, ids, thumbs }
         const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
+        const nodeLogFloor = new Map();    // chainId -> BigInt: lowest block eth_getLogs serves (0n = full history)
         const openCollectionRenderers = new Set(); // re-render callbacks for open collection lightboxes (art-source changes)
         const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
         const enumPageCache = new Map();   // `${chainId}|${collection}|${page}` -> [BigInt] enum721 ids, so reopening skips tokenByIndex
@@ -1848,6 +1856,27 @@
             catch (e) { if (e && e.code === 4444) prunedChains.add(node.chainId); return null; }
         }
 
+        // The lowest block eth_getLogs will serve on a history-pruned node (cached per chain; 0 = full history).
+        // Found by binary-searching the boundary where a `[b -> latest]` query stops returning "pruned history
+        // unavailable" (4444) or "log index not ready" (-32016); a no-match topic keeps each probe cheap. The id
+        // scan starts here instead of genesis — otherwise a range that dips below retained history is rejected
+        // wholesale (returning zero ids, i.e. the "held N, but ids couldn't be listed" symptom).
+        async function logFloor(node) {
+            if (nodeLogFloor.has(node.chainId)) return nodeLogFloor.get(node.chainId);
+            const noMatch = '0x' + 'f'.repeat(64);
+            const servable = async (b) => {
+                try { await rpc('eth_getLogs', [{ fromBlock: '0x' + b.toString(16), toBlock: 'latest', topics: [noMatch] }], node.rpcPath); return true; }
+                catch (e) { return !(e && (e.code === 4444 || e.code === -32016)); }
+            };
+            if (await servable(0n)) { nodeLogFloor.set(node.chainId, 0n); return 0n; }
+            let head; try { head = BigInt(node.head ?? await rpc('eth_blockNumber', [], node.rpcPath)); } catch { return 0n; }
+            if (!(await servable(head))) return head; // logs not being served yet (syncing / re-indexing) — don't cache
+            let lo = 0n, hi = head; // invariant: servable(lo) is false, servable(hi) is true
+            while (hi - lo > 1n) { const mid = (lo + hi) >> 1n; if (await servable(mid)) hi = mid; else lo = mid; }
+            nodeLogFloor.set(node.chainId, hi);
+            return hi;
+        }
+
         // the token ids an owner currently holds in a collection (capped), by kind
         async function heldTokenIds(node, collection, owner, kind, count) {
             if (kind === 'enum721') {
@@ -1857,7 +1886,7 @@
                 return (await rpcBatch(calls, node.rpcPath)).filter(Boolean).map((x) => BigInt(x));
             }
             const ownerTopic = '0x' + pad32(owner);
-            const range = { fromBlock: '0x0', toBlock: 'latest', address: collection.address };
+            const range = { fromBlock: '0x' + (await logFloor(node)).toString(16), toBlock: 'latest', address: collection.address };
             const candidates = new Set();
             if (kind === 'plain721') {
                 const logs = await scanLogs(node, { ...range, topics: [TRANSFER_TOPIC, null, ownerTopic] });
@@ -3179,11 +3208,14 @@
                 const st = scanState.get(addr);
                 const nftLoading = nftLoadingFor(addr);
                 const paused = detectionCancelled.has(addr);
-                el.classList.toggle('active', !!st || nftLoading);
-                el.classList.toggle('paused', !st && !nftLoading && paused);
+                const busy = !!st || nftLoading;
+                el.classList.toggle('active', busy);
+                el.classList.toggle('paused', !busy && paused);
+                el.classList.toggle('idle', !busy && !paused); // a ⟳ rescan button when nothing is running
                 el.title = st ? `Scanning history… ${st.pct}% — click to pause`
                     : nftLoading ? 'Loading NFT art…'
-                    : paused ? 'Scan paused — click to resume' : '';
+                    : paused ? 'Scan paused — click to resume'
+                    : 'Re-scan this account (re-detect tokens & NFTs from the node’s retained history)';
             }
         }
 
@@ -3201,6 +3233,27 @@
                 detecting = scanState.size > 0;
                 updateScanIndicators();
             }
+        }
+
+        // Re-detect one account from scratch. Drops its node-side detection cache (so the scanner re-walks from
+        // head — picking up collections whose transfer history became available after an ancient-barrier change),
+        // re-discovers the node's log floor, clears this account's cached NFT previews, and re-runs detection with
+        // the spinner showing. This is the manual answer to "when should it re-scan?": barrier changes and stale
+        // caches don't auto-invalidate, so the ⟳ button forces a fresh sweep.
+        async function rescanAccount(address) {
+            const lower = address.toLowerCase();
+            detectionCancelled.delete(lower);
+            nodeLogFloor.clear(); // retained-history window may have changed
+            for (const key of [...nftCache.keys()]) if (key.toLowerCase().startsWith(lower + '|')) nftCache.delete(key);
+            scanState.set(lower, { pct: 0 }); // spinner up immediately
+            detecting = true;
+            updateScanIndicators();
+            for (const node of enabledNodes()) {
+                const sep = node.detectPath.includes('?') ? '&' : '?';
+                try { await fetch(node.detectPath + sep + 'chainId=' + node.chainId + '&address=' + encodeURIComponent(address), { method: 'DELETE' }); } catch { }
+            }
+            nodeDetect();
+            refreshNftThumbs();
         }
 
         // restores a single hidden token: remove it from the ignore list and show it again
@@ -3645,7 +3698,8 @@
                 // progress %, click to cancel. updateScanIndicators() drives its state each detection poll.
                 const scan = el('span', 'scan-spin');
                 scan.dataset.scan = entry.address.toLowerCase();
-                scan.onclick = () => toggleScan(entry.address);
+                // ⟳ when idle → rescan; spinner/⏸ while a scan runs → pause/resume it
+                scan.onclick = () => (scan.classList.contains('idle') ? rescanAccount(entry.address) : toggleScan(entry.address));
                 head.append(scan);
                 const rename = el('button', 'link tag', '🏷️');
                 rename.title = 'Name this account';
