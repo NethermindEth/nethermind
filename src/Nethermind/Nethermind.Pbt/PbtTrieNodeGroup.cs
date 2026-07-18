@@ -354,6 +354,37 @@ public readonly ref struct PbtTrieNodeGroup
     public static int BoundarySlot(int position) => BitOperations.PopCount(BoundaryPositionsMask & ((1u << position) - 1));
 
     /// <summary>
+    /// The group's boundary shape as slot-indexed bitmaps: bit <c>i</c> of <paramref name="occupied"/> is
+    /// set where boundary slot <c>i</c> holds a node, and of <paramref name="stems"/> where that node is a
+    /// stem. Both are zero for the empty group.
+    /// </summary>
+    /// <remarks>
+    /// A boundary slot is never a skipped level, so these read the same under either
+    /// <see cref="PbtGroupFormat"/>; <see cref="Decode"/> keeps the stems bitmap a subset of the presence
+    /// one, so <paramref name="stems"/> needs no masking against <paramref name="occupied"/>.
+    /// </remarks>
+    internal void BoundaryShape(out uint occupied, out uint stems)
+    {
+        occupied = BoundaryBits(_presence);
+        stems = BoundaryBits(_stems);
+    }
+
+    /// <summary>Gathers the sixteen <see cref="BoundaryPositionsMask"/> bits of <paramref name="positions"/> down into slot order.</summary>
+    /// <remarks>
+    /// A software PEXT of the constant mask, whose bits fall in four groups of four — positions
+    /// <c>o + {0, 1, 3, 4}</c> for <c>o</c> in 0, 7, 15 and 22 — so each group compacts with one shift
+    /// and the four pack together. Branch-free and ISA-independent, unlike <c>Bmi2.ParallelBitExtract</c>.
+    /// </remarks>
+    internal static uint BoundaryBits(uint positions) =>
+        CompactGroup(positions)
+        | (CompactGroup(positions >> 7) << 4)
+        | (CompactGroup(positions >> 15) << 8)
+        | (CompactGroup(positions >> 22) << 12);
+
+    /// <summary>Compacts one group's bits — at 0, 1, 3 and 4 — down into the low four.</summary>
+    private static uint CompactGroup(uint group) => (group & 0b0011u) | ((group >> 1) & 0b1100u);
+
+    /// <summary>
     /// Validates a non-empty group encoding (bitmaps and implied length) and wraps it as a
     /// read-only view; the returned group borrows <paramref name="data"/> and reads slots on demand.
     /// </summary>

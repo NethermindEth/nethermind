@@ -126,6 +126,10 @@ public class PbtWriteBatchBuilderTests
             Assert.That(nibbles[nibble + 1], Is.EqualTo(expected), $"nibble level bound {nibble}");
         }
 
+        // each level caches which of its buckets are non-empty, so the descent never re-derives it
+        Assert.That(
+            nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(TouchedMaskOf(nibbles)), "nibble level touched mask");
+
         for (int nibble = 0; nibble < PbtTrieNodeGroup.BoundarySlots; nibble++)
         {
             ReadOnlySpan<int> group = table.Slice(nibble * PbtWriteBatch.LevelStride, PbtWriteBatch.LevelStride);
@@ -140,7 +144,25 @@ public class PbtWriteBatchBuilderTests
 
                 Assert.That(group[low + 1], Is.EqualTo(expected), $"byte group {nibble} bound {low}");
             }
+
+            Assert.That(
+                group[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(TouchedMaskOf(group)), $"byte group {nibble} touched mask");
         }
+
+        // 0x00, 0x0F and 0x10 fall in nibbles 0 and 1, 0x80 in 8 and 0xFF in 15
+        Assert.That(nibbles[PbtWriteBatch.TouchedMaskIndex], Is.EqualTo(0b1000_0001_0000_0011));
+    }
+
+    /// <summary>The mask a level's bounds imply, which its cached one must equal.</summary>
+    private static int TouchedMaskOf(ReadOnlySpan<int> level)
+    {
+        int touched = 0;
+        for (int bucket = 0; bucket < PbtTrieNodeGroup.BoundarySlots; bucket++)
+        {
+            if (level[bucket] != level[bucket + 1]) touched |= 1 << bucket;
+        }
+
+        return touched;
     }
 
     /// <summary>A batch a producer fills itself carries no buckets, leaving the descent to partition its entries.</summary>
