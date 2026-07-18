@@ -41,7 +41,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
     {
-        byte[]? value = node.ToArrayAndRelease();
+        byte[]? value = node?.ToArrayAndRelease();
         if (value is null) _nodes.Remove(key);
         else _nodes[key] = value;
     }
@@ -50,7 +50,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
-        byte[]? value = blob.ToArrayAndRelease();
+        byte[]? value = blob?.ToArrayAndRelease();
         if (value is null) _blobs.Remove(stem);
         else _blobs[stem] = value;
     }
