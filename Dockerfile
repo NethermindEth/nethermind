@@ -30,6 +30,13 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.10-resolute@sha256:dae546296490fa23d67
 
 WORKDIR /nethermind
 
+# Route native allocations (RocksDB block cache, memtables, iterators, decode buffers) through
+# tcmalloc instead of glibc malloc. Measured on mainnet fusaka replay (50k blocks, n=5): -1.9%
+# newPayload avg, -3% p99, -3.4% CPU and -9% RSS vs the glibc default. Bare soname keeps the
+# preload architecture-independent (resolved per-arch by the dynamic linker).
+RUN apt-get update && apt-get install -y --no-install-recommends libtcmalloc-minimal4 && rm -rf /var/lib/apt/lists/*
+ENV LD_PRELOAD=libtcmalloc_minimal.so.4
+
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
