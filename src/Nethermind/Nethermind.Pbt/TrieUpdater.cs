@@ -396,7 +396,7 @@ public static partial class TrieUpdater
             // The non-empty buckets, cached by whoever bucketed the range — the descent visits just these,
             // and an empty bucket leaves its slot's boundaries where they are.
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
-            Debug.Assert(touchedMask == DeriveTouchedMask(bounds), "the cached touched mask disagrees with its level's bounds");
+            AssertTouchedMaskMatchesBounds(touchedMask, bounds);
 
             uint changedMask = 0;
             uint storedChildMask = 0;
@@ -957,18 +957,23 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// The touched mask a level's bounds imply, for the assertion that whoever bucketed the range
-        /// cached the same thing.
+        /// Checks that whoever bucketed the range cached the same touched mask its bounds imply.
         /// </summary>
-        private static uint DeriveTouchedMask(ReadOnlySpan<int> bounds)
+        /// <remarks>
+        /// The mask crosses a format boundary — <c>PbtWriteBatchBuilder</c> fills it for a precalculated
+        /// level, <see cref="Partition"/> for one bucketed here — so nothing but this re-derivation would
+        /// catch the two drifting apart.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private static void AssertTouchedMaskMatchesBounds(uint touchedMask, ReadOnlySpan<int> bounds)
         {
-            uint touched = 0;
+            uint derived = 0;
             for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
             {
-                if (bounds[slot] != bounds[slot + 1]) touched |= 1u << slot;
+                if (bounds[slot] != bounds[slot + 1]) derived |= 1u << slot;
             }
 
-            return touched;
+            Debug.Assert(touchedMask == derived, "the cached touched mask disagrees with its level's bounds");
         }
 
         /// <summary>
