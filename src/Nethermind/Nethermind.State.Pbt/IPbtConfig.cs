@@ -30,4 +30,7 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile, folding the odd levels' hashes on demand. Reduces the size of the trie node column at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
     bool InterleaveTrieNodeLevels { get; set; }
+
+    [ConfigItem(Description = "How many threads the state root computation may spread the tree's subtrees over. Zero uses the processor count; one keeps it on the calling thread. The state root is identical either way.", DefaultValue = "0")]
+    int TrieUpdateParallelism { get; set; }
 }

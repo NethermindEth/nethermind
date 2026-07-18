@@ -3,6 +3,9 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -65,15 +68,10 @@ public static partial class TrieUpdater
     /// blobs and trie node groups to <paramref name="store"/>, and returns the new root (32 zero
     /// bytes for an empty tree). An empty batch returns <paramref name="currentRoot"/> untouched.
     /// </summary>
-    /// <param name="writeFormat">
-    /// Which encoding to write the groups this batch rebuilds in. Both fold to the same root and both
-    /// are read whatever this says, so it may change between batches over one store: a group is
-    /// converted only by a change that rewrites it anyway.
-    /// </param>
     /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
-        PbtGroupFormat writeFormat, out PbtSubtreeStats delta)
+        in PbtUpdateOptions options, out PbtSubtreeStats delta)
     {
         if (changes.Count == 0)
         {
@@ -81,13 +79,51 @@ public static partial class TrieUpdater
             return currentRoot;
         }
 
-        return new Updater(store, memoryProvider, writeFormat).Run(currentRoot, changes, out delta);
+        return Updater.ForBatch(store, memoryProvider, options, changes).Run(currentRoot, out delta);
     }
 
-    private sealed partial class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat)
+    private sealed partial class Updater(
+        IPbtStore store, IRefCountingMemoryProvider memoryProvider, in PbtUpdateOptions options,
+        PbtWriteBatch batch, int minEntriesPerTask)
     {
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
+
+        /// <summary>How many subtree tasks each worker is given room to have queued at once.</summary>
+        /// <remarks>
+        /// A slot descends on a task of its own once its share of the batch reaches
+        /// <c>1 / (Parallelism * TasksPerWorker)</c>, and the shares of a frame's slots sum to its own, so
+        /// this bounds the whole descent to that many tasks however the stems fall. Some headroom over one
+        /// task per worker is what keeps every worker fed when the subtrees turn out uneven.
+        /// </remarks>
+        private const int TasksPerWorker = 4;
+
+        /// <summary>
+        /// The smallest bucket worth a task of its own however small the batch: below it the descent costs
+        /// less than the handover.
+        /// </summary>
+        /// <remarks>
+        /// Well under <c>PatriciaTree.BulkSet</c>'s equivalent, an entry here being a whole stem whose leaf
+        /// blob folds over 256 leaves rather than a single trie key.
+        /// </remarks>
+        private const int MinEntriesToParallelize = 32;
+
+        /// <summary>The <see cref="minEntriesPerTask"/> of a descent that is to stay on the calling thread.</summary>
+        private const int NoParallelism = int.MaxValue;
+
+        private readonly PbtUpdateOptions _options = options;
+
+        /// <summary>The updater for one batch, with the smallest slot it is to descend on a task worked out.</summary>
+        public static Updater ForBatch(
+            IPbtStore store, IRefCountingMemoryProvider memoryProvider, in PbtUpdateOptions options, PbtWriteBatch batch) =>
+            new(store, memoryProvider, options, batch,
+                options.Parallelism <= 1
+                    ? NoParallelism
+                    : Math.Max(MinEntriesToParallelize, batch.Count / (options.Parallelism * TasksPerWorker)));
+
+        /// <summary>The same updater over the same batch, writing into <paramref name="other"/>.</summary>
+        /// <remarks>What a frame hands a subtree it is about to descend on a thread of its own — see <see cref="BufferedPbtStore"/>.</remarks>
+        private Updater WithStore(IPbtStore other) => new(other, memoryProvider, _options, batch, minEntriesPerTask);
 
         /// <summary>
         /// What a boundary result turned out to be. The first three mirror <see cref="NodeKind"/>;
@@ -103,13 +139,13 @@ public static partial class TrieUpdater
             Chain = 3,
         }
 
-        public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
+        public ValueHash256 Run(in ValueHash256 currentRoot, out PbtSubtreeStats delta)
         {
             // No global sort: each group radix-partitions its own range in place during the descent,
             // bar the levels the producer already bucketed for it.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             NodeResult root = default;
-            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, new BucketPlan(changes.Buckets, branchDepth: 0), ref root, out _, out delta);
+            ApplyStored(TrieNodeKey.Root, batch.Entries, rootData, currentRoot, new BucketPlan(batch.Buckets, branchDepth: 0), ref root, out _, out delta);
 
             using (root)
             {
@@ -476,55 +512,208 @@ public static partial class TrieUpdater
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             AssertTouchedMaskMatchesBounds(touchedMask, bounds);
 
+            // The slots whose subtree is worth a thread of its own. When there is one, every touched slot of
+            // this frame — those descending right here included — writes into a buffer of its own rather
+            // than the store, which this frame replays once they are all back: nothing writes to the store,
+            // and so nothing reads a store mid-write, while a task is in flight.
+            uint spawnMask = SpawnMask(touchedMask, bounds);
+            SlotWork?[]? work = spawnMask == 0 ? null : new SlotWork?[PbtTrieNodeGroup.BoundarySlots];
+
+            RefList16<SlotOutcome> outcomeBuffer = new(PbtTrieNodeGroup.BoundarySlots);
+            Span<SlotOutcome> outcomes = outcomeBuffer.AsSpan();
+
+            // The frame's range as an offset into the batch, so each slot's own range can be handed over as one.
+            int frameOffset = SpanOffset(batch.EntryArray, entries);
+            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(touched);
+                Occupant occupant = occupants[slot];
+                TrieNodeKey childKey = key.ChildGroup(slot);
+                BucketPlan childPlan = plan.ForChild(slot, branchDepth);
+                SlotRange range = new(
+                    frameOffset + bounds[slot], bounds[slot + 1] - bounds[slot],
+                    childPlan.Precalculated.IsEmpty ? 0 : SpanOffset(batch.BucketArray!, childPlan.Precalculated),
+                    childPlan.Precalculated.Length, childPlan.BranchDepth);
+
+                if (work is null)
+                {
+                    outcomes[slot] = DescendSlot(childKey, range, occupant);
+                    continue;
+                }
+
+                BufferedPbtStore buffer = new(store);
+                Updater worker = WithStore(buffer);
+                SlotWork slotWork = new(buffer);
+                work[slot] = slotWork;
+                if ((spawnMask >> slot & 1) != 0)
+                {
+                    slotWork.Task = Task.Run(() => { slotWork.Outcome = worker.DescendSlot(childKey, range, occupant); });
+                }
+                else
+                {
+                    slotWork.Outcome = worker.DescendSlot(childKey, range, occupant);
+                }
+            }
+
+            if (work is not null) Join(work, touchedMask, outcomes);
+
             uint changedMask = 0;
             uint storedChildMask = 0;
             PbtSubtreeStats childDeltas = default;
             for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
             {
                 int slot = BitOperations.TrailingZeroCount(touched);
-                Occupant occupant = occupants[slot];
-                ref NodeResult result = ref results[slot];
-                Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
-                TrieNodeKey childKey = key.ChildGroup(slot);
-                BucketPlan childPlan = plan.ForChild(slot, branchDepth);
-                bool childChanged;
-                PbtSubtreeStats childDelta;
-                if (occupant.Kind == ResultKind.Internal)
-                {
-                    // a stored child blob — group or run — descends with its own content; the boundary
-                    // internal caches its old root hash, which the child no longer stores itself
-                    using RefCountingMemory? childData = store.GetTrieNode(childKey);
-                    if (childData is not null) storedChildMask |= 1u << slot;
-                    ApplyStored(childKey, bucket, childData, occupant.NodeHash(), childPlan, ref result, out childChanged, out childDelta);
+                SlotOutcome outcome = outcomes[slot];
+                results[slot] = outcome.Result;
 
-                    // No frame writes its own key; this one, the parent, settles each child's: a stored one
-                    // the writes emptied to nothing — it changed and holds no blob now — is removed here (a
-                    // child that produced a new blob is planted by the rebuild below instead).
-                    if (childData is not null && childChanged && result.Blob is null) store.SetTrieNode(childKey, null);
-                }
-                else if (occupant.Kind == ResultKind.Chain)
-                {
-                    // the run ApplyChainSplit seeded below itself, which no key holds
-                    ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref result, out childChanged, out childDelta);
-                }
-                else
-                {
-                    // an empty subtree or a lone stem: push the occupant (stem or absent) on down
-                    ApplyPushedStem(childKey, bucket, occupant, childPlan, ref result, out childChanged, out childDelta);
-                }
-
-                if (childChanged) changedMask |= 1u << slot;
-                Debug.Assert(childChanged || childDelta.IsZero, "an unchanged subtree is the same subtree, so it holds the same stems");
-                childDeltas += childDelta;
+                uint bit = 1u << slot;
+                if (outcome.Changed) changedMask |= bit;
+                if (outcome.StoredChild) storedChildMask |= bit;
+                Debug.Assert(outcome.Changed || outcome.Delta.IsZero, "an unchanged subtree is the same subtree, so it holds the same stems");
+                childDeltas += outcome.Delta;
 
                 // the kind the write left here, over the bits the bulk clear above already dropped
-                uint bit = 1u << slot;
-                ResultKind resultKind = result.Kind;
+                ResultKind resultKind = outcome.Result.Kind;
                 if (resultKind != ResultKind.Absent) occupied |= bit;
                 if (resultKind == ResultKind.Stem) stems |= bit;
             }
 
             return new GroupShape(occupied, stems, changedMask, touchedMask, storedChildMask, childDeltas);
+        }
+
+        /// <summary>One touched slot's range of the batch, as offsets so that a task can be handed one.</summary>
+        /// <remarks>What a <see cref="BucketPlan"/> is reduced to to cross a task boundary, and rebuilt into
+        /// on the other side: a plan carries a span, which no task can be handed.</remarks>
+        private readonly record struct SlotRange(int EntryOffset, int EntryLength, int BucketOffset, int BucketLength, int BranchDepth);
+
+        /// <summary>What descending one boundary slot settled on, as its frame's reduction reads it.</summary>
+        /// <param name="StoredChild">Whether a blob was stored at the slot's key before the writes.</param>
+        private readonly record struct SlotOutcome(NodeResult Result, bool Changed, PbtSubtreeStats Delta, bool StoredChild);
+
+        /// <summary>One touched slot while its frame is descending its slots in parallel.</summary>
+        private sealed class SlotWork(BufferedPbtStore buffer)
+        {
+            /// <summary>Where the slot's whole subtree writes until the frame replays it.</summary>
+            public BufferedPbtStore Buffer { get; } = buffer;
+
+            /// <summary>The task descending the slot, or <c>null</c> when the frame descended it itself.</summary>
+            public Task? Task { get; set; }
+
+            /// <summary>What the descent settled on, written by whichever thread ran it.</summary>
+            public SlotOutcome Outcome;
+        }
+
+        /// <summary>
+        /// Applies one boundary slot's range to whatever occupies it and settles the node now there,
+        /// <paramref name="range"/> being the range as this updater's batch holds it.
+        /// </summary>
+        private SlotOutcome DescendSlot(in TrieNodeKey childKey, in SlotRange range, in Occupant occupant)
+        {
+            Span<PbtWriteBatch.StemEntry> bucket = batch.EntryArray.AsSpan(range.EntryOffset, range.EntryLength);
+            BucketPlan childPlan = new(
+                range.BucketLength == 0 ? default : batch.BucketArray.AsSpan(range.BucketOffset, range.BucketLength),
+                range.BranchDepth);
+
+            NodeResult result = default;
+            bool storedChild = false;
+            bool changed;
+            PbtSubtreeStats delta;
+            if (occupant.Kind == ResultKind.Internal)
+            {
+                // a stored child blob — group or run — descends with its own content; the boundary
+                // internal caches its old root hash, which the child no longer stores itself
+                using RefCountingMemory? childData = store.GetTrieNode(childKey);
+                storedChild = childData is not null;
+                ApplyStored(childKey, bucket, childData, occupant.NodeHash(), childPlan, ref result, out changed, out delta);
+
+                // No frame writes its own key; this one, the parent, settles each child's: a stored one
+                // the writes emptied to nothing — it changed and holds no blob now — is removed here (a
+                // child that produced a new blob is planted by the rebuild below instead).
+                if (storedChild && changed && result.Blob is null) store.SetTrieNode(childKey, null);
+            }
+            else if (occupant.Kind == ResultKind.Chain)
+            {
+                // the run ApplyChainSplit seeded below itself, which no key holds
+                ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref result, out changed, out delta);
+            }
+            else
+            {
+                // an empty subtree or a lone stem: push the occupant (stem or absent) on down
+                ApplyPushedStem(childKey, bucket, occupant, childPlan, ref result, out changed, out delta);
+            }
+
+            return new SlotOutcome(result, changed, delta, storedChild);
+        }
+
+        /// <summary>
+        /// The slots of <paramref name="touchedMask"/> whose share of the batch earns them a task of their
+        /// own: none when the descent is to stay on one thread, and none when the frame has a single touched
+        /// slot, there being nothing for a task to run alongside.
+        /// </summary>
+        private uint SpawnMask(uint touchedMask, ReadOnlySpan<int> bounds)
+        {
+            if (minEntriesPerTask == NoParallelism || BitOperations.PopCount(touchedMask) < 2) return 0;
+
+            uint mask = 0;
+            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(touched);
+                if (bounds[slot + 1] - bounds[slot] >= minEntriesPerTask) mask |= 1u << slot;
+            }
+
+            return mask;
+        }
+
+        /// <summary>
+        /// Waits for every slot this frame handed to a task, replays what its slots wrote into the store
+        /// behind their buffers, and gathers their outcomes into <paramref name="outcomes"/>.
+        /// </summary>
+        /// <remarks>
+        /// Replayed in slot order, so the store is written the same values in the same order however the
+        /// tasks happened to be scheduled. A failure is raised only once every task is finished, so that a
+        /// task is never left writing into a buffer this is draining, and the buffers are drained or dropped
+        /// either way, their writes holding leases no one else will release.
+        /// </remarks>
+        private static void Join(SlotWork?[] work, uint touchedMask, Span<SlotOutcome> outcomes)
+        {
+            ExceptionDispatchInfo? failure = null;
+            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            {
+                Task? task = work[BitOperations.TrailingZeroCount(touched)]!.Task;
+                if (task is null) continue;
+
+                try
+                {
+                    // awaited rather than waited on, so a duplicate stem surfaces as itself and not wrapped
+                    task.GetAwaiter().GetResult();
+                }
+                catch (Exception exception)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            for (uint touched = touchedMask; touched != 0; touched &= touched - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(touched);
+                SlotWork slotWork = work[slot]!;
+                using (slotWork.Buffer)
+                {
+                    // a descent that is going to throw plants nothing: dropping the buffer releases what its
+                    // writes hold, and the outcome no one will now read holds a lease of its own
+                    if (failure is null)
+                    {
+                        slotWork.Buffer.Flush();
+                        outcomes[slot] = slotWork.Outcome;
+                    }
+                    else
+                    {
+                        slotWork.Outcome.Result.Dispose();
+                    }
+                }
+            }
+
+            failure?.Throw();
         }
 
         /// <summary>
@@ -792,10 +981,10 @@ public static partial class TrieUpdater
             ReadOnlySpan<(int Slot, Boundary Node)> changed, PbtTrieNodeGroup existing, uint occupied, uint stems, uint changedMask,
             in PbtSubtreeStats stats)
         {
-            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, writeFormat);
+            (uint presence, uint stemMask) = PredictShape(existing, occupied, stems, changedMask, PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, _options.WriteFormat);
             RefCountingMemory memory = memoryProvider.Rent(PbtTrieNodeGroup.EncodedLength(presence, stemMask));
 
-            GroupRebuild rebuild = new(changed, existing, occupied, stems, changedMask, memory.GetSpan(), writeFormat);
+            GroupRebuild rebuild = new(changed, existing, occupied, stems, changedMask, memory.GetSpan(), _options.WriteFormat);
             // an internal group root is folded to a by-value hash and never stored, the parent caching it
             // in its boundary slot; only a stem root is written, which the caller reads back
             FoldedNode root = rebuild.Fold(PbtTrieNodeGroup.RootPosition, 0, PbtTrieNodeGroup.BoundarySlots, out ValueHash256 rootHash);
@@ -1075,6 +1264,12 @@ public static partial class TrieUpdater
         /// The depth of the group where the range's stems first part, or <c>0</c> when nothing is known —
         /// which every <c>default</c> plan reports, no frame sitting above depth 0.
         /// </param>
+        /// <summary>Where <paramref name="span"/>, a range of <paramref name="array"/>, starts in it.</summary>
+        /// <remarks>How a range crosses to a task, a <see cref="Span{T}"/> being no way to hand one over.</remarks>
+        private static int SpanOffset<T>(T[] array, ReadOnlySpan<T> span) =>
+            (int)(Unsafe.ByteOffset(ref MemoryMarshal.GetArrayDataReference(array), ref MemoryMarshal.GetReference(span))
+                  / Unsafe.SizeOf<T>());
+
         private readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int branchDepth)
         {
             /// <inheritdoc cref="BucketPlan" path="/param[@name='precalculated']"/>

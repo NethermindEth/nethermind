@@ -5,9 +5,10 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
-internal static class PbtConfigExtensions
+public static class PbtConfigExtensions
 {
-    /// <summary>The group encoding <paramref name="config"/> selects for the trie nodes this node writes.</summary>
-    public static PbtGroupFormat TrieNodeWriteFormat(this IPbtConfig config) =>
-        config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel;
+    /// <summary>The settings <paramref name="config"/> selects for a root computation.</summary>
+    public static PbtUpdateOptions UpdateOptions(this IPbtConfig config) =>
+        new(config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel,
+            config.TrieUpdateParallelism > 0 ? config.TrieUpdateParallelism : Environment.ProcessorCount);
 }

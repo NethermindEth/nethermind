@@ -128,7 +128,7 @@ public class PbtScopeProviderBenchmark
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config.InterleaveTrieNodeLevels ? PbtGroupFormat.Interleaved : PbtGroupFormat.EveryLevel);
+            config.UpdateOptions());
     }
 
     private static IWorldStateScopeProvider CreateTrieProvider() =>

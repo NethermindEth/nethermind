@@ -71,6 +71,16 @@ public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? bucket
     /// <summary>The precalculated depth-0 and depth-4 bucket bounds, or empty when the entries are in no particular order.</summary>
     internal ReadOnlySpan<int> Buckets => buckets is null ? default : buckets.AsSpan();
 
+    /// <summary>The arrays <see cref="Entries"/> and <see cref="Buckets"/> span, from index zero.</summary>
+    /// <remarks>
+    /// A parallel descent hands a subtree's range to a task as an offset and a length into these, a
+    /// <see cref="Span{T}"/> being no way to hand one over.
+    /// </remarks>
+    internal StemEntry[] EntryArray => _entries.UnsafeGetInternalArray();
+
+    /// <inheritdoc cref="EntryArray"/>
+    internal int[]? BucketArray => buckets?.UnsafeGetInternalArray();
+
     public void Dispose()
     {
         foreach (StemEntry entry in _entries.AsSpan()) PbtStemChanges.Return(entry.Changes);

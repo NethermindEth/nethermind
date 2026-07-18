@@ -229,7 +229,11 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             // and blobs and writes the new ones into this window's still-open batch
             using IPbtPersistence.IReader reader = target.CreateReader();
             PersistenceBackedPbtStore store = new(reader, writeBatch);
-            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat(), out stemDelta);
+            // serial: a one-shot import is not the path the parallel descent is tuned for, and this is the
+            // one store whose reader cannot observe the batch's own writes at all
+            currentRoot = TrieUpdater.UpdateRoot(
+                store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance,
+                config.UpdateOptions() with { Parallelism = 1 }, out stemDelta);
         }
 
         writeBatch.Dispose(); // atomic commit of this window's flat rows and, when non-empty, its leaves and nodes

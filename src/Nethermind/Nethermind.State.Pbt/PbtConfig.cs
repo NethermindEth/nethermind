@@ -13,4 +13,5 @@ public class PbtConfig : IPbtConfig
     public bool ImportFromPreimageFlat { get; set; }
     public int ImportStorageReadConcurrency { get; set; }
     public bool InterleaveTrieNodeLevels { get; set; } = true;
+    public int TrieUpdateParallelism { get; set; }
 }

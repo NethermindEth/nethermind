@@ -113,7 +113,10 @@ public class StemTrieTests(PbtGroupFormat format)
         batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
-        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel, out _),
+        Assert.That(
+            () => TrieUpdater.UpdateRoot(
+                harness, default, batch, PooledRefCountingMemoryProvider.Instance,
+                new PbtUpdateOptions(PbtGroupFormat.EveryLevel, Parallelism: 1), out _),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
@@ -865,48 +868,8 @@ public class StemTrieTests(PbtGroupFormat format)
         harness.ApplyBatch([([.. stemA, 5], null)]);
 
         Assert.That(provider.Rented, Is.Not.Empty, "the batches must have rented something to check");
-        Assert.That(CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
-        Assert.That(CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
-    }
-
-    /// <summary>
-    /// How many of <paramref name="memories"/> still hold a lease — none should, once the updater has
-    /// returned. A fully released buffer refuses a fresh lease, an outstanding one takes it.
-    /// </summary>
-    private static int CountUnreleased(IEnumerable<RefCountingMemory> memories)
-    {
-        int unreleased = 0;
-        foreach (RefCountingMemory memory in memories)
-        {
-            try
-            {
-                memory.AcquireLease();
-            }
-            catch (InvalidOperationException)
-            {
-                continue; // refused: fully released, which is what we want to see
-            }
-
-            ((IDisposable)memory).Dispose();
-            unreleased++;
-        }
-
-        return unreleased;
-    }
-
-    /// <summary>Hands out pooled memory and keeps a handle on each buffer, for <see cref="CountUnreleased"/>.</summary>
-    private sealed class TrackingMemoryProvider : IRefCountingMemoryProvider
-    {
-        private readonly List<RefCountingMemory> _rented = [];
-
-        public IReadOnlyList<RefCountingMemory> Rented => _rented;
-
-        public RefCountingMemory Rent(int length)
-        {
-            RefCountingMemory memory = PooledRefCountingMemoryProvider.Instance.Rent(length);
-            _rented.Add(memory);
-            return memory;
-        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "every rented buffer must end up fully released");
+        Assert.That(TrackingMemoryProvider.CountUnreleased(harness.HandedOut), Is.Zero, "every buffer the store handed to a read must end up fully released");
     }
 
     /// <summary>

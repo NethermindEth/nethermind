@@ -20,8 +20,8 @@ public class PbtWorldStateManager(
     IPbtConfig config,
     [KeyFilter(DbNames.Code)] IDb codeDb) : IWorldStateManager
 {
-    private readonly PbtGroupFormat _writeFormat = config.TrieNodeWriteFormat();
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.TrieNodeWriteFormat());
+    private readonly PbtUpdateOptions _updateOptions = config.UpdateOptions();
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false, config.UpdateOptions());
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -31,7 +31,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _writeFormat);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: true, _updateOptions);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

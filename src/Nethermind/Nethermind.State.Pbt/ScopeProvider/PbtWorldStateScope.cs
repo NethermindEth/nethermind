@@ -25,7 +25,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 {
     private readonly IPbtCommitTarget _commitTarget;
     private readonly bool _isReadOnly;
-    private readonly PbtGroupFormat _writeFormat;
+    private readonly PbtUpdateOptions _updateOptions;
 
     // stem leaves dirtied since the last root update: storage slots from the parallel storage batches
     // and account/code header leaves from the single-threaded account flush both land here (their
@@ -51,14 +51,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         IPbtResourcePool resourcePool,
         PbtResourcePool.Usage usage,
         bool isReadOnly,
-        PbtGroupFormat writeFormat)
+        PbtUpdateOptions updateOptions)
     {
         _currentStateId = currentStateId;
         Bundle = bundle;
         _commitTarget = commitTarget;
         _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
-        _writeFormat = writeFormat;
+        _updateOptions = updateOptions;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
     }
@@ -96,7 +96,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
-        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, out _).ToHash256();
+        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _updateOptions, out _).ToHash256();
         _rootDirty = false;
     }
 

@@ -29,6 +29,11 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
     public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
 
+    /// <summary>How many threads the batches may descend over; one keeps them on the calling thread.</summary>
+    public int Parallelism { get; set; } = 1;
+
+    private PbtUpdateOptions UpdateOptions => new(WriteFormat, Parallelism);
+
     public IReadOnlyDictionary<TrieNodeKey, byte[]> Nodes => _nodes;
 
     /// <summary>The leaf blobs, one per stem the trie holds — an emptied one is removed, not stored empty.</summary>
@@ -55,9 +60,14 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         else _blobs[stem] = value;
     }
 
+    /// <remarks>Locked: a parallel descent reads the store from several threads at once, though it writes it from one.</remarks>
     private RefCountingMemory? Track(RefCountingMemory? memory)
     {
-        if (memory is not null) _handedOut.Add(memory);
+        if (memory is not null)
+        {
+            lock (_handedOut) _handedOut.Add(memory);
+        }
+
         return memory;
     }
 
@@ -78,7 +88,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, UpdateOptions, out _);
         return _root;
     }
 
@@ -101,7 +111,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
 
         using PbtWriteBatch batch = builder.DrainToWriteBatch();
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, UpdateOptions, out _);
         return _root;
     }
 }
