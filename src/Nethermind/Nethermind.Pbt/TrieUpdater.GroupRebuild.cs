@@ -130,6 +130,11 @@ public static partial class TrieUpdater
             /// <paramref name="position"/>, appending it and every node below it to the blob, and outputs
             /// via <paramref name="hash"/> the node hash it contributes to its parent.
             /// </summary>
+            /// <remarks>
+            /// The rebuild's one entry point: <see cref="RebuildGroup"/> calls it for the whole group at
+            /// <see cref="PbtTrieNodeGroup.RootPosition"/>, and every other call is this recursing into its
+            /// own halves. Post-order, so a node is appended only once all of its children are.
+            /// </remarks>
             public FoldedNode Fold(int position, int firstSlot, int width, out ValueHash256 hash)
             {
                 uint range = ((1u << width) - 1) << firstSlot;
