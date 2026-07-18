@@ -305,6 +305,14 @@
         }
 
         .thumbs img:hover { border-color: var(--accent); }
+        /* no-art NFT thumb (e.g. ENS NameWrapper, whose id is a 77-digit namehash): keep it to a thumbnail box and
+           truncate the id, so it can't become a 500px-wide flex item that stretches the strip and scrolls the card */
+        .thumbs .cell-state {
+            width: 48px; height: 48px; box-sizing: border-box; padding: 3px;
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+            border: 1px solid var(--border-soft); border-radius: 4px;
+        }
+        .thumbs .cell-id { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 
         .lightbox {
             position: fixed;
@@ -515,9 +523,11 @@
 
         .card .addr:hover { color: var(--accent); }
 
-        .card table { width: 100%; border-collapse: collapse; }
+        /* fixed layout so a huge balance or a 77-digit NFT id (e.g. ENS NameWrapper) can't stretch a column and
+           force horizontal scroll — long content clips to its column instead */
+        .card table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .card td { padding: 4px 0; }
-        .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+        .card td.bal { text-align: right; font-size: 13px; color: var(--c-amount); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .card td.bal.spin { color: var(--muted); }
         .card td.tick { color: var(--tcol, var(--c-ticker)); width: 72px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .card td.tick.copyable { cursor: pointer; }
