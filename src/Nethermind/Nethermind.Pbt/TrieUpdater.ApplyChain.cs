@@ -145,7 +145,8 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, 0, precalculatedBuckets, results);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, precalculatedBuckets, results)
+                .MergeUntouched(occupantsOccupied, untouchedStems: 0);
             // The seeded run is held by no key and no encoding, so nothing can read it back later: it
             // rides on in `results` unless the descent already refreshed its slot.
             if ((shape.TouchedMask >> targetSlot & 1) == 0)

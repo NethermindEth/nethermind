@@ -235,7 +235,8 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             StoredOccupants occupants = new(existing, existingData);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, precalculatedBuckets, results);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, precalculatedBuckets, results)
+                .MergeUntouched(occupantsOccupied, occupantsStems);
             result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
         }
 
@@ -308,7 +309,8 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, precalculatedBuckets, results);
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, precalculatedBuckets, results)
+                .MergeUntouched(occupantsOccupied, occupantsOccupied);
             // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
             // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
             // promotes to a pure value, so it carries no lease.
@@ -317,23 +319,48 @@ public static partial class TrieUpdater
             result = RebuildNode(key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
         }
 
-        /// <summary>The group's boundary shape once its touched slots are resolved: the masks and the stat delta the rebuild reads.</summary>
+        /// <summary>
+        /// The group's boundary shape once its touched slots are resolved: the masks and the stat delta the
+        /// rebuild reads.
+        /// </summary>
+        /// <remarks>
+        /// Built in two phases. <see cref="ResolveBoundaries"/> knows only the slots it descended, so the
+        /// shape it returns describes those alone; the caller completes it with
+        /// <see cref="MergeUntouched"/> before handing it to <see cref="RebuildNode"/>, which needs every
+        /// slot.
+        /// </remarks>
         private readonly record struct GroupShape(
-            uint Occupied, uint Stems, uint ChangedMask, uint TouchedMask, uint StoredChildMask, PbtSubtreeStats Deltas);
+            uint Occupied, uint Stems, uint ChangedMask, uint TouchedMask, uint StoredChildMask, PbtSubtreeStats Deltas)
+        {
+            /// <summary>
+            /// Folds the slots the descent never visited back in, from the shape the frame started with.
+            /// </summary>
+            /// <remarks>
+            /// The descent's own bits are a subset of <see cref="TouchedMask"/>, so the arguments contribute
+            /// only outside it and the two halves never collide.
+            /// </remarks>
+            public GroupShape MergeUntouched(uint untouchedOccupied, uint untouchedStems) => this with
+            {
+                Occupied = Occupied | (untouchedOccupied & ~TouchedMask),
+                Stems = Stems | (untouchedStems & ~TouchedMask),
+            };
+        }
 
         /// <summary>
         /// Descends only the non-empty buckets of the group at <paramref name="key"/>, applying each touched
-        /// slot's writes to its child and settling the result into <paramref name="results"/>, and returns
-        /// the group's boundary shape for <see cref="RebuildNode"/> to settle. An untouched slot is left
-        /// alone entirely — it keeps its occupant, which the settle reads on demand.
+        /// slot's writes to its child and settling the result into <paramref name="results"/>. An untouched
+        /// slot is left alone entirely — it keeps its occupant, which the settle reads on demand.
         /// </summary>
+        /// <returns>
+        /// The shape of the slots this descended, and of those alone: the frame's untouched slots are none
+        /// of its business, so the caller folds them back in with <see cref="GroupShape.MergeUntouched"/>
+        /// before <see cref="RebuildNode"/>, which needs the whole picture.
+        /// </returns>
         /// <param name="occupants">
         /// The frame's boundary occupants, read on demand by slot as the descent needs them: a
         /// <see cref="StoredOccupants"/> reading a stored group's encoding, or a <see cref="SeededOccupant"/>
         /// holding the one node a run-split or pushed stem seeds.
         /// </param>
-        /// <param name="occupantsOccupied">The occupied slots as a bitmap; the descent refreshes only the ones a write touches.</param>
-        /// <param name="occupantsStems">Which of <paramref name="occupantsOccupied"/> hold a stem.</param>
         /// <param name="precalculatedBuckets">
         /// The bucket table levels the producer already partitioned <paramref name="entries"/> into, this
         /// group's own being the last of them (<see cref="PbtWriteBatch.BucketTableLength"/>); empty once
@@ -341,7 +368,6 @@ public static partial class TrieUpdater
         /// </param>
         private GroupShape ResolveBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            uint occupantsOccupied, uint occupantsStems,
             ReadOnlySpan<int> precalculatedBuckets, Span<NodeResult> results)
             where TOccupants : IOccupants, allows ref struct
         {
@@ -363,18 +389,14 @@ public static partial class TrieUpdater
 
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
 
-            uint occupied = occupantsOccupied;
-            uint stems = occupantsStems;
+            // Only the slots below get a bit set, so what comes back describes the descent and nothing else.
+            uint occupied = 0;
+            uint stems = 0;
 
             // The non-empty buckets, cached by whoever bucketed the range — the descent visits just these,
             // and an empty bucket leaves its slot's boundaries where they are.
             uint touchedMask = (uint)level[PbtWriteBatch.TouchedMaskIndex];
             Debug.Assert(touchedMask == DeriveTouchedMask(bounds), "the cached touched mask disagrees with its level's bounds");
-
-            // Every touched slot is resolved below, so its old kind is gone whatever the write leaves there:
-            // drop them all in one pass and let each slot set its own bits anew as it lands.
-            occupied &= ~touchedMask;
-            stems &= ~touchedMask;
 
             uint changedMask = 0;
             uint storedChildMask = 0;
@@ -476,6 +498,7 @@ public static partial class TrieUpdater
             uint changedMask = shape.ChangedMask;
             uint touchedMask = shape.TouchedMask;
             uint storedChildMask = shape.StoredChildMask;
+            AssertUntouchedMerged(occupants, occupied, stems, touchedMask);
             NodeKind rootKind = KindOf(occupied, stems);
 
             // Every stem of this subtree sits under one of the sixteen slots, so what they hoisted is the
@@ -552,16 +575,16 @@ public static partial class TrieUpdater
             // emptied out contributes no boundary, so only the occupied ones go in.
             Span<(int Slot, Boundary Node)> changedBoundaries = stackalloc (int, Boundary)[PbtTrieNodeGroup.BoundarySlots];
             int changedCount = 0;
-            for (int slot = 0; slot < PbtTrieNodeGroup.BoundarySlots; slot++)
+            uint gather = occupied & (occupants.HasStoredEncoding ? changedMask : ~0u);
+            for (uint remaining = gather; remaining != 0; remaining &= remaining - 1)
             {
-                if ((occupied >> slot & 1) != 0 && ((changedMask >> slot & 1) != 0 || !occupants.HasStoredEncoding))
-                {
-                    Debug.Assert(
-                        occupants.HasStoredEncoding || results[slot].Kind != ResultKind.Absent,
-                        "a seeded frame has no encoding to read a boundary back out of, so every occupied slot must ride in results");
+                // ascending, as the fold requires
+                int slot = BitOperations.TrailingZeroCount(remaining);
+                Debug.Assert(
+                    occupants.HasStoredEncoding || results[slot].Kind != ResultKind.Absent,
+                    "a seeded frame has no encoding to read a boundary back out of, so every occupied slot must ride in results");
 
-                    changedBoundaries[changedCount++] = (slot, new Boundary(results[slot].Hash, (stems >> slot & 1) != 0 ? results[slot].Stem : default));
-                }
+                changedBoundaries[changedCount++] = (slot, new Boundary(results[slot].Hash, (stems >> slot & 1) != 0 ? results[slot].Stem : default));
             }
 
             (FoldedNode rootFold, ValueHash256 rootHash, RefCountingMemory memory) = RebuildGroup(changedBoundaries[..changedCount], existing, occupied, stems, changedMask, afterStats);
@@ -903,6 +926,34 @@ public static partial class TrieUpdater
             bool isEmpty = newBlob.IsEmpty;
             store.SetLeafBlob(stem, newBlob.Take());
             return isEmpty;
+        }
+
+        /// <summary>
+        /// Checks that the caller folded its untouched slots back into the shape with
+        /// <see cref="GroupShape.MergeUntouched"/>: off the touched slots, the shape must say exactly what
+        /// the occupants do.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ResolveBoundaries"/> reports only what it descended, so an omitted merge leaves the
+        /// rebuild blind to every untouched child — a wrong fold, and a wrong state root. It shows up at
+        /// once for a stored group, whose untouched slots are usually many; a seeded frame has one slot
+        /// that is often touched anyway, so there it could pass unnoticed.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private static void AssertUntouchedMerged<TOccupants>(in TOccupants occupants, uint occupied, uint stems, uint touchedMask)
+            where TOccupants : IOccupants, allows ref struct
+        {
+            for (uint untouched = ~touchedMask & ((1u << PbtTrieNodeGroup.BoundarySlots) - 1); untouched != 0; untouched &= untouched - 1)
+            {
+                int slot = BitOperations.TrailingZeroCount(untouched);
+                ResultKind kind = occupants[slot].Kind;
+
+                // a constant message: Debug.Assert evaluates its argument on every call, and this one runs
+                // per untouched slot of every frame
+                Debug.Assert(
+                    (occupied >> slot & 1) != 0 == (kind != ResultKind.Absent) && (stems >> slot & 1) != 0 == (kind == ResultKind.Stem),
+                    "an untouched slot disagrees with its occupant — the caller skipped GroupShape.MergeUntouched");
+            }
         }
 
         /// <summary>
