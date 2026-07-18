@@ -25,12 +25,22 @@ namespace Nethermind.Pbt;
 /// </param>
 public sealed class PbtWriteBatch(int estimatedStems, ArrayPoolList<int>? buckets) : IDisposable
 {
-    /// <summary>One level of the bucket table: a bounds array, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
-    public const int LevelStride = PbtTrieNodeGroup.BoundarySlots + 1;
+    /// <summary>The bounds array of one level, so bucket <c>i</c> is <c>entries[level[i]..level[i + 1]]</c>.</summary>
+    public const int BoundsLength = PbtTrieNodeGroup.BoundarySlots + 1;
 
     /// <summary>
-    /// The byte level of the bucket table: one bounds array per nibble group, group <c>h</c> covering the
-    /// stem first bytes <c>0xh0</c>..<c>0xhF</c>. The nibble level's own bounds array follows it.
+    /// Where a level caches its touched mask: bit <c>i</c> set where bucket <c>i</c> is non-empty, which is
+    /// what the descent partitions on. Derived from the counts the bucketing already walks, so that a
+    /// consumer never re-derives it by scanning the bounds.
+    /// </summary>
+    public const int TouchedMaskIndex = BoundsLength;
+
+    /// <summary>One level of the bucket table: its <see cref="BoundsLength"/> bounds, then its <see cref="TouchedMaskIndex"/>.</summary>
+    public const int LevelStride = BoundsLength + 1;
+
+    /// <summary>
+    /// The byte level of the bucket table: one level per nibble group, group <c>h</c> covering the
+    /// stem first bytes <c>0xh0</c>..<c>0xhF</c>. The nibble level follows it.
     /// </summary>
     /// <remarks>
     /// A group's ends count from the start of its nibble rather than of the batch, which is what lets the

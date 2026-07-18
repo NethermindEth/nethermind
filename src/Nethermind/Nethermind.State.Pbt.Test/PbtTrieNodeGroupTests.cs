@@ -214,6 +214,41 @@ public class PbtTrieNodeGroupTests
     }
 
     /// <summary>
+    /// The software PEXT behind <see cref="PbtTrieNodeGroup.BoundaryShape"/> must gather exactly the
+    /// boundary bits of a position bitmap, each landing at its own slot index — the same answer as
+    /// testing the positions one at a time.
+    /// </summary>
+    [TestCase(0x00000000u)]
+    [TestCase(0xFFFFFFFFu)]
+    [TestCase(0x06CD8D9Bu)] // exactly the boundary positions, so every slot fills
+    [TestCase(0xF9327264u)] // exactly the non-boundary ones, so no slot does
+    [TestCase(0x12345678u)]
+    [TestCase(0xDEADBEEFu)]
+    [TestCase(0xAAAAAAAAu)]
+    [TestCase(0x55555555u)]
+    public void BoundaryBits_GathersBoundaryPositionsIntoSlotOrder(uint positions)
+    {
+        uint expected = 0;
+        for (int position = 0; position < 32; position++)
+        {
+            if ((positions >> position & 1) == 0 || !PbtTrieNodeGroup.IsBoundaryPosition(position)) continue;
+            expected |= 1u << PbtTrieNodeGroup.BoundarySlot(position);
+        }
+
+        Assert.That(PbtTrieNodeGroup.BoundaryBits(positions), Is.EqualTo(expected), $"0x{positions:x8}");
+        Assert.That(expected >> PbtTrieNodeGroup.BoundarySlots, Is.Zero, "only the sixteen slot bits are set");
+    }
+
+    /// <summary>The empty group — the absence sentinel — has no boundary occupant at all.</summary>
+    [Test]
+    public void BoundaryShape_EmptyGroup_IsUnoccupied()
+    {
+        default(PbtTrieNodeGroup).BoundaryShape(out uint occupied, out uint stems);
+        Assert.That(occupied, Is.Zero);
+        Assert.That(stems, Is.Zero);
+    }
+
+    /// <summary>
     /// Encodes positional slots through <see cref="PbtTrieNodeGroup.Builder"/>, walking positions in
     /// the ascending order it requires — the order the updater's post-order rebuild appends in.
     /// </summary>
