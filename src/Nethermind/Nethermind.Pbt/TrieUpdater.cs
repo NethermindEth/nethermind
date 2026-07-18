@@ -236,7 +236,7 @@ public static partial class TrieUpdater
 
             StoredOccupants occupants = new(existing, existingData);
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsStems, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, existing, results, shape, occupantsChain: 0, beforeHash, existing.Stats, out changed, out delta);
+            result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
         }
 
         /// <summary>
@@ -309,7 +309,12 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             GroupShape shape = ResolveBoundaries(key, entries, occupants, occupantsOccupied, occupantsOccupied, precalculatedBuckets, results);
-            result = RebuildNode(key, occupants, default, results, shape, occupantsChain: 0, pushed.NodeHash(), beforeStats, out changed, out delta);
+            // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
+            // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
+            // promotes to a pure value, so it carries no lease.
+            if (seedSlot >= 0 && (shape.TouchedMask >> seedSlot & 1) == 0) results[seedSlot] = pushed;
+
+            result = RebuildNode(key, occupants, default, results, shape, pushed.NodeHash(), beforeStats, out changed, out delta);
         }
 
         /// <summary>The group's boundary shape once its touched slots are resolved: the masks and the stat delta the rebuild reads.</summary>
@@ -427,8 +432,8 @@ public static partial class TrieUpdater
         /// <paramref name="shape"/> that <see cref="ResolveBoundaries"/> produced — collapse to a run, hoist
         /// a stem, skip an unchanged group, or fold a fresh one — and persists each child's blob, returning
         /// the node now occupying this frame's key. An untouched slot is read back from
-        /// <paramref name="occupants"/> on demand, bar the two kinds carried into
-        /// <paramref name="results"/> up front because nothing can read them back later.
+        /// <paramref name="occupants"/> on demand, bar what a seeded caller wrote into
+        /// <paramref name="results"/> before the call because nothing can read it back later.
         /// </summary>
         /// <remarks>
         /// One call per group frame, from each of the three that resolve one:
@@ -438,12 +443,11 @@ public static partial class TrieUpdater
         /// <item><see cref="ApplyChainSplit"/> — the group a run branches into, seeding what is left of the run.</item>
         /// </list>
         /// The last two seed their lone occupant into a frame with no stored group behind it, so both pass
-        /// the empty <paramref name="existing"/>, and every boundary they keep rides on in
-        /// <paramref name="results"/> instead.
+        /// the empty <paramref name="existing"/> and write that occupant into <paramref name="results"/>
+        /// themselves, there being no encoding here to read its boundary back out of.
         /// </remarks>
         /// <param name="occupants"><inheritdoc cref="ResolveBoundaries" path="/param[@name='occupants']"/></param>
         /// <param name="existing">The stored group encoding the frame descends from, or the empty group for a seeded frame.</param>
-        /// <param name="occupantsChain">Which of the frame's occupied slots hold a seeded run, as the descent found them.</param>
         /// <param name="beforeHash">The hash the root position contributed before, against which <paramref name="changed"/> is decided.</param>
         /// <param name="beforeStats">
         /// What this frame's subtree amounted to before the writes, which <paramref name="delta"/> is
@@ -462,7 +466,7 @@ public static partial class TrieUpdater
         /// </param>
         private NodeResult RebuildNode<TOccupants>(
             in TrieNodeKey key, in TOccupants occupants, in PbtTrieNodeGroup existing,
-            Span<NodeResult> results, in GroupShape shape, uint occupantsChain,
+            Span<NodeResult> results, in GroupShape shape,
             in ValueHash256 beforeHash, in PbtSubtreeStats beforeStats, out bool changed, out PbtSubtreeStats delta)
             where TOccupants : IOccupants, allows ref struct
         {
@@ -480,28 +484,6 @@ public static partial class TrieUpdater
             delta = shape.Deltas;
             PbtSubtreeStats afterStats = beforeStats + shape.Deltas;
 
-            // A slot no write touched is normally absent from `results`: everything below reads it back from
-            // `occupants`, or folds it out of the stored encoding. Two kinds cannot be read back that way, so
-            // they are carried in before the first of those reads:
-            //   - a seeded run, whose blob exists only in memory until an ancestor plants it;
-            //   - every occupied slot of a frame with no stored encoding, which leaves the fold below
-            //     nothing but `results` to read a boundary out of.
-            // `occupied` is the shape the descent left, but masking to the untouched slots makes it the one
-            // it started from: the descent only ever refreshes bits of `touchedMask`.
-            uint mustCarry = occupantsChain | (occupants.HasStoredEncoding ? 0 : occupied);
-            for (uint carried = mustCarry & ~touchedMask; carried != 0; carried &= carried - 1)
-            {
-                int slot = BitOperations.TrailingZeroCount(carried);
-                NodeResult carriedResult = occupants[slot];
-
-                // Only a run's result keeps hold of the memory, so only it takes a lease of its own — one
-                // it releases in its own time, leaving the occupant's with its source. A stem or an
-                // internal promotes to a by-value result, copied straight out of the encoding.
-                if ((occupantsChain >> slot & 1) != 0) carriedResult = carriedResult.Lease();
-
-                results[slot] = carriedResult;
-            }
-
             // A group left with one internal child is a run of single-child levels: five nodes that all
             // change whenever its one leaf does, and that nothing reads on their own. It stores as a
             // PbtNodeChain instead, merged with any run below so that a run is always as long as it can be.
@@ -509,6 +491,10 @@ public static partial class TrieUpdater
             if (rootKind == NodeKind.Internal && !isRoot && BitOperations.PopCount(occupied) == 1)
             {
                 int survivorSlot = BitOperations.TrailingZeroCount(occupied);
+                Debug.Assert(
+                    occupants.HasStoredEncoding || results[survivorSlot].Kind != ResultKind.Absent,
+                    "a seeded frame's occupant rides in results; falling back here would mint a second unleased run");
+
                 // an untouched value survivor was never copied into results — read it straight from the occupant
                 NodeResult survivor = results[survivorSlot].Kind != ResultKind.Absent ? results[survivorSlot].Lease() : occupants[survivorSlot];
                 changed = CollapseToChain(key, survivorSlot, survivor, touchedMask, storedChildMask, beforeHash, afterStats, out NodeResult chain);
@@ -570,6 +556,10 @@ public static partial class TrieUpdater
             {
                 if ((occupied >> slot & 1) != 0 && ((changedMask >> slot & 1) != 0 || !occupants.HasStoredEncoding))
                 {
+                    Debug.Assert(
+                        occupants.HasStoredEncoding || results[slot].Kind != ResultKind.Absent,
+                        "a seeded frame has no encoding to read a boundary back out of, so every occupied slot must ride in results");
+
                     changedBoundaries[changedCount++] = (slot, new Boundary(results[slot].Hash, (stems >> slot & 1) != 0 ? results[slot].Stem : default));
                 }
             }
