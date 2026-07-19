@@ -57,16 +57,20 @@ public readonly record struct RebuildEntry
 /// The rebuild runs in bounded windows to cap memory: entries accumulate into a per-stem leaf map and
 /// the target's flat account/slot columns, and every <see cref="FlushEntryInterval"/> entries the window
 /// is folded into the tree via <see cref="TrieUpdater.UpdateRoot"/> and committed. Data windows are
-/// written <see cref="StateId.PreGenesis"/> → <see cref="StateId.PreGenesis"/> — the persisted-state
-/// pointer stays pre-genesis so a crash mid-rebuild leaves the state unpopulated and the next run
-/// restarts cleanly; only a final empty batch atomically advances the pointer to the rebuilt state.
+/// written <see cref="StateId.PreGenesis"/> → <see cref="StateId.PreGenesis"/> with
+/// <see cref="WriteFlags.DisableWAL"/> — the persisted-state pointer stays pre-genesis so a crash
+/// mid-rebuild leaves the state unpopulated and the next run restarts cleanly, which is also what
+/// makes skipping the WAL safe; only a final empty batch, after a flush, atomically advances the
+/// pointer to the rebuilt state.
 /// Because each window folds against the previously committed windows, a stem split across windows is
 /// merged correctly (the updater reads its prior leaf blob and folds the new leaves in).
 /// </remarks>
 public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager, IPbtConfig config)
 {
-    /// <summary>Entries (accounts + slots) buffered before a window is folded into the tree and committed.</summary>
-    internal int FlushEntryInterval { get; init; } = 1_000_000;
+    private const int DefaultFlushEntryInterval = 1_000_000;
+
+    /// <summary>Entries (accounts + slots) buffered before a window is folded into the tree and committed; from <see cref="IPbtConfig.ImportWindowSize"/>, or <see cref="DefaultFlushEntryInterval"/> when unset.</summary>
+    internal int FlushEntryInterval { get; init; } = config.ImportWindowSize > 0 ? config.ImportWindowSize : DefaultFlushEntryInterval;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
@@ -148,7 +152,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         });
 
         Dictionary<Stem, Dictionary<byte, ValueHash256>> window = new(FlushEntryInterval);
-        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
+        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
         int pending = 0;
         long accounts = 0, slots = 0;
         Address lastAddress = Address.Zero;
@@ -173,7 +177,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                 {
                     await flushChannel.Writer.WriteAsync(new FlushBatch(window, writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
                     window = new(FlushEntryInterval);
-                    writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
+                    writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
                     pending = 0;
                 }
             }
@@ -192,8 +196,11 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             throw; // otherwise our own failure
         }
 
+        // the data windows skipped the WAL, so make them durable before the pointer that claims them
+        target.Flush();
+
         // atomically advance the persisted-state pointer to the rebuilt state
-        using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, root))) { }
+        using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, root), WriteFlags.None)) { }
 
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, {stems} stems, root {root}");
         return root;
