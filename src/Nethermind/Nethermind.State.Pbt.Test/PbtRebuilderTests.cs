@@ -36,7 +36,7 @@ public class PbtRebuilderTests
         byte[] smallCode = Bytes.FromHexString("0x60016002");
 
         Dictionary<string, byte[]> model = [];
-        using ArrayPoolList<RebuildEntry> entries = new(64);
+        ArrayPoolList<RebuildEntry> entries = new(64); // ownership passes to Rebuild, which disposes it
         Dictionary<Address, Account> expectedAccounts = [];
         Dictionary<(Address, UInt256), UInt256> expectedSlots = [];
 
@@ -70,8 +70,8 @@ public class PbtRebuilderTests
         PbtRocksDbPersistence target = new(db);
         PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = flushEntryInterval };
 
-        Channel<RebuildEntry> channel = Channel.CreateUnbounded<RebuildEntry>();
-        for (int i = 0; i < entries.Count; i++) channel.Writer.TryWrite(entries[i]);
+        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
+        channel.Writer.TryWrite(entries);
         channel.Writer.Complete();
 
         const ulong blockNumber = 7;
@@ -105,7 +105,7 @@ public class PbtRebuilderTests
         PbtRocksDbPersistence target = new(db);
         PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig());
 
-        Channel<RebuildEntry> channel = Channel.CreateUnbounded<RebuildEntry>();
+        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.Complete();
 
         ValueHash256 root = await rebuilder.Rebuild(channel.Reader, blockNumber: 3, CancellationToken.None);

@@ -48,7 +48,13 @@ public class ImportPbtFromPreimageFlat(
 ) : IStep
 {
     private const int AddressLength = 20;
-    private const int EntryChannelCapacity = 100_000;
+
+    /// <summary>Entries per chunk on the entry channel; chunking amortizes the channel's per-write cost over the import's billions of entries.</summary>
+    private const int ChunkSize = 2_048;
+
+    /// <summary>Chunks in flight on the entry channel (~128k entries with <see cref="ChunkSize"/>).</summary>
+    private const int EntryChunkCapacity = 64;
+
     private const int StorageJobChannelCapacity = 1_024;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
@@ -87,7 +93,7 @@ public class ImportPbtFromPreimageFlat(
 
         // accounts and every worker's slots share one channel (multiple writers); the rebuilder is the
         // sole reader. Storage jobs — one per account that has storage — fan out to the worker pool.
-        Channel<RebuildEntry> entries = Channel.CreateBounded<RebuildEntry>(new BoundedChannelOptions(EntryChannelCapacity)
+        Channel<ArrayPoolList<RebuildEntry>> entries = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(new BoundedChannelOptions(EntryChunkCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
@@ -145,11 +151,23 @@ public class ImportPbtFromPreimageFlat(
         exitSource.Exit(0);
     }
 
-    private async Task ProduceAccounts(FlatPersistence.IPersistenceReader reader, ChannelWriter<RebuildEntry> entries, ChannelWriter<StorageJob> storageJobs, CancellationToken cancellationToken)
+    private async Task ProduceAccounts(FlatPersistence.IPersistenceReader reader, ChannelWriter<ArrayPoolList<RebuildEntry>> entries, ChannelWriter<StorageJob> storageJobs, CancellationToken cancellationToken)
     {
+        ArrayPoolList<RebuildEntry> chunk = new(ChunkSize);
+        bool owned = true;
+
+        // ownership of a chunk passes on write; clearing the flag first means a failed write drops
+        // it to the GC rather than risking a double dispose against the consumer
+        async ValueTask FlushChunk()
+        {
+            owned = false;
+            await entries.WriteAsync(chunk, cancellationToken);
+            chunk = new(ChunkSize);
+            owned = true;
+        }
+
         try
         {
-            using ArrayPoolList<RebuildEntry> accountEntries = new(16);
             using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
             while (accountIterator.MoveNext())
             {
@@ -165,43 +183,65 @@ public class ImportPbtFromPreimageFlat(
                     : null;
 
                 ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-                accountEntries.Clear();
-                RebuildEntry.EmitAccount(address, account, code, addressHash, accountEntries);
-                for (int i = 0; i < accountEntries.Count; i++)
-                {
-                    await entries.WriteAsync(accountEntries[i], cancellationToken);
-                }
+                RebuildEntry.EmitAccount(address, account, code, addressHash, chunk);
+                if (chunk.Count >= ChunkSize) await FlushChunk();
 
                 // hand the storage to the worker pool rather than reading it inline here
                 if (account.HasStorage) await storageJobs.WriteAsync(new StorageJob(accountKey, addressHash), cancellationToken);
             }
+
+            if (chunk.Count > 0) await FlushChunk();
         }
         finally
         {
+            if (owned) chunk.Dispose();
+
             // whatever happened, no more jobs — let the workers drain and finish
             storageJobs.Complete();
         }
     }
 
-    private async Task ProduceStorage(ChannelReader<StorageJob> storageJobs, ChannelWriter<RebuildEntry> entries, CancellationToken cancellationToken)
+    private async Task ProduceStorage(ChannelReader<StorageJob> storageJobs, ChannelWriter<ArrayPoolList<RebuildEntry>> entries, CancellationToken cancellationToken)
     {
         // Each worker reads through its own snapshot: the source is static during import, so the
         // snapshots are consistent, and no reader is shared across threads.
         using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
-        await foreach (StorageJob job in storageJobs.ReadAllAsync(cancellationToken))
-        {
-            Address address = new(job.AccountKey.Bytes[..AddressLength]);
-            RebuildEntry.SlotDeriver deriver = new(address, job.AddressPrefix);
-            using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(job.AccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
-            while (storageIterator.MoveNext())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+        ArrayPoolList<RebuildEntry> chunk = new(ChunkSize);
+        bool owned = true;
 
-                // preimage mode: the flat slot key holds the raw slot as a 32-byte big-endian value
-                UInt256 slot = new(storageIterator.CurrentKey.Bytes, isBigEndian: true);
-                EvmWord word = EvmWordSlot.FromStripped(storageIterator.CurrentValue);
-                await entries.WriteAsync(deriver.Derive(slot, word), cancellationToken);
+        // see ProduceAccounts on the ownership hand-off
+        async ValueTask FlushChunk()
+        {
+            owned = false;
+            await entries.WriteAsync(chunk, cancellationToken);
+            chunk = new(ChunkSize);
+            owned = true;
+        }
+
+        try
+        {
+            await foreach (StorageJob job in storageJobs.ReadAllAsync(cancellationToken))
+            {
+                Address address = new(job.AccountKey.Bytes[..AddressLength]);
+                RebuildEntry.SlotDeriver deriver = new(address, job.AddressPrefix);
+                using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(job.AccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+                while (storageIterator.MoveNext())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // preimage mode: the flat slot key holds the raw slot as a 32-byte big-endian value
+                    UInt256 slot = new(storageIterator.CurrentKey.Bytes, isBigEndian: true);
+                    EvmWord word = EvmWordSlot.FromStripped(storageIterator.CurrentValue);
+                    chunk.Add(deriver.Derive(slot, word));
+                    if (chunk.Count >= ChunkSize) await FlushChunk();
+                }
             }
+
+            if (chunk.Count > 0) await FlushChunk();
+        }
+        finally
+        {
+            if (owned) chunk.Dispose();
         }
     }
 
