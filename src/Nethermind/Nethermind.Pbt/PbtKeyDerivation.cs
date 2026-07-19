@@ -74,12 +74,10 @@ public static class PbtKeyDerivation
         return new Stem(stem);
     }
 
-    public static Stem AccountHeaderStem(Address address)
-    {
-        // local, not inline: a span over a returned-by-value hash dangles once its temp is reused
-        ValueHash256 addressHash = AddressKeyHash(address);
-        return ZoneStem(AccountZone, addressHash.Bytes);
-    }
+    public static Stem AccountHeaderStem(Address address) => AccountHeaderStem(AddressKeyHash(address));
+
+    /// <summary><see cref="AccountHeaderStem(Address)"/> reusing a precomputed <see cref="AddressKeyHash"/>.</summary>
+    public static Stem AccountHeaderStem(in ValueHash256 addressHash) => ZoneStem(AccountZone, addressHash.Bytes);
 
     public static bool IsHeaderSlot(in UInt256 slot) => slot < HeaderStorageOffset;
 
@@ -103,23 +101,28 @@ public static class PbtKeyDerivation
     /// <see cref="HeaderStorageOffset"/>): the storage high bit, a 60-bit address prefix and a
     /// 187-bit suffix bound to the address and tree index.
     /// </summary>
-    public static Stem StorageStem(Address address, in UInt256 slot, out byte subIndex)
+    public static Stem StorageStem(Address address, in UInt256 slot, out byte subIndex) =>
+        StorageStem(address, AddressKeyHash(address), slot, out subIndex);
+
+    /// <summary>
+    /// <see cref="StorageStem(Address, in UInt256, out byte)"/> reusing a precomputed
+    /// <see cref="AddressKeyHash"/> as the address prefix, so a run of storage slots for one address
+    /// pays the address hash once and only the per-tree-index suffix hash per stem.
+    /// </summary>
+    public static Stem StorageStem(Address address, in ValueHash256 addressPrefix, in UInt256 slot, out byte subIndex)
     {
         subIndex = (byte)(slot.u0 & 0xFF);
         UInt256 treeIndex = slot >> 8;
 
-        Span<byte> address32 = stackalloc byte[32];
-        Address32(address, address32);
-        ValueHash256 prefix = Blake3Hash.Hash(address32);
-
+        // the suffix binds the address to the tree index; its first 32 bytes are the padded address
         Span<byte> suffixInput = stackalloc byte[64];
-        address32.CopyTo(suffixInput);
+        Address32(address, suffixInput[..32]);
         treeIndex.ToBigEndian(suffixInput[32..]);
         ValueHash256 suffix = Blake3Hash.Hash(suffixInput);
 
         Span<byte> stem = stackalloc byte[Stem.Length];
         stem[0] = 0x80;
-        CopyBits(prefix.Bytes, StorageAddressPrefixBits, stem, 1);
+        CopyBits(addressPrefix.Bytes, StorageAddressPrefixBits, stem, 1);
         CopyBits(suffix.Bytes, StorageSuffixBits, stem, 1 + StorageAddressPrefixBits);
         return new Stem(stem);
     }

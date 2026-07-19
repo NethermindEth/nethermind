@@ -274,6 +274,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         private Stem _headerStem;
         private bool _headerStemComputed;
 
+        // blake3(address32): the address prefix shared by the account header stem and every storage stem,
+        // derived once for all of this address's slots rather than per stem.
+        private ValueHash256 _addressPrefix;
+        private bool _addressPrefixComputed;
+
+        // A storage-zone stem is shared by the 256 slots of one tree index (slot >> 8); memoize the last
+        // one so clustered slots (arrays, sequential mappings) reuse a single derivation for the run.
+        private UInt256 _lastTreeIndex;
+        private Stem _lastStorageStem;
+        private bool _hasStorageStem;
+
         public void Set(in UInt256 index, byte[] value)
         {
             // the world state passes a stripped (leading-zeros-removed) value; canonicalize to 32 bytes
@@ -290,7 +301,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             }
             else
             {
-                stem = PbtKeyDerivation.StorageStem(address, index, out subIndex);
+                stem = StorageStem(index, out subIndex);
             }
 
             // single-writer per stem: this address's storage is flushed by one worker
@@ -300,16 +311,45 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
         public void Clear() => scope.SelfDestructStorage(address);
 
+        // blake3(address32), shared by the header stem and every storage stem; derived once per address
+        private ValueHash256 AddressPrefix()
+        {
+            if (!_addressPrefixComputed)
+            {
+                _addressPrefix = PbtKeyDerivation.AddressKeyHash(address);
+                _addressPrefixComputed = true;
+            }
+
+            return _addressPrefix;
+        }
+
         // the header stem is constant per address; derive it lazily and reuse it across header slots
         private Stem HeaderStem()
         {
             if (!_headerStemComputed)
             {
-                _headerStem = PbtKeyDerivation.AccountHeaderStem(address);
+                _headerStem = PbtKeyDerivation.AccountHeaderStem(AddressPrefix());
                 _headerStemComputed = true;
             }
 
             return _headerStem;
+        }
+
+        // all slots of one tree index share a stem; reuse the last derivation when they arrive in a run
+        private Stem StorageStem(in UInt256 index, out byte subIndex)
+        {
+            UInt256 treeIndex = index >> 8;
+            if (_hasStorageStem && treeIndex == _lastTreeIndex)
+            {
+                subIndex = (byte)(index.u0 & 0xFF);
+                return _lastStorageStem;
+            }
+
+            Stem stem = PbtKeyDerivation.StorageStem(address, AddressPrefix(), index, out subIndex);
+            _lastStorageStem = stem;
+            _lastTreeIndex = treeIndex;
+            _hasStorageStem = true;
+            return stem;
         }
 
         public void Dispose()
