@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
@@ -25,6 +26,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     private readonly Dictionary<Stem, byte[]> _blobs = [];
     private readonly List<RefCountingMemory> _handedOut = [];
     private ValueHash256 _root;
+    private int _leafReads;
 
     /// <inheritdoc cref="PbtTreeHarness(IRefCountingMemoryProvider, PbtGroupFormat)" path="/param[@name='writeFormat']"/>
     public PbtGroupFormat WriteFormat { get; set; } = writeFormat;
@@ -43,7 +45,8 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     public IReadOnlyList<RefCountingMemory> HandedOut => _handedOut;
 
     /// <summary>Count of <see cref="GetLeafBlob"/> calls, to pin that the updater skips the read for brand-new stems.</summary>
-    public int LeafReads { get; private set; }
+    /// <remarks>Interlocked: a parallel descent reads the store from several threads at once, as <see cref="Track"/> is locked for.</remarks>
+    public int LeafReads => Volatile.Read(ref _leafReads);
 
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
 
@@ -56,7 +59,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
 
     public RefCountingMemory? GetLeafBlob(in Stem stem)
     {
-        LeafReads++;
+        Interlocked.Increment(ref _leafReads);
         return Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
     }
 
