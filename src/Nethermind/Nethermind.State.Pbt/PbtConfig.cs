@@ -12,6 +12,7 @@ public class PbtConfig : IPbtConfig
     public int MaxReorgDepth { get; set; } = 256;
     public bool ImportFromPreimageFlat { get; set; }
     public int ImportStorageReadConcurrency { get; set; }
+    public string ImportScratchPath { get; set; } = "";
     public int ImportWindowSize { get; set; }
     public bool InterleaveTrieNodeLevels { get; set; } = true;
     public int TrieUpdateParallelism { get; set; }

@@ -73,24 +73,23 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         async Task FlushLoop()
         {
             long accounts = 0, slots = 0;
-            Address lastAddress = Address.Zero;
+            Stem lastStem = default;
             double accountsPerSec = 0, slotsPerSec = 0, stemsPerSec = 0;
             long loggedAccounts = 0, loggedSlots = 0, loggedStems = 0;
             Stopwatch sinceLog = Stopwatch.StartNew();
 
-            // Accounts stream in ascending address order, so the current address's position in the key
-            // space is the completion fraction (addresses are ~uniform, so the top 64 bits estimate it
-            // well) — the trick FlatTrieVerifier uses off the trie path. CurrentValue is driven by the
-            // entry count instead, only so it moves every window: a huge-storage account holds the
-            // address (and percentage) fixed for many windows, and the logger drops a repeated line
+            // Entries stream in ascending stem order, so the current stem's position in the key space is
+            // the completion fraction (stems are BLAKE3 digests, so the top 64 bits estimate it well).
+            // CurrentValue is driven by the entry count instead, only so it moves every window: a stem
+            // holding many leaves keeps the percentage fixed, and the logger drops a repeated line
             // unless CurrentValue changes — which would stall the log through the slowest part.
             ProgressLogger progress = new("PBT rebuild", logManager);
             progress.SetFormat(_ =>
             {
-                float percentage = Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(lastAddress.Bytes) / (float)ulong.MaxValue, 0, 1);
+                float percentage = Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(lastStem.Bytes) / (float)ulong.MaxValue, 0, 1);
                 return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
                     $"{accounts,13:N0} acc ({accountsPerSec,8:N0}/s) | {slots,15:N0} slot ({slotsPerSec,8:N0}/s) | " +
-                    $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastAddress}";
+                    $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastStem}";
             });
             progress.Reset(0, 0);
 
@@ -98,7 +97,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             {
                 root = FlushAndCommit(batch.WriteBatch, root, batch.Changes, out PbtSubtreeStats stemDelta);
                 stems += stemDelta.StemCount;
-                (accounts, slots, lastAddress) = (batch.Accounts, batch.Slots, batch.LastAddress);
+                (accounts, slots, lastStem) = (batch.Accounts, batch.Slots, batch.LastStem);
 
                 double secs = sinceLog.Elapsed.TotalSeconds;
                 if (secs > 0)
@@ -126,7 +125,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
         int pending = 0;
         long accounts = 0, slots = 0;
-        Address lastAddress = Address.Zero;
+        Stem lastStem = default;
 
         try
         {
@@ -138,12 +137,13 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                     for (int i = 0; i < chunk.Count; i++)
                     {
                         RebuildEntry entry = chunk[i];
+                        lastStem = entry.Stem;
                         switch (entry.Kind)
                         {
                             case RebuildEntry.EntryKind.Account:
                                 writeBatch!.SetAccount(entry.Address!, entry.Account);
+                                builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
                                 accounts++;
-                                lastAddress = entry.Address!;
                                 break;
                             case RebuildEntry.EntryKind.Slot:
                                 EvmWord word = entry.Word;
@@ -160,7 +160,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                         {
                             // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
                             // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
+                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastStem), pipelineCts.Token);
                             writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
                             pending = 0;
                         }
@@ -169,7 +169,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             }
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastStem), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;
@@ -199,7 +199,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         IPbtPersistence.IWriteBatch WriteBatch,
         long Accounts,
         long Slots,
-        Address LastAddress);
+        Stem LastStem);
 
     /// <summary>
     /// Folds the drained window into the tree on top of <paramref name="currentRoot"/> and commits it.
