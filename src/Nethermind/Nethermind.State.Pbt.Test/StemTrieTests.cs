@@ -121,6 +121,47 @@ public class StemTrieTests(PbtGroupFormat format)
     }
 
     [Test]
+    public void BrandNewStems_FoldWithoutReadingAPriorBlob()
+    {
+        // A and B diverge deep (bit 20), so inserting B splits a chain off A — the case where the new
+        // stem is reached with an absent pushed slot and the existing stem is re-hung by cached hash
+        byte[] stemA = new byte[31];
+        byte[] stemB = new byte[31];
+        stemB[2] = 0x08; // bit 20
+        byte[] keyA5 = [.. stemA, 5];
+        byte[] keyA6 = [.. stemA, 6];
+        byte[] keyB = [.. stemB, 7];
+        byte[] valueA = Bytes.FromHexString("0x1111111111111111111111111111111111111111111111111111111111111111");
+        byte[] valueB = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+
+        // brand-new stem: no node stood here, so no prior blob is read
+        int before = harness.LeafReads;
+        harness.ApplyBatch([(keyA5, valueA)]);
+        Assert.That(harness.LeafReads - before, Is.Zero, "a brand-new stem folds without reading a prior blob");
+
+        // brand-new stem splitting off the existing one: the new stem reads nothing, and the existing
+        // stem is carried by cached hash rather than re-folded
+        before = harness.LeafReads;
+        harness.ApplyBatch([(keyB, valueB)]);
+        Assert.That(harness.LeafReads - before, Is.Zero, "a stem splitting off an existing one reads no prior blob");
+
+        // updating the existing stem in place: its prior blob must be read to merge
+        before = harness.LeafReads;
+        harness.ApplyBatch([(keyA6, valueB)]);
+        Assert.That(harness.LeafReads - before, Is.EqualTo(1), "updating an existing stem reads its prior blob once");
+
+        // deleting the existing stem: still an existing stem, still read once
+        before = harness.LeafReads;
+        ValueHash256 root = harness.ApplyBatch([(keyA5, null), (keyA6, null)]);
+        Assert.That(harness.LeafReads - before, Is.EqualTo(1), "clearing an existing stem reads its prior blob once");
+
+        // the skipped reads left the tree correct: only B remains
+        Assert.That(root, Is.EqualTo(ReferenceRoot([(keyB, valueB)])));
+    }
+
+    [Test]
     public void StemsAtMixedDepths_SplitHoistAndRebuildStayCanonical()
     {
         // A and B diverge deep (bit 20: stems in the depth-20 group, six groups down the shared
