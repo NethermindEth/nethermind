@@ -26,7 +26,7 @@ public class ImportPbtFromPreimageFlatTests
     private const ulong SourceBlock = 7;
 
     // 0 leaves the built-in window size, so the whole import folds as one window; the small values
-    // force many windows, which the stem-ordered scratch scan must fold to the very same root
+    // force many windows, which the stem-ordered column scan must fold to the very same root
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(3)]
@@ -69,7 +69,9 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb);
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, new SnapshotableMemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+        // the same columns db must back both the persistence and the step, or phase two scans an empty
+        // database and the test passes while proving nothing
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -81,6 +83,95 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.GetAccount(TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetAccount(TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
+    }
+
+    /// <summary>
+    /// An account whose storage is entirely header-region (every slot &lt; 64) contributes zone-0 rows
+    /// and no zone-8 rows at all, so the merge-join must consume its slots without a storage-zone pass
+    /// to fall back on. An account with neither storage nor code covers the opposite end.
+    /// </summary>
+    [Test]
+    public async Task Imports_accounts_with_only_header_storage_and_with_none()
+    {
+        PbtConfig config = new();
+
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 2, 200);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 0, 0x11);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 63, 0x22);
+
+        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        {
+            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
+            batch.SetAccount(TestItem.AddressB, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakA));
+            batch.SetStorage(TestItem.AddressB, 0, SlotValue.FromSpanWithoutLeadingZero([0x11]));
+            batch.SetStorage(TestItem.AddressB, 63, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+        }
+
+        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+        RecordingExitSource exitSource = new();
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
+        using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, PbtReferenceModel.Root(model))));
+    }
+
+    /// <summary>
+    /// A crash after the data was written but before the persisted-state pointer advanced leaves the
+    /// target holding a full flat copy plus whatever leaf blobs and trie nodes the fold got through.
+    /// The next run must reproduce the same root over that debris rather than merging with it — the
+    /// fold starts from an empty root, so every stem is structurally new and its stale blob is
+    /// overwritten instead of read.
+    /// </summary>
+    [Test]
+    public async Task Rerunning_after_an_interrupted_import_reproduces_the_root()
+    {
+        PbtConfig config = new();
+
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 3, 42);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);
+        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
+
+        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
+        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
+        {
+            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
+            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA));
+            batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
+            batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+        }
+
+        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
+        PbtRocksDbPersistence pbtTarget = new(pbtDb);
+
+        async Task<ValueHash256> Import()
+        {
+            RecordingExitSource exitSource = new();
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
+            await step.Execute(CancellationToken.None);
+            Assert.That(exitSource.ExitCode, Is.EqualTo(0));
+
+            using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
+            return reader.CurrentState.StateRoot;
+        }
+
+        ValueHash256 first = await Import();
+        Assert.That(first, Is.EqualTo(PbtReferenceModel.Root(model)));
+
+        // rewind only the pointer, leaving the copied rows, blobs and nodes in place
+        pbtDb.GetColumnDb(PbtColumns.Metadata).Remove("currentState"u8);
+
+        Assert.That(await Import(), Is.EqualTo(first), "a restart over an interrupted import must reproduce the same root");
     }
 
     [Test]
@@ -100,7 +191,7 @@ public class ImportPbtFromPreimageFlatTests
         using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new SnapshotableMemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
