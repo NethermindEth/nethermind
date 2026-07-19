@@ -23,13 +23,35 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
+    private long _lastPayloadTick;
+    private long _lastPayloadIntervalMs;
+
+    /// <summary>Minimum observed interval between consecutive payloads, in milliseconds, for the
+    /// decommit collection to be considered safe to run; below it payloads are treated as streaming.</summary>
+    internal const long MinPayloadIntervalForDecommitMs = 4000;
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
     public IDisposable TryStartNoGCRegion()
     {
         long size = _defaultSize;
+        long timestamp = Environment.TickCount64;
+        long previousTick = Interlocked.Exchange(ref _lastPayloadTick, timestamp);
+        if (previousTick != 0)
+        {
+            // Clamp to 1 so that a same-tick arrival is distinguishable from "no interval observed".
+            Volatile.Write(ref _lastPayloadIntervalMs, Math.Max(1, timestamp - previousTick));
+        }
+
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
+        if (!pausedGCScheduler)
+        {
+            // A forced collection is in flight (or another NoGC region is active): attempting to
+            // start a NoGC region now would block until it finishes — up to the full stop-the-world
+            // pause of a decommit. Run this payload without one instead.
+            return new NoGCRegion(this, FailCause.GCInProgress, size, pausedGCScheduler, _logger);
+        }
+
         if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
@@ -68,6 +90,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
         GCFailedToStartNoGCRegion,
         TotalSizeExceededTheEphemeralSegmentSize,
         AlreadyInNoGCRegion,
+        GCInProgress,
         Exception
     }
 
@@ -117,6 +140,13 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
             else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
         }
     }
+
+    private bool ShouldDeferDecommit() => ShouldDeferDecommit(Volatile.Read(ref _lastPayloadIntervalMs));
+
+    internal static bool ShouldDeferDecommit(long lastPayloadIntervalMs) =>
+        lastPayloadIntervalMs is > 0 and < MinPayloadIntervalForDecommitMs;
+
+    internal long LastPayloadIntervalMs => Volatile.Read(ref _lastPayloadIntervalMs);
 
     private static long _lastGcTimeMs;
 
@@ -169,10 +199,23 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // Also decommit memory back to O/S
-                    mode = GCCollectionMode.Aggressive;
-                    generation = GcLevel.Gen2;
-                    compacting = GcCompaction.Full;
+                    // The decommit is an aggressive gen2 + LOH-compact collection whose
+                    // stop-the-world pause can exceed a second on large heaps. At slot cadence the
+                    // post-block delay leaves ample idle time, but when payloads stream
+                    // back-to-back (catch-up) the next payload lands mid-collection and stalls for
+                    // the remainder of the pause — defer until the cadence shows idle gaps.
+                    if (ShouldDeferDecommit())
+                    {
+                        // Retry the decommit on the next scheduled collection.
+                        Interlocked.Decrement(ref _forcedGcCount);
+                    }
+                    else
+                    {
+                        // Also decommit memory back to O/S
+                        mode = GCCollectionMode.Aggressive;
+                        generation = GcLevel.Gen2;
+                        compacting = GcCompaction.Full;
+                    }
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
