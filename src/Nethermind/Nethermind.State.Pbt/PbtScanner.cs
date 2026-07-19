@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Globalization;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
@@ -47,53 +50,211 @@ public enum PbtTreePartition
 /// <see cref="PbtSnapshotRepository"/> and are unreachable from the columns.
 /// </para>
 /// </remarks>
-public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager)
+public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
 {
     /// <summary>
-    /// Entries between cancellation checks and progress ticks; the sweep is otherwise a tight loop over
-    /// hundreds of millions of rows, and <see cref="ProgressLogger"/> neither throttles itself nor is
-    /// cheap enough to drive per entry.
+    /// Entries a worker counts locally before publishing them, and so also how often it checks for
+    /// cancellation; the sweep is otherwise a tight loop over hundreds of millions of rows.
     /// </summary>
-    private const int ProgressInterval = 64 * 1024;
+    private const int ProgressPublishInterval = 100_000;
+
+    /// <summary>How often the progress ticker samples the counters the workers publish.</summary>
+    private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>Ranges per worker, so that work stealing can even out the uneven ones.</summary>
+    private const int RangesPerWorker = 16;
+
+    /// <summary>Key prefix the leaf column ranges are split over, the first two bytes of a stem.</summary>
+    private const int LeafPrefixSpace = 1 << 16;
+
+    /// <summary>Values the leading byte of a trie node key — the node's depth — can take.</summary>
+    private const int TrieNodeDepthSpace = 1 << 8;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
-    public PbtScanReport Scan(CancellationToken cancellationToken)
+    /// <summary>Counts one entry of a column into <paramref name="report"/>.</summary>
+    private delegate void ScanEntry(PbtScanReport report, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+
+    public async Task<PbtScanReport> Scan(CancellationToken cancellationToken)
     {
         PbtScanReport report = new();
+        int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
+        byte[][] leafBounds = LeafBounds(Math.Min(workerCount * RangesPerWorker, LeafPrefixSpace));
 
-        ScanTrieNodes(report, cancellationToken);
-        ScanLeafColumn(PbtColumns.AccountLeaves, report.AccountLeaves, cancellationToken);
-        ScanLeafColumn(PbtColumns.CodeLeaves, report.CodeLeaves, cancellationToken);
-        ScanLeafColumn(PbtColumns.StorageLeaves, report.StorageLeaves, cancellationToken);
+        await ScanColumn(PbtColumns.TrieNodes, TrieNodeBounds(), ScanTrieNode, report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.AccountLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.AccountLeaves), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.CodeLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.CodeLeaves), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.StorageLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.StorageLeaves), report, workerCount, cancellationToken);
 
         return report;
     }
 
-    private void ScanTrieNodes(PbtScanReport report, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sweeps one column in parallel, counting every entry into <paramref name="report"/>.
+    /// </summary>
+    /// <remarks>
+    /// Every statistic follows from one entry alone, so the column's key space is cut into the ranges
+    /// <paramref name="bounds"/> delimits and the workers claim them in turn — on demand rather than
+    /// assigned up front, because the ranges are wildly uneven. Each worker owns a range, the iterator
+    /// over it and a report of its own, so nothing is shared until the reports are folded together
+    /// here; the counters the progress ticker samples are all that cross threads while it runs.
+    /// </remarks>
+    private async Task ScanColumn(
+        PbtColumns columnName,
+        byte[][] bounds,
+        ScanEntry scanEntry,
+        PbtScanReport report,
+        int workerCount,
+        CancellationToken cancellationToken)
     {
-        IDb column = db.GetColumnDb(PbtColumns.TrieNodes);
-        ProgressLogger progress = CreateProgressLogger(PbtColumns.TrieNodes, column);
-        long scanned = 0;
-
-        foreach (KeyValuePair<byte[], byte[]?> entry in column.GetAll(ordered: true))
+        IDb column = db.GetColumnDb(columnName);
+        if (column is not ISortedKeyValueStore sorted)
         {
-            byte[]? value = entry.Value;
-            if (value is not { Length: > 0 }) continue;   // an empty value is a removal marker, never stored
-
-            // the key is the node's position: the depth byte, then the zero-padded path whose first
-            // nibble is the zone once the path has one
-            byte[] key = entry.Key;
-            int depth = key[0];
-            PbtScanReport.TrieNodeStats stats = report[PartitionOf(depth, key[1])];
-
-            if (PbtNodeChain.IsChain(value)) ScanChain(value, depth, stats);
-            else ScanGroup(value, depth, stats, report);
-
-            if (++scanned % ProgressInterval == 0) Tick(progress, scanned, cancellationToken);
+            throw new InvalidOperationException($"The PBT {columnName} column is a {column.GetType().Name}, which cannot be range scanned.");
         }
 
-        Report(progress, PbtColumns.TrieNodes, scanned);
+        int rangeCount = bounds.Length - 1;
+        int nextRange = -1, doneRanges = 0;
+        long scanned = 0;
+
+        PbtScanReport[] shards = new PbtScanReport[workerCount];
+        for (int i = 0; i < shards.Length; i++) shards[i] = new PbtScanReport();
+
+        void ScanRanges(PbtScanReport shard)
+        {
+            long pending = 0;
+            int range;
+            while ((range = Interlocked.Increment(ref nextRange)) < rangeCount)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using ISortedView view = sorted.GetViewBetween(bounds[range], bounds[range + 1]);
+                while (view.MoveNext())
+                {
+                    ReadOnlySpan<byte> value = view.CurrentValue;
+                    if (value.IsEmpty) continue;   // an empty value is a removal marker, never stored
+
+                    scanEntry(shard, view.CurrentKey, value);
+
+                    if (++pending >= ProgressPublishInterval)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        Interlocked.Add(ref scanned, pending);
+                        pending = 0;
+                    }
+                }
+
+                Interlocked.Increment(ref doneRanges);
+            }
+
+            Interlocked.Add(ref scanned, pending);
+        }
+
+        // ProgressLogger is neither thread-safe nor self-throttling, so one ticker owns it and samples
+        // the counters the workers publish, rather than the workers logging as they go
+        ProgressLogger progress = CreateProgressLogger(columnName, column, () => Volatile.Read(ref doneRanges) / (float)rangeCount);
+        using CancellationTokenSource loggingCts = new();
+        Task logging = Task.Run(async () =>
+        {
+            try
+            {
+                using PeriodicTimer timer = new(ProgressLogInterval);
+                while (await timer.WaitForNextTickAsync(loggingCts.Token))
+                {
+                    progress.Update((ulong)Interlocked.Read(ref scanned));
+                    progress.LogProgress();
+                }
+            }
+            catch (OperationCanceledException) { /* the sweep finished */ }
+        }, CancellationToken.None);
+
+        Stopwatch sweeping = Stopwatch.StartNew();
+        Task[] workers = new Task[workerCount];
+        for (int i = 0; i < workerCount; i++)
+        {
+            PbtScanReport shard = shards[i];
+            workers[i] = Task.Run(() => ScanRanges(shard), cancellationToken);
+        }
+
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        finally
+        {
+            await loggingCts.CancelAsync();
+            await logging;
+        }
+
+        foreach (PbtScanReport shard in shards) report.MergeFrom(shard);
+
+        progress.Update((ulong)scanned);
+        progress.MarkEnd();
+        if (_logger.IsInfo) _logger.Info($"PBT scan {columnName}: {scanned:N0} entries in {sweeping.Elapsed:hh\\:mm\\:ss} at {progress.TotalPerSecond:N0}/s");
+    }
+
+    private static void ScanTrieNode(PbtScanReport report, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        // the key is the node's position: the depth byte, then the zero-padded path whose first
+        // nibble is the zone once the path has one
+        int depth = key[0];
+        PbtScanReport.TrieNodeStats stats = report[PartitionOf(depth, key[1])];
+
+        if (PbtNodeChain.IsChain(value)) ScanChain(value, depth, stats);
+        else ScanGroup(value, depth, stats, report);
+    }
+
+    /// <summary>
+    /// The trie node key range boundaries, one range per value of the key's leading byte.
+    /// </summary>
+    /// <remarks>
+    /// A trie node key is its depth followed by its path (see <see cref="TrieNodeKey.WriteTo"/>), so
+    /// the column is sorted depth-major and one depth is one contiguous range. Only depths that are
+    /// multiples of <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> are ever stored, so most of these
+    /// ranges are empty and cost no more than the seek that finds them so.
+    /// </remarks>
+    private static byte[][] TrieNodeBounds()
+    {
+        byte[][] bounds = new byte[TrieNodeDepthSpace + 1][];
+        for (int depth = 0; depth < TrieNodeDepthSpace; depth++)
+        {
+            byte[] bound = new byte[TrieNodeKey.Length];
+            bound[0] = (byte)depth;
+            bounds[depth] = bound;
+        }
+
+        bounds[TrieNodeDepthSpace] = MaxKey(TrieNodeKey.Length);
+        return bounds;
+    }
+
+    /// <summary>
+    /// The leaf column key range boundaries, splitting the space evenly over the first two bytes of the
+    /// stem. Stems are hashes, so the ranges hold comparable numbers of blobs.
+    /// </summary>
+    private static byte[][] LeafBounds(int rangeCount)
+    {
+        byte[][] bounds = new byte[rangeCount + 1][];
+        for (int range = 0; range < rangeCount; range++)
+        {
+            byte[] bound = new byte[Stem.Length];
+            BinaryPrimitives.WriteUInt16BigEndian(bound, (ushort)((long)range * LeafPrefixSpace / rangeCount));
+            bounds[range] = bound;
+        }
+
+        bounds[rangeCount] = MaxKey(Stem.Length);
+        return bounds;
+    }
+
+    /// <summary>
+    /// The exclusive upper bound of the last range: one byte longer than the keys it must sit above, so
+    /// that it also excludes none of them — an all-<c>0xFF</c> key of <paramref name="keyLength"/> is a
+    /// prefix of it, and so sorts below it.
+    /// </summary>
+    private static byte[] MaxKey(int keyLength)
+    {
+        byte[] max = new byte[keyLength + 1];
+        max.AsSpan().Fill(0xFF);
+        return max;
     }
 
     /// <summary>The zone subtree a node at <paramref name="depth"/> whose path starts with <paramref name="firstPathByte"/> belongs to.</summary>
@@ -185,24 +346,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
         return true;
     }
 
-    private void ScanLeafColumn(PbtColumns columnName, PbtScanReport.LeafColumnStats stats, CancellationToken cancellationToken)
-    {
-        IDb column = db.GetColumnDb(columnName);
-        ProgressLogger progress = CreateProgressLogger(columnName, column);
-        long scanned = 0;
-
-        foreach (KeyValuePair<byte[], byte[]?> entry in column.GetAll(ordered: true))
-        {
-            byte[]? blob = entry.Value;
-            if (blob is not { Length: > 0 }) continue;   // an emptied stem is removed, never stored empty
-
-            ScanLeafBlob(blob, stats);
-            if (++scanned % ProgressInterval == 0) Tick(progress, scanned, cancellationToken);
-        }
-
-        Report(progress, columnName, scanned);
-    }
-
     /// <remarks>
     /// A blob's entries are its present leaves and its branching internals in one undifferentiated
     /// post-order run, so the leaf count comes from the footer bitmap and the internals are whatever
@@ -226,31 +369,22 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
     }
 
     /// <remarks>
-    /// The target is RocksDB's own estimate, so the percentage is approximate and can pass 100%; it is
-    /// there to show the sweep moving, not to promise a finish time.
+    /// Ranges are claimed in turn and there are far more of them than workers, so the fraction finished
+    /// is a fair completion estimate — fairer than the entry count, whose target is RocksDB's own
+    /// estimate. The count still drives <see cref="ProgressLogger.CurrentValue"/> only so that it moves
+    /// every tick: the logger drops a repeated line unless it changes, which a long range would stall.
     /// </remarks>
-    private ProgressLogger CreateProgressLogger(PbtColumns columnName, IDb column)
+    private ProgressLogger CreateProgressLogger(PbtColumns columnName, IDb column, Func<float> completion)
     {
         ProgressLogger progress = new($"PBT scan {columnName}", logManager);
         progress.SetFormat(logger =>
-            $"PBT scan {columnName,-14} {logger.CurrentValue,15:N0} entries ({logger.CurrentPerSecond,10:N0}/s) of ~{logger.TargetValue,15:N0}");
+        {
+            float percentage = Math.Clamp(completion(), 0, 1);
+            return $"PBT scan {columnName,-14} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
+                $"{logger.CurrentValue,15:N0} entries ({logger.CurrentPerSecond,10:N0}/s) of ~{logger.TargetValue,15:N0}";
+        });
         progress.Reset(0, (ulong)Math.Max(column.EstimatedCount, 0));
         return progress;
-    }
-
-    private static void Tick(ProgressLogger progress, long scanned, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        progress.Update((ulong)scanned);
-        progress.LogProgress();
-        progress.SetMeasuringPoint();
-    }
-
-    private void Report(ProgressLogger progress, PbtColumns columnName, long scanned)
-    {
-        progress.Update((ulong)scanned);
-        progress.MarkEnd();
-        if (_logger.IsInfo) _logger.Info($"PBT scan {columnName}: {scanned:N0} entries at {progress.TotalPerSecond:N0}/s");
     }
 }
 
@@ -310,6 +444,27 @@ public sealed class PbtScanReport
     /// <summary>Whether the stems counted match the count the root caches for its subtree.</summary>
     public bool StemCountAgrees => RootSubtreeStemCount == StemCount;
 
+    /// <summary>Adds everything <paramref name="other"/> counted into this report.</summary>
+    /// <remarks>
+    /// How the parallel sweep's per-worker reports are folded into one. Only the worker that scanned
+    /// the root's range ever records a <see cref="RootSubtreeStemCount"/>, so the greatest is it.
+    /// </remarks>
+    internal void MergeFrom(PbtScanReport other)
+    {
+        for (int i = 0; i < _byPartition.Length; i++) _byPartition[i].MergeFrom(other._byPartition[i]);
+
+        AccountLeaves.MergeFrom(other.AccountLeaves);
+        CodeLeaves.MergeFrom(other.CodeLeaves);
+        StorageLeaves.MergeFrom(other.StorageLeaves);
+
+        RootSubtreeStemCount = Math.Max(RootSubtreeStemCount, other.RootSubtreeStemCount);
+    }
+
+    private static void AddInto(long[] into, long[] from)
+    {
+        for (int i = 0; i < into.Length; i++) into[i] += from[i];
+    }
+
     private long Sum(Func<TrieNodeStats, long> selector)
     {
         long total = 0;
@@ -346,6 +501,26 @@ public sealed class PbtScanReport
         public long ChainGroupBlobsAvoided { get; internal set; }
 
         public bool IsEmpty => GroupCount == 0 && ChainCount == 0;
+
+        internal void MergeFrom(TrieNodeStats other)
+        {
+            GroupCount += other.GroupCount;
+            InterleavedGroupCount += other.InterleavedGroupCount;
+            ChainCount += other.ChainCount;
+            StemCount += other.StemCount;
+            GroupBytes += other.GroupBytes;
+            ChainBytes += other.ChainBytes;
+            InterleaveSkippedNodes += other.InterleaveSkippedNodes;
+            ChainSkippedNodes += other.ChainSkippedNodes;
+            ChainEntriesAvoided += other.ChainEntriesAvoided;
+            ChainGroupBlobsAvoided += other.ChainGroupBlobsAvoided;
+
+            AddInto(GroupsByDepth, other.GroupsByDepth);
+            AddInto(GroupBytesByDepth, other.GroupBytesByDepth);
+            AddInto(StemsByDepth, other.StemsByDepth);
+            AddInto(ChainsByStartDepth, other.ChainsByStartDepth);
+            AddInto(ChainsBySpan, other.ChainsBySpan);
+        }
     }
 
     /// <summary>What one leaf-blob column holds.</summary>
@@ -365,6 +540,17 @@ public sealed class PbtScanReport
 
         /// <summary>Blobs by how many of the stem's 256 leaves they hold, indexed by that count.</summary>
         public long[] BlobsByLeafCount { get; } = new long[LeafSlots];
+
+        internal void MergeFrom(LeafColumnStats other)
+        {
+            BlobCount += other.BlobCount;
+            Bytes += other.Bytes;
+            LeafCount += other.LeafCount;
+            IntermediateNodeCount += other.IntermediateNodeCount;
+            LegacyBlobCount += other.LegacyBlobCount;
+
+            AddInto(BlobsByLeafCount, other.BlobsByLeafCount);
+        }
     }
 
     public string Format()

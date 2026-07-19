@@ -30,7 +30,7 @@ public class ScanPbtTree(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ScanPbtTree>();
 
-    public Task Execute(CancellationToken cancellationToken)
+    public async Task Execute(CancellationToken cancellationToken)
     {
         StateId state;
         using (IPbtPersistence.IReader reader = persistence.CreateReader()) state = reader.CurrentState;
@@ -39,7 +39,7 @@ public class ScanPbtTree(
         {
             if (_logger.IsInfo) _logger.Info("The PBT database holds no persisted state; nothing to scan.");
             exitSource.Exit(0);
-            return Task.CompletedTask;
+            return;
         }
 
         // only what the coordinator has written is visible here; snapshots it still holds are not
@@ -48,13 +48,13 @@ public class ScanPbtTree(
         PbtScanReport report;
         try
         {
-            report = scanner.Scan(cancellationToken);
+            report = await scanner.Scan(cancellationToken);
         }
         catch (OperationCanceledException)
         {
             if (_logger.IsInfo) _logger.Info("PBT scan cancelled.");
             exitSource.Exit(1);
-            return Task.CompletedTask;
+            return;
         }
 
         if (_logger.IsInfo) _logger.Info(report.Format());
@@ -66,6 +66,5 @@ public class ScanPbtTree(
         }
 
         exitSource.Exit(0);
-        return Task.CompletedTask;
     }
 }
