@@ -39,6 +39,9 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);      // header-region slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);     // storage-zone slot
         PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
+        // a second contract with the same code exercises the overflow-chunk dedup: its content-addressed
+        // chunks are emitted once, and the root must still match the reference tree
+        PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
 
         SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance);
@@ -51,6 +54,7 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
             batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
             batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+            batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash));
         }
 
         MemDb codeDb = new();
@@ -69,6 +73,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, PbtReferenceModel.Root(model))));
         Assert.That(reader.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(reader.GetAccount(TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+        Assert.That(reader.GetAccount(TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(EvmWordSlot.AsReadOnlySpan(reader.GetSlot(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
     }
 
