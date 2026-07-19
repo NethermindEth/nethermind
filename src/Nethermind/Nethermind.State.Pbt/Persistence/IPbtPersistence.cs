@@ -22,7 +22,15 @@ public interface IPbtPersistence
     /// Self-destruct range deletes are computed against the pre-batch state, so they must be
     /// applied before the slot writes of the same batch.
     /// </summary>
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to);
+    /// <param name="flags">
+    /// Applied to every write of the batch. <see cref="WriteFlags.DisableWAL"/> makes the batch
+    /// non-durable until <see cref="Flush"/> is called, so it is only safe for bulk writes that are
+    /// restarted from scratch on a crash.
+    /// </param>
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags);
+
+    /// <summary>Materializes every column's memtable, making prior <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
+    void Flush();
 
     public interface IReader : IDisposable
     {
