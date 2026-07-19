@@ -120,6 +120,71 @@ public class PbtScopeProviderTests
     }
 
     [Test]
+    public async Task UnchangedStorageStems_PassThroughReusesTheStoredChainNode_AndRootStaysCorrect()
+    {
+        await using PbtTestContext ctx = new();
+        PbtScopeProvider provider = ctx.CreateScopeProvider();
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        // Spread storage slots (each 256 apart) land one per stem, so every contract grows a spine of
+        // chain nodes down to where its stems part — the runs whose fold the pass-through reuses.
+        const int slots = 20;
+        static UInt256 Slot(int s) => (UInt256)(64 + s * 256);
+
+        Dictionary<string, byte[]> model = [];
+
+        Hash256 root1;
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
+            {
+                foreach (Address address in addresses)
+                {
+                    batch.Set(address, new Account(1, 100));
+                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
+                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), [(byte)(s + 1)]);
+                }
+            }
+
+            scope.UpdateRootHash();
+            scope.Commit(1);
+            root1 = scope.RootHash;
+        }
+
+        foreach (Address address in addresses)
+        {
+            PbtReferenceModel.SetAccount(model, address, 1, 100);
+            for (int s = 0; s < slots; s++) PbtReferenceModel.SetSlot(model, address, Slot(s), (UInt256)(s + 1));
+        }
+        Assert.That(root1, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+
+        // Change each account but re-write every storage slot to its existing value: each storage stem's
+        // target group is left byte-identical, so the descent passes through the stored spine chains and
+        // must reproduce their cached node hash without re-folding — the root has to match the reference.
+        BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject;
+        Hash256 root2;
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, new LocalMetrics()))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
+            {
+                foreach (Address address in addresses)
+                {
+                    batch.Set(address, new Account(2, 150));
+                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
+                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), [(byte)(s + 1)]);
+                }
+            }
+
+            scope.UpdateRootHash();
+            root2 = scope.RootHash;
+        }
+
+        foreach (Address address in addresses) PbtReferenceModel.SetAccount(model, address, 2, 150);
+        Assert.That(root2, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+        Assert.That(root2, Is.Not.EqualTo(root1), "the accounts changed, so the root must move");
+    }
+
+    [Test]
     public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold()
     {
         await using PbtTestContext ctx = new();

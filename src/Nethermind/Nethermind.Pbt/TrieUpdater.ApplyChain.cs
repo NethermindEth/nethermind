@@ -27,6 +27,21 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
+        /// Copies an unchanged run's own encoding into memory of its own, for an ancestor to plant. The
+        /// writes left its target group byte-identical, so the run — target hash, path, depths, stats and
+        /// the node hash folded from them all unmoved — encodes to the very same bytes: they are handed up
+        /// verbatim rather than spending the <see cref="PbtNodeChain.Fold"/> <see cref="NewChainNode"/>
+        /// would to reproduce the cached node hash.
+        /// </summary>
+        private Occupant CopyChainNode(ReadOnlySpan<byte> chainData)
+        {
+            Debug.Assert(chainData.Length == PbtNodeChain.EncodedLength);
+            RefCountingMemory memory = memoryProvider.Rent(PbtNodeChain.EncodedLength);
+            chainData.CopyTo(memory.GetSpan());
+            return new Occupant(new NodeRef(ResultKind.Chain, 0), memory);
+        }
+
+        /// <summary>
         /// Builds the boundary internal caching <paramref name="hash"/> in memory of its own, for a
         /// pointer to a stored group that no group's encoding holds yet.
         /// </summary>
@@ -85,7 +100,21 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
                 NodeResult inner = default;
-                ApplyStored(chain.TargetKey, entries, targetData, chain.TargetHash, default, ref inner, out _, out delta);
+                ApplyStored(chain.TargetKey, entries, targetData, chain.TargetHash, default, ref inner, out bool targetChanged, out delta);
+
+                // The run points at one group and one only (invariant 2). When the writes leave that group
+                // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
+                // which did not move — so its encoding still stands: hand it up verbatim and skip the fold
+                // WrapIntoChain would spend to recompute a hash already cached.
+                if (!targetChanged)
+                {
+                    inner.Dispose();
+                    Debug.Assert(delta.IsZero, "an unchanged target subtree moves no statistic");
+                    result = CopyChainNode(chainData);
+                    changed = false;
+                    return;
+                }
+
                 result = WrapIntoChain(depth, chain.TargetKey, inner, targetData is not null, chain.Stats + delta);
                 changed = result.NodeHash() != chain.NodeHash;
                 return;
