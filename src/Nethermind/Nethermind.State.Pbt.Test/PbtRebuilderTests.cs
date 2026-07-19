@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
@@ -36,9 +38,14 @@ public class PbtRebuilderTests
         byte[] smallCode = Bytes.FromHexString("0x60016002");
 
         Dictionary<string, byte[]> model = [];
-        ArrayPoolList<RebuildEntry> entries = new(64); // ownership passes to Rebuild, which disposes it
         Dictionary<Address, Account> expectedAccounts = [];
         Dictionary<(Address, UInt256), UInt256> expectedSlots = [];
+
+        // entries are staged through the import's scratch format and read back in tree-key order, which
+        // is how the rebuilder is fed in production
+        SnapshotableMemDb scratch = new();
+        IWriteBatch scratchBatch = scratch.StartWriteBatch();
+        PbtImportScratchWriter writer = new(scratchBatch);
 
         void AddAccount(Address address, ulong nonce, in UInt256 balance, byte[]? code)
         {
@@ -47,15 +54,15 @@ public class PbtRebuilderTests
                 ? new Account(nonce, balance).WithChangedCodeHash(Keccak.Compute(code))
                 : new Account(nonce, balance);
             expectedAccounts[address] = account;
-            RebuildEntry.EmitAccount(address, account, code is { Length: > 0 } ? code : null, PbtKeyDerivation.AddressKeyHash(address), entries, emitOverflowChunks: true);
+            writer.WriteAccount(address, account, AccountDecoder.Slim.Encode(account).Bytes, code is { Length: > 0 } ? code : null, PbtKeyDerivation.AddressKeyHash(address), emitOverflowChunks: true);
         }
 
         void AddSlot(Address address, in UInt256 slot, in UInt256 value)
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             expectedSlots[(address, slot)] = value;
-            RebuildEntry.SlotDeriver deriver = new(address, PbtKeyDerivation.AddressKeyHash(address));
-            entries.Add(deriver.Derive(slot, EvmWordSlot.FromStripped(value.ToBigEndian().WithoutLeadingZeros())));
+            PbtImportScratchWriter.SlotDeriver deriver = new(address, PbtKeyDerivation.AddressKeyHash(address));
+            writer.WriteSlot(address, slot, EvmWordSlot.FromStripped(value.ToBigEndian().WithoutLeadingZeros()), ref deriver);
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA
@@ -65,6 +72,14 @@ public class PbtRebuilderTests
         AddSlot(TestItem.AddressB, 1000, 0x1234);
         AddAccount(TestItem.AddressC, 2, 7, smallCode);             // small contract, no overflow
         AddSlot(TestItem.AddressC, 3, 0x99);
+
+        scratchBatch.Dispose();
+
+        ArrayPoolList<RebuildEntry> entries = new(64); // ownership passes to Rebuild, which disposes it
+        using (ISortedView view = scratch.GetViewBetween(new byte[PbtImportScratch.KeyLength], Enumerable.Repeat((byte)0xFF, PbtImportScratch.KeyLength + 1).ToArray()))
+        {
+            while (view.MoveNext()) entries.Add(PbtImportScratch.Decode(view.CurrentKey, view.CurrentValue));
+        }
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db);
