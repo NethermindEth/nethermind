@@ -13,5 +13,6 @@ public class PbtConfig : IPbtConfig
     public bool ImportFromPreimageFlat { get; set; }
     public int ImportStorageReadConcurrency { get; set; }
     public int ImportWindowSize { get; set; }
+    public bool ScanTree { get; set; }
     public bool InterleaveTrieNodeLevels { get; set; } = true;
 }
