@@ -31,6 +31,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat import before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]
     int ImportWindowSize { get; set; }
 
+    [ConfigItem(Description = "Report what the persisted PBT database holds - the trie's shape by depth, and how many nodes the interleaved encoding, the node chains and the leaf blobs each leave unstored - then exit.", DefaultValue = "false")]
+    bool ScanTree { get; set; }
+
     [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile, folding the odd levels' hashes on demand. Reduces the size of the trie node column at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
     bool InterleaveTrieNodeLevels { get; set; }
 }

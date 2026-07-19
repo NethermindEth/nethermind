@@ -1,0 +1,244 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using Nethermind.Core.Buffers;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Pbt;
+using NUnit.Framework;
+
+namespace Nethermind.State.Pbt.Test;
+
+/// <summary>
+/// The scanner reads a tree's shape out of the columns without descending it, so these build a tree
+/// of a known shape through the ordinary write path and pin every count against it.
+/// </summary>
+public class PbtScannerTests
+{
+    /// <summary>Leaves per stem, chosen so each blob lands in a distinct histogram bucket.</summary>
+    private static readonly int[] AccountLeafCounts = [1, 2, 3, 5];
+    private static readonly int[] StorageLeafCounts = [1, 4];
+
+    /// <summary>
+    /// The tree the tests scan:
+    /// <list type="bullet">
+    /// <item>four account stems (zone 0) differing in the second nibble, so they share the root's slot
+    /// 0 and branch across the boundary of one group at depth 4;</item>
+    /// <item>two storage stems (zone 8) agreeing to bit 42, so the run from depth 4 down to depth 40
+    /// has a single child throughout and collapses into one chain.</item>
+    /// </list>
+    /// That gives three groups (depths 0, 4 and 40), one chain and six stems.
+    /// </summary>
+    private static List<(byte[] Key, byte[]? Value)> BuildWrites()
+    {
+        List<(byte[], byte[]?)> writes = [];
+
+        for (int stem = 0; stem < AccountLeafCounts.Length; stem++)
+        {
+            // zone 0, second nibble picks the boundary slot of the depth-4 group
+            byte[] prefix = new byte[Stem.Length];
+            prefix[0] = (byte)stem;
+            AddLeaves(writes, prefix, AccountLeafCounts[stem]);
+        }
+
+        for (int stem = 0; stem < StorageLeafCounts.Length; stem++)
+        {
+            // zone 8, and the only difference is in the nibble at bits 40-43, so everything above it
+            // is a single-child run
+            byte[] prefix = new byte[Stem.Length];
+            prefix[0] = 0x80;
+            prefix[5] = (byte)(stem << 4);
+            AddLeaves(writes, prefix, StorageLeafCounts[stem]);
+        }
+
+        return writes;
+    }
+
+    private static void AddLeaves(List<(byte[], byte[]?)> writes, byte[] stem, int leafCount)
+    {
+        for (int leaf = 0; leaf < leafCount; leaf++)
+        {
+            byte[] key = new byte[Stem.Length + 1];
+            stem.CopyTo(key, 0);
+            key[Stem.Length] = (byte)leaf;   // sub-index; the leaves' placement does not affect the counts
+
+            byte[] value = new byte[StemLeafBlob.ValueLength];
+            value[0] = (byte)(leaf + 1);     // non-zero, or the write would clear the leaf
+            writes.Add((key, value));
+        }
+    }
+
+    /// <summary>
+    /// The shape counts are what the tree holds, not how it is encoded, so every one of them but the
+    /// skipped-level count must read the same under either format.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    public void Scan_CountsTheTreesShape(PbtGroupFormat format)
+    {
+        PbtScanReport report = ScanTree(format);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.GroupCount, Is.EqualTo(3), "groups at depths 0, 4 and 40");
+            Assert.That(report.Root.GroupsByDepth[0], Is.EqualTo(1), "the root group is above every zone");
+            Assert.That(report.AccountNodes.GroupsByDepth[4], Is.EqualTo(1), "the account stems' group is in zone 0");
+            Assert.That(report.StorageNodes.GroupsByDepth[40], Is.EqualTo(1), "the storage stems' group is in zone 8");
+            Assert.That(report.CodeNodes.IsEmpty, Is.True, "nothing was written to the code zone");
+
+            Assert.That(report.StemCount, Is.EqualTo(6), "four account stems and two storage stems");
+            Assert.That(report.AccountNodes.StemsByDepth[8], Is.EqualTo(4), "the account stems sit on the depth-4 group's boundary");
+            Assert.That(report.StorageNodes.StemsByDepth[44], Is.EqualTo(2), "and the storage stems on the depth-40 group's");
+
+            // every stored node caches its subtree's stem count, so the root's is an independent check
+            Assert.That(report.RootSubtreeStemCount, Is.EqualTo(report.StemCount));
+            Assert.That(report.StemCountAgrees, Is.True);
+
+            Assert.That(report.Root.GroupBytesByDepth[0], Is.GreaterThan(0), "average size per depth needs the byte totals");
+        });
+    }
+
+    /// <summary>
+    /// The interleaved encoding leaves an internal node unstored at every odd group-relative level
+    /// whose subtree is occupied — four such positions in the root group, three in the account group
+    /// and two in the storage group — and the every-level encoding leaves none.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel, 0, 0, 0)]
+    [TestCase(PbtGroupFormat.Interleaved, 4, 3, 2)]
+    public void Scan_CountsInterleavedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
+    {
+        PbtScanReport report = ScanTree(format);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.Root.InterleaveSkippedNodes, Is.EqualTo(root));
+            Assert.That(report.AccountNodes.InterleaveSkippedNodes, Is.EqualTo(account));
+            Assert.That(report.StorageNodes.InterleaveSkippedNodes, Is.EqualTo(storage));
+            Assert.That(report.InterleaveSkippedNodes, Is.EqualTo(root + account + storage));
+            Assert.That(report.Root.InterleavedGroupCount, Is.EqualTo(format == PbtGroupFormat.Interleaved ? 1 : 0));
+        });
+    }
+
+    /// <summary>
+    /// The single-child run below the root's storage slot collapses into one chain, and both the
+    /// levels it elides and the entries it saves follow from its span. It is a storage-zone spine, so
+    /// none of it lands on any other partition.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    public void Scan_CountsChainsAndWhatTheyElide(PbtGroupFormat format)
+    {
+        PbtScanReport report = ScanTree(format);
+        PbtScanReport.TrieNodeStats storage = report.StorageNodes;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.ChainCount, Is.EqualTo(1));
+            Assert.That(storage.ChainCount, Is.EqualTo(1), "the spine is storage's, as chains generally are");
+            Assert.That(report.AccountNodes.ChainCount, Is.EqualTo(0));
+
+            Assert.That(storage.ChainsByStartDepth[4], Is.EqualTo(1), "the root group branches, so the run starts below it");
+            Assert.That(storage.ChainsBySpan[36], Is.EqualTo(1), "and lands on the group at depth 40");
+
+            // the nodes at depths 5..39: the run's own node is the chain and the target's is the group
+            Assert.That(storage.ChainSkippedNodes, Is.EqualTo(35));
+
+            // nine every-level groups would have stored four hashes each; the chain stores two
+            Assert.That(storage.ChainEntriesAvoided, Is.EqualTo(9 * PbtTrieNodeGroup.LevelsPerGroup - 2));
+            Assert.That(storage.ChainGroupBlobsAvoided, Is.EqualTo(8));
+        });
+    }
+
+    /// <summary>
+    /// A blob stores its present leaves plus only its branching internals, so a stem holding n leaves
+    /// contributes n - 1 of them whatever the placement.
+    /// </summary>
+    [TestCase(PbtGroupFormat.EveryLevel)]
+    [TestCase(PbtGroupFormat.Interleaved)]
+    public void Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format)
+    {
+        PbtScanReport report = ScanTree(format);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.AccountLeaves.BlobCount, Is.EqualTo(AccountLeafCounts.Length));
+            Assert.That(report.AccountLeaves.LeafCount, Is.EqualTo(1 + 2 + 3 + 5));
+            Assert.That(report.AccountLeaves.IntermediateNodeCount, Is.EqualTo(0 + 1 + 2 + 4));
+            foreach (int leaves in AccountLeafCounts)
+            {
+                Assert.That(report.AccountLeaves.BlobsByLeafCount[leaves], Is.EqualTo(1), $"one account blob holds {leaves} leaves");
+            }
+
+            Assert.That(report.StorageLeaves.BlobCount, Is.EqualTo(StorageLeafCounts.Length));
+            Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(1 + 4));
+            Assert.That(report.StorageLeaves.IntermediateNodeCount, Is.EqualTo(0 + 3));
+            Assert.That(report.StorageLeaves.BlobsByLeafCount[1], Is.EqualTo(1), "one storage blob holds a single slot");
+            Assert.That(report.StorageLeaves.BlobsByLeafCount[4], Is.EqualTo(1), "and one holds four");
+
+            Assert.That(report.CodeLeaves.BlobCount, Is.EqualTo(0), "no code overflows into its own zone here");
+            Assert.That(report.AccountLeaves.LegacyBlobCount, Is.EqualTo(0), "the updater only ever writes the current layout");
+        });
+    }
+
+    /// <summary>An empty database reports nothing rather than throwing.</summary>
+    [Test]
+    public void Scan_EmptyDatabase_CountsNothing()
+    {
+        PbtScanReport report = new PbtScanner(new SnapshotableMemColumnsDb<PbtColumns>("pbt"), LimboLogs.Instance).Scan(default);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report.GroupCount, Is.EqualTo(0));
+            Assert.That(report.ChainCount, Is.EqualTo(0));
+            Assert.That(report.StemCount, Is.EqualTo(0));
+            Assert.That(report.AccountLeaves.BlobCount, Is.EqualTo(0));
+            Assert.That(report.StemCountAgrees, Is.True, "nothing counted matches nothing recorded");
+        });
+    }
+
+    /// <summary>The rendered report covers every partition that holds anything, and says so per zone.</summary>
+    [Test]
+    public void Format_ReportsEachPartitionThatHoldsAnything()
+    {
+        string report = ScanTree(PbtGroupFormat.Interleaved).Format();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(report, Does.Contain("--- Root ---"));
+            Assert.That(report, Does.Contain("--- Account ---"));
+            Assert.That(report, Does.Contain("--- Storage ---"));
+            Assert.That(report, Does.Not.Contain("--- Code ---"), "an empty partition is left out");
+            Assert.That(report, Does.Contain("Account leaf blobs"));
+            Assert.That(report, Does.Contain("Storage leaf blobs"));
+        });
+    }
+
+    /// <summary>Builds the tree in <paramref name="format"/> and scans the columns it lands in.</summary>
+    private static PbtScanReport ScanTree(PbtGroupFormat format)
+    {
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        harness.ApplyBatch(BuildWrites());
+
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        foreach (KeyValuePair<TrieNodeKey, byte[]> node in harness.Nodes)
+        {
+            db.GetColumnDb(PbtColumns.TrieNodes)[node.Key.ToDbKey()] = node.Value;
+        }
+
+        foreach (KeyValuePair<Stem, byte[]> blob in harness.Blobs)
+        {
+            db.GetColumnDb(LeafColumn(blob.Key))[blob.Key.Bytes.ToArray()] = blob.Value;
+        }
+
+        return new PbtScanner(db, LimboLogs.Instance).Scan(default);
+    }
+
+    /// <summary>Routes a stem to its leaf column by zone, as the persistence layer does.</summary>
+    private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch
+    {
+        0x0 => PbtColumns.AccountLeaves,
+        0x1 => PbtColumns.CodeLeaves,
+        _ => PbtColumns.StorageLeaves,
+    };
+}

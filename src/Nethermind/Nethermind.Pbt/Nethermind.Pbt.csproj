@@ -8,6 +8,7 @@
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.State.Pbt" />
     <InternalsVisibleTo Include="Nethermind.State.Pbt.Test" />
   </ItemGroup>
   <ItemGroup>

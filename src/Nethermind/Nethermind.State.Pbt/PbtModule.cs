@@ -64,6 +64,14 @@ public class PbtModule(IPbtConfig config) : Module
                 .AddSingleton<PbtRebuilder>()
                 .AddStep(typeof(ImportPbtFromPreimageFlat));
         }
+
+        // one-shot report over the persisted columns
+        if (config.ScanTree)
+        {
+            builder
+                .AddSingleton<PbtScanner>()
+                .AddStep(typeof(ScanPbtTree));
+        }
     }
 
     private sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule
