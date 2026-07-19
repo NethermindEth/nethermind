@@ -109,7 +109,7 @@ public static partial class TrieUpdater
             // bar the levels the producer already bucketed for it.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             NodeResult root = default;
-            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, changes.Buckets, ref root, out _, out delta);
+            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, new BucketPlan(changes.Buckets, branchDepth: 0), ref root, out _, out delta);
 
             using (root)
             {
@@ -135,18 +135,18 @@ public static partial class TrieUpdater
         /// </summary>
         /// <param name="existingData"><inheritdoc cref="ApplyGroup" path="/param[@name='existingData']"/></param>
         /// <param name="beforeHash"><inheritdoc cref="RebuildNode" path="/param[@name='beforeHash']"/></param>
-        /// <param name="precalculatedBuckets"><inheritdoc cref="ResolveBoundaries" path="/param[@name='precalculatedBuckets']"/></param>
+        /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
         /// <param name="result">The node now occupying the group's root position, written straight into the caller's slot.</param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyStored(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData,
-            in ValueHash256 beforeHash, ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
+            in ValueHash256 beforeHash, scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             if (existingData is not null && PbtNodeChain.IsChain(existingData.GetSpan()))
-                ApplyChain(key, entries, existingData.GetSpan(), precalculatedBuckets, ref result, out changed, out delta);
+                ApplyChain(key, entries, existingData.GetSpan(), plan, ref result, out changed, out delta);
             else
-                ApplyGroup(key, entries, existingData, beforeHash, precalculatedBuckets, ref result, out changed, out delta);
+                ApplyGroup(key, entries, existingData, beforeHash, plan, ref result, out changed, out delta);
         }
 
         /// <summary>The kind a group's encoding gives a node, as a boundary result.</summary>
@@ -221,13 +221,13 @@ public static partial class TrieUpdater
         /// was — take their own.
         /// </param>
         /// <param name="beforeHash"><inheritdoc cref="RebuildNode" path="/param[@name='beforeHash']"/></param>
-        /// <param name="precalculatedBuckets"><inheritdoc cref="ResolveBoundaries" path="/param[@name='precalculatedBuckets']"/></param>
+        /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyStored" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyGroup(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, RefCountingMemory? existingData,
-            in ValueHash256 beforeHash, ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
+            in ValueHash256 beforeHash, scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -244,7 +244,7 @@ public static partial class TrieUpdater
             Span<NodeResult> results = resultBuffer.AsSpan();
 
             StoredOccupants occupants = new(existing, existingData);
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, precalculatedBuckets, results)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results)
                 .MergeUntouched(occupantsOccupied, occupantsStems);
             result = RebuildNode(key, occupants, existing, results, shape, beforeHash, existing.Stats, out changed, out delta);
         }
@@ -256,13 +256,13 @@ public static partial class TrieUpdater
         /// stem shares, so that stem's node is built here, out of its leaf blob, without descending;
         /// otherwise the pushed stem and the writes are routed on down together.
         /// </summary>
-        /// <param name="precalculatedBuckets"><inheritdoc cref="ResolveBoundaries" path="/param[@name='precalculatedBuckets']"/></param>
+        /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyStored" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyPushedStem(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in Occupant pushed,
-            ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
+            scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty && depth % PbtTrieNodeGroup.LevelsPerGroup == 0);
@@ -313,16 +313,29 @@ public static partial class TrieUpdater
             // the run's length; the jump below folds once instead, exactly as ApplyChain does for a run
             // already stored. A precalculated level describes one range at one depth and skipping levels
             // leaves it describing neither, so a frame holding one stays on the level-by-level path — no
-            // loss, as runs start far below the depths a producer buckets.
-            scoped ReadOnlySpan<int> buckets = precalculatedBuckets;
+            // loss, as runs start far below the depths a producer buckets. A frame that inherited where the
+            // entries part skips even this one partition, what an ancestor found holding for this range
+            // too; the level then stays unbucketed for the resolve below to fill from that same depth,
+            // should the jump not fire.
+            scoped ReadOnlySpan<int> buckets = plan.Precalculated;
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride];
+            int entriesBranch = plan.BranchDepth;
             int branchDepth = depth;
             if (buckets.IsEmpty)
             {
-                branchDepth = Partition(entries, depth, computed);
-                buckets = computed;
+                if (entriesBranch <= depth)
+                {
+                    entriesBranch = Partition(entries, depth, computed);
+                    buckets = computed;
+                }
+
+                branchDepth = entriesBranch;
             }
 
+            AssertBranchDepthSound(entries, depth, entriesBranch);
+
+            // Past here `branchDepth` is the whole subtree's, narrowed by the pushed stem — what bounds the
+            // jump — while `entriesBranch` stays the entries' alone, which is what buckets them.
             if (branchDepth > depth && pushed.Kind == ResultKind.Stem)
             {
                 // The pushed stem is as much of this subtree as the writes are, so it bounds the run too.
@@ -338,11 +351,13 @@ public static partial class TrieUpdater
                 Debug.Assert(depth > 0, "a run starts past the root (invariant 4)");
                 TrieNodeKey branchKey = TrieNodeKey.For(branchDepth, stem);
 
-                // The same frame again at the group the entries part in, which is the ordinary descent from
-                // there down: the jump cannot fire a second time, its own partition finding a branch at
-                // that very depth. The pushed occupant rides along to be placed there rather than here.
+                // The same frame again at the group the run ends in, which is the ordinary descent from
+                // there down: the jump cannot fire a second time, whatever bounded it — the entries or the
+                // pushed stem — parting at that very depth. The pushed occupant rides along to be placed
+                // there rather than here, and the entries' own branch depth with it, which still stands
+                // where the pushed stem is what cut the run short.
                 NodeResult inner = default;
-                ApplyPushedStem(branchKey, entries, pushed, default, ref inner, out _, out delta);
+                ApplyPushedStem(branchKey, entries, pushed, new BucketPlan(default, entriesBranch), ref inner, out _, out delta);
 
                 // A run's node hash is its path's, unlike a stem's, so the inner frame's answer to whether
                 // it changed is about a node starting at the wrong depth. It is settled here instead, once
@@ -365,9 +380,10 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            // `buckets` carries the level partitioned above where there was none to start with, so the
+            // `buckets` carries the level partitioned above where there was none to start with, and
+            // `entriesBranch` lets the resolve fill one itself where nothing was partitioned at all, so the
             // range is bucketed once however this frame reached here.
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, buckets, results)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, new BucketPlan(buckets, entriesBranch), results)
                 .MergeUntouched(occupantsOccupied, occupantsOccupied);
             // A frame with no stored encoding leaves the rebuild nothing but `results` to read a boundary
             // out of, so the pushed stem rides on in its slot unless the descent already refreshed it. It
@@ -419,30 +435,34 @@ public static partial class TrieUpdater
         /// <see cref="StoredOccupants"/> reading a stored group's encoding, or a <see cref="SeededOccupant"/>
         /// holding the one node a run-split or pushed stem seeds.
         /// </param>
-        /// <param name="precalculatedBuckets">
-        /// The bucket table levels the producer already partitioned <paramref name="entries"/> into, this
-        /// group's own being the last of them (<see cref="PbtWriteBatch.BucketTableLength"/>); empty once
-        /// the descent runs past them, from where each group partitions its range itself.
-        /// </param>
+        /// <param name="plan"><inheritdoc cref="BucketPlan" path="/summary"/></param>
         private GroupShape ResolveBoundaries<TOccupants>(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, in TOccupants occupants,
-            ReadOnlySpan<int> precalculatedBuckets, Span<NodeResult> results)
+            scoped BucketPlan plan, Span<NodeResult> results)
             where TOccupants : IOccupants, allows ref struct
         {
             int depth = key.Depth;
+            AssertBranchDepthSound(entries, depth, plan.BranchDepth);
 
             // A precalculated level is already a bounds array over this very range, so it is read where it
-            // lies; only a range the producer left unbucketed is partitioned here.
+            // lies; a range known not to part until deeper than this group falls in one bucket, so its
+            // level follows from the count alone; only what neither covers is partitioned here.
             Span<int> computed = stackalloc int[PbtWriteBatch.LevelStride];
             scoped ReadOnlySpan<int> level;
-            if (precalculatedBuckets.IsEmpty)
+            int branchDepth = plan.BranchDepth;
+            if (!plan.Precalculated.IsEmpty)
             {
-                Partition(entries, depth, computed);
+                level = plan.Precalculated[^PbtWriteBatch.LevelStride..];
+            }
+            else if (branchDepth > depth)
+            {
+                FillSingleBucket(NibbleOf(entries[0].Stem, depth), entries.Length, computed);
                 level = computed;
             }
             else
             {
-                level = precalculatedBuckets[^PbtWriteBatch.LevelStride..];
+                branchDepth = Partition(entries, depth, computed);
+                level = computed;
             }
 
             ReadOnlySpan<int> bounds = level[..PbtWriteBatch.BoundsLength];
@@ -466,7 +486,7 @@ public static partial class TrieUpdater
                 ref NodeResult result = ref results[slot];
                 Span<PbtWriteBatch.StemEntry> bucket = entries[bounds[slot]..bounds[slot + 1]];
                 TrieNodeKey childKey = key.ChildGroup(slot);
-                ReadOnlySpan<int> childBuckets = ChildBuckets(precalculatedBuckets, slot);
+                BucketPlan childPlan = plan.ForChild(slot, branchDepth);
                 bool childChanged;
                 PbtSubtreeStats childDelta;
                 if (occupant.Kind == ResultKind.Internal)
@@ -475,7 +495,7 @@ public static partial class TrieUpdater
                     // internal caches its old root hash, which the child no longer stores itself
                     using RefCountingMemory? childData = store.GetTrieNode(childKey);
                     if (childData is not null) storedChildMask |= 1u << slot;
-                    ApplyStored(childKey, bucket, childData, occupant.NodeHash(), childBuckets, ref result, out childChanged, out childDelta);
+                    ApplyStored(childKey, bucket, childData, occupant.NodeHash(), childPlan, ref result, out childChanged, out childDelta);
 
                     // No frame writes its own key; this one, the parent, settles each child's: a stored one
                     // the writes emptied to nothing — it changed and holds no blob now — is removed here (a
@@ -485,12 +505,12 @@ public static partial class TrieUpdater
                 else if (occupant.Kind == ResultKind.Chain)
                 {
                     // the run ApplyChainSplit seeded below itself, which no key holds
-                    ApplyChain(childKey, bucket, occupant.ChainData, childBuckets, ref result, out childChanged, out childDelta);
+                    ApplyChain(childKey, bucket, occupant.ChainData, childPlan, ref result, out childChanged, out childDelta);
                 }
                 else
                 {
                     // an empty subtree or a lone stem: push the occupant (stem or absent) on down
-                    ApplyPushedStem(childKey, bucket, occupant, childBuckets, ref result, out childChanged, out childDelta);
+                    ApplyPushedStem(childKey, bucket, occupant, childPlan, ref result, out childChanged, out childDelta);
                 }
 
                 if (childChanged) changedMask |= 1u << slot;
@@ -1035,20 +1055,97 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// The precalculated bucket level for the child group under boundary slot <paramref name="slot"/>,
-        /// or empty when <paramref name="buckets"/> is the last level the producer bucketed.
+        /// What the descent already knows about a range before a frame partitions it: the bucket levels
+        /// the producer precalculated for it, and the depth of the group where its stems first part.
         /// </summary>
         /// <remarks>
-        /// The levels are laid out coarsest-last, each one <see cref="PbtWriteBatch.LevelStride"/> wide per
-        /// group it describes, so the finer levels of a slot's subtree are the slice at its own index — and
-        /// what remains after this group's own level divides evenly among the sixteen slots.
+        /// The branch depth is what spares the shared-prefix corridors the key derivation builds in — every
+        /// storage stem of one contract shares 61 bits, so a batch of one contract's slots falls in a single
+        /// bucket at each of the fifteen groups above the depth-60 one. Found once by
+        /// <see cref="Partition"/>, it rides down the descent so those frames fill their level from the
+        /// entry count alone rather than walking the range again per level. Unlike the bounds it survives a
+        /// depth jump: it is a property of the stem set, not of one range at one depth.
         /// </remarks>
-        private static ReadOnlySpan<int> ChildBuckets(ReadOnlySpan<int> buckets, int slot)
+        /// <param name="precalculated">
+        /// The bucket table levels the producer already partitioned the range into, the frame's own being
+        /// the last of them (<see cref="PbtWriteBatch.BucketTableLength"/>); empty once the descent runs
+        /// past them, from where each group buckets its range itself.
+        /// </param>
+        /// <param name="branchDepth">
+        /// The depth of the group where the range's stems first part, or <c>0</c> when nothing is known —
+        /// which every <c>default</c> plan reports, no frame sitting above depth 0.
+        /// </param>
+        private readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int branchDepth)
         {
-            int childLength = buckets.Length <= PbtWriteBatch.LevelStride
-                ? 0
-                : (buckets.Length - PbtWriteBatch.LevelStride) / PbtTrieNodeGroup.BoundarySlots;
-            return childLength == 0 ? default : buckets.Slice(slot * childLength, childLength);
+            /// <inheritdoc cref="BucketPlan" path="/param[@name='precalculated']"/>
+            public ReadOnlySpan<int> Precalculated { get; } = precalculated;
+
+            /// <inheritdoc cref="BucketPlan" path="/param[@name='branchDepth']"/>
+            public int BranchDepth { get; } = branchDepth;
+
+            /// <summary>
+            /// The plan for the child group under boundary slot <paramref name="slot"/>, whose range this
+            /// frame's bucketing found to part at <paramref name="branchDepth"/>.
+            /// </summary>
+            /// <remarks>
+            /// The precalculated levels are laid out coarsest-last, each one
+            /// <see cref="PbtWriteBatch.LevelStride"/> wide per group it describes, so the finer levels of a
+            /// slot's subtree are the slice at its own index — and what remains after this group's own level
+            /// divides evenly among the sixteen slots.
+            /// </remarks>
+            public BucketPlan ForChild(int slot, int branchDepth)
+            {
+                ReadOnlySpan<int> buckets = Precalculated;
+                int childLength = buckets.Length <= PbtWriteBatch.LevelStride
+                    ? 0
+                    : (buckets.Length - PbtWriteBatch.LevelStride) / PbtTrieNodeGroup.BoundarySlots;
+                return new BucketPlan(childLength == 0 ? default : buckets.Slice(slot * childLength, childLength), branchDepth);
+            }
+
+            /// <summary>The plan a frame deeper down the same range inherits, the levels skipped over describing neither depth.</summary>
+            public BucketPlan AfterJump() => new(default, BranchDepth);
+        }
+
+        /// <summary>
+        /// Fills <paramref name="level"/> for a range that falls wholly in bucket <paramref name="nibble"/>,
+        /// in the shape <see cref="Partition"/> would have produced for it.
+        /// </summary>
+        private static void FillSingleBucket(int nibble, int count, Span<int> level)
+        {
+            Span<int> bounds = level[..PbtWriteBatch.BoundsLength];
+            bounds[..(nibble + 1)].Clear();
+            bounds[(nibble + 1)..].Fill(count);
+            level[PbtWriteBatch.TouchedMaskIndex] = 1 << nibble;
+        }
+
+        /// <summary>
+        /// Checks that <paramref name="claimed"/> — the branch depth a frame inherited for
+        /// <paramref name="entries"/> — does not reach past where they really part.
+        /// </summary>
+        /// <remarks>
+        /// The one error here that would reach the store rather than fail: a range claimed to part deeper
+        /// than it does buckets into one slot that its siblings' entries then descend, minting a run across
+        /// levels the trie actually branches at, and nothing but the root would differ. Under-claiming is
+        /// legal and routine — a child of a frame that branched inherits that frame's own depth — so this
+        /// is a bound, not an equality.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private static void AssertBranchDepthSound(ReadOnlySpan<PbtWriteBatch.StemEntry> entries, int depth, int claimed)
+        {
+            if (claimed <= depth) return;
+
+            Stem reference = entries[0].Stem;
+            int splitDepth = Stem.LengthInBits;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                int diff = entries[i].Stem.FirstDifferingBit(reference, depth);
+                if ((uint)diff < (uint)splitDepth) splitDepth = diff;
+            }
+
+            // a constant message: Debug.Assert evaluates its argument on every call
+            Debug.Assert(
+                claimed <= (splitDepth & ~(PbtTrieNodeGroup.LevelsPerGroup - 1)),
+                "the inherited branch depth reaches past where the range parts");
         }
 
         /// <summary>

@@ -61,18 +61,18 @@ public static partial class TrieUpdater
         /// The run holds no node between its start and its target, so nothing here walks it level by
         /// level: the entries' shallowest departure from its path says where the trie next branches, and
         /// the descent resumes at the group holding that bit — or at the target itself, when they all pass
-        /// through. That inner frame partitions for itself: a precalculated bucket level describes one range
-        /// at one depth, and skipping levels is exactly what leaves this frame's table describing neither, so
-        /// the levels skipped over give up no precalculated bounds — a run only ever reaches past the topmost
-        /// levels a producer buckets.
+        /// through. The inner frame gives up this one's precalculated bounds: such a level describes one
+        /// range at one depth, and skipping levels is exactly what leaves it describing neither — no loss, as
+        /// a run only ever reaches past the topmost levels a producer buckets. Where the entries part is a
+        /// property of the entries rather than of a depth, so that much does carry over the jump.
         /// </remarks>
-        /// <param name="precalculatedBuckets"><inheritdoc cref="ResolveBoundaries" path="/param[@name='precalculatedBuckets']"/></param>
+        /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
         /// <param name="result"><inheritdoc cref="ApplyStored" path="/param[@name='result']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private void ApplyChain(
             in TrieNodeKey key, Span<PbtWriteBatch.StemEntry> entries, ReadOnlySpan<byte> chainData,
-            ReadOnlySpan<int> precalculatedBuckets, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
+            scoped BucketPlan plan, ref NodeResult result, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             Debug.Assert(!entries.IsEmpty);
@@ -84,11 +84,21 @@ public static partial class TrieUpdater
             // The shallowest bit at which a write leaves the run. FirstDifferingBit reports -1 for a stem
             // that never parts from the path, which as an unsigned compare reads as past everything —
             // which is what never parting means: the write descends the whole run.
-            int splitDepth = targetDepth;
-            for (int i = 0; i < entries.Length; i++)
+            int first = entries[0].Stem.FirstDifferingBit(targetPath, depth);
+            int splitDepth = (uint)first < (uint)targetDepth ? first : targetDepth;
+
+            // The entries agree with one another down to their branch depth, so where that reaches past
+            // where the first of them leaves the run — or past the run itself — the first entry's departure
+            // is the whole range's: any other agrees with it there, so it leaves the path in the same place.
+            // The corridor a batch of one contract's storage slots descends is exactly that case, and this
+            // is the run's only walk over the range.
+            if ((uint)first >= (uint)plan.BranchDepth && plan.BranchDepth < targetDepth)
             {
-                int diff = entries[i].Stem.FirstDifferingBit(targetPath, depth);
-                if ((uint)diff < (uint)splitDepth) splitDepth = diff;
+                for (int i = 1; i < entries.Length; i++)
+                {
+                    int diff = entries[i].Stem.FirstDifferingBit(targetPath, depth);
+                    if ((uint)diff < (uint)splitDepth) splitDepth = diff;
+                }
             }
 
             Debug.Assert(splitDepth >= depth, "the entries share the run's path down to this frame");
@@ -100,7 +110,7 @@ public static partial class TrieUpdater
             {
                 using RefCountingMemory? targetData = store.GetTrieNode(chain.TargetKey);
                 NodeResult inner = default;
-                ApplyStored(chain.TargetKey, entries, targetData, chain.TargetHash, default, ref inner, out bool targetChanged, out delta);
+                ApplyStored(chain.TargetKey, entries, targetData, chain.TargetHash, plan.AfterJump(), ref inner, out bool targetChanged, out delta);
 
                 // The run points at one group and one only (invariant 2). When the writes leave that group
                 // byte-identical, the run above it is unchanged too — its node hash folds from the target's,
@@ -129,7 +139,7 @@ public static partial class TrieUpdater
             bool branchesHere = branchDepth == depth;
             result = ApplyChainSplit(
                 branchesHere ? key : TrieNodeKey.For(branchDepth, targetPath), depth, entries, chain,
-                branchesHere ? precalculatedBuckets : default,
+                branchesHere ? plan : plan.AfterJump(),
                 out changed, out delta);
         }
 
@@ -146,12 +156,12 @@ public static partial class TrieUpdater
         /// branch is at the run's own frame — no prefix to wrap; shallower when the branch is in a deeper
         /// group, whose split node the run prefix from there down folds back into a run.
         /// </param>
-        /// <param name="precalculatedBuckets"><inheritdoc cref="ResolveBoundaries" path="/param[@name='precalculatedBuckets']"/></param>
+        /// <param name="plan"><inheritdoc cref="ResolveBoundaries" path="/param[@name='plan']"/></param>
         /// <param name="changed"><inheritdoc cref="RebuildNode" path="/param[@name='changed']"/></param>
         /// <param name="delta"><inheritdoc cref="RebuildNode" path="/param[@name='delta']"/></param>
         private NodeResult ApplyChainSplit(
             in TrieNodeKey key, int prefixDepth, Span<PbtWriteBatch.StemEntry> entries, in PbtNodeChain chain,
-            ReadOnlySpan<int> precalculatedBuckets, out bool changed, out PbtSubtreeStats delta)
+            scoped BucketPlan plan, out bool changed, out PbtSubtreeStats delta)
         {
             int depth = key.Depth;
             int childDepth = depth + PbtTrieNodeGroup.LevelsPerGroup;
@@ -174,7 +184,7 @@ public static partial class TrieUpdater
             RefList16<NodeResult> resultBuffer = new(PbtTrieNodeGroup.BoundarySlots);
             Span<NodeResult> results = resultBuffer.AsSpan();
 
-            GroupShape shape = ResolveBoundaries(key, entries, occupants, precalculatedBuckets, results)
+            GroupShape shape = ResolveBoundaries(key, entries, occupants, plan, results)
                 .MergeUntouched(occupantsOccupied, untouchedStems: 0);
             // The seeded run is held by no key and no encoding, so nothing can read it back later: it
             // rides on in `results` unless the descent already refreshed its slot.
