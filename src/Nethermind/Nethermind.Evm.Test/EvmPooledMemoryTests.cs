@@ -323,6 +323,65 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
     }
 
+    // Return a pooled buffer to the pool dirty (filled with 0xff) so the next rent reuses stale bytes.
+    private static void FillDirty(int size)
+    {
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+    }
+
+    // Gap sizes straddle the clear thresholds: the vector-width boundary (32) and the inline/Span
+    // boundary (512), to catch off-by-one stale-memory leaks in the gap clear.
+    [TestCase(31)]
+    [TestCase(32)]
+    [TestCase(33)]
+    [TestCase(224)]
+    [TestCase(511)]
+    [TestCase(512)]
+    [TestCase(513)]
+    [TestCase(2048)]
+    public void Dirty_reuse_zeroes_head_gap_of_size(int gap)
+    {
+        FillDirty(8192);
+
+        EvmPooledMemory reused = new();
+        byte[] word = new byte[EvmPooledMemory.WordSize];
+        word.AsSpan().Fill(0xab);
+        Assert.That(reused.TrySaveWord((UInt256)gap, word), Is.True); // jump-write leaving a head gap
+        Assert.That(reused.TryLoadSpan(UInt256.Zero, (UInt256)gap, out Span<byte> head), Is.True);
+        Assert.That(head.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "head gap leaked stale data");
+        Assert.That(reused.TryLoadSpan((UInt256)gap, (UInt256)EvmPooledMemory.WordSize, out Span<byte> written), Is.True);
+        Assert.That(written.ToArray(), Is.EqualTo(word), "written word must survive");
+        reused.Dispose();
+    }
+
+    [Test]
+    public void Dirty_reuse_read_grow_reads_zero()
+    {
+        FillDirty(4096);
+
+        EvmPooledMemory reused = new();
+        Assert.That(reused.TryLoadSpan(UInt256.Zero, (UInt256)4096, out Span<byte> data), Is.True);
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "read-grow leaked stale data");
+        reused.Dispose();
+    }
+
+    [Test]
+    public void Dirty_reuse_byte_store_zeroes_word_padding()
+    {
+        FillDirty(4096);
+
+        EvmPooledMemory reused = new();
+        Assert.That(reused.TrySaveByte(UInt256.Zero, 0xab), Is.True);
+        Assert.That(reused.TryLoadSpan(UInt256.Zero, (UInt256)EvmPooledMemory.WordSize, out Span<byte> data), Is.True);
+        Assert.That(data[0], Is.EqualTo((byte)0xab));
+        Assert.That(data[1..].IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "byte-store padding leaked stale data");
+        reused.Dispose();
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
