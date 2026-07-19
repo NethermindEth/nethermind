@@ -20,11 +20,59 @@ namespace Nethermind.State.Pbt.Persistence;
 /// snapshot; write batches are atomic across all columns and record the new
 /// <see cref="StateId"/> in the metadata column of the same batch.
 /// </summary>
-public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
+public class PbtRocksDbPersistence : IPbtPersistence
 {
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
+    private static ReadOnlySpan<byte> LayoutVersionKey => "layoutVersion"u8;
 
-    private const int StorageKeyLength = 64;
+    /// <summary>
+    /// On-disk layout of the keys this class encodes. Bump it whenever a key encoding changes, so a
+    /// database written by an older build is refused rather than silently misread.
+    /// </summary>
+    /// <remarks>
+    /// Version 1 keys flat storage by the slot's EIP-8297 tree key. Databases predating the version
+    /// key keyed it by <c>blake3(address32) || slot32BE</c>; every slot in one would read back as
+    /// absent, i.e. zero, and the rebuilt root would be wrong with nothing to signal it — hence the
+    /// refusal rather than a best-effort open.
+    /// </remarks>
+    private const int LayoutVersion = 1;
+
+    private readonly IColumnsDb<PbtColumns> _db;
+
+    public PbtRocksDbPersistence(IColumnsDb<PbtColumns> db)
+    {
+        _db = db;
+        EnsureLayoutVersion(db);
+    }
+
+    /// <summary>Stamps a fresh database with <see cref="LayoutVersion"/>, and rejects one written under any other layout.</summary>
+    /// <exception cref="InvalidDataException">The database holds state under a layout this build cannot read.</exception>
+    private static void EnsureLayoutVersion(IColumnsDb<PbtColumns> db)
+    {
+        IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
+        byte[]? stored = metadata.Get(LayoutVersionKey);
+        if (stored is not null)
+        {
+            int version = BinaryPrimitives.ReadInt32BigEndian(stored);
+            if (version != LayoutVersion)
+            {
+                throw new InvalidDataException($"The pbt database was written with layout version {version}, but this build reads version {LayoutVersion}. Delete the pbt database and re-import.");
+            }
+
+            return;
+        }
+
+        // No version key: either a fresh database, which we stamp, or one written before the key
+        // existed. Only the latter holds state, so the persisted-state pointer tells them apart.
+        if (ReadCurrentState(metadata) != StateId.PreGenesis)
+        {
+            throw new InvalidDataException($"The pbt database predates layout version {LayoutVersion} and cannot be read by this build. Delete the pbt database and re-import.");
+        }
+
+        Span<byte> value = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(value, LayoutVersion);
+        metadata.PutSpan(LayoutVersionKey, value, WriteFlags.None);
+    }
 
     /// <summary>Maps a stem to its leaf-blob column by zone (the tree layer is column-agnostic, so the routing lives here).</summary>
     private static PbtColumns LeafColumn(in Stem stem) => stem.Zone switch
@@ -35,20 +83,20 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
         _ => throw new NotSupportedException($"Zone {stem.Zone} is reserved"),
     };
 
-    public IPbtPersistence.IReader CreateReader() => new Reader(db.CreateSnapshot());
+    public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot());
 
     public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
     {
-        StateId currentState = ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata));
+        StateId currentState = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata));
         if (currentState != from)
         {
             throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {currentState}");
         }
 
-        return new WriteBatch(db, to, flags);
+        return new WriteBatch(_db, to, flags);
     }
 
-    public void Flush() => db.Flush();
+    public void Flush() => _db.Flush();
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
@@ -64,12 +112,6 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
         BinaryPrimitives.WriteUInt64BigEndian(value, stateId.BlockNumber);
         stateId.StateRoot.Bytes.CopyTo(value[8..]);
         metadata.PutSpan(CurrentStateKey, value, flags);
-    }
-
-    private static void EncodeStorageKey(in ValueHash256 addressHash, in UInt256 slot, Span<byte> key)
-    {
-        addressHash.Bytes.CopyTo(key);
-        slot.ToBigEndian(key[32..]);
     }
 
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
@@ -88,10 +130,8 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
 
         public EvmWord GetSlot(Address address, in UInt256 slot)
         {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            Span<byte> key = stackalloc byte[StorageKeyLength];
-            EncodeStorageKey(addressHash, slot, key);
-            byte[]? stored = snapshot.GetColumn(PbtColumns.Storage).Get(key);
+            ValueHash256 key = PbtKeyDerivation.StorageKey(address, slot);
+            byte[]? stored = snapshot.GetColumn(PbtColumns.Storage).Get(key.Bytes);
             return stored is null ? default : EvmWordSlot.FromStripped(stored);
         }
 
@@ -137,8 +177,13 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
     /// </remarks>
     private sealed class WriteBatch(IColumnsDb<PbtColumns> db, StateId to, WriteFlags flags) : IPbtPersistence.IWriteBatch
     {
-        private readonly IColumnDbSnapshot<PbtColumns> _preBatchSnapshot = db.CreateSnapshot();
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
+
+        // Storage keys are tree keys, so each one costs two hashes to derive from scratch. Callers that
+        // write an address's slots together — the persistence coordinator and the importer both group
+        // them — collapse that to one hash per address plus one per 256-slot run.
+        private PbtSlotKeyDeriver _deriver;
+        private Address? _deriverAddress;
 
         public void SetAccount(Address address, Account? account)
         {
@@ -157,35 +202,22 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
 
         public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
         {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            Span<byte> key = stackalloc byte[StorageKeyLength];
-            EncodeStorageKey(addressHash, slot, key);
+            if (!address.Equals(_deriverAddress))
+            {
+                _deriver = new PbtSlotKeyDeriver(address);
+                _deriverAddress = address;
+            }
+
+            ValueHash256 key = _deriver.TreeKey(slot);
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storage);
             if (EvmWordSlot.IsZero(value))
             {
                 // zero slots are not stored; absence reads back as zero
-                storage.Set(key, null, flags);
+                storage.Set(key.Bytes, null, flags);
             }
             else
             {
-                storage.PutSpan(key, EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), flags);
-            }
-        }
-
-        public void SelfDestructStorage(Address address)
-        {
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-            Span<byte> firstKey = stackalloc byte[StorageKeyLength];
-            addressHash.Bytes.CopyTo(firstKey);
-            Span<byte> lastKeyExclusive = stackalloc byte[StorageKeyLength + 1];
-            addressHash.Bytes.CopyTo(lastKeyExclusive);
-            lastKeyExclusive[32..].Fill(0xFF);
-
-            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storage);
-            using ISortedView view = ((ISortedKeyValueStore)_preBatchSnapshot.GetColumn(PbtColumns.Storage)).GetViewBetween(firstKey, lastKeyExclusive);
-            while (view.MoveNext())
-            {
-                storage.Set(view.CurrentKey, null, flags);
+                storage.PutSpan(key.Bytes, EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), flags);
             }
         }
 
@@ -221,7 +253,6 @@ public class PbtRocksDbPersistence(IColumnsDb<PbtColumns> db) : IPbtPersistence
         {
             WriteCurrentState(_batch.GetColumnBatch(PbtColumns.Metadata), to, flags);
             _batch.Dispose();
-            _preBatchSnapshot.Dispose();
 
             // a WAL-disabled batch is deliberately non-durable; the caller flushes when it is done
             if (!flags.HasFlag(WriteFlags.DisableWAL)) db.Flush(onlyWal: true);

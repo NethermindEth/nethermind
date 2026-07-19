@@ -19,8 +19,6 @@ public interface IPbtPersistence
     /// <summary>
     /// Starts an atomic batch advancing the persisted state <paramref name="from"/> →
     /// <paramref name="to"/>; throws when the currently persisted state is not <paramref name="from"/>.
-    /// Self-destruct range deletes are computed against the pre-batch state, so they must be
-    /// applied before the slot writes of the same batch.
     /// </summary>
     /// <param name="flags">
     /// Applied to every write of the batch. <see cref="WriteFlags.DisableWAL"/> makes the batch
@@ -50,10 +48,8 @@ public interface IPbtPersistence
         void SetAccount(Address address, Account? account);
 
         /// <summary>A zero value deletes the on-disk slot entry (absence = zero).</summary>
+        /// <remarks>Grouping an address's slots into consecutive calls lets the batch reuse its key derivations.</remarks>
         void SetSlot(Address address, in UInt256 slot, in EvmWord value);
-
-        /// <summary>Deletes every stored slot of the address.</summary>
-        void SelfDestructStorage(Address address);
 
         /// <summary>Null or empty deletes the blob.</summary>
         void SetLeafBlob(in Stem stem, byte[]? blob);

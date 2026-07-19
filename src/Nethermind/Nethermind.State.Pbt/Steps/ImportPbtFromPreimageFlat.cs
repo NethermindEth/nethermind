@@ -267,15 +267,16 @@ public class ImportPbtFromPreimageFlat(
                 ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
                 : null;
 
-            ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
+            // the deriver owns the address hash for both the header leaves and the storage stems
+            PbtSlotKeyDeriver deriver = new(address);
 
             // overflow code chunks are content-addressed by code hash, so duplicate contracts
             // (proxies) would re-stage identical leaves — only the first occurrence stages them
             bool stageOverflowChunks = code is null || seenCodeHashes.Set(account.CodeHash);
-            writer.WriteAccount(address, account, slimRlp, code, addressHash, stageOverflowChunks);
+            writer.WriteAccount(address, account, slimRlp, code, deriver.AddressPrefix(), stageOverflowChunks);
             pendingAccounts++;
 
-            if (account.HasStorage) StageStorage(reader, writer, address, accountKey, addressHash, ref slots, cancellationToken);
+            if (account.HasStorage) StageStorage(reader, writer, address, accountKey, ref deriver, ref slots, cancellationToken);
 
             if (pendingAccounts >= ProgressPublishInterval)
             {
@@ -292,12 +293,11 @@ public class ImportPbtFromPreimageFlat(
         PbtImportScratchWriter writer,
         Address address,
         in ValueHash256 accountKey,
-        in ValueHash256 addressHash,
+        ref PbtSlotKeyDeriver deriver,
         ref long slots,
         CancellationToken cancellationToken)
     {
         long pendingSlots = 0;
-        PbtImportScratchWriter.SlotDeriver deriver = new(address, addressHash);
         using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         while (storageIterator.MoveNext())
         {

@@ -98,7 +98,7 @@ public class PbtSnapshotCompactorTests
         Assert.That(merged.Content.Slots.ContainsKey((destroyed, (UInt256)1)), Is.False, "a slot written before the self-destruct must not survive it");
         Assert.That(merged.Content.Slots[(destroyed, (UInt256)2)], Is.EqualTo(Word(0x22)), "a slot written after the self-destruct must survive");
         Assert.That(merged.Content.Slots[(TestItem.AddressB, (UInt256)1)], Is.EqualTo(Word(0x11)), "an unrelated address must be untouched");
-        Assert.That(merged.Content.SelfDestructs.ContainsKey(destroyed), "the marker is kept so persistence still range-deletes the on-disk storage");
+        Assert.That(merged.Content.SelfDestructs.ContainsKey(destroyed), "the marker is kept so reads of the cleared account still see a clean zero");
     }
 
     /// <summary>
