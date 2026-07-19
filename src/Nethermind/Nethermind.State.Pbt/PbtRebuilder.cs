@@ -67,7 +67,7 @@ public readonly record struct RebuildEntry
 /// </remarks>
 public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager, IPbtConfig config)
 {
-    private const int DefaultFlushEntryInterval = 1_000_000;
+    private const int DefaultFlushEntryInterval = 2_000_000;
 
     /// <summary>Entries (accounts + slots) buffered before a window is folded into the tree and committed; from <see cref="IPbtConfig.ImportWindowSize"/>, or <see cref="DefaultFlushEntryInterval"/> when unset.</summary>
     internal int FlushEntryInterval { get; init; } = config.ImportWindowSize > 0 ? config.ImportWindowSize : DefaultFlushEntryInterval;
