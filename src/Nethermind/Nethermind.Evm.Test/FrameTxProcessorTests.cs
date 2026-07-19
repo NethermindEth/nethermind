@@ -431,6 +431,57 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_AtomicBatch_SenderFrameOutsideFailedBatch_StillExecutes()
+    {
+        // Spec: a failed batch rolls back to before the batch and skips the remaining frames IN the
+        // batch; frames after the batch terminal run normally. Consequence for sponsored flows
+        // (ethereum/EIPs#11956): batching the sponsor repayment with one operation frame does not
+        // protect the sponsor when another SENDER frame sits outside the batch — the repayment
+        // reverts, the batch unrolls, and the outside frame still executes on the sponsor's gas.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        Address sponsor = TestItem.AddressD;
+        DeployContract(sponsor, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done); // "repayment" that reverts
+        DeployContract(Recipient, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done); // the real operation
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Observer),
+            Frame(TxFrame.ModeSender), // dummy self-call terminates the batch
+            Frame(TxFrame.ModeSender, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Recipient, 0, UInt256.One, "the operation outside the failed batch executed");
+        Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor paid for it");
+    }
+
+    [Test]
+    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_PayerRemainsChargedAndNonceConsumed()
+    {
+        // ethereum/EIPs#11955: approval effects (payer debit, sender nonce) survive an atomic-batch
+        // unroll. A batch rollback implemented as a plain snapshot restore silently reverts them
+        // while the payer variable survives — the transaction then passes the payer gate and the
+        // final refund pays the payer funds that were never collected.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
+            Frame(TxFrame.ModeSender, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "payer was set inside the batch");
+        Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "payer stays charged across the batch unroll");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "sender nonce stays consumed across the batch unroll");
+    }
+
+    [Test]
     public void Execute_CodelessSenderSelfVerify_WithoutSignature_TransactionInvalid()
     {
         // Default code requires a canonical-hash SECP256K1 signature at index 0; with no
