@@ -37,8 +37,8 @@ public enum PbtTreePartition
 /// </summary>
 /// <remarks>
 /// A flat sweep of the columns rather than a descent from the root. Every statistic here follows from
-/// one entry's key and value alone — a <see cref="PbtColumns.TrieNodes"/> key <em>is</em> its depth
-/// and path, a group's bitmaps pin its whole shape, and a chain's start depth is its key's — so the
+/// one entry's key and value alone — a trie node key <em>is</em> its path and depth, its column names
+/// its zone, a group's bitmaps pin its whole shape, and a chain's start depth is its key's — so the
 /// scan needs no parent context and does no random reads. What it therefore cannot see is anything
 /// only a descent establishes: it does not check that a node is reachable from the root, nor refold
 /// any hash, so an orphaned blob is counted rather than reported.
@@ -62,7 +62,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
     {
         PbtScanReport report = new();
 
-        ScanTrieNodes(report, cancellationToken);
+        ScanTrieNodes(PbtColumns.AccountTrieNodes, PbtTreePartition.Account, report, cancellationToken);
+        ScanTrieNodes(PbtColumns.CodeTrieNodes, PbtTreePartition.Code, report, cancellationToken);
+        ScanTrieNodes(PbtColumns.StorageTrieNodes, PbtTreePartition.Storage, report, cancellationToken);
         ScanLeafColumn(PbtColumns.AccountLeaves, report.AccountLeaves, cancellationToken);
         ScanLeafColumn(PbtColumns.CodeLeaves, report.CodeLeaves, cancellationToken);
         ScanLeafColumn(PbtColumns.StorageLeaves, report.StorageLeaves, cancellationToken);
@@ -70,10 +72,11 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
         return report;
     }
 
-    private void ScanTrieNodes(PbtScanReport report, CancellationToken cancellationToken)
+    /// <param name="partition">The zone subtree <paramref name="columnName"/> holds; only the depth-0 root, which shares the account column, reports elsewhere.</param>
+    private void ScanTrieNodes(PbtColumns columnName, PbtTreePartition partition, PbtScanReport report, CancellationToken cancellationToken)
     {
-        IDb column = db.GetColumnDb(PbtColumns.TrieNodes);
-        ProgressLogger progress = CreateProgressLogger(PbtColumns.TrieNodes, column);
+        IDb column = db.GetColumnDb(columnName);
+        ProgressLogger progress = CreateProgressLogger(columnName, column);
         long scanned = 0;
 
         foreach (KeyValuePair<byte[], byte[]?> entry in column.GetAll(ordered: true))
@@ -81,11 +84,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
             byte[]? value = entry.Value;
             if (value is not { Length: > 0 }) continue;   // an empty value is a removal marker, never stored
 
-            // the key is the node's position: the depth byte, then the zero-padded path whose first
-            // nibble is the zone once the path has one
-            byte[] key = entry.Key;
-            int depth = key[0];
-            PbtScanReport.TrieNodeStats stats = report[PartitionOf(depth, key[1])];
+            // the key is the node's position: the zero-padded path, then the depth byte
+            int depth = entry.Key[Stem.Length];
+            PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
 
             if (PbtNodeChain.IsChain(value)) ScanChain(value, depth, stats);
             else ScanGroup(value, depth, stats, report);
@@ -93,23 +94,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, ILogManager logManager
             if (++scanned % ProgressInterval == 0) Tick(progress, scanned, cancellationToken);
         }
 
-        Report(progress, PbtColumns.TrieNodes, scanned);
-    }
-
-    /// <summary>The zone subtree a node at <paramref name="depth"/> whose path starts with <paramref name="firstPathByte"/> belongs to.</summary>
-    /// <exception cref="InvalidDataException">The path leads into one of the reserved zones, 0x2-0x7.</exception>
-    private static PbtTreePartition PartitionOf(int depth, byte firstPathByte)
-    {
-        if (depth == 0) return PbtTreePartition.Root;
-
-        int zone = firstPathByte >> 4;
-        return zone switch
-        {
-            0x0 => PbtTreePartition.Account,
-            0x1 => PbtTreePartition.Code,
-            >= 0x8 => PbtTreePartition.Storage,
-            _ => throw new InvalidDataException($"Trie node at depth {depth} is in the reserved zone {zone}"),
-        };
+        Report(progress, columnName, scanned);
     }
 
     private static void ScanChain(ReadOnlySpan<byte> value, int startDepth, PbtScanReport.TrieNodeStats stats)
