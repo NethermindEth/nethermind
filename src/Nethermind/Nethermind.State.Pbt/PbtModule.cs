@@ -62,9 +62,25 @@ public class PbtModule(IPbtConfig config) : Module
                 .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
                 .AddSingleton<IPersistence, PreimageRocksdbPersistence>()
                 .AddSingleton<PbtRebuilder>()
+                // the import's stem-order sort: recreated per run, untracked by metrics, and left on
+                // disk afterwards because the step exits the process the moment the state is committed
+                .AddKeyedSingleton<IDb>(PbtImportScratch.DbName, (ctx) => ctx.Resolve<IDbFactory>()
+                    .CreateDb(new DbSettings("PbtImportScratch", ScratchDbPath())
+                    {
+                        DeleteOnStart = true,
+                        SkipMetricsTracking = true,
+                    }))
                 .AddStep(typeof(ImportPbtFromPreimageFlat));
         }
     }
+
+    /// <summary>
+    /// The scratch database's path, taken verbatim from <see cref="IPbtConfig.ImportScratchPath"/> when
+    /// set — an absolute path there places the scratch on another disk, which is worth doing since it
+    /// holds a record per account, slot and code chunk in the source.
+    /// </summary>
+    private string ScratchDbPath() =>
+        string.IsNullOrWhiteSpace(config.ImportScratchPath) ? PbtImportScratch.DbName : config.ImportScratchPath;
 
     private sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule
     {

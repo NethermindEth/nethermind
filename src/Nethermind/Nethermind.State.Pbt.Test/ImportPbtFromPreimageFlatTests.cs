@@ -25,9 +25,15 @@ public class ImportPbtFromPreimageFlatTests
 {
     private const ulong SourceBlock = 7;
 
-    [Test]
-    public async Task Imports_preimage_flat_state_into_pbt_and_exits()
+    // 0 leaves the built-in window size, so the whole import folds as one window; the small values
+    // force many windows, which the stem-ordered scratch scan must fold to the very same root
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(3)]
+    public async Task Imports_preimage_flat_state_into_pbt_and_exits(int windowSize)
     {
+        PbtConfig config = new() { ImportWindowSize = windowSize };
+
         // > 128 chunks (3968 bytes) so the overflow-code zone is exercised end-to-end
         byte[] bigCode = new byte[5000];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -63,7 +69,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb);
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, new SnapshotableMemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, config), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -94,7 +100,7 @@ public class ImportPbtFromPreimageFlatTests
         using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new SnapshotableMemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
