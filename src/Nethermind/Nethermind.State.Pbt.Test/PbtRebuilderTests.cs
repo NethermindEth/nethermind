@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -13,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
@@ -34,7 +36,7 @@ public class PbtRebuilderTests
         byte[] smallCode = Bytes.FromHexString("0x60016002");
 
         Dictionary<string, byte[]> model = [];
-        List<RebuildEntry> entries = [];
+        using ArrayPoolList<RebuildEntry> entries = new(64);
         Dictionary<Address, Account> expectedAccounts = [];
         Dictionary<(Address, UInt256), UInt256> expectedSlots = [];
 
@@ -45,14 +47,15 @@ public class PbtRebuilderTests
                 ? new Account(nonce, balance).WithChangedCodeHash(Keccak.Compute(code))
                 : new Account(nonce, balance);
             expectedAccounts[address] = account;
-            entries.Add(RebuildEntry.ForAccount(address, account, code is { Length: > 0 } ? code : null));
+            RebuildEntry.EmitAccount(address, account, code is { Length: > 0 } ? code : null, PbtKeyDerivation.AddressKeyHash(address), entries);
         }
 
         void AddSlot(Address address, in UInt256 slot, in UInt256 value)
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             expectedSlots[(address, slot)] = value;
-            entries.Add(RebuildEntry.ForSlot(address, slot, value.ToBigEndian().WithoutLeadingZeros().ToArray()));
+            RebuildEntry.SlotDeriver deriver = new(address, PbtKeyDerivation.AddressKeyHash(address));
+            entries.Add(deriver.Derive(slot, EvmWordSlot.FromStripped(value.ToBigEndian().WithoutLeadingZeros())));
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA
@@ -68,7 +71,7 @@ public class PbtRebuilderTests
         PbtRebuilder rebuilder = new(target, LimboLogs.Instance, new PbtConfig()) { FlushEntryInterval = flushEntryInterval };
 
         Channel<RebuildEntry> channel = Channel.CreateUnbounded<RebuildEntry>();
-        foreach (RebuildEntry entry in entries) channel.Writer.TryWrite(entry);
+        for (int i = 0; i < entries.Count; i++) channel.Writer.TryWrite(entries[i]);
         channel.Writer.Complete();
 
         const ulong blockNumber = 7;
