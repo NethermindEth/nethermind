@@ -40,8 +40,8 @@ public enum PbtTreePartition
 /// </summary>
 /// <remarks>
 /// A flat sweep of the columns rather than a descent from the root. Every statistic here follows from
-/// one entry's key and value alone — a <see cref="PbtColumns.TrieNodes"/> key <em>is</em> its depth
-/// and path, a group's bitmaps pin its whole shape, and a chain's start depth is its key's — so the
+/// one entry's key and value alone — a trie node key <em>is</em> its path and depth, its column names
+/// its zone, a group's bitmaps pin its whole shape, and a chain's start depth is its key's — so the
 /// scan needs no parent context and does no random reads. What it therefore cannot see is anything
 /// only a descent establishes: it does not check that a node is reachable from the root, nor refold
 /// any hash, so an orphaned blob is counted rather than reported.
@@ -64,11 +64,8 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     /// <summary>Ranges per worker, so that work stealing can even out the uneven ones.</summary>
     private const int RangesPerWorker = 16;
 
-    /// <summary>Key prefix the leaf column ranges are split over, the first two bytes of a stem.</summary>
-    private const int LeafPrefixSpace = 1 << 16;
-
-    /// <summary>Values the leading byte of a trie node key — the node's depth — can take.</summary>
-    private const int TrieNodeDepthSpace = 1 << 8;
+    /// <summary>Key prefix the ranges are split over, the first two bytes of a key.</summary>
+    private const int PrefixSpace = 1 << 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
@@ -79,9 +76,13 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     {
         PbtScanReport report = new();
         int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
-        byte[][] leafBounds = LeafBounds(Math.Min(workerCount * RangesPerWorker, LeafPrefixSpace));
+        int rangeCount = Math.Min(workerCount * RangesPerWorker, PrefixSpace);
+        byte[][] trieBounds = PrefixBounds(rangeCount, TrieNodeKey.Length);
+        byte[][] leafBounds = PrefixBounds(rangeCount, Stem.Length);
 
-        await ScanColumn(PbtColumns.TrieNodes, TrieNodeBounds(), ScanTrieNode, report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.AccountTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Account), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.CodeTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Code), report, workerCount, cancellationToken);
+        await ScanColumn(PbtColumns.StorageTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Storage), report, workerCount, cancellationToken);
         await ScanColumn(PbtColumns.AccountLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.AccountLeaves), report, workerCount, cancellationToken);
         await ScanColumn(PbtColumns.CodeLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.CodeLeaves), report, workerCount, cancellationToken);
         await ScanColumn(PbtColumns.StorageLeaves, leafBounds, static (report, _, value) => ScanLeafBlob(value, report.StorageLeaves), report, workerCount, cancellationToken);
@@ -193,55 +194,39 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         if (_logger.IsInfo) _logger.Info($"PBT scan {columnName}: {scanned:N0} entries in {sweeping.Elapsed:hh\\:mm\\:ss} at {progress.TotalPerSecond:N0}/s");
     }
 
-    private static void ScanTrieNode(PbtScanReport report, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    /// <summary>Counts the entries of one zone's trie node column into that zone's statistics.</summary>
+    /// <param name="partition">The zone subtree the column holds; only the depth-0 root, which shares the account column, reports elsewhere.</param>
+    private static ScanEntry TrieNodeScanner(PbtTreePartition partition) => (report, key, value) =>
     {
-        // the key is the node's position: the depth byte, then the zero-padded path whose first
-        // nibble is the zone once the path has one
-        int depth = key[0];
-        PbtScanReport.TrieNodeStats stats = report[PartitionOf(depth, key[1])];
+        // the key is the node's position: the zero-padded path, then the depth byte
+        int depth = key[Stem.Length];
+        PbtScanReport.TrieNodeStats stats = report[depth == 0 ? PbtTreePartition.Root : partition];
 
         if (PbtNodeChain.IsChain(value)) ScanChain(value, depth, stats);
         else ScanGroup(value, depth, stats, report);
-    }
+    };
 
     /// <summary>
-    /// The trie node key range boundaries, one range per value of the key's leading byte.
+    /// The key range boundaries of any column, splitting the space evenly over the first two bytes of
+    /// the key.
     /// </summary>
     /// <remarks>
-    /// A trie node key is its depth followed by its path (see <see cref="TrieNodeKey.WriteTo"/>), so
-    /// the column is sorted depth-major and one depth is one contiguous range. Only depths that are
-    /// multiples of <see cref="PbtTrieNodeGroup.LevelsPerGroup"/> are ever stored, so most of these
-    /// ranges are empty and cost no more than the seek that finds them so.
+    /// Every column is keyed path-major — a leaf blob by its stem, a trie node by its path then its
+    /// depth (see <see cref="TrieNodeKey.WriteTo"/>) — and a stem is a hash, so an even split of that
+    /// prefix gives ranges holding comparable numbers of entries. A trie node column covers only its
+    /// own zone, so the ranges outside it are empty and cost no more than the seek that finds them so.
     /// </remarks>
-    private static byte[][] TrieNodeBounds()
-    {
-        byte[][] bounds = new byte[TrieNodeDepthSpace + 1][];
-        for (int depth = 0; depth < TrieNodeDepthSpace; depth++)
-        {
-            byte[] bound = new byte[TrieNodeKey.Length];
-            bound[0] = (byte)depth;
-            bounds[depth] = bound;
-        }
-
-        bounds[TrieNodeDepthSpace] = MaxKey(TrieNodeKey.Length);
-        return bounds;
-    }
-
-    /// <summary>
-    /// The leaf column key range boundaries, splitting the space evenly over the first two bytes of the
-    /// stem. Stems are hashes, so the ranges hold comparable numbers of blobs.
-    /// </summary>
-    private static byte[][] LeafBounds(int rangeCount)
+    private static byte[][] PrefixBounds(int rangeCount, int keyLength)
     {
         byte[][] bounds = new byte[rangeCount + 1][];
         for (int range = 0; range < rangeCount; range++)
         {
-            byte[] bound = new byte[Stem.Length];
-            BinaryPrimitives.WriteUInt16BigEndian(bound, (ushort)((long)range * LeafPrefixSpace / rangeCount));
+            byte[] bound = new byte[keyLength];
+            BinaryPrimitives.WriteUInt16BigEndian(bound, (ushort)((long)range * PrefixSpace / rangeCount));
             bounds[range] = bound;
         }
 
-        bounds[rangeCount] = MaxKey(Stem.Length);
+        bounds[rangeCount] = MaxKey(keyLength);
         return bounds;
     }
 
@@ -255,22 +240,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         byte[] max = new byte[keyLength + 1];
         max.AsSpan().Fill(0xFF);
         return max;
-    }
-
-    /// <summary>The zone subtree a node at <paramref name="depth"/> whose path starts with <paramref name="firstPathByte"/> belongs to.</summary>
-    /// <exception cref="InvalidDataException">The path leads into one of the reserved zones, 0x2-0x7.</exception>
-    private static PbtTreePartition PartitionOf(int depth, byte firstPathByte)
-    {
-        if (depth == 0) return PbtTreePartition.Root;
-
-        int zone = firstPathByte >> 4;
-        return zone switch
-        {
-            0x0 => PbtTreePartition.Account,
-            0x1 => PbtTreePartition.Code,
-            >= 0x8 => PbtTreePartition.Storage,
-            _ => throw new InvalidDataException($"Trie node at depth {depth} is in the reserved zone {zone}"),
-        };
     }
 
     private static void ScanChain(ReadOnlySpan<byte> value, int startDepth, PbtScanReport.TrieNodeStats stats)

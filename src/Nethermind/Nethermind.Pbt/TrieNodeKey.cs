@@ -49,12 +49,18 @@ public readonly record struct TrieNodeKey(byte Depth, Stem Path)
         return new TrieNodeKey((byte)(Depth + PbtTrieNodeGroup.LevelsPerGroup), new Stem(path));
     }
 
-    /// <summary>The 32-byte database key: the depth byte followed by the padded path bytes.</summary>
+    /// <summary>The 32-byte database key: the padded path bytes followed by the depth byte.</summary>
+    /// <remarks>
+    /// The depth trails so that byte order is path-major, which sorts a node immediately before its
+    /// own subtree and makes that subtree one contiguous range — a traversal then walks adjacent
+    /// keys instead of one disjoint range per level, and the high-entropy path leads. This matches
+    /// the convention the flat database uses for its own trie node keys.
+    /// </remarks>
     public void WriteTo(Span<byte> dest)
     {
         Stem path = Path;
-        dest[0] = Depth;
-        path.Bytes.CopyTo(dest[1..]);
+        path.Bytes.CopyTo(dest);
+        dest[Stem.Length] = Depth;
     }
 
     public byte[] ToDbKey()
