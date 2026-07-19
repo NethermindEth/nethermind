@@ -286,8 +286,10 @@ public static partial class TrieUpdater
             Stem stem = entries[0].Stem;
             if (entries.Length == 1 && (pushed.Kind == ResultKind.Absent || pushed.Stem == stem))
             {
-                // a blob left with no leaves deletes its stem, so the node goes absent rather than up
-                bool isEmpty = ComputeBlob(stem, entries[0].Changes, out ValueHash256 subtreeRoot);
+                // a blob left with no leaves deletes its stem, so the node goes absent rather than up.
+                // An absent pushed slot means no stem node stood here, so (a stem node and its leaf blob
+                // being born and dying together) there is no prior blob to merge — skip the read.
+                bool isEmpty = ComputeBlob(stem, entries[0].Changes, pushed.Kind == ResultKind.Absent, out ValueHash256 subtreeRoot);
                 result = isEmpty ? default : NodeResult.StemNode(stem, subtreeRoot);
                 changed = result.NodeHash() != pushed.NodeHash();
 
@@ -996,9 +998,13 @@ public static partial class TrieUpdater
         private readonly record struct Boundary(ValueHash256 Hash, Stem Stem);
 
         /// <summary>Folds one stem's writes (<paramref name="changes"/>) into its leaf blob, persists it, and reports whether the stem is now empty.</summary>
-        private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, out ValueHash256 subtreeRoot)
+        /// <param name="knownAbsent">
+        /// The stem had no node in the trie, so — a stem node and its leaf blob being born and dying
+        /// together, keyed by the stem — there is no stored blob to merge and the read is skipped.
+        /// </param>
+        private bool ComputeBlob(in Stem stem, IPbtStemChanges changes, bool knownAbsent, out ValueHash256 subtreeRoot)
         {
-            using RefCountingMemory? prior = store.GetLeafBlob(stem);
+            using RefCountingMemory? prior = knownAbsent ? null : store.GetLeafBlob(stem);
             using StemLeafBlob.RebuildState newBlob = StemLeafBlob.Apply(prior is null ? default : prior.GetSpan(), changes, memoryProvider);
             subtreeRoot = newBlob.SubtreeRoot;
             bool isEmpty = newBlob.IsEmpty;
