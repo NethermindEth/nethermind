@@ -28,7 +28,7 @@ public class PbtLeafColumnRoutingTests
         byte[] codeBlob = Bytes.FromHexString("0xbb");
         byte[] storageBlob = Bytes.FromHexString("0xcc");
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256)))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), WriteFlags.None))
         {
             batch.SetLeafBlob(accountStem, accountBlob);
             batch.SetLeafBlob(codeStem, codeBlob);

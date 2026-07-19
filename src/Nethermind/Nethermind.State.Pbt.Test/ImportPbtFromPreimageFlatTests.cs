@@ -86,7 +86,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb);
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);
-        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot))) { }
+        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
