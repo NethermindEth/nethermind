@@ -12,25 +12,27 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class GCKeeperTests
 {
-    [TestCase(0, false)]
-    [TestCase(1, true)]
-    [TestCase(500, true)]
-    [TestCase(GCKeeper.MinPayloadIntervalForDecommitMs - 1, true)]
-    [TestCase(GCKeeper.MinPayloadIntervalForDecommitMs, false)]
-    [TestCase(12_000, false)]
-    public void Decommit_is_deferred_only_while_payloads_stream(long lastPayloadIntervalMs, bool expected) =>
-        Assert.That(GCKeeper.ShouldDeferDecommit(lastPayloadIntervalMs), Is.EqualTo(expected));
+    private const long Now = 1_784_500_000;
+
+    [TestCase(Now, 0ul, false)]
+    [TestCase(Now, (ulong)(Now - 5), false)]
+    [TestCase(Now, (ulong)(Now - GCKeeper.MaxPayloadLagSecondsForDecommit), false)]
+    [TestCase(Now, (ulong)(Now - GCKeeper.MaxPayloadLagSecondsForDecommit - 1), true)]
+    [TestCase(Now, (ulong)(Now - 3600), true)]
+    [TestCase(Now, (ulong)(Now + 5), false)]
+    public void Decommit_is_deferred_only_while_catching_up(long nowUnixSeconds, ulong lastPayloadTimestamp, bool expected) =>
+        Assert.That(GCKeeper.ShouldDeferDecommit(nowUnixSeconds, lastPayloadTimestamp), Is.EqualTo(expected));
 
     [Test]
-    public void TryStartNoGCRegion_tracks_interval_between_consecutive_payloads()
+    public void TryStartNoGCRegion_records_last_payload_timestamp()
     {
         using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
 
-        keeper.TryStartNoGCRegion().Dispose();
-        Assert.That(keeper.LastPayloadIntervalMs, Is.Zero);
+        keeper.TryStartNoGCRegion(1234).Dispose();
+        Assert.That(keeper.LastPayloadTimestamp, Is.EqualTo(1234ul));
 
         keeper.TryStartNoGCRegion().Dispose();
-        Assert.That(keeper.LastPayloadIntervalMs, Is.GreaterThanOrEqualTo(1));
+        Assert.That(keeper.LastPayloadTimestamp, Is.EqualTo(1234ul), "timestamp-less calls should not reset tracking");
     }
 
     [Test]

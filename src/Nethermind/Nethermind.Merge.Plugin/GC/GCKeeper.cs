@@ -23,23 +23,19 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
-    private long _lastPayloadTick;
-    private long _lastPayloadIntervalMs;
+    private ulong _lastPayloadTimestamp;
 
-    /// <summary>Minimum interval between consecutive payloads, in milliseconds, for the decommit collection to run.</summary>
-    internal const long MinPayloadIntervalForDecommitMs = 4000;
+    /// <summary>Maximum age of the last payload, in seconds, for the decommit collection to run; older means we are catching up.</summary>
+    internal const long MaxPayloadLagSecondsForDecommit = 60;
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
-    public IDisposable TryStartNoGCRegion()
+    public IDisposable TryStartNoGCRegion(ulong payloadTimestamp = 0)
     {
         long size = _defaultSize;
-        long timestamp = Environment.TickCount64;
-        long previousTick = Interlocked.Exchange(ref _lastPayloadTick, timestamp);
-        if (previousTick != 0)
+        if (payloadTimestamp != 0)
         {
-            // 0 means "no interval observed yet", so clamp same-tick arrivals to 1
-            Volatile.Write(ref _lastPayloadIntervalMs, Math.Max(1, timestamp - previousTick));
+            Volatile.Write(ref _lastPayloadTimestamp, payloadTimestamp);
         }
 
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
@@ -138,12 +134,13 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
         }
     }
 
-    private bool ShouldDeferDecommit() => ShouldDeferDecommit(Volatile.Read(ref _lastPayloadIntervalMs));
+    private bool ShouldDeferDecommit() =>
+        ShouldDeferDecommit(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Volatile.Read(ref _lastPayloadTimestamp));
 
-    internal static bool ShouldDeferDecommit(long lastPayloadIntervalMs) =>
-        lastPayloadIntervalMs is > 0 and < MinPayloadIntervalForDecommitMs;
+    internal static bool ShouldDeferDecommit(long nowUnixSeconds, ulong lastPayloadTimestamp) =>
+        lastPayloadTimestamp != 0 && nowUnixSeconds - (long)lastPayloadTimestamp > MaxPayloadLagSecondsForDecommit;
 
-    internal long LastPayloadIntervalMs => Volatile.Read(ref _lastPayloadIntervalMs);
+    internal ulong LastPayloadTimestamp => Volatile.Read(ref _lastPayloadTimestamp);
 
     private static long _lastGcTimeMs;
 
@@ -196,8 +193,8 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // the decommit's stop-the-world pause can exceed a second; defer it while payloads
-                    // stream back-to-back (catch-up), or the next payload lands mid-collection
+                    // the decommit's stop-the-world pause can exceed a second; defer it while catching up
+                    // (last payload far behind wall clock), or the next payload lands mid-collection
                     if (ShouldDeferDecommit())
                     {
                         Interlocked.Decrement(ref _forcedGcCount); // retry on the next scheduled collection
