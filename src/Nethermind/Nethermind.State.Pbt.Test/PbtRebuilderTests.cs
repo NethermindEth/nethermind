@@ -47,7 +47,7 @@ public class PbtRebuilderTests
                 ? new Account(nonce, balance).WithChangedCodeHash(Keccak.Compute(code))
                 : new Account(nonce, balance);
             expectedAccounts[address] = account;
-            RebuildEntry.EmitAccount(address, account, code is { Length: > 0 } ? code : null, PbtKeyDerivation.AddressKeyHash(address), entries);
+            RebuildEntry.EmitAccount(address, account, code is { Length: > 0 } ? code : null, PbtKeyDerivation.AddressKeyHash(address), entries, emitOverflowChunks: true);
         }
 
         void AddSlot(Address address, in UInt256 slot, in UInt256 value)
