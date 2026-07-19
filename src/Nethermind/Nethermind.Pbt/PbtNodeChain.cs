@@ -116,8 +116,8 @@ public readonly ref struct PbtNodeChain
         for (int bit = targetDepth - 1; bit >= startDepth; bit--)
         {
             hash = targetPath.GetBit(bit) == 0
-                ? Blake3Hash.HashPairOrZero(hash, default)
-                : Blake3Hash.HashPairOrZero(default, hash);
+                ? Blake3Hash.HashWithEmptyRight(hash)
+                : Blake3Hash.HashWithEmptyLeft(hash);
         }
 
         return hash;
