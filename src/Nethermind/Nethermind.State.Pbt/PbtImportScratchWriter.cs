@@ -70,7 +70,7 @@ internal sealed class PbtImportScratchWriter(IWriteBatch batch)
     }
 
     /// <summary>Stages one storage slot's record on the stem <paramref name="deriver"/> routes it to.</summary>
-    public void WriteSlot(Address address, in UInt256 slot, in EvmWord word, ref SlotDeriver deriver)
+    public void WriteSlot(Address address, in UInt256 slot, in EvmWord word, ref PbtSlotKeyDeriver deriver)
     {
         Stem stem = deriver.Derive(slot, out byte subIndex);
         Span<byte> value = stackalloc byte[PbtImportScratch.MaxValueLength];
@@ -89,45 +89,4 @@ internal sealed class PbtImportScratchWriter(IWriteBatch batch)
     private static ReadOnlySpan<byte> Chunk(byte[] chunks, int chunkId) =>
         chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
 
-    /// <summary>
-    /// Routes one address's slots to the account header (index &lt; 64) or to a storage-zone stem off a
-    /// precomputed address prefix — mirroring the live path's <c>StorageWriteBatch</c> memos: the
-    /// header stem is derived once, and a storage-zone stem is shared by the 256 slots of one tree
-    /// index (<c>slot &gt;&gt; 8</c>), so slots arriving in ascending order reuse a single derivation
-    /// per run.
-    /// </summary>
-    public struct SlotDeriver(Address address, ValueHash256 addressPrefix)
-    {
-        private Stem _headerStem;
-        private bool _headerStemComputed;
-        private UInt256 _lastTreeIndex;
-        private Stem _lastStorageStem;
-        private bool _hasStorageStem;
-
-        public Stem Derive(in UInt256 slot, out byte subIndex)
-        {
-            if (PbtKeyDerivation.IsHeaderSlot(slot))
-            {
-                if (!_headerStemComputed)
-                {
-                    _headerStem = PbtKeyDerivation.AccountHeaderStem(addressPrefix);
-                    _headerStemComputed = true;
-                }
-
-                subIndex = PbtKeyDerivation.HeaderSlotSubIndex(slot);
-                return _headerStem;
-            }
-
-            UInt256 treeIndex = slot >> 8;
-            if (_hasStorageStem && treeIndex == _lastTreeIndex)
-            {
-                subIndex = (byte)(slot.u0 & 0xFF);
-                return _lastStorageStem;
-            }
-
-            Stem stem = PbtKeyDerivation.StorageStem(address, addressPrefix, slot, out subIndex);
-            (_lastStorageStem, _lastTreeIndex, _hasStorageStem) = (stem, treeIndex, true);
-            return stem;
-        }
-    }
 }

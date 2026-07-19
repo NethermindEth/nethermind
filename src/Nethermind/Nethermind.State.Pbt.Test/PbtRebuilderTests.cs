@@ -61,7 +61,7 @@ public class PbtRebuilderTests
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             expectedSlots[(address, slot)] = value;
-            PbtImportScratchWriter.SlotDeriver deriver = new(address, PbtKeyDerivation.AddressKeyHash(address));
+            PbtSlotKeyDeriver deriver = new(address);
             writer.WriteSlot(address, slot, EvmWordSlot.FromStripped(value.ToBigEndian().WithoutLeadingZeros()), ref deriver);
         }
 
