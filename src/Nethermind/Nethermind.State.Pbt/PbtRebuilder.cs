@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -16,7 +17,7 @@ using Nethermind.State.Pbt.ScopeProvider;
 namespace Nethermind.State.Pbt;
 
 /// <summary>
-/// Bulk-builds a PBT state from a stream of decoded <see cref="RebuildEntry"/> account/slot records
+/// Bulk-builds a PBT state from a chunked stream of decoded <see cref="RebuildEntry"/> records
 /// (e.g. from an iterated preimage-flat database), computing the EIP-8297 root without processing any
 /// blocks. It is the single consumer of the stream; the caller (producer) scans and decodes the source.
 /// </summary>
@@ -51,7 +52,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     /// the previous root — so exactly one worker drains the channel in order, and it alone touches the
     /// target database.
     /// </remarks>
-    public async Task<ValueHash256> Rebuild(ChannelReader<RebuildEntry> source, ulong blockNumber, CancellationToken cancellationToken)
+    public async Task<ValueHash256> Rebuild(ChannelReader<ArrayPoolList<RebuildEntry>> source, ulong blockNumber, CancellationToken cancellationToken)
     {
         using CancellationTokenSource pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -129,33 +130,41 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
         try
         {
-            await foreach (RebuildEntry entry in source.ReadAllAsync(pipelineCts.Token))
+            await foreach (ArrayPoolList<RebuildEntry> chunk in source.ReadAllAsync(pipelineCts.Token))
             {
-                switch (entry.Kind)
+                using (chunk)
                 {
-                    case RebuildEntry.EntryKind.Account:
-                        writeBatch!.SetAccount(entry.Address!, entry.Account);
-                        accounts++;
-                        lastAddress = entry.Address!;
-                        break;
-                    case RebuildEntry.EntryKind.Slot:
-                        EvmWord word = entry.Word;
-                        writeBatch!.SetSlot(entry.Address!, entry.Slot, word);
-                        builder.SetLeaf(entry.Stem, entry.SubIndex, SlotLeaf(word));
-                        slots++;
-                        break;
-                    default:
-                        builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
-                        break;
-                }
+                    // the indexer rather than a span: the window seal awaits mid-chunk
+                    for (int i = 0; i < chunk.Count; i++)
+                    {
+                        RebuildEntry entry = chunk[i];
+                        switch (entry.Kind)
+                        {
+                            case RebuildEntry.EntryKind.Account:
+                                writeBatch!.SetAccount(entry.Address!, entry.Account);
+                                accounts++;
+                                lastAddress = entry.Address!;
+                                break;
+                            case RebuildEntry.EntryKind.Slot:
+                                EvmWord word = entry.Word;
+                                writeBatch!.SetSlot(entry.Address!, entry.Slot, word);
+                                builder.SetLeaf(entry.Stem, entry.SubIndex, SlotLeaf(word));
+                                slots++;
+                                break;
+                            default:
+                                builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
+                                break;
+                        }
 
-                if (++pending >= FlushEntryInterval)
-                {
-                    // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
-                    // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                    await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
-                    writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
-                    pending = 0;
+                        if (++pending >= FlushEntryInterval)
+                        {
+                            // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
+                            // drained batch lost to a faulting flusher only drops its pooled maps to the GC
+                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
+                            writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
+                            pending = 0;
+                        }
+                    }
                 }
             }
 
