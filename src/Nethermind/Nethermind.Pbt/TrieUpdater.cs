@@ -89,12 +89,12 @@ public static partial class TrieUpdater
         /// <summary>The largest range <see cref="SortTiny"/> takes off <see cref="Partition"/>'s hands.</summary>
         private const int TinyRange = 3;
 
-        /// <summary>How many subtree tasks each worker is given room to have in flight at once.</summary>
+        /// <summary>How finely the batch is cut up: a slot is worth a task once its share reaches <c>1 / (Parallelism * TasksPerWorker)</c>.</summary>
         /// <remarks>
-        /// Sets both halves of the spawn decision: a slot is worth a task once its share of the batch
-        /// reaches <c>1 / (Parallelism * TasksPerWorker)</c>, and <see cref="TaskBudget"/> holds that many
-        /// permits, so the size test and the budget run out at about the same point. Some headroom over one
-        /// task per worker is what keeps every worker fed when the subtrees turn out uneven.
+        /// Well above one slice per worker, so that a worker freed by a small subtree has something left to
+        /// pick up rather than the batch having been dealt out in <see cref="PbtUpdateOptions.Parallelism"/>
+        /// pieces that turned out uneven. How many of those slices may be in flight at once is
+        /// <see cref="TaskBudget"/>'s business, not this one's.
         /// </remarks>
         private const int TasksPerWorker = 16;
 
@@ -124,7 +124,7 @@ public static partial class TrieUpdater
             return new(
                 store, memoryProvider, options, batch,
                 workers <= 1 ? NoParallelism : Math.Max(MinEntriesToParallelize, batch.Count / (workers * TasksPerWorker)),
-                new TaskBudget(workers * TasksPerWorker));
+                new TaskBudget(workers));
         }
 
         /// <summary>The same updater over the same batch, writing into <paramref name="other"/>.</summary>
@@ -683,13 +683,15 @@ public static partial class TrieUpdater
         }
 
         /// <summary>
-        /// How many subtree tasks one batch's descent may have in flight at once, shared by every frame of it.
+        /// How many subtree tasks one batch's descent may have in flight at once — one per worker, shared by
+        /// every frame of the descent.
         /// </summary>
         /// <remarks>
-        /// A permit is taken as a task is spawned and returned as it finishes, so a frame deep in the tree
-        /// finds the budget spent while the top of the descent is still fanning out and settles for
-        /// descending its slots itself, rather than queueing work behind the tasks already running. The dip
-        /// below zero a lost race leaves is transient and costs at most a spawn that would have been allowed.
+        /// A permit stands for a thread that is free to take a subtree, so a frame deep in the tree finds the
+        /// budget spent while the top of the descent is still fanning out and descends its slots itself
+        /// rather than queueing them behind workers that are already busy. A permit is taken as a task is
+        /// spawned and returned as it finishes; the dip below zero a lost race leaves is transient and costs
+        /// at most a spawn that would have been allowed.
         /// </remarks>
         internal sealed class TaskBudget(int permits)
         {
