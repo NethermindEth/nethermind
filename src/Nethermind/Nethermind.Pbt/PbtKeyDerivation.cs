@@ -200,15 +200,42 @@ public static class PbtKeyDerivation
     public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(basicData.Slice(4, 4));
 
     /// <summary>Copies the high <paramref name="bitCount"/> MSB-first bits of <paramref name="src"/> into <paramref name="dest"/> at <paramref name="destBitOffset"/> (dest must be zeroed).</summary>
-    private static void CopyBits(ReadOnlySpan<byte> src, int bitCount, Span<byte> dest, int destBitOffset)
+    /// <remarks>
+    /// Byte-at-a-time rather than bit-at-a-time: a storage stem copies 247 bits across two calls, on
+    /// both the read and the write path, so this runs per stem derivation.
+    /// </remarks>
+    internal static void CopyBits(ReadOnlySpan<byte> src, int bitCount, Span<byte> dest, int destBitOffset)
     {
-        for (int i = 0; i < bitCount; i++)
+        int shift = destBitOffset & 7;
+        int firstByte = destBitOffset >> 3;
+        int lastByte = (destBitOffset + bitCount - 1) >> 3;
+        int wholeBytes = bitCount >> 3;
+        int tailBits = bitCount & 7;
+
+        for (int i = 0; i < wholeBytes; i++)
         {
-            if (((src[i >> 3] >> (7 - (i & 7))) & 1) != 0)
-            {
-                int destBit = destBitOffset + i;
-                dest[destBit >> 3] |= (byte)(1 << (7 - (destBit & 7)));
-            }
+            Place(src[i], dest, firstByte + i, shift, lastByte);
         }
+
+        // the tail byte contributes only its high bits; masking the rest off keeps the spill zeroed
+        if (tailBits != 0)
+        {
+            Place((byte)(src[wholeBytes] & (0xFF << (8 - tailBits))), dest, firstByte + wholeBytes, shift, lastByte);
+        }
+    }
+
+    /// <summary>
+    /// ORs <paramref name="value"/> into <paramref name="dest"/> at byte <paramref name="target"/>,
+    /// right-shifted by <paramref name="shift"/> bits, spilling the displaced low bits into the next
+    /// byte when that byte is still within the copy's range.
+    /// </summary>
+    /// <remarks>
+    /// The range check is what keeps the last write in bounds: when the copy ends on a byte boundary
+    /// the displaced bits are all zero by construction, so dropping them is exact, not lossy.
+    /// </remarks>
+    private static void Place(byte value, Span<byte> dest, int target, int shift, int lastByte)
+    {
+        dest[target] |= (byte)(value >> shift);
+        if (shift != 0 && target < lastByte) dest[target + 1] |= (byte)(value << (8 - shift));
     }
 }

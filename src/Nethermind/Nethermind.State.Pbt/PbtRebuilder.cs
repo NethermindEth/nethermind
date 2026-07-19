@@ -22,11 +22,11 @@ namespace Nethermind.State.Pbt;
 /// blocks. It is the single consumer of the stream; the caller (producer) scans and decodes the source.
 /// </summary>
 /// <remarks>
-/// The rebuild runs in bounded windows to cap memory: entries accumulate into a
-/// <see cref="PbtWriteBatchBuilder"/> and the target's flat account/slot columns, and every
-/// <see cref="FlushEntryInterval"/> entries the window is drained to a pre-bucketed
-/// <see cref="PbtWriteBatch"/>, folded into the tree via <see cref="TrieUpdater.UpdateRoot"/> and
-/// committed. Data windows are
+/// The rebuild runs in bounded windows to cap memory: leaves accumulate into a
+/// <see cref="PbtWriteBatchBuilder"/>, and every <see cref="FlushEntryInterval"/> entries the window
+/// is drained to a pre-bucketed <see cref="PbtWriteBatch"/>, folded into the tree via
+/// <see cref="TrieUpdater.UpdateRoot"/> and committed. The flat account and slot columns are already
+/// populated by the caller — this only builds the tree over them. Data windows are
 /// written <see cref="StateId.PreGenesis"/> → <see cref="StateId.PreGenesis"/> with
 /// <see cref="WriteFlags.DisableWAL"/> — the persisted-state pointer stays pre-genesis so a crash
 /// mid-rebuild leaves the state unpopulated and the next run restarts cleanly, which is also what
@@ -39,7 +39,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 {
     private const int DefaultFlushEntryInterval = 2_000_000;
 
-    /// <summary>Entries (accounts, slots and leaves) buffered before a window is folded into the tree and committed; from <see cref="IPbtConfig.ImportWindowSize"/>, or <see cref="DefaultFlushEntryInterval"/> when unset.</summary>
+    /// <summary>Leaves buffered before a window is folded into the tree and committed; from <see cref="IPbtConfig.ImportWindowSize"/>, or <see cref="DefaultFlushEntryInterval"/> when unset.</summary>
     internal int FlushEntryInterval { get; init; } = config.ImportWindowSize > 0 ? config.ImportWindowSize : DefaultFlushEntryInterval;
 
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
@@ -72,10 +72,10 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         // racing ahead. Rates are measured over each inter-log interval.
         async Task FlushLoop()
         {
-            long accounts = 0, slots = 0;
+            long entries = 0;
             Stem lastStem = default;
-            double accountsPerSec = 0, slotsPerSec = 0, stemsPerSec = 0;
-            long loggedAccounts = 0, loggedSlots = 0, loggedStems = 0;
+            double entriesPerSec = 0, stemsPerSec = 0;
+            long loggedEntries = 0, loggedStems = 0;
             Stopwatch sinceLog = Stopwatch.StartNew();
 
             // Entries stream in ascending stem order, so the current stem's position in the key space is
@@ -88,7 +88,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             {
                 float percentage = Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(lastStem.Bytes) / (float)ulong.MaxValue, 0, 1);
                 return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
-                    $"{accounts,13:N0} acc ({accountsPerSec,8:N0}/s) | {slots,15:N0} slot ({slotsPerSec,8:N0}/s) | " +
+                    $"{entries,15:N0} leaf ({entriesPerSec,8:N0}/s) | " +
                     $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastStem}";
             });
             progress.Reset(0, 0);
@@ -97,19 +97,18 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             {
                 root = FlushAndCommit(batch.WriteBatch, root, batch.Changes, out PbtSubtreeStats stemDelta);
                 stems += stemDelta.StemCount;
-                (accounts, slots, lastStem) = (batch.Accounts, batch.Slots, batch.LastStem);
+                (entries, lastStem) = (batch.Entries, batch.LastStem);
 
                 double secs = sinceLog.Elapsed.TotalSeconds;
                 if (secs > 0)
                 {
-                    accountsPerSec = (accounts - loggedAccounts) / secs;
-                    slotsPerSec = (slots - loggedSlots) / secs;
+                    entriesPerSec = (entries - loggedEntries) / secs;
                     stemsPerSec = (stems - loggedStems) / secs;
                 }
-                (loggedAccounts, loggedSlots, loggedStems) = (accounts, slots, stems);
+                (loggedEntries, loggedStems) = (entries, stems);
                 sinceLog.Restart();
 
-                progress.Update((ulong)(accounts + slots));
+                progress.Update((ulong)entries);
                 progress.LogProgress();
             }
         }
@@ -124,7 +123,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         PbtWriteBatchBuilder builder = new();
         IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
         int pending = 0;
-        long accounts = 0, slots = 0;
+        long entries = 0;
         Stem lastStem = default;
 
         try
@@ -138,29 +137,14 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
                     {
                         RebuildEntry entry = chunk[i];
                         lastStem = entry.Stem;
-                        switch (entry.Kind)
-                        {
-                            case RebuildEntry.EntryKind.Account:
-                                writeBatch!.SetAccount(entry.Address!, entry.Account);
-                                builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
-                                accounts++;
-                                break;
-                            case RebuildEntry.EntryKind.Slot:
-                                EvmWord word = entry.Word;
-                                writeBatch!.SetSlot(entry.Address!, entry.Slot, word);
-                                builder.SetLeaf(entry.Stem, entry.SubIndex, SlotLeaf(word));
-                                slots++;
-                                break;
-                            default:
-                                builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
-                                break;
-                        }
+                        builder.SetLeaf(entry.Stem, entry.SubIndex, entry.Leaf);
+                        entries++;
 
                         if (++pending >= FlushEntryInterval)
                         {
                             // draining pre-buckets the batch, so the fold skips the top-level partitioning; a
                             // drained batch lost to a faulting flusher only drops its pooled maps to the GC
-                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastStem), pipelineCts.Token);
+                            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, entries, lastStem), pipelineCts.Token);
                             writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.DisableWAL);
                             pending = 0;
                         }
@@ -169,7 +153,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             }
 
             // seal the final (possibly empty) window; the flusher owns its write batch from here
-            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, accounts, slots, lastStem), pipelineCts.Token);
+            await flushChannel.Writer.WriteAsync(new FlushBatch(builder.DrainToWriteBatch(), writeBatch!, entries, lastStem), pipelineCts.Token);
             writeBatch = null;
             flushChannel.Writer.Complete();
             await flusher;
@@ -189,16 +173,15 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         // atomically advance the persisted-state pointer to the rebuilt state
         using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, root), WriteFlags.None)) { }
 
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, {stems} stems, root {root}");
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {entries} leaves, {stems} stems, root {root}");
         return root;
     }
 
-    /// <summary>A full window handed from the consumer to the flush worker: its drained, pre-bucketed leaf changes, the write batch its flat rows are staged in, and the progress counters as of when it was sealed.</summary>
+    /// <summary>A full window handed from the consumer to the flush worker: its drained, pre-bucketed leaf changes, the write batch its leaves and nodes are staged in, and the progress counters as of when it was sealed.</summary>
     private readonly record struct FlushBatch(
         PbtWriteBatch Changes,
         IPbtPersistence.IWriteBatch WriteBatch,
-        long Accounts,
-        long Slots,
+        long Entries,
         Stem LastStem);
 
     /// <summary>
@@ -225,10 +208,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             }
         }
 
-        writeBatch.Dispose(); // atomic commit of this window's flat rows and, when non-empty, its leaves and nodes
+        writeBatch.Dispose(); // atomic commit of this window's leaves and nodes, when it had any
         return currentRoot;
     }
-
-    private static ValueHash256 SlotLeaf(in EvmWord value) =>
-        EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
 }
