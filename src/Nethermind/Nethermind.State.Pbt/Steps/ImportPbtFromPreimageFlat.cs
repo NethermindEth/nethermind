@@ -6,6 +6,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -56,6 +57,9 @@ public class ImportPbtFromPreimageFlat(
     private const int EntryChunkCapacity = 64;
 
     private const int StorageJobChannelCapacity = 1_024;
+
+    /// <summary>Distinct code hashes remembered for overflow-chunk dedup; bounds the cache's memory, at worst re-emitting an evicted code's chunks.</summary>
+    private const int SeenCodeCacheCapacity = 1 << 20;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
 
@@ -168,6 +172,7 @@ public class ImportPbtFromPreimageFlat(
 
         try
         {
+            LruKeyCache<ValueHash256> seenCodeHashes = new(SeenCodeCacheCapacity, "PBT import code hashes");
             using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
             while (accountIterator.MoveNext())
             {
@@ -183,7 +188,11 @@ public class ImportPbtFromPreimageFlat(
                     : null;
 
                 ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
-                RebuildEntry.EmitAccount(address, account, code, addressHash, chunk);
+
+                // overflow code chunks are content-addressed by code hash, so duplicate contracts
+                // (proxies) would re-emit identical leaves — only the first occurrence emits them
+                bool emitOverflowChunks = code is null || seenCodeHashes.Set(account.CodeHash);
+                RebuildEntry.EmitAccount(address, account, code, addressHash, chunk, emitOverflowChunks);
                 if (chunk.Count >= ChunkSize) await FlushChunk();
 
                 // hand the storage to the worker pool rather than reading it inline here

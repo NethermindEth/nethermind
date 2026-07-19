@@ -74,7 +74,12 @@ public readonly struct RebuildEntry
     /// content-addressed code-zone stems. <paramref name="addressHash"/> is the account's
     /// precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/>.
     /// </summary>
-    internal static void EmitAccount(Address address, Account account, byte[]? code, in ValueHash256 addressHash, ArrayPoolList<RebuildEntry> sink)
+    /// <param name="emitOverflowChunks">
+    /// Whether to emit the overflow code chunks. Their stems and values depend only on the code hash,
+    /// so a caller that already emitted this code's chunks for another account passes <c>false</c> —
+    /// the header chunks are address-keyed and always emitted.
+    /// </param>
+    internal static void EmitAccount(Address address, Account account, byte[]? code, in ValueHash256 addressHash, ArrayPoolList<RebuildEntry> sink, bool emitOverflowChunks)
     {
         sink.Add(ForAccount(address, account));
 
@@ -93,6 +98,8 @@ public readonly struct RebuildEntry
         {
             sink.Add(ForLeaf(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), ToLeaf(Chunk(chunks, i))));
         }
+
+        if (!emitOverflowChunks) return;
 
         // overflow chunks (index 128+) live on their own content-addressed code-zone stems, each stem
         // holding a run of up to a full stem's worth — derive the stem once per run, not per chunk
