@@ -344,8 +344,11 @@ public class StemTrieTests(PbtGroupFormat format)
         Assert.That(harness.Blobs, Has.Count.EqualTo(expectedStems));
     }
 
-    [Test]
-    public void PushedStemBoundsTheJump()
+    // One stem past the divergence, then enough of them to separate the two depths the frame tracks: the
+    // deep stems agree with one another well past bit 140, so the range parts deeper than the subtree does.
+    [TestCase(1)]
+    [TestCase(16)]
+    public void PushedStemBoundsTheJump(int deepStems)
     {
         // A stem already in the trie is pushed down as the batch descends, and it is as much of the
         // subtree as the writes are: the writes below part only at bit 140, but the pushed stem parts
@@ -355,14 +358,19 @@ public class StemTrieTests(PbtGroupFormat format)
         const int deepBit = 140;
 
         byte[] stemBase = new byte[31];
-        byte[] stemDeep = new byte[31];
-        stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
         byte[] stemPushed = new byte[31];
         stemPushed[pushedBit >> 3] = (byte)(1 << (7 - (pushedBit & 7)));
         byte[] value = Bytes.FromHexString("0x2222222222222222222222222222222222222222222222222222222222222222");
 
         (byte[], byte[]?) pushed = ([.. stemPushed, 3], value);
-        List<(byte[], byte[]?)> writes = [([.. stemBase, 5], value), ([.. stemDeep, 6], value)];
+        List<(byte[], byte[]?)> writes = [([.. stemBase, 5], value)];
+        for (int i = 0; i < deepStems; i++)
+        {
+            byte[] stemDeep = new byte[31];
+            stemDeep[deepBit >> 3] = (byte)(1 << (7 - (deepBit & 7)));
+            stemDeep[30] = (byte)i;
+            writes.Add(([.. stemDeep, 6], value));
+        }
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
         harness.ApplyBatch([pushed]);
@@ -398,6 +406,38 @@ public class StemTrieTests(PbtGroupFormat format)
         {
             Assert.That(PbtNodeChain.Decode(harness.Nodes[key], key.Depth).TargetDepth, Is.EqualTo(60));
         }
+    }
+
+    [Test]
+    public void ManyContractsStorage_FoldsToTheReferenceTreeThroughTheSharedPrefixCorridor()
+    {
+        // The shape the corridor short-circuit is for, at the scale that makes it worth having: enough
+        // contracts that the groups above the storage zone genuinely branch and are stored, and enough
+        // slots apiece that each contract's 61-bit prefix is descended with a large range in hand. Every
+        // frame along one of those corridors buckets its whole range into a single slot, so what the fold
+        // must produce is exactly what it produces when each of them partitions for itself.
+        byte[] value = Bytes.FromHexString("0x4444444444444444444444444444444444444444444444444444444444444444");
+        List<(byte[], byte[]?)> writes = [];
+        for (int contract = 1; contract <= 16; contract++)
+        {
+            Address address = Address.FromNumber((UInt256)contract);
+            for (int slot = 0; slot < 32; slot++)
+            {
+                // a whole tree index apart, so each slot takes a stem of its own
+                writes.Add((PbtKeyDerivation.StorageKey(address, (UInt256)(PbtKeyDerivation.HeaderStorageOffset + (slot << 8))).ToByteArray(), value));
+            }
+        }
+
+        PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(harness.ApplyBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(harness, writes);
+        AssertChainsAreMaximal(harness);
+
+        // The same writes through the production builder, whose precalculated levels cover the depths a
+        // corridor is entered from: the two take different routes into it and must still agree.
+        PbtTreeHarness drained = new(PooledRefCountingMemoryProvider.Instance, format);
+        Assert.That(drained.ApplyDrainedBatch(writes), Is.EqualTo(ReferenceRoot(writes)));
+        AssertStoreMatchesFreshRebuild(drained, writes);
     }
 
     [Test]
