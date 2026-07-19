@@ -14,5 +14,6 @@ public class PbtConfig : IPbtConfig
     public int ImportStorageReadConcurrency { get; set; }
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }
+    public int ScanTreeConcurrency { get; set; }
     public bool InterleaveTrieNodeLevels { get; set; } = true;
 }

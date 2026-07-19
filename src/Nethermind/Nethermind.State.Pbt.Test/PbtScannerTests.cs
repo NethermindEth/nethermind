@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -75,9 +76,9 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
-    public void Scan_CountsTheTreesShape(PbtGroupFormat format)
+    public async Task Scan_CountsTheTreesShape(PbtGroupFormat format)
     {
-        PbtScanReport report = ScanTree(format);
+        PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
 
         Assert.Multiple(() =>
         {
@@ -106,9 +107,9 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel, 0, 0, 0)]
     [TestCase(PbtGroupFormat.Interleaved, 4, 3, 2)]
-    public void Scan_CountsInterleavedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
+    public async Task Scan_CountsInterleavedLevelsPerPartition(PbtGroupFormat format, long root, long account, long storage)
     {
-        PbtScanReport report = ScanTree(format);
+        PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
 
         Assert.Multiple(() =>
         {
@@ -127,9 +128,9 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
-    public void Scan_CountsChainsAndWhatTheyElide(PbtGroupFormat format)
+    public async Task Scan_CountsChainsAndWhatTheyElide(PbtGroupFormat format)
     {
-        PbtScanReport report = ScanTree(format);
+        PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
         PbtScanReport.TrieNodeStats storage = report.StorageNodes;
 
         Assert.Multiple(() =>
@@ -156,9 +157,9 @@ public class PbtScannerTests
     /// </summary>
     [TestCase(PbtGroupFormat.EveryLevel)]
     [TestCase(PbtGroupFormat.Interleaved)]
-    public void Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format)
+    public async Task Scan_CountsLeafBlobsPerColumn(PbtGroupFormat format)
     {
-        PbtScanReport report = ScanTree(format);
+        PbtScanReport report = await ScanTree(format, BuildWrites(), concurrency: 1);
 
         Assert.Multiple(() =>
         {
@@ -183,9 +184,9 @@ public class PbtScannerTests
 
     /// <summary>An empty database reports nothing rather than throwing.</summary>
     [Test]
-    public void Scan_EmptyDatabase_CountsNothing()
+    public async Task Scan_EmptyDatabase_CountsNothing()
     {
-        PbtScanReport report = new PbtScanner(new SnapshotableMemColumnsDb<PbtColumns>("pbt"), LimboLogs.Instance).Scan(default);
+        PbtScanReport report = await new PbtScanner(new SnapshotableMemColumnsDb<PbtColumns>("pbt"), new PbtConfig(), LimboLogs.Instance).Scan(default);
 
         Assert.Multiple(() =>
         {
@@ -199,9 +200,9 @@ public class PbtScannerTests
 
     /// <summary>The rendered report covers every partition that holds anything, and says so per zone.</summary>
     [Test]
-    public void Format_ReportsEachPartitionThatHoldsAnything()
+    public async Task Format_ReportsEachPartitionThatHoldsAnything()
     {
-        string report = ScanTree(PbtGroupFormat.Interleaved).Format();
+        string report = (await ScanTree(PbtGroupFormat.Interleaved, BuildWrites(), concurrency: 1)).Format();
 
         Assert.Multiple(() =>
         {
@@ -214,11 +215,61 @@ public class PbtScannerTests
         });
     }
 
+    /// <summary>Stems per zone in the wide tree, enough to spread over several shards of every column.</summary>
+    private const int WideStemCount = 64;
+
+    /// <summary>
+    /// A tree wide enough to straddle the sweep's shard boundaries: its stems differ in the leading two
+    /// bytes the leaf ranges are cut on, and branch high enough to fill more than one trie node depth.
+    /// </summary>
+    private static List<(byte[] Key, byte[]? Value)> BuildWideWrites()
+    {
+        List<(byte[], byte[]?)> writes = [];
+
+        for (int stem = 0; stem < WideStemCount; stem++)
+        {
+            byte[] account = new byte[Stem.Length];
+            account[0] = (byte)(stem & 0x0F);            // zone 0
+            account[1] = (byte)(stem << 2);
+            AddLeaves(writes, account, 1 + stem % 4);
+
+            byte[] storage = new byte[Stem.Length];
+            storage[0] = (byte)(0x80 | (stem & 0x0F));   // zone 8
+            storage[1] = (byte)(stem << 2);
+            AddLeaves(writes, storage, 1 + stem % 3);
+        }
+
+        return writes;
+    }
+
+    /// <summary>
+    /// Sharding the sweep may not change what it counts. The absolute counts are what catch a range
+    /// boundary dropping or double counting the entries around it; the rendered report then pins every
+    /// remaining scalar and histogram bucket against the serial sweep in one comparison.
+    /// </summary>
+    [TestCase(2)]
+    [TestCase(8)]
+    public async Task Scan_ShardedSweepCountsWhatTheSerialOneDoes(int concurrency)
+    {
+        List<(byte[] Key, byte[]? Value)> writes = BuildWideWrites();
+        string serial = (await ScanTree(PbtGroupFormat.Interleaved, writes, concurrency: 1)).Format();
+        PbtScanReport sharded = await ScanTree(PbtGroupFormat.Interleaved, writes, concurrency);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sharded.StemCount, Is.EqualTo(2 * WideStemCount), "the trie node ranges cover every stem exactly once");
+            Assert.That(sharded.AccountLeaves.BlobCount, Is.EqualTo(WideStemCount), "the leaf ranges cover every account blob exactly once");
+            Assert.That(sharded.StorageLeaves.BlobCount, Is.EqualTo(WideStemCount), "the leaf ranges cover every storage blob exactly once");
+            Assert.That(sharded.StemCountAgrees, Is.True);
+            Assert.That(sharded.Format(), Is.EqualTo(serial));
+        });
+    }
+
     /// <summary>Builds the tree in <paramref name="format"/> and scans the columns it lands in.</summary>
-    private static PbtScanReport ScanTree(PbtGroupFormat format)
+    private static Task<PbtScanReport> ScanTree(PbtGroupFormat format, List<(byte[] Key, byte[]? Value)> writes, int concurrency)
     {
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
-        harness.ApplyBatch(BuildWrites());
+        harness.ApplyBatch(writes);
 
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         foreach (KeyValuePair<TrieNodeKey, byte[]> node in harness.Nodes)
@@ -231,7 +282,7 @@ public class PbtScannerTests
             db.GetColumnDb(LeafColumn(blob.Key))[blob.Key.Bytes.ToArray()] = blob.Value;
         }
 
-        return new PbtScanner(db, LimboLogs.Instance).Scan(default);
+        return new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = concurrency }, LimboLogs.Instance).Scan(default);
     }
 
     /// <summary>Routes a stem to its leaf column by zone, as the persistence layer does.</summary>
