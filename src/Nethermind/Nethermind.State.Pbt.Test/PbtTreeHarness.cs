@@ -37,6 +37,9 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
     /// <summary>Every value handed to a reader, to check the leases on them were balanced.</summary>
     public IReadOnlyList<RefCountingMemory> HandedOut => _handedOut;
 
+    /// <summary>Count of <see cref="GetLeafBlob"/> calls, to pin that the updater skips the read for brand-new stems.</summary>
+    public int LeafReads { get; private set; }
+
     public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => Track(RefCountingMemory.WrappingOrNull(_nodes.GetValueOrDefault(key)));
 
     public void SetTrieNode(in TrieNodeKey key, RefCountingMemory? node)
@@ -46,7 +49,11 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         else _nodes[key] = value;
     }
 
-    public RefCountingMemory? GetLeafBlob(in Stem stem) => Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
+    public RefCountingMemory? GetLeafBlob(in Stem stem)
+    {
+        LeafReads++;
+        return Track(RefCountingMemory.WrappingOrNull(_blobs.GetValueOrDefault(stem)));
+    }
 
     public void SetLeafBlob(in Stem stem, RefCountingMemory? blob)
     {
