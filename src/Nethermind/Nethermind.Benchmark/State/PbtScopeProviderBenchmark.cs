@@ -42,6 +42,14 @@ public class PbtScopeProviderBenchmark
         Pbt
     }
 
+    public enum SlotLayout
+    {
+        // Consecutive storage-zone slots (64 + s): all share one PBT storage stem (treeIndex slot>>8 == 0).
+        Dense,
+        // Slots spaced by 256 (64 + s*256): each lands in a distinct storage stem — maximal stem fan-out.
+        Spread
+    }
+
     private readonly CancellationTokenSource _cts = new();
 
     private SnapshotableMemColumnsDb<PbtColumns>? _pbtDb;
@@ -61,11 +69,12 @@ public class PbtScopeProviderBenchmark
     [Params(0, 20)]
     public int StorageSlotsPerAccount { get; set; }
 
-    // How many uncommitted diff layers sit between the scope's base state and the persisted state.
-    // A read walks them newest-first, so this is the axis a layer-count change shows up on; at depth
-    // 1 there is nothing to walk and any such change is invisible. The trie backend has no layer
-    // chain and is flat in this parameter, which is itself the comparison.
-    [Params(1, 32)]
+    // Storage-zone slot layout (only meaningful when StorageSlotsPerAccount > 0): pack into one stem or fan out.
+    [Params(SlotLayout.Dense, SlotLayout.Spread)]
+    public SlotLayout StorageLayout { get; set; }
+
+    // Writes are flat in the layer count (established), so pinned to 1 for the layout comparison.
+    [Params(1)]
     public int ChainDepth { get; set; }
 
     [GlobalSetup]
@@ -160,7 +169,7 @@ public class PbtScopeProviderBenchmark
                     batch.CreateStorageWriteBatch(_addresses[i], estimatedEntries: StorageSlotsPerAccount);
                 for (int s = 0; s < StorageSlotsPerAccount; s++)
                 {
-                    storageBatch.Set((UInt256)(ulong)(s + 1), new byte[] { (byte)((s + 1) & 0xFF) });
+                    storageBatch.Set(SlotKey(s), new byte[] { (byte)((s + 1) & 0xFF) });
                 }
             }
         }
@@ -178,6 +187,15 @@ public class PbtScopeProviderBenchmark
 
         _cts.Dispose();
     }
+
+    private const ulong StorageZoneBase = 64;
+
+    private UInt256 SlotKey(int s) => StorageLayout switch
+    {
+        SlotLayout.Dense => (UInt256)(StorageZoneBase + (ulong)s),
+        SlotLayout.Spread => (UInt256)(StorageZoneBase + (ulong)s * 256),
+        _ => throw new ArgumentOutOfRangeException(nameof(StorageLayout))
+    };
 
     private static Address DeriveAddress(int index) =>
         new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
