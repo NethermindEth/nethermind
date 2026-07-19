@@ -26,8 +26,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private long _lastPayloadTick;
     private long _lastPayloadIntervalMs;
 
-    /// <summary>Minimum observed interval between consecutive payloads, in milliseconds, for the
-    /// decommit collection to be considered safe to run; below it payloads are treated as streaming.</summary>
+    /// <summary>Minimum interval between consecutive payloads, in milliseconds, for the decommit collection to run.</summary>
     internal const long MinPayloadIntervalForDecommitMs = 4000;
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
@@ -39,16 +38,14 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
         long previousTick = Interlocked.Exchange(ref _lastPayloadTick, timestamp);
         if (previousTick != 0)
         {
-            // Clamp to 1 so that a same-tick arrival is distinguishable from "no interval observed".
+            // 0 means "no interval observed yet", so clamp same-tick arrivals to 1
             Volatile.Write(ref _lastPayloadIntervalMs, Math.Max(1, timestamp - previousTick));
         }
 
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (!pausedGCScheduler)
         {
-            // A forced collection is in flight (or another NoGC region is active): attempting to
-            // start a NoGC region now would block until it finishes — up to the full stop-the-world
-            // pause of a decommit. Run this payload without one instead.
+            // a GC is already in flight; starting a NoGC region would block until it completes
             return new NoGCRegion(this, FailCause.GCInProgress, size, pausedGCScheduler, _logger);
         }
 
@@ -199,15 +196,11 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // The decommit is an aggressive gen2 + LOH-compact collection whose
-                    // stop-the-world pause can exceed a second on large heaps. At slot cadence the
-                    // post-block delay leaves ample idle time, but when payloads stream
-                    // back-to-back (catch-up) the next payload lands mid-collection and stalls for
-                    // the remainder of the pause — defer until the cadence shows idle gaps.
+                    // the decommit's stop-the-world pause can exceed a second; defer it while payloads
+                    // stream back-to-back (catch-up), or the next payload lands mid-collection
                     if (ShouldDeferDecommit())
                     {
-                        // Retry the decommit on the next scheduled collection.
-                        Interlocked.Decrement(ref _forcedGcCount);
+                        Interlocked.Decrement(ref _forcedGcCount); // retry on the next scheduled collection
                     }
                     else
                     {
