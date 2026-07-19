@@ -78,7 +78,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         using PbtWriteBatch batch = new(estimatedStems: grouped.Count, buckets: null);
         foreach ((Stem stem, IPbtStemChanges changes) in grouped) batch.Add(stem, changes);
 
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
         return _root;
     }
 
@@ -101,7 +101,7 @@ public sealed class PbtTreeHarness(IRefCountingMemoryProvider memoryProvider, Pb
         }
 
         using PbtWriteBatch batch = builder.DrainToWriteBatch();
-        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat);
+        _root = TrieUpdater.UpdateRoot(this, _root, batch, memoryProvider, WriteFormat, out _);
         return _root;
     }
 }

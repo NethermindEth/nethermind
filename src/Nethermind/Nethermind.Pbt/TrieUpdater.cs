@@ -70,10 +70,19 @@ public static partial class TrieUpdater
     /// are read whatever this says, so it may change between batches over one store: a group is
     /// converted only by a change that rewrites it anyway.
     /// </param>
+    /// <param name="delta">The change this batch makes to the whole tree's stem count — positive as stems are added, negative as their leaves are zeroed away.</param>
     public static ValueHash256 UpdateRoot(
         IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch changes, IRefCountingMemoryProvider memoryProvider,
-        PbtGroupFormat writeFormat) =>
-        changes.Count == 0 ? currentRoot : new Updater(store, memoryProvider, writeFormat).Run(currentRoot, changes);
+        PbtGroupFormat writeFormat, out PbtSubtreeStats delta)
+    {
+        if (changes.Count == 0)
+        {
+            delta = default;
+            return currentRoot;
+        }
+
+        return new Updater(store, memoryProvider, writeFormat).Run(currentRoot, changes, out delta);
+    }
 
     private sealed partial class Updater(IPbtStore store, IRefCountingMemoryProvider memoryProvider, PbtGroupFormat writeFormat)
     {
@@ -94,13 +103,13 @@ public static partial class TrieUpdater
             Chain = 3,
         }
 
-        public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes)
+        public ValueHash256 Run(in ValueHash256 currentRoot, PbtWriteBatch changes, out PbtSubtreeStats delta)
         {
             // No global sort: each group radix-partitions its own range in place during the descent,
             // bar the levels the producer already bucketed for it.
             using RefCountingMemory? rootData = store.GetTrieNode(TrieNodeKey.Root);
             NodeResult root = default;
-            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, changes.Buckets, ref root, out _, out _);
+            ApplyStored(TrieNodeKey.Root, changes.Entries, rootData, currentRoot, changes.Buckets, ref root, out _, out delta);
 
             using (root)
             {

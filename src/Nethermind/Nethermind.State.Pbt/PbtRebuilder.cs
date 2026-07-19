@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -76,8 +77,13 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         Dictionary<Stem, Dictionary<byte, ValueHash256>> window = new(FlushEntryInterval);
         IPbtPersistence.IWriteBatch writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
         int pending = 0;
-        long accounts = 0, slots = 0;
+        long accounts = 0, slots = 0, stems = 0;
         Address lastAddress = Address.Zero;
+
+        // per-second rates measured over each inter-log interval, captured by the progress format
+        double accountsPerSec = 0, slotsPerSec = 0, stemsPerSec = 0;
+        long loggedAccounts = 0, loggedSlots = 0, loggedStems = 0;
+        Stopwatch sinceLog = Stopwatch.StartNew();
 
         // Accounts stream in ascending address order, so the current address's position in the key
         // space is the completion fraction (addresses are ~uniform, so the top 64 bits estimate it well)
@@ -87,7 +93,9 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         progress.SetFormat(p =>
         {
             float percentage = Math.Clamp(p.CurrentValue / (float)ulong.MaxValue, 0, 1);
-            return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | {accounts,13:N0} accounts | {slots,15:N0} slots | at {lastAddress}";
+            return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
+                $"{accounts,13:N0} acc ({accountsPerSec,8:N0}/s) | {slots,15:N0} slot ({slotsPerSec,8:N0}/s) | " +
+                $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastAddress}";
         });
         progress.Reset(0, ulong.MaxValue);
 
@@ -109,16 +117,29 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
 
                 if (++pending >= FlushEntryInterval)
                 {
-                    currentRoot = FlushAndCommit(writeBatch, currentRoot, window);
+                    currentRoot = FlushAndCommit(writeBatch, currentRoot, window, out PbtSubtreeStats stemDelta);
+                    stems += stemDelta.StemCount;
                     writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
                     pending = 0;
+
+                    double secs = sinceLog.Elapsed.TotalSeconds;
+                    if (secs > 0)
+                    {
+                        accountsPerSec = (accounts - loggedAccounts) / secs;
+                        slotsPerSec = (slots - loggedSlots) / secs;
+                        stemsPerSec = (stems - loggedStems) / secs;
+                    }
+                    (loggedAccounts, loggedSlots, loggedStems) = (accounts, slots, stems);
+                    sinceLog.Restart();
+
                     progress.Update(BinaryPrimitives.ReadUInt64BigEndian(lastAddress.Bytes));
                     progress.LogProgress();
                 }
             }
 
             // last (possibly partial) window
-            currentRoot = FlushAndCommit(writeBatch, currentRoot, window);
+            currentRoot = FlushAndCommit(writeBatch, currentRoot, window, out PbtSubtreeStats lastDelta);
+            stems += lastDelta.StemCount;
         }
         catch
         {
@@ -129,13 +150,18 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
         // atomically advance the persisted-state pointer to the rebuilt state
         using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, currentRoot))) { }
 
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, root {currentRoot}");
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, {stems} stems, root {currentRoot}");
         return currentRoot;
     }
 
-    /// <summary>Folds the accumulated window into the tree on top of <paramref name="currentRoot"/>, commits it, and clears the window.</summary>
-    private ValueHash256 FlushAndCommit(IPbtPersistence.IWriteBatch writeBatch, ValueHash256 currentRoot, Dictionary<Stem, Dictionary<byte, ValueHash256>> window)
+    /// <summary>
+    /// Folds the accumulated window into the tree on top of <paramref name="currentRoot"/>, commits it,
+    /// and clears the window. <paramref name="stemDelta"/> reports the change this window makes to the
+    /// tree's stem count (zero for an empty window).
+    /// </summary>
+    private ValueHash256 FlushAndCommit(IPbtPersistence.IWriteBatch writeBatch, ValueHash256 currentRoot, Dictionary<Stem, Dictionary<byte, ValueHash256>> window, out PbtSubtreeStats stemDelta)
     {
+        stemDelta = default;
         if (window.Count > 0)
         {
             using PbtWriteBatch changes = new(window.Count, buckets: null);
@@ -150,7 +176,7 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
             // and blobs and writes the new ones into this window's still-open batch
             using IPbtPersistence.IReader reader = target.CreateReader();
             PersistenceBackedPbtStore store = new(reader, writeBatch);
-            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat());
+            currentRoot = TrieUpdater.UpdateRoot(store, currentRoot, changes, PooledRefCountingMemoryProvider.Instance, config.TrieNodeWriteFormat(), out stemDelta);
         }
 
         writeBatch.Dispose(); // atomic commit of this window's flat rows and, when non-empty, its leaves and nodes

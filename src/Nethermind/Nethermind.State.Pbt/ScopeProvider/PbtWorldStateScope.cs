@@ -96,7 +96,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         if (!_rootDirty) return;
 
         using PbtWriteBatch changes = _writeBatchBuilder.DrainToWriteBatch();
-        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat).ToHash256();
+        _rootHash = TrieUpdater.UpdateRoot(this, _currentStateId.StateRoot, changes, PooledRefCountingMemoryProvider.Instance, _writeFormat, out _).ToHash256();
         _rootDirty = false;
     }
 

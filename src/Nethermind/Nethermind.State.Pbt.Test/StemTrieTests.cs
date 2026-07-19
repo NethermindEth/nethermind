@@ -113,7 +113,7 @@ public class StemTrieTests(PbtGroupFormat format)
         batch.Add(stem, PbtStemChanges.Rent().Set(7, value));
 
         PbtTreeHarness harness = new(PooledRefCountingMemoryProvider.Instance, format);
-        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel),
+        Assert.That(() => TrieUpdater.UpdateRoot(harness, default, batch, PooledRefCountingMemoryProvider.Instance, PbtGroupFormat.EveryLevel, out _),
             Throws.InstanceOf<InvalidOperationException>());
     }
 
