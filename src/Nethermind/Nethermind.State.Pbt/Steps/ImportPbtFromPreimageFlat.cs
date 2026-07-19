@@ -78,6 +78,9 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Distinct code hashes remembered for overflow-chunk dedup; bounds the cache's memory, at worst re-staging an evicted code's chunks.</summary>
     private const int SeenCodeCacheCapacity = 1 << 20;
 
+    /// <summary>Entries a worker stages before publishing them to the shared counters, so progress moves within a range that takes minutes without an interlocked add per entry.</summary>
+    private const int ProgressPublishInterval = 100_000;
+
     private static readonly TimeSpan StagingLogInterval = TimeSpan.FromSeconds(5);
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
@@ -162,10 +165,7 @@ public class ImportPbtFromPreimageFlat(
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
             {
                 (ValueHash256 start, ValueHash256 end) = PartitionBounds(partition, partitionCount);
-                (long partitionAccounts, long partitionSlots) = StagePartition(reader, writer, seenCodeHashes, start, end, cancellationToken);
-
-                Interlocked.Add(ref accounts, partitionAccounts);
-                Interlocked.Add(ref slots, partitionSlots);
+                StagePartition(reader, writer, seenCodeHashes, start, end, ref accounts, ref slots, cancellationToken);
                 Interlocked.Increment(ref donePartitions);
             }
         }
@@ -236,16 +236,22 @@ public class ImportPbtFromPreimageFlat(
         if (_logger.IsInfo) _logger.Info($"PBT import staged {accounts:N0} accounts and {slots:N0} slots in {staging.Elapsed:hh\\:mm\\:ss}. The scratch database is left on disk and is safe to delete once the import finishes.");
     }
 
-    /// <summary>Stages every account in <c>[<paramref name="start"/>, <paramref name="end"/>]</c>, and each one's storage inline.</summary>
-    private (long Accounts, long Slots) StagePartition(
+    /// <summary>
+    /// Stages every account in <c>[<paramref name="start"/>, <paramref name="end"/>]</c>, and each one's
+    /// storage inline, publishing what it stages into the shared <paramref name="accounts"/> and
+    /// <paramref name="slots"/> counters as it goes.
+    /// </summary>
+    private void StagePartition(
         FlatPersistence.IPersistenceReader reader,
         PbtImportScratchWriter writer,
         LruKeyCache<ValueHash256> seenCodeHashes,
         ValueHash256 start,
         ValueHash256 end,
+        ref long accounts,
+        ref long slots,
         CancellationToken cancellationToken)
     {
-        long accounts = 0, slots = 0;
+        long pendingAccounts = 0;
         using FlatPersistence.IFlatIterator accountIterator = reader.CreateAccountIterator(start, end);
         while (accountIterator.MoveNext())
         {
@@ -267,23 +273,30 @@ public class ImportPbtFromPreimageFlat(
             // (proxies) would re-stage identical leaves — only the first occurrence stages them
             bool stageOverflowChunks = code is null || seenCodeHashes.Set(account.CodeHash);
             writer.WriteAccount(address, account, slimRlp, code, addressHash, stageOverflowChunks);
-            accounts++;
+            pendingAccounts++;
 
-            if (account.HasStorage) slots += StageStorage(reader, writer, address, accountKey, addressHash, cancellationToken);
+            if (account.HasStorage) StageStorage(reader, writer, address, accountKey, addressHash, ref slots, cancellationToken);
+
+            if (pendingAccounts >= ProgressPublishInterval)
+            {
+                Interlocked.Add(ref accounts, pendingAccounts);
+                pendingAccounts = 0;
+            }
         }
 
-        return (accounts, slots);
+        Interlocked.Add(ref accounts, pendingAccounts);
     }
 
-    private static long StageStorage(
+    private static void StageStorage(
         FlatPersistence.IPersistenceReader reader,
         PbtImportScratchWriter writer,
         Address address,
         in ValueHash256 accountKey,
         in ValueHash256 addressHash,
+        ref long slots,
         CancellationToken cancellationToken)
     {
-        long slots = 0;
+        long pendingSlots = 0;
         PbtImportScratchWriter.SlotDeriver deriver = new(address, addressHash);
         using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         while (storageIterator.MoveNext())
@@ -294,10 +307,15 @@ public class ImportPbtFromPreimageFlat(
             UInt256 slot = new(storageIterator.CurrentKey.Bytes, isBigEndian: true);
             EvmWord word = EvmWordSlot.FromStripped(storageIterator.CurrentValue);
             writer.WriteSlot(address, slot, word, ref deriver);
-            slots++;
+
+            if (++pendingSlots >= ProgressPublishInterval)
+            {
+                Interlocked.Add(ref slots, pendingSlots);
+                pendingSlots = 0;
+            }
         }
 
-        return slots;
+        Interlocked.Add(ref slots, pendingSlots);
     }
 
     /// <summary>
