@@ -71,88 +71,141 @@ public sealed class PbtRebuilder(IPbtPersistence target, ILogManager logManager,
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
     /// <summary>Rebuilds the tree from <paramref name="source"/> and returns the EIP-8297 root at <paramref name="blockNumber"/>.</summary>
+    /// <remarks>
+    /// Reading and folding run as a pipeline: this consumer accumulates each window and hands the full
+    /// one to a single flush worker over a bounded (capacity-1) channel, so the next window fills while
+    /// the worker folds and commits the current one. The fold stays sequential — each window folds on
+    /// the previous root — so exactly one worker drains the channel in order, and it alone touches the
+    /// target database.
+    /// </remarks>
     public async Task<ValueHash256> Rebuild(ChannelReader<RebuildEntry> source, ulong blockNumber, CancellationToken cancellationToken)
     {
-        ValueHash256 currentRoot = default; // empty tree is 32 zero bytes
-        Dictionary<Stem, Dictionary<byte, ValueHash256>> window = new(FlushEntryInterval);
-        IPbtPersistence.IWriteBatch writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
-        int pending = 0;
-        long accounts = 0, slots = 0, stems = 0;
-        Address lastAddress = Address.Zero;
+        using CancellationTokenSource pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        // per-second rates measured over each inter-log interval, captured by the progress format
-        double accountsPerSec = 0, slotsPerSec = 0, stemsPerSec = 0;
-        long loggedAccounts = 0, loggedSlots = 0, loggedStems = 0;
-        Stopwatch sinceLog = Stopwatch.StartNew();
-
-        // Accounts stream in ascending address order, so the current address's position in the key
-        // space is the completion fraction (addresses are ~uniform, so the top 64 bits estimate it well)
-        // — the same trick FlatTrieVerifier uses off the trie path. CurrentValue is that position out of
-        // ulong.MaxValue.
-        ProgressLogger progress = new("PBT rebuild", logManager);
-        progress.SetFormat(p =>
+        // capacity 1 double-buffers: one window commits while the next fills
+        Channel<FlushBatch> flushChannel = Channel.CreateBounded<FlushBatch>(new BoundedChannelOptions(1)
         {
-            float percentage = Math.Clamp(p.CurrentValue / (float)ulong.MaxValue, 0, 1);
-            return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
-                $"{accounts,13:N0} acc ({accountsPerSec,8:N0}/s) | {slots,15:N0} slot ({slotsPerSec,8:N0}/s) | " +
-                $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastAddress}";
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = true,
         });
-        progress.Reset(0, ulong.MaxValue);
+
+        ValueHash256 root = default; // empty tree is 32 zero bytes
+        long stems = 0;
+
+        // The flush worker folds each window on the previous root and commits it, in order, logging
+        // progress off the just-committed window so throughput tracks durable work rather than reads
+        // racing ahead. Rates are measured over each inter-log interval.
+        async Task FlushLoop()
+        {
+            long accounts = 0, slots = 0;
+            Address lastAddress = Address.Zero;
+            double accountsPerSec = 0, slotsPerSec = 0, stemsPerSec = 0;
+            long loggedAccounts = 0, loggedSlots = 0, loggedStems = 0;
+            Stopwatch sinceLog = Stopwatch.StartNew();
+
+            // Accounts stream in ascending address order, so the current address's position in the key
+            // space is the completion fraction (addresses are ~uniform, so the top 64 bits estimate it
+            // well) — the trick FlatTrieVerifier uses off the trie path. CurrentValue is driven by the
+            // entry count instead, only so it moves every window: a huge-storage account holds the
+            // address (and percentage) fixed for many windows, and the logger drops a repeated line
+            // unless CurrentValue changes — which would stall the log through the slowest part.
+            ProgressLogger progress = new("PBT rebuild", logManager);
+            progress.SetFormat(_ =>
+            {
+                float percentage = Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(lastAddress.Bytes) / (float)ulong.MaxValue, 0, 1);
+                return $"PBT rebuild {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
+                    $"{accounts,13:N0} acc ({accountsPerSec,8:N0}/s) | {slots,15:N0} slot ({slotsPerSec,8:N0}/s) | " +
+                    $"{stems,13:N0} stem ({stemsPerSec,8:N0}/s) | at {lastAddress}";
+            });
+            progress.Reset(0, 0);
+
+            await foreach (FlushBatch batch in flushChannel.Reader.ReadAllAsync(pipelineCts.Token))
+            {
+                root = FlushAndCommit(batch.WriteBatch, root, batch.Window, out PbtSubtreeStats stemDelta);
+                stems += stemDelta.StemCount;
+                (accounts, slots, lastAddress) = (batch.Accounts, batch.Slots, batch.LastAddress);
+
+                double secs = sinceLog.Elapsed.TotalSeconds;
+                if (secs > 0)
+                {
+                    accountsPerSec = (accounts - loggedAccounts) / secs;
+                    slotsPerSec = (slots - loggedSlots) / secs;
+                    stemsPerSec = (stems - loggedStems) / secs;
+                }
+                (loggedAccounts, loggedSlots, loggedStems) = (accounts, slots, stems);
+                sinceLog.Restart();
+
+                progress.Update((ulong)(accounts + slots));
+                progress.LogProgress();
+            }
+        }
+
+        Task flusher = Task.Run(async () =>
+        {
+            try { await FlushLoop(); }
+            catch { pipelineCts.Cancel(); throw; } // unblock a consumer parked on the full channel
+        });
+
+        Dictionary<Stem, Dictionary<byte, ValueHash256>> window = new(FlushEntryInterval);
+        IPbtPersistence.IWriteBatch? writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
+        int pending = 0;
+        long accounts = 0, slots = 0;
+        Address lastAddress = Address.Zero;
 
         try
         {
-            await foreach (RebuildEntry entry in source.ReadAllAsync(cancellationToken))
+            await foreach (RebuildEntry entry in source.ReadAllAsync(pipelineCts.Token))
             {
                 if (entry.IsAccount)
                 {
-                    AddAccount(entry.Address, entry.Account!, entry.Code, window, writeBatch);
+                    AddAccount(entry.Address, entry.Account!, entry.Code, window, writeBatch!);
                     accounts++;
                     lastAddress = entry.Address;
                 }
                 else
                 {
-                    AddSlot(entry.Address, entry.Slot, entry.Value!, window, writeBatch);
+                    AddSlot(entry.Address, entry.Slot, entry.Value!, window, writeBatch!);
                     slots++;
                 }
 
                 if (++pending >= FlushEntryInterval)
                 {
-                    currentRoot = FlushAndCommit(writeBatch, currentRoot, window, out PbtSubtreeStats stemDelta);
-                    stems += stemDelta.StemCount;
+                    await flushChannel.Writer.WriteAsync(new FlushBatch(window, writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
+                    window = new(FlushEntryInterval);
                     writeBatch = target.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
                     pending = 0;
-
-                    double secs = sinceLog.Elapsed.TotalSeconds;
-                    if (secs > 0)
-                    {
-                        accountsPerSec = (accounts - loggedAccounts) / secs;
-                        slotsPerSec = (slots - loggedSlots) / secs;
-                        stemsPerSec = (stems - loggedStems) / secs;
-                    }
-                    (loggedAccounts, loggedSlots, loggedStems) = (accounts, slots, stems);
-                    sinceLog.Restart();
-
-                    progress.Update(BinaryPrimitives.ReadUInt64BigEndian(lastAddress.Bytes));
-                    progress.LogProgress();
                 }
             }
 
-            // last (possibly partial) window
-            currentRoot = FlushAndCommit(writeBatch, currentRoot, window, out PbtSubtreeStats lastDelta);
-            stems += lastDelta.StemCount;
+            // seal the final (possibly empty) window; the flusher owns its write batch from here
+            await flushChannel.Writer.WriteAsync(new FlushBatch(window, writeBatch!, accounts, slots, lastAddress), pipelineCts.Token);
+            writeBatch = null;
+            flushChannel.Writer.Complete();
+            await flusher;
         }
         catch
         {
-            writeBatch.Dispose();
-            throw;
+            flushChannel.Writer.TryComplete();
+            writeBatch?.Dispose(); // the un-sealed batch we still own, if any
+            await flusher; // if the flusher faulted, this rethrows its (root-cause) exception
+            throw; // otherwise our own failure
         }
 
         // atomically advance the persisted-state pointer to the rebuilt state
-        using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, currentRoot))) { }
+        using (target.CreateWriteBatch(StateId.PreGenesis, new StateId(blockNumber, root))) { }
 
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, {stems} stems, root {currentRoot}");
-        return currentRoot;
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at block {blockNumber}: {accounts} accounts, {slots} slots, {stems} stems, root {root}");
+        return root;
     }
+
+    /// <summary>A full window handed from the consumer to the flush worker: its dirty leaves, the write batch its flat rows are staged in, and the progress counters as of when it was sealed.</summary>
+    private readonly record struct FlushBatch(
+        Dictionary<Stem, Dictionary<byte, ValueHash256>> Window,
+        IPbtPersistence.IWriteBatch WriteBatch,
+        long Accounts,
+        long Slots,
+        Address LastAddress);
 
     /// <summary>
     /// Folds the accumulated window into the tree on top of <paramref name="currentRoot"/>, commits it,

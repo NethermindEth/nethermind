@@ -45,7 +45,9 @@ public class ImportPbtFromPreimageFlatTests
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, Keccak.EmptyTreeHash), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
-            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash));
+            // a contract with storage carries a non-empty storage root in a real flat db, which is what
+            // the importer keys off to fan its storage out to the worker pool (the PBT tree omits it)
+            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
             batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
             batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
             batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
@@ -57,7 +59,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb);
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -87,7 +89,7 @@ public class ImportPbtFromPreimageFlatTests
         using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot))) { }
 
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 

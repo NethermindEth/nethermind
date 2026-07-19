@@ -25,6 +25,12 @@ namespace Nethermind.State.Pbt.Steps;
 /// The step iterates the source on a background producer, feeds decoded entries to
 /// <see cref="PbtRebuilder"/>, then exits the process (mirroring <c>ImportFlatDb</c>).
 /// </summary>
+/// <remarks>
+/// One producer walks the accounts in order; each account's storage is handed to a pool of workers
+/// (a job per account with storage) rather than read inline, so a few accounts with huge storage do
+/// not serialize the source read. The account producer and every worker feed one entry channel that
+/// the rebuilder drains.
+/// </remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
     dependents: [typeof(InitializeBlockchain)]
@@ -34,12 +40,14 @@ public class ImportPbtFromPreimageFlat(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     PbtRebuilder rebuilder,
     IPbtPersistence pbtPersistence,
+    IPbtConfig config,
     IProcessExitSource exitSource,
     ILogManager logManager
 ) : IStep
 {
     private const int AddressLength = 20;
-    private const int ChannelCapacity = 100_000;
+    private const int EntryChannelCapacity = 100_000;
+    private const int StorageJobChannelCapacity = 1_024;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
 
@@ -69,22 +77,52 @@ public class ImportPbtFromPreimageFlat(
             return;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState}");
+        int workerCount = config.ImportStorageReadConcurrency > 0 ? config.ImportStorageReadConcurrency : Environment.ProcessorCount;
+        if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState} with {workerCount} storage reader(s)");
 
-        Channel<RebuildEntry> channel = Channel.CreateBounded<RebuildEntry>(new BoundedChannelOptions(ChannelCapacity)
+        // accounts and every worker's slots share one channel (multiple writers); the rebuilder is the
+        // sole reader. Storage jobs — one per account that has storage — fan out to the worker pool.
+        Channel<RebuildEntry> entries = Channel.CreateBounded<RebuildEntry>(new BoundedChannelOptions(EntryChannelCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
+            SingleWriter = false,
+        });
+        Channel<ValueHash256> storageJobs = Channel.CreateBounded<ValueHash256>(new BoundedChannelOptions(StorageJobChannelCapacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = false,
             SingleWriter = true,
         });
 
-        // a linked source lets a consumer failure unblock the producer parked on a full channel
+        // a linked source lets any failure unblock producers parked on a full channel
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Task producer = Task.Run(() => Produce(reader, channel.Writer, cts.Token), cts.Token);
+
+        Task producer = Task.Run(() => ProduceAccounts(reader, entries.Writer, storageJobs.Writer, cts.Token), cts.Token);
+        Task[] workers = new Task[workerCount];
+        for (int i = 0; i < workerCount; i++)
+        {
+            workers[i] = Task.Run(() => ProduceStorage(storageJobs.Reader, entries.Writer, cts.Token), cts.Token);
+        }
+
+        // the entry stream ends only once the account producer and every storage worker have; surface
+        // the first failure through the channel so the rebuilder sees it
+        Task fanIn = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.WhenAll([producer, .. workers]);
+                entries.Writer.Complete();
+            }
+            catch (Exception e)
+            {
+                entries.Writer.Complete(e);
+            }
+        });
 
         try
         {
-            await rebuilder.Rebuild(channel.Reader, sourceState.BlockNumber, cancellationToken);
+            await rebuilder.Rebuild(entries.Reader, sourceState.BlockNumber, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -95,14 +133,14 @@ public class ImportPbtFromPreimageFlat(
         finally
         {
             cts.Cancel();
-            try { await producer; }
-            catch { /* the producer's failure, if any, already surfaced through the consumer above */ }
+            try { await fanIn; }
+            catch { /* the failure already surfaced through the consumer above */ }
         }
 
         exitSource.Exit(0);
     }
 
-    private async Task Produce(FlatPersistence.IPersistenceReader reader, ChannelWriter<RebuildEntry> writer, CancellationToken cancellationToken)
+    private async Task ProduceAccounts(FlatPersistence.IPersistenceReader reader, ChannelWriter<RebuildEntry> entries, ChannelWriter<ValueHash256> storageJobs, CancellationToken cancellationToken)
     {
         try
         {
@@ -120,24 +158,36 @@ public class ImportPbtFromPreimageFlat(
                     ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
                     : null;
 
-                await writer.WriteAsync(RebuildEntry.ForAccount(address, account, code), cancellationToken);
+                await entries.WriteAsync(RebuildEntry.ForAccount(address, account, code), cancellationToken);
 
-                using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
-                while (storageIterator.MoveNext())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    // preimage mode: the flat slot key holds the raw slot as a 32-byte big-endian value
-                    UInt256 slot = new(storageIterator.CurrentKey.Bytes, isBigEndian: true);
-                    await writer.WriteAsync(RebuildEntry.ForSlot(address, slot, storageIterator.CurrentValue.ToArray()), cancellationToken);
-                }
+                // hand the storage to the worker pool rather than reading it inline here
+                if (account.HasStorage) await storageJobs.WriteAsync(accountKey, cancellationToken);
             }
-
-            writer.Complete();
         }
-        catch (Exception e)
+        finally
         {
-            writer.Complete(e);
+            // whatever happened, no more jobs — let the workers drain and finish
+            storageJobs.Complete();
+        }
+    }
+
+    private async Task ProduceStorage(ChannelReader<ValueHash256> storageJobs, ChannelWriter<RebuildEntry> entries, CancellationToken cancellationToken)
+    {
+        // Each worker reads through its own snapshot: the source is static during import, so the
+        // snapshots are consistent, and no reader is shared across threads.
+        using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
+        await foreach (ValueHash256 accountKey in storageJobs.ReadAllAsync(cancellationToken))
+        {
+            Address address = new(accountKey.Bytes[..AddressLength]);
+            using FlatPersistence.IFlatIterator storageIterator = reader.CreateStorageIterator(accountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+            while (storageIterator.MoveNext())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // preimage mode: the flat slot key holds the raw slot as a 32-byte big-endian value
+                UInt256 slot = new(storageIterator.CurrentKey.Bytes, isBigEndian: true);
+                await entries.WriteAsync(RebuildEntry.ForSlot(address, slot, storageIterator.CurrentValue.ToArray()), cancellationToken);
+            }
         }
     }
 

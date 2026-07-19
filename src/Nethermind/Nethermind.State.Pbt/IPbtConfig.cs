@@ -25,6 +25,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
     bool ImportFromPreimageFlat { get; set; }
 
+    [ConfigItem(Description = "Number of parallel workers reading account storage during the preimage-flat import. 0 uses the processor count. Only parallelizes source reads; the tree fold stays single-threaded.", DefaultValue = "0")]
+    int ImportStorageReadConcurrency { get; set; }
+
     [ConfigItem(Description = "Whether to store only the even levels of each 4-level trie node tile, folding the odd levels' hashes on demand. Reduces the size of the trie node column at a small rebuild cost. The state root is identical either way, and both layouts remain readable regardless of this setting.", DefaultValue = "true")]
     bool InterleaveTrieNodeLevels { get; set; }
 }
