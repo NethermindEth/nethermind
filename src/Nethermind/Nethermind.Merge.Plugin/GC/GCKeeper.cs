@@ -193,8 +193,9 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // the decommit's stop-the-world pause can exceed a second; defer it while catching up
-                    // (last payload far behind wall clock), or the next payload lands mid-collection
+                    // the decommit's stop-the-world pause can exceed a second; while catching up
+                    // (last payload far behind wall clock) payloads arrive back-to-back and the next
+                    // one would land mid-collection, so defer it until caught up
                     if (ShouldDeferDecommit())
                     {
                         Interlocked.Decrement(ref _forcedGcCount); // retry on the next scheduled collection
