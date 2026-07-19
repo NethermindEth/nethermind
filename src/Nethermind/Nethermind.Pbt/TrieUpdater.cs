@@ -96,7 +96,7 @@ public static partial class TrieUpdater
         /// permits, so the size test and the budget run out at about the same point. Some headroom over one
         /// task per worker is what keeps every worker fed when the subtrees turn out uneven.
         /// </remarks>
-        private const int TasksPerWorker = 4;
+        private const int TasksPerWorker = 16;
 
         /// <summary>
         /// The smallest bucket worth a task of its own however small the batch: below it the descent costs
