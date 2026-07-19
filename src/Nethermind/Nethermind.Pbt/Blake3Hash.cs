@@ -8,12 +8,12 @@ namespace Nethermind.Pbt;
 /// <summary>The EIP-8297 hash primitives (draft hash function: BLAKE3).</summary>
 public static class Blake3Hash
 {
-    public static void Hash(ReadOnlySpan<byte> input, Span<byte> output32) => Blake3.Hasher.Hash(input, output32);
+    public static void Hash(ReadOnlySpan<byte> input, Span<byte> output32) => Blake3Managed.Hash(input, output32);
 
     public static ValueHash256 Hash(ReadOnlySpan<byte> input)
     {
         ValueHash256 result = default;
-        Blake3.Hasher.Hash(input, result.BytesAsSpan);
+        Blake3Managed.Hash(input, result.BytesAsSpan);
         return result;
     }
 
@@ -25,9 +25,34 @@ public static class Blake3Hash
     {
         if (left == default && right == default) return default;
 
-        Span<byte> pair = stackalloc byte[64];
-        left.Bytes.CopyTo(pair);
-        right.Bytes.CopyTo(pair[32..]);
-        return Hash(pair);
+        ValueHash256 result = default;
+        Blake3Managed.HashPair(left.Bytes, right.Bytes, result.BytesAsSpan);
+        return result;
+    }
+
+    /// <summary>
+    /// <see cref="HashPairOrZero"/> for a node whose right child is empty, saving it the check for which
+    /// half is zero.
+    /// </summary>
+    public static ValueHash256 HashWithEmptyRight(in ValueHash256 left)
+    {
+        if (left == default) return default;
+
+        ValueHash256 result = default;
+        Blake3Managed.HashPairHighZero(left.Bytes, result.BytesAsSpan);
+        return result;
+    }
+
+    /// <summary>
+    /// <see cref="HashPairOrZero"/> for a node whose left child is empty, saving it the check for which
+    /// half is zero.
+    /// </summary>
+    public static ValueHash256 HashWithEmptyLeft(in ValueHash256 right)
+    {
+        if (right == default) return default;
+
+        ValueHash256 result = default;
+        Blake3Managed.HashPairLowZero(right.Bytes, result.BytesAsSpan);
+        return result;
     }
 }

@@ -1362,12 +1362,6 @@
           "Autofac": "9.3.1"
         }
       },
-      "Blake3": {
-        "type": "CentralTransitive",
-        "requested": "[3.0.0, )",
-        "resolved": "3.0.0",
-        "contentHash": "b+/aagZA/gzkxTlOvZ48Tpb6bpNydOfFtmtfhWbiDhpOstq1eIn0oBTp1sSSguhbDFgLOi+Q5dHbFlpOPoJuwQ=="
-      },
       "BouncyCastle.Cryptography": {
         "type": "CentralTransitive",
         "requested": "[2.7.0, )",
@@ -1781,7 +1775,6 @@
       "nethermind.pbt": {
         "type": "Project",
         "dependencies": {
-          "Blake3": "[3.0.0, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Numerics.Int256": "[1.7.0, )"
         }

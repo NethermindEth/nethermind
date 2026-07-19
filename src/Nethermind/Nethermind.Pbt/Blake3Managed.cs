@@ -145,13 +145,32 @@ public static class Blake3Managed
     /// </remarks>
     public static void HashPair(ReadOnlySpan<byte> low32, ReadOnlySpan<byte> high32, Span<byte> output32)
     {
+        if (IsZero(low32)) HashPairLowZero(high32, output32);
+        else if (IsZero(high32)) HashPairHighZero(low32, output32);
+        else CompressPair<FullBlock>(ref Reference(low32), ref Reference(high32), output32);
+    }
+
+    /// <summary>
+    /// <see cref="HashPair"/> for a caller that already knows the low 32 bytes are all zeroes, so that the
+    /// shape need not be detected.
+    /// </summary>
+    public static void HashPairLowZero(ReadOnlySpan<byte> high32, Span<byte> output32) =>
+        CompressPair<LowZeroBlock>(ref Reference(high32), ref Reference(high32), output32);
+
+    /// <summary>
+    /// <see cref="HashPair"/> for a caller that already knows the high 32 bytes are all zeroes, so that the
+    /// shape need not be detected.
+    /// </summary>
+    public static void HashPairHighZero(ReadOnlySpan<byte> low32, Span<byte> output32) =>
+        CompressPair<HighZeroBlock>(ref Reference(low32), ref Reference(low32), output32);
+
+    /// <summary>Compresses a 64-byte pair, which is a whole chunk and the root, into its digest.</summary>
+    private static void CompressPair<TShape>(ref byte lowRef, ref byte highRef, Span<byte> output32)
+        where TShape : IBlockShape
+    {
         Span<uint> cv = stackalloc uint[8];
         InitialCv(cv);
-
-        if (IsZero(low32)) Compress<LowZeroBlock>(cv, ref Reference(high32), ref Reference(high32), 0, BlockLength, ChunkStart | ChunkEnd | Root);
-        else if (IsZero(high32)) Compress<HighZeroBlock>(cv, ref Reference(low32), ref Reference(low32), 0, BlockLength, ChunkStart | ChunkEnd | Root);
-        else Compress<FullBlock>(cv, ref Reference(low32), ref Reference(high32), 0, BlockLength, ChunkStart | ChunkEnd | Root);
-
+        Compress<TShape>(cv, ref lowRef, ref highRef, 0, BlockLength, ChunkStart | ChunkEnd | Root);
         WriteWords(cv, output32);
     }
 
