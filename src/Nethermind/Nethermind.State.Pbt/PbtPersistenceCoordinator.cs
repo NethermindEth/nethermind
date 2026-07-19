@@ -146,7 +146,7 @@ public class PbtPersistenceCoordinator(
     private void Persist(PbtSnapshot merged)
     {
         PbtSnapshotContent content = merged.Content;
-        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To);
+        using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, WriteFlags.None);
 
         // range deletes are computed against the pre-batch state, so they must precede the slot writes
         foreach ((AddressAsKey address, _) in content.SelfDestructs)
