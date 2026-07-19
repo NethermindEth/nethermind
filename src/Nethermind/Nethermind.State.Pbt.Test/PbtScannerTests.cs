@@ -274,7 +274,7 @@ public class PbtScannerTests
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         foreach (KeyValuePair<TrieNodeKey, byte[]> node in harness.Nodes)
         {
-            db.GetColumnDb(PbtColumns.TrieNodes)[node.Key.ToDbKey()] = node.Value;
+            db.GetColumnDb(TrieNodeColumn(node.Key))[node.Key.ToDbKey()] = node.Value;
         }
 
         foreach (KeyValuePair<Stem, byte[]> blob in harness.Blobs)
@@ -291,5 +291,13 @@ public class PbtScannerTests
         0x0 => PbtColumns.AccountLeaves,
         0x1 => PbtColumns.CodeLeaves,
         _ => PbtColumns.StorageLeaves,
+    };
+
+    /// <summary>Routes a trie node to its column by zone, as the persistence layer does.</summary>
+    private static PbtColumns TrieNodeColumn(in TrieNodeKey key) => key.Path.Zone switch
+    {
+        0x0 => PbtColumns.AccountTrieNodes,
+        0x1 => PbtColumns.CodeTrieNodes,
+        _ => PbtColumns.StorageTrieNodes,
     };
 }

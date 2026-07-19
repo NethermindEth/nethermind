@@ -34,8 +34,12 @@ public class PbtRocksDbPersistence : IPbtPersistence
     /// key keyed it by <c>blake3(address32) || slot32BE</c>; every slot in one would read back as
     /// absent, i.e. zero, and the rebuilt root would be wrong with nothing to signal it — hence the
     /// refusal rather than a best-effort open.
+    ///
+    /// Version 2 moved the trie node key's depth from the leading byte to the trailing one and split
+    /// the nodes into per-zone columns. A version 1 database read under it would resolve every node
+    /// lookup to a wrong key in a column that no longer holds it.
     /// </remarks>
-    private const int LayoutVersion = 1;
+    private const int LayoutVersion = 2;
 
     private readonly IColumnsDb<PbtColumns> _db;
 
@@ -81,6 +85,16 @@ public class PbtRocksDbPersistence : IPbtPersistence
         0x1 => PbtColumns.CodeLeaves,
         >= 0x8 => PbtColumns.StorageLeaves,
         _ => throw new NotSupportedException($"Zone {stem.Zone} is reserved"),
+    };
+
+    /// <summary>Maps a trie node to its column by zone, mirroring <see cref="LeafColumn"/>.</summary>
+    /// <remarks>The depth-0 root's path is all zeros, so it falls into the account column.</remarks>
+    private static PbtColumns TrieNodeColumn(in TrieNodeKey key) => key.Path.Zone switch
+    {
+        0x0 => PbtColumns.AccountTrieNodes,
+        0x1 => PbtColumns.CodeTrieNodes,
+        >= 0x8 => PbtColumns.StorageTrieNodes,
+        _ => throw new NotSupportedException($"Zone {key.Path.Zone} is reserved"),
     };
 
     public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot());
@@ -141,7 +155,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
         {
             Span<byte> dbKey = stackalloc byte[TrieNodeKey.Length];
             key.WriteTo(dbKey);
-            return ReadOwned(snapshot.GetColumn(PbtColumns.TrieNodes), dbKey);
+            return ReadOwned(snapshot.GetColumn(TrieNodeColumn(key)), dbKey);
         }
 
         /// <summary>
@@ -238,7 +252,7 @@ public class PbtRocksDbPersistence : IPbtPersistence
         {
             Span<byte> dbKey = stackalloc byte[TrieNodeKey.Length];
             key.WriteTo(dbKey);
-            IWriteBatch nodes = _batch.GetColumnBatch(PbtColumns.TrieNodes);
+            IWriteBatch nodes = _batch.GetColumnBatch(TrieNodeColumn(key));
             if (node is null)
             {
                 nodes.Set(dbKey, null, flags);
