@@ -5,9 +5,11 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -85,6 +87,34 @@ public class InclusionListTxSourceTests
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
     [Test]
     public void SupportsBlobs_is_false() => Assert.That(CreateSource().SupportsBlobs, Is.False);
+
+    // FOCIL: a blob IL entry must be dropped, never forwarded into block production.
+    [Test]
+    public void Blob_transactions_are_filtered_out()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction blob = Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(10.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(10.GWei)
+            .WithBlobVersionedHashes(1)
+            .WithChainId(MainnetSpecProvider.Instance.ChainId)
+            .WithNonce(2)
+            .WithValue(UInt256.One)
+            .WithTo(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+        byte[][] il = [Encode(normal), Encode(blob)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EqualTo([1ul]));
+    }
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 }

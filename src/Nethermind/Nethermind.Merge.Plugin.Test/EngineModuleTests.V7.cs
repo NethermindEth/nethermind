@@ -143,7 +143,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV6_should_reject_oversized_inclusion_list()
+    public async Task NewPayloadV6_accepts_aggregate_inclusion_list_exceeding_single_member_cap()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -154,15 +154,33 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
 
+        // The flattened aggregate of up to 16 committee members can exceed the per-member 8 KiB cap;
+        // newPayloadV6 must not reject it (two ~6 KiB member lists here total > MAX_BYTES_PER_INCLUSION_LIST).
+        byte[] member = new byte[Eip7805Constants.MaxBytesPerInclusionList * 3 / 4];
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]]);
+            inclusionListTransactions: [member, member]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV5_accepts_null_inclusion_list_for_initial_build()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        // The proposer's initial FCUv5 carries no inclusion list yet — it must still start building.
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: null!));
+
+        Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(fcu.Data.PayloadId, Is.Not.Null);
     }
 
     [Test]

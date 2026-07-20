@@ -130,10 +130,11 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
 
-        // Bogota
-        Configure(nameof(IEngineRpcModule.engine_newPayloadV6), SszRestPaths.PostPayloads, GateWithWarn(spec.IsEip7805Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getInclusionListV1), SszRestPaths.GetInclusionList, GateWithWarn(spec.IsEip7805Enabled));
-        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5), SszRestPaths.PostForkchoice, GateWithWarn(spec.IsEip7805Enabled));
+        // Bogota — EIP-7805 (FOCIL). JSON-RPC only: there is no FOCIL SSZ engine-transport spec yet, so
+        // these aren't advertised over SSZ (no handler is registered — advertising would resolve to 404).
+        jsonLocal[nameof(IEngineRpcModule.engine_newPayloadV6)] = GateWithWarn(spec.IsEip7805Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_getInclusionListV1)] = GateWithWarn(spec.IsEip7805Enabled);
+        jsonLocal[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV5)] = GateWithWarn(spec.IsEip7805Enabled);
 
         json = jsonLocal;
         ssz = sszLocal;

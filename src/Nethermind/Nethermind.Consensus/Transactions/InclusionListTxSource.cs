@@ -31,7 +31,23 @@ public class InclusionListTxSource(
             : [];
 
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, _decoder.Value.DecodeAndRecover(inclusionListTransactions, spec));
+        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)));
+
+    // FOCIL: blob (type-3) IL entries are ignored — drop them so block production never emits a blob
+    // tx that has no ShardBlobNetworkWrapper (which would make getPayloadV6 unusable for the CL).
+    private static Transaction[] FilterBlobs(Transaction[] txs)
+    {
+        int kept = 0;
+        for (int i = 0; i < txs.Length; i++)
+            if (!txs[i].SupportsBlobs) kept++;
+        if (kept == txs.Length) return txs;
+
+        Transaction[] result = new Transaction[kept];
+        int j = 0;
+        for (int i = 0; i < txs.Length; i++)
+            if (!txs[i].SupportsBlobs) result[j++] = txs[i];
+        return result;
+    }
 
     public bool SupportsBlobs => false;
 }

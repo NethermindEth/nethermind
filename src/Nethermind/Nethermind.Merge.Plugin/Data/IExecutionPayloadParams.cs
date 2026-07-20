@@ -68,26 +68,13 @@ public class ExecutionPayloadParams(
             }
         }
 
-        if (spec.InclusionListsEnabled)
+        if (spec.InclusionListsEnabled && InclusionListTransactions is null)
         {
-            if (InclusionListTransactions is null)
-            {
-                error = "Inclusion list must be set";
-                return ValidationResult.Fail;
-            }
-
-            int totalBytes = 0;
-            foreach (byte[]? ilTx in InclusionListTransactions)
-            {
-                totalBytes += ilTx?.Length ?? 0;
-            }
-
-            if (totalBytes > Eip7805Constants.MaxBytesPerInclusionList)
-            {
-                error = $"Inclusion list must not exceed {Eip7805Constants.MaxBytesPerInclusionList} bytes";
-                return ValidationResult.Fail;
-            }
+            error = "Inclusion list must be set";
+            return ValidationResult.Fail;
         }
+        // No byte cap here: newPayloadV6 receives the flattened aggregate of up to 16 committee
+        // members, whereas MAX_BYTES_PER_INCLUSION_LIST bounds each member's individual list.
 
         return ValidationResult.Success;
     }

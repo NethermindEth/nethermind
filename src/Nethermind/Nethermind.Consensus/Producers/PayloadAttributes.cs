@@ -227,6 +227,11 @@ public class PayloadAttributes
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
+        // EIP-7805: V5's only new field (inclusionListTransactions) is optional, so a null-IL attrs is
+        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't rejected.
+        if (timestampVersion == PayloadAttributesVersions.V5 && actualVersion == PayloadAttributesVersions.V4)
+            actualVersion = PayloadAttributesVersions.V5;
+
         // When attrs are below the timestamp-implied version and the FCU doesn't accept this
         // combination (i.e. it's not the V2-accepts-V1 backward-compat case), report the
         // specific missing field rather than a generic version-mismatch.
@@ -270,7 +275,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
-            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
+            // EIP-7805: inclusionListTransactions is optional — the initial FCUv5 build starts with it null.
             _ => null
         };
     }
