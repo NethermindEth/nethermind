@@ -25,6 +25,9 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
   # Build the test binaries once per Linux RID and share as an artifact. Windows/macOS
   # are excluded — their artifacts can't be deduped cheaply, so building in-job is faster.
