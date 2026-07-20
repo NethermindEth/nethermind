@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -607,40 +606,19 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? AsReadOnlyArray(substate.Output) : [];
+                    byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
                     tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, AsReadOnlyArray(substate.Output), logs, stateRoot);
+                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
                 }
             }
 
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
-        }
-
-        /// <summary>
-        /// Returns the receipt-tracer output as a <see cref="byte"/> array, forwarding the backing array without
-        /// copying when the memory already spans a whole array, and copying otherwise.
-        /// </summary>
-        /// <remarks>
-        /// Avoids the per-transaction returndata copy that the default <see cref="Tracing.ITxTracer"/> discards when
-        /// not tracing. Top-level RETURN/REVERT already produce a freshly-allocated array (the opcode handlers call
-        /// <c>ToArray()</c>), so forwarding it is safe. The returned array is <b>not</b> guaranteed to be uniquely
-        /// owned: a top-level transaction to a precompile that yields a shared static array (e.g. KZG point
-        /// evaluation) forwards that shared instance. Callers must therefore treat the output as read-only — every
-        /// current tracer consumer does — and must never mutate it in place.
-        /// </remarks>
-        private static byte[] AsReadOnlyArray(ReadOnlyMemory<byte> memory)
-        {
-            if (memory.IsEmpty) return [];
-            return MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment)
-                   && segment.Offset == 0 && segment.Count == segment.Array!.Length
-                ? segment.Array!
-                : memory.ToArray();
         }
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
