@@ -18,9 +18,11 @@ public class GCKeeperTests
     [TestCase(Now, (ulong)(Now - 5), false)]
     [TestCase(Now, (ulong)(Now - GCKeeper.MaxPayloadLagSecondsForDecommit), false)]
     [TestCase(Now, (ulong)(Now - GCKeeper.MaxPayloadLagSecondsForDecommit - 1), true)]
-    [TestCase(Now, (ulong)(Now - 3600), true)]
+    [TestCase(Now, (ulong)(Now - GCKeeper.DeepCatchUpLagSeconds), true)]
+    [TestCase(Now, (ulong)(Now - GCKeeper.DeepCatchUpLagSeconds - 1), false)]
+    [TestCase(Now, (ulong)(Now - 3600), false)]
     [TestCase(Now, (ulong)(Now + 5), false)]
-    public void Decommit_is_deferred_only_while_catching_up(long nowUnixSeconds, ulong lastPayloadTimestamp, bool expected) =>
+    public void Decommit_is_deferred_only_in_the_tip_approach_band(long nowUnixSeconds, ulong lastPayloadTimestamp, bool expected) =>
         Assert.That(GCKeeper.ShouldDeferDecommit(nowUnixSeconds, lastPayloadTimestamp), Is.EqualTo(expected));
 
     [Test]

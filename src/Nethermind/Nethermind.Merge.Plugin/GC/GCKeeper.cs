@@ -29,6 +29,10 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     /// <summary>Maximum age of the last payload, in seconds, for the decommit collection to run; older means we are catching up.</summary>
     internal const long MaxPayloadLagSecondsForDecommit = 60;
 
+    /// <summary>Payload age, in seconds, beyond which we are in deep catch-up, where throughput matters more
+    /// than pause avoidance and heap compaction must keep running, so the decommit is no longer deferred.</summary>
+    internal const long DeepCatchUpLagSeconds = 300;
+
     /// <summary>Maximum time the decommit may be deferred while catching up, in milliseconds.</summary>
     internal const long MaxDecommitDeferralMs = 5 * 60_000;
 
@@ -142,7 +146,8 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
         ShouldDeferDecommit(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Volatile.Read(ref _lastPayloadTimestamp));
 
     internal static bool ShouldDeferDecommit(long nowUnixSeconds, ulong lastPayloadTimestamp) =>
-        lastPayloadTimestamp != 0 && nowUnixSeconds - (long)lastPayloadTimestamp > MaxPayloadLagSecondsForDecommit;
+        lastPayloadTimestamp != 0 &&
+        nowUnixSeconds - (long)lastPayloadTimestamp is > MaxPayloadLagSecondsForDecommit and <= DeepCatchUpLagSeconds;
 
     internal ulong LastPayloadTimestamp => Volatile.Read(ref _lastPayloadTimestamp);
 
@@ -197,11 +202,11 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // the decommit's stop-the-world pause can exceed a second; while catching up
-                    // (last payload far behind wall clock) payloads arrive back-to-back and the next
-                    // one would land mid-collection, so defer it — but at most for
-                    // MaxDecommitDeferralMs, so the heap does not park at its high-water mark
-                    // during long syncs (fast-blocks RSS ballooning)
+                    // the decommit's stop-the-world pause can exceed a second; in the final stretch of
+                    // a catch-up (payload lag inside the deferral band) the next payload may be a live
+                    // head block that would land mid-collection, so defer it — but at most for
+                    // MaxDecommitDeferralMs. In deep catch-up the decommit runs as usual: throughput
+                    // and heap compaction matter there, not pause avoidance (fast-blocks RSS ballooning)
                     long timestamp = Environment.TickCount64;
                     if (ShouldDeferDecommit() && timestamp - _lastDecommitTick < MaxDecommitDeferralMs)
                     {
