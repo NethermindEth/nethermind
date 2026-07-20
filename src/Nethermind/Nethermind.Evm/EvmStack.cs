@@ -218,7 +218,7 @@ public ref struct EvmStack
         }
 
         if (TTracingInst.IsActive)
-            ReportPushUInt256(ref dst);
+            ReportPushWord(ref dst);
 
         return EvmExceptionType.None;
     }
@@ -274,7 +274,7 @@ public ref struct EvmStack
         }
 
         if (TTracingInst.IsActive)
-            ReportPushUInt256(ref dst);
+            ReportPushWord(ref dst);
 
         return EvmExceptionType.None;
     }
@@ -300,10 +300,11 @@ public ref struct EvmStack
     };
 
     /// <summary>
-    /// Reports a UInt256 value at the given stack slot to the tracer (for tracing without push).
+    /// Reports the raw 32-byte word at the given stack slot to the tracer as a stack push
+    /// (also used to trace in-place top-of-stack updates).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void ReportPushUInt256(ref byte slot) =>
+    public readonly void ReportPushWord(ref byte slot) =>
         _tracer.ReportStackPush(MemoryMarshal.CreateReadOnlySpan(ref slot, WordSize));
 
     /// <summary>

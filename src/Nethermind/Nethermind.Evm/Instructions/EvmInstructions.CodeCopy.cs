@@ -120,7 +120,8 @@ public static partial class EvmInstructions
 
             if (TTracingInst.IsActive)
             {
-                vm.TxTracer.ReportMemoryChange(destOffset, in source);
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
+                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
             }
         }
 
