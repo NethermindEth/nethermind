@@ -80,15 +80,8 @@ namespace Nethermind.State
             }
             else
             {
-                Rlp rlpEncoded = Rlp.Encode(value);
-                if (rlpEncoded is null)
-                {
-                    encodedValue = [];
-                }
-                else
-                {
-                    encodedValue = rlpEncoded.Bytes;
-                }
+                encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
+                Rlp.Encode(value, encodedValue);
             }
 
             return new BulkSetEntry(in key, encodedValue);
