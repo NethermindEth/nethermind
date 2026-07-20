@@ -2684,6 +2684,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_block_access_list_ancient_block_pruned()
+    {
+        using Context ctx = await Context.CreateWithAncientBarriers(10000);
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessList", "0x100");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable for block 256\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_get_block_access_list_unavailable_before_fork()
     {
         using Context ctx = await Context.Create(); // Amsterdam disabled

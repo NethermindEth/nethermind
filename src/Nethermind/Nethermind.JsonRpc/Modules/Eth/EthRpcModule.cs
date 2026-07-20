@@ -1224,7 +1224,11 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<AccountAccessForRpc[]?>.Success(null);
+            // Unknown blocks yield a null result per execution-apis; other search failures
+            // (pruned history, non-canonical requireCanonical hash) keep their error.
+            return searchResult.ErrorCode == ErrorCodes.ResourceNotFound
+                ? ResultWrapper<AccountAccessForRpc[]?>.Success(null)
+                : ResultWrapper<AccountAccessForRpc[]?>.Fail(searchResult);
         }
 
         Block block = searchResult.Object!;
