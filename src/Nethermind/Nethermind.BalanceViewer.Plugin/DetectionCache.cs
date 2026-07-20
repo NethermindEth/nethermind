@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Text.Json;
-using System.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.BalanceViewer.Plugin;
