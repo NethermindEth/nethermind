@@ -10,7 +10,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
