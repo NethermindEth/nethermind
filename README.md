@@ -138,6 +138,9 @@ dotnet test --solution EthereumTests.slnx -c release
 
 For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
 
+> [!TIP]
+> On Linux, the Docker image and PPA package route native/RocksDB allocations through tcmalloc for lower block-processing latency, CPU, and memory. Source builds and the standalone release archives don't do this automatically — to match, install tcmalloc (e.g. `apt install libtcmalloc-minimal4`) and launch with `LD_PRELOAD=libtcmalloc_minimal.so.4 nethermind ...`.
+
 ## Plugin development
 
 Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
