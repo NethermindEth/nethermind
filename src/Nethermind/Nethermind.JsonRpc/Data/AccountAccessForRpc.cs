@@ -36,58 +36,33 @@ public class AccountAccessForRpc
         return result;
     }
 
-    private static AccountAccessForRpc FromAccountChanges(ReadOnlyAccountChanges account)
-    {
-        SlotChangesForRpc[] storageChanges = new SlotChangesForRpc[account.StorageChanges.Length];
-        for (int i = 0; i < storageChanges.Length; i++)
-        {
-            ReadOnlySlotChanges slotChanges = account.StorageChanges[i];
-            StorageChangeForRpc[] changes = new StorageChangeForRpc[slotChanges.Changes.Length];
-            for (int j = 0; j < changes.Length; j++)
-            {
-                StorageChange change = slotChanges.Changes[j];
-                changes[j] = new StorageChangeForRpc { Index = change.Index, Value = ToValueHash(change.Value) };
-            }
-
-            storageChanges[i] = new SlotChangesForRpc { Key = slotChanges.Key.ToValueHash(), Changes = changes };
-        }
-
-        ValueHash256[] storageReads = new ValueHash256[account.StorageReads.Length];
-        for (int i = 0; i < storageReads.Length; i++)
-        {
-            storageReads[i] = account.StorageReads[i].ToValueHash();
-        }
-
-        BalanceChangeForRpc[] balanceChanges = new BalanceChangeForRpc[account.BalanceChanges.Length];
-        for (int i = 0; i < balanceChanges.Length; i++)
-        {
-            BalanceChange change = account.BalanceChanges[i];
-            balanceChanges[i] = new BalanceChangeForRpc { Index = change.Index, Value = change.Value };
-        }
-
-        NonceChangeForRpc[] nonceChanges = new NonceChangeForRpc[account.NonceChanges.Length];
-        for (int i = 0; i < nonceChanges.Length; i++)
-        {
-            NonceChange change = account.NonceChanges[i];
-            nonceChanges[i] = new NonceChangeForRpc { Index = change.Index, Value = change.Value };
-        }
-
-        CodeChangeForRpc[] codeChanges = new CodeChangeForRpc[account.CodeChanges.Length];
-        for (int i = 0; i < codeChanges.Length; i++)
-        {
-            CodeChange change = account.CodeChanges[i];
-            codeChanges[i] = new CodeChangeForRpc { Index = change.Index, Code = change.Code };
-        }
-
-        return new AccountAccessForRpc
+    private static AccountAccessForRpc FromAccountChanges(ReadOnlyAccountChanges account) =>
+        new()
         {
             Address = account.Address,
-            StorageChanges = storageChanges,
-            StorageReads = storageReads,
-            BalanceChanges = balanceChanges,
-            NonceChanges = nonceChanges,
-            CodeChanges = codeChanges,
+            StorageChanges = Map(account.StorageChanges, static sc => new SlotChangesForRpc
+            {
+                Key = sc.Key.ToValueHash(),
+                Changes = Map(sc.Changes, static c => new StorageChangeForRpc { Index = c.Index, Value = ToValueHash(c.Value) }),
+            }),
+            StorageReads = Map(account.StorageReads, static r => r.ToValueHash()),
+            BalanceChanges = Map(account.BalanceChanges, static c => new BalanceChangeForRpc { Index = c.Index, Value = c.Value }),
+            NonceChanges = Map(account.NonceChanges, static c => new NonceChangeForRpc { Index = c.Index, Value = c.Value }),
+            CodeChanges = Map(account.CodeChanges, static c => new CodeChangeForRpc { Index = c.Index, Code = c.Code }),
         };
+
+    /// <summary>Projects each element of <paramref name="source"/>, reusing a shared empty array when empty.</summary>
+    private static TResult[] Map<TSource, TResult>(TSource[] source, Func<TSource, TResult> selector)
+    {
+        if (source.Length == 0) return [];
+
+        TResult[] result = new TResult[source.Length];
+        for (int i = 0; i < source.Length; i++)
+        {
+            result[i] = selector(source[i]);
+        }
+
+        return result;
     }
 
     // EvmWord already holds the 32 big-endian bytes.
