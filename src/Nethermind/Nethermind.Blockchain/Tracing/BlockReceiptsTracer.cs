@@ -340,8 +340,11 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentIndex = 0;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
+        int txCount = block.Transactions.Length;
         _txReceipts.Clear();
+        _txReceipts.EnsureCapacity(txCount);
         _cumulativeBlockGasPerTx.Clear();
+        _cumulativeBlockGasPerTx.EnsureCapacity(txCount);
         _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);
@@ -388,9 +391,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;
-            for (int index = 0; index < _txReceipts.Count; index++)
+            foreach (TxReceipt? receipt in CollectionsMarshal.AsSpan(_txReceipts))
             {
-                TxReceipt? receipt = _txReceipts[index];
                 if (receipt is not null)
                 {
                     blockBloom.Accumulate(receipt.Bloom!);
