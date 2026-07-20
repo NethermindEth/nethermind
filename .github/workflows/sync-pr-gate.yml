@@ -136,6 +136,7 @@ jobs:
           docker compose up -d
 
       - name: Start Grafana Alloy
+        continue-on-error: true
         uses: ./.github/actions/start-alloy
         with:
           network: hoodi

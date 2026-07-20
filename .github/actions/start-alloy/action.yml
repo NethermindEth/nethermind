@@ -76,7 +76,13 @@ runs:
           arbitrum-*)          L2_EXECUTION_CONTAINER_NAME="sedge-execution-arb-l2-client"; L2_NODE_NAME="$NODE_NAME" ;;
         esac
 
-        docker pull grafana/alloy:latest
+        ALLOY_IMAGE="grafana/alloy:v1.18.0"
+
+        # Remove any stale container so reruns/retries on a persistent
+        # (self-hosted) runner don't fail with a name conflict.
+        docker rm -f grafana-alloy 2>/dev/null || true
+
+        docker pull "$ALLOY_IMAGE"
         docker run -d \
           --name grafana-alloy \
           --restart=unless-stopped \
@@ -98,6 +104,6 @@ runs:
           -e PROMETHEUS_PASSWORD="$PROMETHEUS_PASSWORD" \
           -v /var/run/docker.sock:/var/run/docker.sock \
           -v "$ALLOY_CONFIG:/etc/alloy/config.alloy:ro" \
-          grafana/alloy:latest \
-          run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+          "$ALLOY_IMAGE" \
+          run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
         echo "Grafana Alloy started."

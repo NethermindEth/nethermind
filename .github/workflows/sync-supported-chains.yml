@@ -212,7 +212,6 @@ jobs:
 
           node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
           echo "node_name=$node_name" >> $GITHUB_ENV
-          echo "network=$network" >> $GITHUB_ENV
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME="${{ github.ref_name }}"
@@ -369,9 +368,10 @@ jobs:
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
       - name: Start Grafana Alloy
+        continue-on-error: true
         uses: ./.github/actions/start-alloy
         with:
-          network: ${{ env.network }}
+          network: ${{ matrix.config.network }}
           node-name: ${{ env.node_name }}
           loki-url: ${{ secrets.LOKI_URL }}
           loki-username: ${{ secrets.LOKI_USERNAME }}
