@@ -20,7 +20,10 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private readonly IGCStrategy _gcStrategy = gcStrategy;
     private readonly int _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
     private readonly ILogger _logger = logManager.GetClassLogger<GCKeeper>();
-    private static readonly long _defaultSize = 512.MB;
+    // The runtime splits totalSize as soh = total - loh; when lohSize is omitted it budgets the
+    // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
+    private static readonly long _lohSize = 64.MB;
+    private static readonly long _defaultSize = 256.MB + _lohSize;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
 
@@ -35,7 +38,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
             FailCause failCause = FailCause.None;
             try
             {
-                if (!System.GC.TryStartNoGCRegion(size, disallowFullBlockingGC: true))
+                if (!System.GC.TryStartNoGCRegion(size, _lohSize, disallowFullBlockingGC: true))
                 {
                     failCause = FailCause.GCFailedToStartNoGCRegion;
                 }
