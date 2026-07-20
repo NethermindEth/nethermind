@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -606,19 +607,33 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
+                    byte[] output = substate.ShouldRevert ? AsOwnedArray(substate.Output) : [];
                     tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(executingAccount, spentGas, AsOwnedArray(substate.Output), logs, stateRoot);
                 }
             }
 
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;
+        }
+
+        /// <summary>
+        /// Returns the receipt-tracer output as a <see cref="byte"/> array without copying when the memory
+        /// already wraps a whole standalone array (the common top-level RETURN/REVERT case), falling back to
+        /// a copy otherwise. Avoids a per-transaction returndata copy that is discarded when not tracing.
+        /// </summary>
+        private static byte[] AsOwnedArray(ReadOnlyMemory<byte> memory)
+        {
+            if (memory.IsEmpty) return [];
+            return MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment)
+                   && segment.Offset == 0 && segment.Count == segment.Array!.Length
+                ? segment.Array!
+                : memory.ToArray();
         }
 
         protected virtual TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
