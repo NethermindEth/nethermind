@@ -191,7 +191,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private void PopulateTrieNodeCache(TransientResource transientResource)
     {
         _trieNodeCache.Add(transientResource);
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+        transientResource.ReleaseLease();
     }
 
     private async Task NotifyWhenSlow(string name, Func<Task> closure)
@@ -357,7 +357,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (persistedStateId != StateId.PreGenesis && endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
-            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            transientResource.ReleaseLease();
             snapshot.Dispose();
             return;
         }
@@ -365,7 +365,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (!_snapshotRepository.TryAdd(snapshot, SnapshotTier.InMemoryBase))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
-            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            transientResource.ReleaseLease();
             snapshot.Dispose();
             return;
         }
@@ -382,7 +382,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
             {
                 // Queue full, return to pool instead of leaking
-                _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+                transientResource.ReleaseLease();
             }
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))

@@ -119,6 +119,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             try
             {
+                // Pin the transient once for the whole traversal so the per-node warmer reads avoid lease atomics.
+                using SnapshotBundle.WarmerTransientLease _ = _bundle.EnterWarmerTransientScope();
+
                 // Note: storage tree root not changed after write batch. Also not cleared. So the result is not correct.
                 // this is just to warm up the nodes.
                 ValueHash256 key = ValueKeccak.Zero;

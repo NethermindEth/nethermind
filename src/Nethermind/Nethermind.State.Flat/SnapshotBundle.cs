@@ -34,6 +34,14 @@ public sealed class SnapshotBundle : IDisposable
     // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
 
+    // Ambient per-job capture of the pinned transient resource. A warmer traversal runs synchronously
+    // on one thread and reads the transient once per node through a shared adapter that cannot carry a
+    // parameter. The owning job pins the transient once (see EnterWarmerTransientScope) and parks it here,
+    // so the per-node reads use the pinned reference directly with no per-node lease atomics. The owner
+    // reference gates the slot so a foreign bundle can never read another bundle's capture.
+    [ThreadStatic]
+    private static (SnapshotBundle Owner, TransientResource Resource) t_warmerJobCapture;
+
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
     private bool _isDisposed;
@@ -56,6 +64,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
+        _transientResource.OnRented(resourcePool, usage);
 
         ExpandCurrentPooledContent();
 
@@ -177,19 +186,117 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
     {
-        // The warmer only warms nodes from persistence, so it must not read the recyclable _snapshots or
-        // _transientResource: a concurrent scope reset can recycle those mid-traversal. The warm job holds a
-        // ReadOnlySnapshotBundle lease (TryLeaseReadOnlyBundle) that covers exactly the reads below.
-        if (_trieNodeCache.TryGet(null, path, hash, out TrieNode? node))
+        // The warmer never reads the recyclable _snapshots; it warms nodes from persistence into the
+        // per-job-pinned _transientResource. The warm job holds a ReadOnlySnapshotBundle lease
+        // (TryLeaseReadOnlyBundle) covering the persistence reads and pins the transient via
+        // EnterWarmerTransientScope for the whole traversal.
+        (SnapshotBundle owner, TransientResource resource) = t_warmerJobCapture;
+        if (ReferenceEquals(owner, this))
+        {
+            // The enclosing warmer job already pinned the transient for its whole traversal.
+            return WarmUpStateNode(resource, path, hash);
+        }
+
+        // No active per-job capture on this thread: pin the transient per read while the bundle is live,
+        // else fall back to a persistence-only read (the bundle is being torn down).
+        TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
+        if (transientResource is null)
+        {
+            return TryFindStateNodeInPersistence(path, hash, out TrieNode? node) ? node : new TrieNode(NodeType.Unknown, hash);
+        }
+
+        try
+        {
+            return WarmUpStateNode(transientResource, path, hash);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    private TrieNode WarmUpStateNode(TransientResource transientResource, in TreePath path, Hash256 hash)
+    {
+        if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
+        }
+        else
+        {
+            node = transientResource.GetOrAddStateNode(path,
+                TryFindStateNodeInPersistence(path, hash, out node)
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
+        }
+
+        return node;
+    }
+
+    // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
+    // retired resource that was already re-rented by another bundle, so the identity re-check below is
+    // required before trusting the acquire. The current resource always holds its owner lease (installed by
+    // OnRented and kept across SwapTransientResource) until Dispose, so the only way the acquire never
+    // succeeds is a disposed bundle whose transient will not be replaced -- the _isDisposed check bails there
+    // instead of spinning forever (the target has no whole-bundle lease deferring that release).
+    private TransientResource? TryLeaseTransientResourceForWarmer()
+    {
+        SpinWait spinWait = default;
+        while (true)
+        {
+            if (Volatile.Read(ref _isDisposed)) return null;
+
+            TransientResource transientResource = Volatile.Read(ref _transientResource);
+            if (transientResource.TryAcquireLease())
+            {
+                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)) return transientResource;
+                transientResource.ReleaseLease();
+            }
+
+            spinWait.SpinOnce();
+        }
+    }
+
+    /// <summary>
+    /// Pins the transient resource once for the whole duration of a trie-warmer traversal and parks it in
+    /// <see cref="t_warmerJobCapture"/>, so the per-node warmer reads below skip the per-node lease atomics
+    /// and read the pinned resource directly. The single acquire keeps the ABA identity re-check; the reader
+    /// lease keeps the captured resource alive across a concurrent <see cref="SwapTransientResource"/> until
+    /// the returned handle is disposed. When the bundle is being torn down the capture is left unset and the
+    /// per-node reads fall back to a persistence-only read.
+    /// </summary>
+    internal WarmerTransientLease EnterWarmerTransientScope()
+    {
+        TransientResource? captured = TryLeaseTransientResourceForWarmer();
+        (SnapshotBundle Owner, TransientResource Resource) previous = t_warmerJobCapture;
+        if (captured is not null) t_warmerJobCapture = (this, captured);
+        // Invariant: the per-node warmer's in-place GetOrAdd into this captured resource may race a
+        // concurrent Commit->PopulateTrieNodeCache enumeration of the same shards. Tolerated by design --
+        // a torn tuple read yields at worst a misplaced/lost cache entry (Keccak-validated on read -> DB
+        // fallback), never a wrong node, and the lease pins the resource so the shards are not reallocated.
+        return new WarmerTransientLease(captured, previous);
+    }
+
+    internal readonly struct WarmerTransientLease(
+        TransientResource? captured,
+        (SnapshotBundle Owner, TransientResource Resource) previous) : IDisposable
+    {
+        public void Dispose()
+        {
+            t_warmerJobCapture = previous;
+            captured?.ReleaseLease();
+        }
+    }
+
+    private bool TryFindStateNodeInPersistence(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        if (_trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
         }
 
         HashedKey<TreePath> key = new(path);
-        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node)
-            ? node
-            : new TrieNode(NodeType.Unknown, hash);
+        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -241,17 +348,61 @@ public sealed class SnapshotBundle : IDisposable
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
-        // Persistence-only, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
-        if (_trieNodeCache.TryGet(address, path, hash, out TrieNode? node))
+        // Persistence-only external find, same reasoning as FindStateNodeOrUnknownForTrieWarmer.
+        (SnapshotBundle owner, TransientResource resource) = t_warmerJobCapture;
+        if (ReferenceEquals(owner, this))
+        {
+            // The enclosing warmer job already pinned the transient for its whole traversal.
+            return WarmUpStorageNode(resource, address, path, hash);
+        }
+
+        // No active per-job capture on this thread: pin the transient per read while the bundle is live,
+        // else fall back to a persistence-only read (the bundle is being torn down).
+        TransientResource? transientResource = TryLeaseTransientResourceForWarmer();
+        if (transientResource is null)
+        {
+            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node) && node is not null
+                ? node
+                : new TrieNode(NodeType.Unknown, hash);
+        }
+
+        try
+        {
+            return WarmUpStorageNode(transientResource, address, path, hash);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
+    }
+
+    private TrieNode WarmUpStorageNode(TransientResource transientResource, Hash256 address, in TreePath path, Hash256 hash)
+    {
+        if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return node;
+        }
+        else
+        {
+            node = transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
+                TryFindStorageNodeInPersistence(address, path, hash, out node) && node is not null
+                    ? node
+                    : new TrieNode(NodeType.Unknown, hash));
+        }
+
+        return node;
+    }
+
+    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    {
+        if (_trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
         }
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
-        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node) && node is not null
-            ? node
-            : new TrieNode(NodeType.Unknown, hash);
+        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
@@ -460,7 +611,7 @@ public sealed class SnapshotBundle : IDisposable
                 _usage = ResourcePool.Usage.PostMainBlockProcessing;
             }
 
-            _transientResource = _resourcePool.GetCachedResource(_usage);
+            SwapTransientResource();
             _trieChanged = false;
 
             // Make and apply new snapshot content.
@@ -473,7 +624,9 @@ public sealed class SnapshotBundle : IDisposable
         {
             snapshot.Dispose(); // Revert the lease before
 
-            _transientResource.Reset();
+            TransientResource retired = _transientResource;
+            SwapTransientResource();
+            retired.ReleaseLease();
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
@@ -481,6 +634,13 @@ public sealed class SnapshotBundle : IDisposable
 
             return (null, null);
         }
+    }
+
+    private void SwapTransientResource()
+    {
+        TransientResource fresh = _resourcePool.GetCachedResource(_usage);
+        fresh.OnRented(_resourcePool, _usage);
+        Volatile.Write(ref _transientResource, fresh);
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);
@@ -499,7 +659,7 @@ public sealed class SnapshotBundle : IDisposable
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
-        _resourcePool.ReturnCachedResource(_usage, _transientResource);
+        _transientResource.ReleaseLease();
         _readOnlySnapshotBundle.Dispose();
 
         Metrics.ActiveSnapshotBundle--;
