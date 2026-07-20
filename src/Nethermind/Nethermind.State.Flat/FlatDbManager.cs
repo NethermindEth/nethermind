@@ -57,8 +57,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
 
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
@@ -167,7 +165,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
         ClearReadOnlyBundleCache();
-        ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(currentPersistedStateId.BlockNumber));
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
