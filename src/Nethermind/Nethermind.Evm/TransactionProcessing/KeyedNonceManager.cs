@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -39,9 +39,9 @@ public static class KeyedNonceManager
     }
 
     public static bool IsFirstUse(IWorldState state, Address sender, in UInt256 nonceKey) =>
-        new UInt256(state.Get(StorageSlot(sender, nonceKey)), isBigEndian: true).IsZero;
+        !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
 
-    public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq, IReleaseSpec spec)
+    public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (nonceKeys.Length == 1 && nonceKeys[0].IsZero)
         {
@@ -49,9 +49,13 @@ public static class KeyedNonceManager
             return;
         }
 
-        byte[] nextSeq = ((UInt256)nonceSeq + UInt256.One).ToBigEndian().WithoutLeadingZeros().ToArray();
+        Span<byte> buffer = stackalloc byte[32];
+        ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
+        byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
         foreach (UInt256 nonceKey in nonceKeys)
         {
+            // EIP-8250 rejects key 0 in a non-[0] set; the decode-time validity check owns that, this guards the primitive.
+            Debug.Assert(!nonceKey.IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
             state.Set(StorageSlot(sender, nonceKey), nextSeq);
         }
     }
