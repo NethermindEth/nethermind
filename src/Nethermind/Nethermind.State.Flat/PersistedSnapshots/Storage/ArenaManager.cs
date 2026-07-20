@@ -165,7 +165,7 @@ public sealed class ArenaManager : IArenaManager
             PoolFor(file).Remove(file.Id);
             file.WriterActive = true;
         }
-        FileStream stream = file.CreateWriteStream(offset);
+        Stream stream = file.CreateWriteStream(offset);
         return new ArenaWriter(this, file, dedicated, offset, stream);
     }
 
@@ -181,7 +181,7 @@ public sealed class ArenaManager : IArenaManager
     /// <paramref name="hasHeadroom"/> is true for shared writes whose post-frontier still leaves room for
     /// further packing.
     /// </summary>
-    internal void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom)
+    public void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom)
     {
         using Lock.Scope scope = _lock.EnterScope();
         file.WriterActive = false;
@@ -202,7 +202,7 @@ public sealed class ArenaManager : IArenaManager
     /// to the mutable pool (the writer didn't advance the frontier, so by construction it
     /// still has the same headroom it had when picked).
     /// </summary>
-    internal void OnWriteCancelledShared(ArenaFile file)
+    public void OnWriteCancelledShared(ArenaFile file)
     {
         using Lock.Scope scope = _lock.EnterScope();
         file.WriterActive = false;
@@ -221,7 +221,7 @@ public sealed class ArenaManager : IArenaManager
     /// the byte metric. <paramref name="file"/> is readable post-dispose (Id /
     /// ReportedFrontier are plain fields).
     /// </summary>
-    internal void OnWriteCancelledDedicated(ArenaFile file)
+    public void OnWriteCancelledDedicated(ArenaFile file)
     {
         using Lock.Scope scope = _lock.EnterScope();
         _arenas.TryRemove(file.Id, out _);

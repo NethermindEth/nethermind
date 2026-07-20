@@ -21,7 +21,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
     /// file via the same manager — mirroring how production wires <c>BlobArenaManager</c> as
     /// a long-lived shared component.
     /// </summary>
-    public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
+    public static byte[] Build(Snapshot snapshot, IBlobArenaManager blobs)
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);

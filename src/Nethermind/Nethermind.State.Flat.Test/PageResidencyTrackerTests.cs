@@ -72,6 +72,9 @@ public class PageResidencyTrackerTests
         public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
+        public void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom) => throw new NotSupportedException();
+        public void OnWriteCancelledShared(ArenaFile file) => throw new NotSupportedException();
+        public void OnWriteCancelledDedicated(ArenaFile file) => throw new NotSupportedException();
         // No-op so reservation disposal doesn't blow up in tests.
         public bool MarkDead(ArenaFile file, long deadSize) => false;
         public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) { }

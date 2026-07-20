@@ -45,7 +45,12 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>Pre-extended file length (sparse on Linux). Writers append within this cap.</summary>
     public long MaxSize { get; }
 
-    private SafeFileHandle Handle { get; }
+    private SafeFileHandle? Handle { get; }
+
+    // RAM-backed mode (InMemoryBlobArenaManager): the RLP bytes live in a native buffer instead of an
+    // on-disk file; reads copy from it and every disk-only op below no-ops.
+    private readonly bool _inMemory;
+    private readonly NativeArenaBuffer? _mem;
 
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
     internal long Frontier { get; set; }
@@ -73,6 +78,26 @@ public sealed class BlobArenaFile : RefCountingDisposable
         if (frontier > 0)
             Interlocked.Add(ref Metrics._blobAllocatedBytes, frontier);
     }
+
+    private BlobArenaFile(ushort id, long maxSize, long initialCapacity)
+    {
+        BlobArenaId = id;
+        Path = string.Empty;
+        MaxSize = maxSize;
+        _inMemory = true;
+        _mem = new NativeArenaBuffer(initialCapacity);
+        Frontier = 0;
+        ReportedFrontier = 0;
+        Interlocked.Increment(ref Metrics._blobFileCount);
+    }
+
+    /// <summary>
+    /// Create a RAM-backed blob file whose RLP bytes live in a growable native buffer instead of an
+    /// on-disk file. Used by <see cref="InMemoryBlobArenaManager"/> — one file per snapshot; the
+    /// buffer is appended into by a single writer, then frozen and read via <see cref="RandomRead"/>.
+    /// </summary>
+    internal static BlobArenaFile CreateInMemory(ushort id, long maxSize, long initialCapacity)
+        => new(id, maxSize, initialCapacity);
 
     /// <summary>
     /// Mark this file as "preserve on disk when its refcount hits zero". Set by
@@ -113,10 +138,11 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// </summary>
     public int RandomRead(long offset, Span<byte> destination)
     {
+        if (_inMemory) return _mem!.ReadAt(offset, destination);
         int total = 0;
         while (total < destination.Length)
         {
-            int read = RandomAccess.Read(Handle, destination[total..], offset + total);
+            int read = RandomAccess.Read(Handle!, destination[total..], offset + total);
             if (read <= 0) break;
             total += read;
         }
@@ -126,8 +152,10 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>
     /// Open a write stream seeked to <paramref name="startOffset"/>. Caller disposes when done.
     /// </summary>
-    internal FileStream OpenWriteStream(long startOffset)
+    internal Stream OpenWriteStream(long startOffset)
     {
+        // RAM mode uses one fresh file per snapshot, so the append-only stream starts at offset 0.
+        if (_inMemory) return new NativeArenaWriteStream(_mem!);
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
         return fs;
@@ -140,8 +168,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// </summary>
     internal void FadviseDontNeed(long offset, long size)
     {
+        if (_inMemory) return;
         bool refAdded = false;
-        Handle.DangerousAddRef(ref refAdded);
+        Handle!.DangerousAddRef(ref refAdded);
         try { PosixReclaim.FadviseDontNeed((int)Handle.DangerousGetHandle(), offset, size); }
         finally { if (refAdded) Handle.DangerousRelease(); }
     }
@@ -153,8 +182,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// </summary>
     internal void FadviseWillNeed(long offset, long size)
     {
+        if (_inMemory) return;
         bool refAdded = false;
-        Handle.DangerousAddRef(ref refAdded);
+        Handle!.DangerousAddRef(ref refAdded);
         try { PosixReclaim.FadviseWillNeed((int)Handle.DangerousGetHandle(), offset, size); }
         finally { if (refAdded) Handle.DangerousRelease(); }
     }
@@ -166,8 +196,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// </summary>
     internal void Fsync()
     {
+        if (_inMemory) return;
         bool refAdded = false;
-        Handle.DangerousAddRef(ref refAdded);
+        Handle!.DangerousAddRef(ref refAdded);
         try { PosixReclaim.Fsync((int)Handle.DangerousGetHandle()); }
         finally { if (refAdded) Handle.DangerousRelease(); }
     }
@@ -178,15 +209,26 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// to reclaim an orphaned file: zeros the logical length AND frees all disk blocks in
     /// a single syscall. The page cache for the truncated range is implicitly invalidated.
     /// </summary>
-    internal void SetFileLength(long newSize) =>
-        RandomAccess.SetLength(Handle, newSize);
+    internal void SetFileLength(long newSize)
+    {
+        if (_inMemory) return;
+        RandomAccess.SetLength(Handle!, newSize);
+    }
 
     protected override void CleanUp()
     {
-        Handle.Dispose();
-        if (Volatile.Read(ref _preserveOnDispose) == 0)
+        // RAM mode: free the native buffer, no on-disk file to close/delete.
+        if (_inMemory)
         {
-            try { File.Delete(Path); } catch { /* best-effort */ }
+            _mem!.Dispose();
+        }
+        else
+        {
+            Handle!.Dispose();
+            if (Volatile.Read(ref _preserveOnDispose) == 0)
+            {
+                try { File.Delete(Path); } catch { /* best-effort */ }
+            }
         }
         Interlocked.Decrement(ref Metrics._blobFileCount);
         long reported = ReportedFrontier;

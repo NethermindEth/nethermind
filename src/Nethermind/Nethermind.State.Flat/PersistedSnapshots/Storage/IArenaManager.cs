@@ -19,6 +19,20 @@ public unsafe interface IArenaManager : IDisposable
     ArenaReservation Open(in SnapshotLocation location);
 
     /// <summary>
+    /// Post-<see cref="ArenaWriter.Complete"/> bookkeeping: publish the file's new
+    /// <paramref name="newFrontier"/> and (for a shared arena with room left,
+    /// <paramref name="hasHeadroom"/>) return it to the writable pool. Called by the writer, not the
+    /// application.
+    /// </summary>
+    void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom);
+
+    /// <summary>Bookkeeping after a cancelled write on a shared (non-dedicated) arena.</summary>
+    void OnWriteCancelledShared(ArenaFile file);
+
+    /// <summary>Bookkeeping after a cancelled write on a dedicated arena (the writer already dropped its ref).</summary>
+    void OnWriteCancelledDedicated(ArenaFile file);
+
+    /// <summary>
     /// Drop <paramref name="deadSize"/> bytes of <paramref name="file"/> as dead. The caller
     /// (typically <see cref="ArenaReservation.CleanUp"/>) handles file-side <c>madvise</c> /
     /// <c>posix_fadvise</c> and tracker-forget itself, so this method only does the atomic

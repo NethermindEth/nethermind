@@ -51,7 +51,7 @@ internal static class TestFixtureHelpers
     /// refcounts balanced. No-op when there are no ref_ids (raw test bytes that aren't
     /// a real sorted table).
     /// </summary>
-    public static void LeaseBlobIds(ArenaReservation reservation, BlobArenaManager blobs)
+    public static void LeaseBlobIds(ArenaReservation reservation, IBlobArenaManager blobs)
     {
         using WholeReadSession session = reservation.BeginWholeReadSession();
         WholeReadSessionReader reader = session.CreateReader();
@@ -126,7 +126,7 @@ internal static class TestFixtureHelpers
     /// <see cref="PersistedSnapshot"/> over <paramref name="blobs"/>.
     /// </summary>
     public static PersistedSnapshot CreatePersistedSnapshot(
-        IArenaManager arena, BlobArenaManager blobs, StateId from, StateId to, byte[] data,
+        IArenaManager arena, IBlobArenaManager blobs, StateId from, StateId to, byte[] data,
         bool leaseBlobIds = true)
     {
         using ArenaWriter writer = arena.CreateWriter(data.Length);

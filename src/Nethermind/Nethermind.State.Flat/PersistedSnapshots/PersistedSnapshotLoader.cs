@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public sealed class PersistedSnapshotLoader(
     ISnapshotRepository repository,
     IArenaManager arena,
-    BlobArenaManager blobs,
+    IBlobArenaManager blobs,
     ISnapshotCatalog catalog,
     IFlatDbConfig config,
     ILogManager logManager) : IPersistedSnapshotLoader

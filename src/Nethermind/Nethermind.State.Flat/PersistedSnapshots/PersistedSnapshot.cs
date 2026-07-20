@@ -33,7 +33,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     private readonly PersistedSnapshotLabel _label;
     // Each id is resolved on demand via _blobManager.GetFile(id), a lock-free O(1) array read. The
     // canonical leased-id list lives on disk in this snapshot's metadata under the "ref_ids" key.
-    private readonly BlobArenaManager _blobManager;
+    private readonly IBlobArenaManager _blobManager;
 
     public StateId From { get; }
     public StateId To { get; }
@@ -79,7 +79,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// metadata reservation lease and stashes the manager ref for later id → file resolution.
     /// </summary>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        BlobArenaManager blobManager, SnapshotTier tier, RefCountedBloomFilter bloom)
+        IBlobArenaManager blobManager, SnapshotTier tier, RefCountedBloomFilter bloom)
     {
         From = from;
         To = to;

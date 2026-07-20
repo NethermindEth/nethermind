@@ -55,7 +55,7 @@ public interface ISnapshotRepository
     /// over the same reservation carrying a lease on the shared bloom. Best-effort and lock-free across
     /// buckets — a racing prune just leaves a snapshot with its own bloom. Pure live-memory optimization:
     /// blooms are not persisted, so reload rebuilds independent blooms.</summary>
-    void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs);
+    void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, IBlobArenaManager blobs);
 
     /// <summary>Lease every persisted base snapshot tiling <c>(from, to]</c>. Caller disposes the list.</summary>
     PersistedSnapshotList LeaseBaseSnapshotsInRange(StateId from, StateId to);

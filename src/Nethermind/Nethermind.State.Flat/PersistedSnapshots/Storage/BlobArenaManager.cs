@@ -43,7 +43,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// 65 536 × 8 B ≈ 512 KiB per manager.
 /// </para>
 /// </summary>
-public sealed class BlobArenaManager : IDisposable
+public sealed class BlobArenaManager : IBlobArenaManager
 {
     private const string BlobFilePrefix = "blob_";
     private const string BlobFileExtension = ".bin";
@@ -150,7 +150,7 @@ public sealed class BlobArenaManager : IDisposable
             throw new InvalidOperationException(
                 $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
 
-        FileStream stream = file.OpenWriteStream(startOffset);
+        Stream stream = file.OpenWriteStream(startOffset);
         return new BlobArenaWriter(this, file, startOffset, stream);
     }
 
@@ -194,7 +194,7 @@ public sealed class BlobArenaManager : IDisposable
     /// candidate for the next writer and pushes the post-write frontier delta to
     /// <c>Metrics.BlobAllocatedBytes</c>.
     /// </summary>
-    internal void OnWriteCompleted(BlobArenaFile file, bool hasHeadroom)
+    public void OnWriteCompleted(BlobArenaFile file, bool hasHeadroom)
     {
         using Lock.Scope scope = _lock.EnterScope();
         if (hasHeadroom) _mutableFiles.Add(file.BlobArenaId);
@@ -214,7 +214,7 @@ public sealed class BlobArenaManager : IDisposable
     /// frontier didn't advance, so the file still has room by construction — re-add the
     /// id to the mutable pool. No file touch.
     /// </summary>
-    internal void OnWriteCancelled(ushort blobArenaId)
+    public void OnWriteCancelled(ushort blobArenaId)
     {
         using Lock.Scope scope = _lock.EnterScope();
         _mutableFiles.Add(blobArenaId);

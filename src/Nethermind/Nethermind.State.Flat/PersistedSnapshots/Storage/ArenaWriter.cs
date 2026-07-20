@@ -11,13 +11,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public sealed class ArenaWriter : IDisposable
 {
     private ArenaBufferWriter _writer;
-    private readonly ArenaManager _manager;
+    private readonly IArenaManager _manager;
     private readonly ArenaFile _file;
     private readonly bool _dedicated;
     private readonly long _startOffset;
     private bool _completed;
 
-    internal ArenaWriter(ArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream)
+    internal ArenaWriter(IArenaManager manager, ArenaFile file, bool dedicated, long startOffset, Stream stream)
     {
         _manager = manager;
         _file = file;

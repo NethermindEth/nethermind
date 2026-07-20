@@ -28,6 +28,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Slab-storage debug checks: poison-on-release and keccak-verify-on-decode. Test/soak only.", DefaultValue = "false")]
     bool FlatNodeStorageDebugChecks { get; set; }
 
+    [ConfigItem(Description = "Demote aged base persisted snapshots into a RAM-backed arena instead of on-disk arena files. Trades disk for memory on the persisted-snapshot metadata + blob tiers; the tier becomes session-ephemeral (not rehydrated across restarts). Experimental.", DefaultValue = "false")]
+    bool FlatNodeStorageInMemoryArena { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

@@ -34,11 +34,11 @@ public sealed class BlobArenaWriter : IDisposable
 {
     private const int BufferSize = 1024 * 1024;
 
-    private readonly BlobArenaManager _manager;
+    private readonly IBlobArenaManager _manager;
     private readonly BlobArenaFile _file;
     private readonly ushort _blobArenaId;
     private readonly long _startOffset;
-    private readonly FileStream _stream;
+    private readonly Stream _stream;
     // Held at Count == Capacity so AsSpan() exposes the whole 1 MiB buffer; the writer slices
     // the free tail with its own _buffered cursor (same shape as ArenaBufferWriter).
     private readonly NativeMemoryList<byte> _buffer = new(BufferSize, BufferSize);
@@ -59,7 +59,7 @@ public sealed class BlobArenaWriter : IDisposable
     /// meantime, the file self-cleans (manager's array-slot ref is still 1, so the file
     /// stays alive — it only goes away on manager shutdown or sweep).
     /// </summary>
-    internal BlobArenaWriter(BlobArenaManager manager, BlobArenaFile file, long startOffset, FileStream stream)
+    internal BlobArenaWriter(IBlobArenaManager manager, BlobArenaFile file, long startOffset, Stream stream)
     {
         _manager = manager;
         _file = file;

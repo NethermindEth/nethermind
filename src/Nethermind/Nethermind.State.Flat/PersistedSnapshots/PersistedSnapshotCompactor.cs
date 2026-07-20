@@ -35,7 +35,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public class PersistedSnapshotCompactor(
     ISnapshotRepository snapshotRepository,
     IArenaManager arenaManager,
-    BlobArenaManager blobs,
+    IBlobArenaManager blobs,
     ISnapshotCatalog catalog,
     IFlatDbConfig config,
     ICompactionSchedule schedule,

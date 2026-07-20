@@ -36,20 +36,25 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
 
-    private readonly SafeFileHandle _handle;
-    private MemoryMappedFile _mmf;
-    private MemoryMappedViewAccessor _accessor;
+    private readonly SafeFileHandle? _handle;
+    private MemoryMappedFile? _mmf;
+    private MemoryMappedViewAccessor? _accessor;
     private byte* _basePtr;
     // Treated as bool; 0 = delete on CleanUp, 1 = keep the on-disk file. Set by
     // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
     private int _preserveOnDispose;
+    // RAM-backed mode (InMemoryArenaManager): the slice lives in a native buffer instead of an
+    // mmap'd file, so BasePtr points into _mem and every disk-only op below no-ops.
+    private readonly bool _inMemory;
+    private readonly NativeArenaBuffer? _mem;
+    private long _mappedSize;
 
-    /// <summary>Raw pointer to the first byte of the arena's mmap. Long-offset arithmetic OK across the full <see cref="MappedSize"/>.</summary>
-    public byte* BasePtr => _basePtr;
+    /// <summary>Raw pointer to the first byte of the arena's mmap (or RAM buffer). Long-offset arithmetic OK across the full <see cref="MappedSize"/>.</summary>
+    public byte* BasePtr => _inMemory ? _mem!.Pointer : _basePtr;
 
     public int Id { get; }
     private string Path { get; }
-    public long MappedSize { get; private set; }
+    public long MappedSize => _inMemory ? _mem!.Capacity : _mappedSize;
 
     /// <summary>
     /// True for arenas holding sub-CompactSize snapshots (the <c>PersistedBase</c> and
@@ -116,7 +121,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     {
         Id = id;
         Path = path;
-        MappedSize = mappedSize;
+        _mappedSize = mappedSize;
         Small = small;
 
         _handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
@@ -128,6 +133,23 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         OpenMmap(mappedSize);
     }
 
+    private ArenaFile(int id, long initialCapacity, bool small)
+    {
+        Id = id;
+        Path = string.Empty;
+        Small = small;
+        _inMemory = true;
+        _mem = new NativeArenaBuffer(initialCapacity);
+    }
+
+    /// <summary>
+    /// Create a RAM-backed arena file whose bytes live in a growable native buffer instead of an
+    /// mmap'd on-disk file. Used by <see cref="InMemoryArenaManager"/> to hold one slice per file;
+    /// the buffer grows on write and is frozen (read-only) once the writer completes.
+    /// </summary>
+    internal static ArenaFile CreateInMemory(int id, long initialCapacity, bool small = false)
+        => new(id, initialCapacity, small);
+
     /// <summary>
     /// Try to acquire a lease without throwing on a disposing file. Returns false when the
     /// file is already in cleanup.
@@ -138,8 +160,10 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// Create a write stream seeked to <paramref name="startOffset"/>.
     /// The caller is responsible for disposing the returned stream.
     /// </summary>
-    internal FileStream CreateWriteStream(long startOffset)
+    internal Stream CreateWriteStream(long startOffset)
     {
+        // RAM mode packs one slice per file starting at offset 0, so the append-only stream needs no seek.
+        if (_inMemory) return new NativeArenaWriteStream(_mem!);
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
         return fs;
@@ -155,17 +179,20 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal void Truncate(long newSize)
     {
+        // RAM mode keeps the (possibly over-allocated) native buffer; MappedSize already tracks its
+        // capacity and the footprint math it feeds only drives madvise/punch, which no-op here.
+        if (_inMemory) return;
         if (newSize == MappedSize) return;
         CloseMmap();
-        RandomAccess.SetLength(_handle, newSize);
-        MappedSize = newSize;
+        RandomAccess.SetLength(_handle!, newSize);
+        _mappedSize = newSize;
         OpenMmap(newSize);
     }
 
     [MemberNotNull(nameof(_mmf), nameof(_accessor))]
     private void OpenMmap(long size)
     {
-        _mmf = MemoryMappedFile.CreateFromFile(_handle, mapName: null, size, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
+        _mmf = MemoryMappedFile.CreateFromFile(_handle!, mapName: null, size, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
         _accessor = _mmf.CreateViewAccessor(0, size, MemoryMappedFileAccess.Read);
         _basePtr = null;
         _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _basePtr);
@@ -176,15 +203,15 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
     private void CloseMmap()
     {
-        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+        _accessor!.SafeMemoryMappedViewHandle.ReleasePointer();
         _accessor.Dispose();
-        _mmf.Dispose();
+        _mmf!.Dispose();
         _basePtr = null;
     }
 
     public void AdviseDontNeed(long offset, long size)
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (_inMemory || !OperatingSystem.IsLinux()) return;
 
         if (TryAlignInward(offset, size, out nuint start, out nuint len))
             Madvise(_basePtr + start, len, MADV_DONTNEED);
@@ -207,7 +234,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     public void PopulateRead(long offset, long size)
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (_inMemory || !OperatingSystem.IsLinux()) return;
 
         if (TryAlignInward(offset, size, out nuint start, out nuint len))
             Madvise(_basePtr + start, len, MADV_POPULATE_READ);
@@ -220,7 +247,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// duration of the read — unlike <see cref="AdviseDontNeed"/>, a userspace load on a torn-down
     /// mapping would SIGSEGV instead of returning a syscall error.
     /// </summary>
-    public byte TouchByte(long offset) => Volatile.Read(ref *(_basePtr + offset));
+    public byte TouchByte(long offset) => _inMemory ? (byte)0 : Volatile.Read(ref *(_basePtr + offset));
 
     /// <summary>
     /// posix_fadvise(POSIX_FADV_DONTNEED) on the underlying file descriptor for the
@@ -231,8 +258,9 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     public void FadviseDontNeed(long offset, long size)
     {
+        if (_inMemory) return;
         bool refAdded = false;
-        _handle.DangerousAddRef(ref refAdded);
+        _handle!.DangerousAddRef(ref refAdded);
         try { PosixReclaim.FadviseDontNeed((int)_handle.DangerousGetHandle(), offset, size); }
         finally { if (refAdded) _handle.DangerousRelease(); }
     }
@@ -245,8 +273,9 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// <returns>The <see cref="PosixReclaim.PunchHoleOutcome"/> reported by the kernel.</returns>
     internal PosixReclaim.PunchHoleOutcome PunchHole(long offset, long size)
     {
+        if (_inMemory) return PosixReclaim.PunchHoleOutcome.Unsupported;
         bool refAdded = false;
-        _handle.DangerousAddRef(ref refAdded);
+        _handle!.DangerousAddRef(ref refAdded);
         try { return PosixReclaim.TryPunchHole((int)_handle.DangerousGetHandle(), offset, size); }
         finally { if (refAdded) _handle.DangerousRelease(); }
     }
@@ -259,8 +288,9 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal void Fsync()
     {
+        if (_inMemory) return;
         bool refAdded = false;
-        _handle.DangerousAddRef(ref refAdded);
+        _handle!.DangerousAddRef(ref refAdded);
         try { PosixReclaim.Fsync((int)_handle.DangerousGetHandle()); }
         finally { if (refAdded) _handle.DangerousRelease(); }
     }
@@ -274,7 +304,9 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal MmapWholeView OpenWholeView(long offset, long size, bool adviseDontNeedOnDispose)
     {
-        MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
+        // RAM mode has no separate mapping — hand out a view straight over the native buffer slice.
+        if (_inMemory) return new MmapWholeView(null, BasePtr + offset, size, adviseDontNeedOnDispose);
+        MemoryMappedViewAccessor accessor = _mmf!.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
         byte* ptr = null;
         accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
         // The accessor's pointer is offset by an internal page-aligned skew; add it
@@ -292,7 +324,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// kernel can reclaim those pages from the page cache.
     /// </summary>
     internal sealed unsafe class MmapWholeView(
-        MemoryMappedViewAccessor accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IDisposable
+        MemoryMappedViewAccessor? accessor, byte* dataPtr, long size, bool adviseDontNeedOnDispose) : IDisposable
     {
         /// <summary>
         /// Raw pointer to the first byte of the view. Long-offset arithmetic is valid for the entire
@@ -304,6 +336,9 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
         public void Dispose()
         {
+            // RAM mode (null accessor): the view is a plain window into the owning file's native
+            // buffer — nothing to unmap or madvise.
+            if (accessor is null) return;
             if (adviseDontNeedOnDispose && OperatingSystem.IsLinux())
             {
                 // MADV_DONTNEED on a file-backed shared mapping drops the pages from the kernel
@@ -332,8 +367,15 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
 
     protected override void CleanUp()
     {
+        // RAM mode: nothing on disk to close/delete — free the native buffer. The tier is
+        // session-ephemeral, so the preserve-on-shutdown flag is irrelevant.
+        if (_inMemory)
+        {
+            _mem!.Dispose();
+            return;
+        }
         CloseMmap();
-        _handle.Dispose();
+        _handle!.Dispose();
         // Preserve the on-disk file iff someone explicitly opted in via PersistOnShutdown;
         // otherwise delete it (the normal post-prune cleanup path).
         if (Volatile.Read(ref _preserveOnDispose) == 0)

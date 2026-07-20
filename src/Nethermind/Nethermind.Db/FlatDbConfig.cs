@@ -11,6 +11,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool EnablePreimageRecording { get; set; } = false;
     public bool FlatNodeStorage { get; set; } = false;
     public bool FlatNodeStorageDebugChecks { get; set; } = false;
+    public bool FlatNodeStorageInMemoryArena { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

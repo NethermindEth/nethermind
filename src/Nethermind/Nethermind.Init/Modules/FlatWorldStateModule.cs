@@ -72,6 +72,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes);
             })
+            // Consumers depend on IBlobArenaManager; by default it resolves the on-disk BlobArenaManager
+            // above. The FlatNodeStorageInMemoryArena block below overrides this with the RAM impl.
+            .AddSingleton<IBlobArenaManager>(ctx => ctx.Resolve<BlobArenaManager>())
             .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<IPersistedSnapshotLoader, PersistedSnapshotLoader>()
@@ -132,6 +135,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<ISnapshotCatalog>(NullSnapshotCatalog.Instance)
                 .AddSingleton<IPersistedSnapshotLoader>(NullPersistedSnapshotLoader.Instance)
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+        }
+
+        if (flatDbConfig.FlatNodeStorageInMemoryArena)
+        {
+            // RAM-backed persisted-snapshot arenas (default off). Last registration wins, so these
+            // replace the on-disk ArenaManager / BlobArenaManager wired above.
+            builder
+                .AddSingleton<IArenaManager>(_ => new InMemoryArenaManager())
+                .AddSingleton<IBlobArenaManager, IFlatDbConfig>(cfg =>
+                    new InMemoryBlobArenaManager(cfg.ArenaFileSizeBytes));
         }
 
         if (flatDbConfig.ImportFromPruningTrieState)

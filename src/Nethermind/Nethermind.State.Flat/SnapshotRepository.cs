@@ -53,7 +53,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public SnapshotRepository(
         IArenaManager arenaManager,
-        BlobArenaManager blobArenaManager,
+        IBlobArenaManager blobArenaManager,
         ISnapshotCatalog catalog,
         IFlatDbConfig config,
         ILogManager logManager)
@@ -577,7 +577,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     /// <inheritdoc />
-    public void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, BlobArenaManager blobs)
+    public void ShareBloomAcrossRange(StateId from, StateId to, RefCountedBloomFilter sharedBloom, IBlobArenaManager blobs)
     {
         StateId current = to;
         while (Height(current) > Height(from))
@@ -607,7 +607,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// produce false negatives).
     /// </summary>
     private void ShareBloomAt(in StateId at, in StateId from, in StateId to,
-        RefCountedBloomFilter sharedBloom, BlobArenaManager blobs, SnapshotTier tier)
+        RefCountedBloomFilter sharedBloom, IBlobArenaManager blobs, SnapshotTier tier)
     {
         // Lease before reading the entry's fields so it cannot drain mid-build; the twin takes its own
         // reservation + blob leases in its ctor, so it is independent of this probe lease.
