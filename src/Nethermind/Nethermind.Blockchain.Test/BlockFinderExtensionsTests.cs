@@ -70,6 +70,6 @@ public class BlockFinderExtensionsTests
         Assert.That(result.IsError, Is.True);
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
         Assert.That(result.Error, Does.Contain("50"));
-        Assert.That(result.Error, Does.Contain("pruned history unavailable"));
+        Assert.That(result.Error, Does.Contain("Pruned history unavailable"));
     }
 }

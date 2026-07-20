@@ -134,28 +134,31 @@ internal static class PayloadBodiesDirectResponseWriter
         IBufferWriter<byte> writer,
         byte[][] transactions,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList = null)
+        MemoryManager<byte>? blockAccessList = null,
+        bool includeBlockAccessList = false)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList);
     }
 
     public static void WritePayloadBody(
         IBufferWriter<byte> writer,
         Transaction[] transactions,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList = null)
+        MemoryManager<byte>? blockAccessList = null,
+        bool includeBlockAccessList = false)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList);
     }
 
     public static void WritePayloadBody(
         IBufferWriter<byte> writer,
         byte[] blockRlp,
-        MemoryManager<byte>? blockAccessList = null)
+        MemoryManager<byte>? blockAccessList = null,
+        bool includeBlockAccessList = false)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -169,29 +172,46 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
 
-        if (blockAccessList is not null)
-        {
-            writer.Write(",\"blockAccessList\":"u8);
-            HexWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
-        }
-
+        WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
     }
 
     private static void WritePayloadBodySuffix(
         IBufferWriter<byte> writer,
         Withdrawal[]? withdrawals,
-        MemoryManager<byte>? blockAccessList)
+        MemoryManager<byte>? blockAccessList,
+        bool includeBlockAccessList)
     {
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
-        if (blockAccessList is not null)
+        WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
+        writer.Write("}"u8);
+    }
+
+    /// <summary>
+    /// Writes the <c>blockAccessList</c> field for V2 payload bodies. The engine API requires
+    /// the key to be present with a literal <c>null</c> when the block has no access list;
+    /// V1 payload bodies must omit the key entirely.
+    /// </summary>
+    private static void WriteBlockAccessList(
+        IBufferWriter<byte> writer,
+        MemoryManager<byte>? blockAccessList,
+        bool includeBlockAccessList)
+    {
+        if (!includeBlockAccessList)
         {
-            writer.Write(",\"blockAccessList\":"u8);
-            HexWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
+            return;
         }
 
-        writer.Write("}"u8);
+        writer.Write(",\"blockAccessList\":"u8);
+        if (blockAccessList is null)
+        {
+            writer.Write("null"u8);
+        }
+        else
+        {
+            HexWriter.WriteHexString(writer, blockAccessList.Memory.Span, chunked: true);
+        }
     }
 
     public static void WriteTransactions(IBufferWriter<byte> writer, byte[][] transactions)

@@ -38,5 +38,7 @@ public class ExecutionPayloadBodyV2Result
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Withdrawal[]? Withdrawals { get; set; }
 
+    // Engine API: the key must be present with a literal null when the block has no access list.
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? BlockAccessList { get; set; }
 }
