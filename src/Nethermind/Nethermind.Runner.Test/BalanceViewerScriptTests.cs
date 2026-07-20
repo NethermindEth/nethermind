@@ -342,6 +342,8 @@ public class BalanceViewerScriptTests
                 setAttribute(k, v) { this[k] = v; },
             }),
         };
+        globalThis.location = { href: '', hash: '', pathname: '/', search: '', hostname: 'localhost', port: '' };
+        globalThis.history = { replaceState: () => {}, pushState: () => {} };
         globalThis.__mkThumbs = (n) => Array.from({ length: n }, (_, i) => ({ src: 'data:image/svg+xml,x', title: '#' + i }));
         globalThis.__summary = (box) => box.children.map((c) => c.tag === 'img' ? 'img' : c.textContent).join('|');
         globalThis.__click = (box, label) => box.children.find((c) => c.textContent === label).onclick();

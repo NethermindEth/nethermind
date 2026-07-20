@@ -2090,10 +2090,6 @@
                 openArt({ id: id.toString(), title: '#' + id }, collectionObjFor(node, p[2]), node, null);
             }
         }
-        window.addEventListener('hashchange', applyHash);
-        // one Escape handler for the whole deep-link stack, so Esc closes only the topmost lightbox (not all at once)
-        window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && deepStack.length) deepClose(deepStack[deepStack.length - 1], true); });
-
         // Detail view in an in-page lightbox: on-chain art (rendered via <img>, which puts SVG in the
         // browser's secure static mode — embedded scripts/external refs never run) plus any on-chain
         // metadata (name, description, traits). Works even without art, when only metadata is on-chain.
@@ -4671,6 +4667,9 @@
             renderFeed();
             pollHead();
             setInterval(pollHead, 12000);
+            window.addEventListener('hashchange', applyHash);
+            // one Escape handler for the whole deep-link stack, so Esc closes only the topmost lightbox (not all at once)
+            window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && deepStack.length) deepClose(deepStack[deepStack.length - 1], true); });
             applyHash(); // open a collection/NFT if the URL carries a deep-link hash
         }
 
