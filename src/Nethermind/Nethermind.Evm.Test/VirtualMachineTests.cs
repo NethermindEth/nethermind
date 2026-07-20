@@ -9,6 +9,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -702,6 +704,84 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.Error, Is.EqualTo(Nethermind.Evm.TransactionSubstate.Revert));
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
+        }
+    }
+
+    private static readonly TestCaseData[] TopLevelOutputCases =
+    [
+        new TestCaseData((byte[])[0xde, 0xad, 0xbe, 0xef]).SetName("Sub_word_output"),
+        new TestCaseData(Bytes.FromHexString("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0123456789abcdef")).SetName("Multi_word_output"),
+    ];
+
+    // Regression cover for the returndata copy-elision in the transaction processor: the bytes handed to the
+    // receipt tracer must equal the top-level RETURN / REVERT / precompile output, whether the backing array is
+    // forwarded directly or copied.
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Return_output_reaches_receipt_tracer_verbatim(byte[] data)
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0, data)
+            .Return(data.Length, 0)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+        }
+    }
+
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Revert_output_reaches_receipt_tracer_verbatim(byte[] data)
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0, data)
+            .Revert(data.Length, 0)
+            .Done;
+
+        TestAllTracerWithOutput receipt = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(data));
+        }
+    }
+
+    [Test]
+    public void Empty_return_yields_empty_receipt_output()
+    {
+        TestAllTracerWithOutput receipt = Execute(Prepare.EvmCode.Return(0, 0).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.Empty);
+        }
+    }
+
+    // Top-level call straight to a precompile exercises the precompile output path, where the backing array may be
+    // a whole array that is forwarded without copying.
+    [Test]
+    public void Top_level_precompile_output_reaches_receipt_tracer_verbatim()
+    {
+        byte[] input = Bytes.FromHexString("0x00112233445566778899aabbccddeeff");
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Transaction tx = Build.A.Transaction
+            .WithTo(IdentityPrecompile.Address)
+            .WithData(input)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(ecdsa, SenderKey)
+            .TestObject;
+
+        TestAllTracerWithOutput receipt = Execute(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ReturnValue, Is.EqualTo(input));
         }
     }
 }
