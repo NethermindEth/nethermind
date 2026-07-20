@@ -295,6 +295,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 if (logger.IsTrace) Trace(address, storageRoot, account);
             }
 
+            OnAccountUpdated = null;
+
             using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
