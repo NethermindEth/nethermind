@@ -6,19 +6,19 @@ using System;
 using System.IO;
 using Microsoft.ClearScript.V8;
 using Microsoft.Extensions.FileProviders;
-using Nethermind.BalanceViewer.Plugin;
+using Nethermind.PortfolioViewer.Plugin;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
 
 /// <summary>
-/// Exercises the pure JavaScript logic embedded in the balance viewer page (keccak-256,
+/// Exercises the pure JavaScript logic embedded in the portfolio viewer page (keccak-256,
 /// ENS namehash, EIP-55 checksums, ABI decoding, unit/fiat formatting, sync detection)
 /// by loading the actual shipped portfolio.html into a V8 engine and asserting on its
 /// functions — so the browser-side crypto and parsing are covered like any other code.
 /// </summary>
 [TestFixture]
-public class BalanceViewerScriptTests
+public class PortfolioViewerScriptTests
 {
     // Minimal browser shims: the page guards its DOM entry point behind BALANCES_NO_AUTOINIT,
     // so only the top-level definitions run here. TextEncoder/TextDecoder are the sole Web
@@ -42,7 +42,7 @@ public class BalanceViewerScriptTests
 
     private static V8ScriptEngine CreateEngine()
     {
-        IFileInfo page = new ManifestEmbeddedFileProvider(typeof(BalanceViewerPlugin).Assembly, "wwwroot").GetFileInfo("portfolio.html");
+        IFileInfo page = new ManifestEmbeddedFileProvider(typeof(PortfolioViewerPlugin).Assembly, "wwwroot").GetFileInfo("portfolio.html");
         Assert.That(page.Exists, Is.True, "portfolio.html is not embedded in the plugin assembly");
 
         using Stream stream = page.CreateReadStream();

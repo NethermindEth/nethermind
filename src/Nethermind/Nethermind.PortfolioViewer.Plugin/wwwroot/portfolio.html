@@ -4615,7 +4615,7 @@
                     const line = el('div', 'node-line');
                     line.append(document.createTextNode(name + ' · :' + port + ' — '));
                     const a = el('a', null, 'open ↗');
-                    a.href = '//' + location.hostname + ':' + port + '/'; // node's main page (not the balance viewer)
+                    a.href = '//' + location.hostname + ':' + port + '/'; // node's main page (not the portfolio viewer)
                     a.target = '_blank';
                     a.rel = 'noopener noreferrer';
                     line.append(a);
@@ -4673,7 +4673,7 @@
             applyHash(); // open a collection/NFT if the URL carries a deep-link hash
         }
 
-        // guard lets tests load the pure functions without a DOM (see BalanceViewerScriptTests)
+        // guard lets tests load the pure functions without a DOM (see PortfolioViewerScriptTests)
         if (typeof globalThis.BALANCES_NO_AUTOINIT === 'undefined') init();
     </script>
 </body>

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.BalanceViewer.Plugin;
+using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;

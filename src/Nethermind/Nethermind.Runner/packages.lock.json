@@ -598,17 +598,6 @@
           "Nethermind.Sockets": "[1.40.0-unstable, )"
         }
       },
-      "nethermind.balanceviewer.plugin": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.10, )",
-          "Nethermind.Api": "[1.40.0-unstable, )",
-          "Nethermind.Blockchain": "[1.40.0-unstable, )",
-          "Nethermind.Consensus": "[1.40.0-unstable, )",
-          "Nethermind.Facade": "[1.40.0-unstable, )",
-          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
-        }
-      },
       "nethermind.balrecorder": {
         "type": "Project",
         "dependencies": {
@@ -1102,6 +1091,17 @@
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
           "Nethermind.Merge.Plugin": "[1.40.0-unstable, )",
           "Snappier": "[1.3.1, )"
+        }
+      },
+      "nethermind.portfolioviewer.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.10, )",
+          "Nethermind.Api": "[1.40.0-unstable, )",
+          "Nethermind.Blockchain": "[1.40.0-unstable, )",
+          "Nethermind.Consensus": "[1.40.0-unstable, )",
+          "Nethermind.Facade": "[1.40.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.40.0-unstable, )"
         }
       },
       "nethermind.seq": {

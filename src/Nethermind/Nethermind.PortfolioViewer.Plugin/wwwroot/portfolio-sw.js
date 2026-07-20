@@ -1,4 +1,4 @@
-// Service worker for the balance viewer: lets account-activity notifications show as
+// Service worker for the portfolio viewer: lets account-activity notifications show as
 // system notifications (including for the page installed to a mobile home screen)
 // and focuses the viewer when one is clicked. All data still comes from the node —
 // there is no push subscription to any third-party service.

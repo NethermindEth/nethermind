@@ -6,7 +6,7 @@ using System.Text.Json;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
-namespace Nethermind.BalanceViewer.Plugin;
+namespace Nethermind.PortfolioViewer.Plugin;
 
 /// <summary>Discovers sibling Nethermind JSON-RPC endpoints on localhost for the multi-chain balance view.</summary>
 public interface ISiblingNodeRegistry
@@ -49,7 +49,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     private volatile IReadOnlyList<SiblingNode> _siblings = [];
     private DateTimeOffset _refreshedAt = DateTimeOffset.MinValue;
 
-    public SiblingNodeRegistry(IBalanceViewerConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
+    public SiblingNodeRegistry(IPortfolioViewerConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<SiblingNodeRegistry>();
         HashSet<int> ownPorts = [.. jsonRpcUrlCollection.Keys];

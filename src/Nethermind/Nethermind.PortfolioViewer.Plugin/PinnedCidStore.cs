@@ -5,16 +5,12 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Logging;
 
-namespace Nethermind.BalanceViewer.Plugin;
+namespace Nethermind.PortfolioViewer.Plugin;
 
-/// <summary>
-/// Tracks the IPFS pin arguments this plugin has added to the local Kubo node.
-/// </summary>
+/// <summary>Tracks the IPFS pins this plugin added to the local Kubo node.</summary>
 /// <remarks>
-/// Auto-pin can add art to the user's node, and disabling it asks the node to reclaim that space. The set
-/// of what the plugin pinned is recorded here so "unpin all" removes only the plugin's own pins and never
-/// the user's unrelated pinset. Persisted to the data directory so it survives restarts (Kubo pins do too);
-/// if the file is lost the worst case is that some plugin pins are not reclaimed, never that other pins are.
+/// So "unpin all" removes only the plugin's own pins, never the user's unrelated pinset. Persisted (Kubo pins
+/// survive restarts too); if the file is lost the worst case is unreclaimed plugin pins, never lost user pins.
 /// </remarks>
 public interface IPinnedCidStore
 {
@@ -41,7 +37,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
     public PinnedCidStore(string dbPath, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<PinnedCidStore>();
-        _path = Path.Combine(dbPath, "balance-viewer-pins.json");
+        _path = Path.Combine(dbPath, "portfolio-viewer-pins.json");
         Load();
     }
 
@@ -71,7 +67,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not delete balance-viewer pin list: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not delete portfolio-viewer pin list: {e.Message}");
         }
     }
 
@@ -88,7 +84,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not load balance-viewer pin list: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not load portfolio-viewer pin list: {e.Message}");
         }
     }
 
@@ -106,7 +102,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not persist balance-viewer pin list: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not persist portfolio-viewer pin list: {e.Message}");
         }
     }
 }

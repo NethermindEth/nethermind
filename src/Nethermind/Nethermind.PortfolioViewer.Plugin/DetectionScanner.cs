@@ -11,7 +11,7 @@ using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
 using Nethermind.Logging;
 
-namespace Nethermind.BalanceViewer.Plugin;
+namespace Nethermind.PortfolioViewer.Plugin;
 
 /// <summary>Runs token-detection history scans for accounts, in-process, on this node's chain.</summary>
 public interface IDetectionScanner
@@ -25,13 +25,10 @@ public interface IDetectionScanner
 /// index in-process, and writes the candidate set to <see cref="IDetectionCache"/>.
 /// </summary>
 /// <remarks>
-/// Work runs through the node's <see cref="IBackgroundTaskScheduler"/>: at BelowNormal thread priority,
-/// paused entirely while a block is being processed, with a token cancelled when a block arrives — so a
-/// deep historical scan yields to block-processing / attestation and cannot affect validator performance.
-/// The scan is split into small block chunks, one scheduled task each, chained until the retained history
-/// is covered; a chunk pre-empted by block processing is retried (results accumulate in the cache). Uses
-/// <see cref="ILogFinder"/> directly (bloom-index backed), so it is not subject to the JSON-RPC
-/// block-range / result-count caps. Only this node's data is read.
+/// Runs through the node's <see cref="IBackgroundTaskScheduler"/> (BelowNormal priority, paused during block
+/// processing, cancelled when a block arrives), so a deep scan can't affect validator performance. Split into
+/// small block chunks chained until retained history is covered; a pre-empted chunk is retried. Reads only this
+/// node's data via <see cref="ILogFinder"/> (bloom-index backed), so it bypasses the JSON-RPC range/count caps.
 /// </remarks>
 public sealed class DetectionScanner(
     IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager)
@@ -77,7 +74,7 @@ public sealed class DetectionScanner(
 
     private void Schedule(DetectRequest req)
     {
-        if (!scheduler.TryScheduleTask(req, RunChunkAsync, ChunkTimeout, "balance-viewer-detection"))
+        if (!scheduler.TryScheduleTask(req, RunChunkAsync, ChunkTimeout, "portfolio-viewer-detection"))
         {
             // scheduler queue is full — give up this chain; the client re-triggers on its next poll
             _active.TryRemove(Key(req.ChainId, req.Account), out _);

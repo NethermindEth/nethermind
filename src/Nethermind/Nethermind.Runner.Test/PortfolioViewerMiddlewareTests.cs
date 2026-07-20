@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Nethermind.BalanceViewer.Plugin;
+using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Runner.Test;
 
 [TestFixture]
-public class BalanceViewerMiddlewareTests
+public class PortfolioViewerMiddlewareTests
 {
     private const int Port = 8545;
     private const int SiblingPort = 8546;
@@ -72,7 +72,7 @@ public class BalanceViewerMiddlewareTests
         (DefaultHttpContext ctx, _) = CreateContext(Port, method, path);
         bool nextCalled = false;
 
-        BalanceViewerMiddleware middleware = new(
+        PortfolioViewerMiddleware middleware = new(
             _ => { nextCalled = true; return Task.CompletedTask; },
             CreateUrlCollection(),
             Substitute.For<ISiblingNodeRegistry>(),
@@ -171,7 +171,7 @@ public class BalanceViewerMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
-    private static BalanceViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null) =>
+    private static PortfolioViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null) =>
         new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>());
 
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>

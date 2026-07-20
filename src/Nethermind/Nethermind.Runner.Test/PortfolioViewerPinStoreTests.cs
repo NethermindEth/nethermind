@@ -3,14 +3,14 @@
 
 #nullable enable
 using System.IO;
-using Nethermind.BalanceViewer.Plugin;
+using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
 
 [TestFixture]
-public class BalanceViewerPinStoreTests
+public class PortfolioViewerPinStoreTests
 {
     private string _dir = null!;
 

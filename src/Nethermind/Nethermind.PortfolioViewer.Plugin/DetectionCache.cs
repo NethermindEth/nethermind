@@ -5,16 +5,14 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Logging;
 
-namespace Nethermind.BalanceViewer.Plugin;
+namespace Nethermind.PortfolioViewer.Plugin;
 
 /// <summary>Result and progress of one account's node-side token-detection scan on one chain.</summary>
-/// <param name="Contracts">ERC-20 contract addresses the account has transferred to/from (candidates
-/// the client confirms with a live balance check). Discovered in-process via the node's log index.</param>
-/// <param name="NftContracts">ERC-721 / ERC-1155 contract addresses the account has transferred/received
-/// (candidates the client confirms via interface + ownership checks).</param>
+/// <param name="Contracts">ERC-20 candidate contracts (client confirms via a live balance check).</param>
+/// <param name="NftContracts">ERC-721 / ERC-1155 candidate contracts (client confirms via ownership checks).</param>
 /// <param name="ScannedFrom">Lowest block scanned so far (inclusive) — a resumable cursor.</param>
-/// <param name="Head">Head block when the scan started, so the covered range is known.</param>
-/// <param name="Complete">True once the sweep reached the bottom of the node's retained history.</param>
+/// <param name="Head">Head block when the scan started.</param>
+/// <param name="Complete">True once the sweep reached the bottom of retained history.</param>
 /// <param name="UpdatedMs">Unix-milliseconds timestamp of the last update.</param>
 public sealed record DetectionEntry(
     IReadOnlyList<string> Contracts, IReadOnlyList<string> NftContracts, long ScannedFrom, long Head, bool Complete, long UpdatedMs);
@@ -47,18 +45,12 @@ public sealed class DetectionCache : IDetectionCache
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    // Bounds the on-disk cache. Each entry is small; eviction is LRU by last update so the actively
-    // viewed working set stays cached and does not thrash (an evicted entry only re-scans if a new
-    // client session revisits that address). The contract list is capped so a pathologically active
-    // address can't bloat one entry.
+    // Bounds the on-disk cache: LRU eviction by last update, and a per-entry contract cap.
     private const int DefaultMaxEntries = 10_000;
     private const int DefaultMaxContractsPerEntry = 2_000;
 
-    // Throttle bursty progress writes: an active scan calls Put on every persisted chunk (potentially several
-    // times a second across concurrently-scanned accounts), and each Save rewrites the whole file. A change is
-    // written immediately (leading edge, so a single Put is durable at once — restart resumability), and further
-    // changes within the window collapse into one trailing write. Only the trailing state within a window can be
-    // lost on an abrupt shutdown, which just costs a small re-scan on resume since ScannedFrom is a cursor.
+    // Write-throttle window: a change is written immediately (leading edge), and further changes within the
+    // window collapse into one trailing write, so a busy scan doesn't churn the whole file several times a second.
     private const int SaveThrottleMs = 2_000;
 
     private readonly ConcurrentDictionary<string, DetectionEntry> _entries = new();
@@ -74,7 +66,7 @@ public sealed class DetectionCache : IDetectionCache
     public DetectionCache(string dbPath, ILogManager logManager, int maxEntries = DefaultMaxEntries, int maxContractsPerEntry = DefaultMaxContractsPerEntry)
     {
         _logger = logManager.GetClassLogger<DetectionCache>();
-        _path = Path.Combine(dbPath, "balance-viewer-detection.json");
+        _path = Path.Combine(dbPath, "portfolio-viewer-detection.json");
         _maxEntries = maxEntries;
         _maxContractsPerEntry = maxContractsPerEntry;
         Load();
@@ -117,7 +109,7 @@ public sealed class DetectionCache : IDetectionCache
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not delete balance-viewer detection cache: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not delete portfolio-viewer detection cache: {e.Message}");
         }
     }
 
@@ -154,12 +146,11 @@ public sealed class DetectionCache : IDetectionCache
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not load balance-viewer detection cache: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not load portfolio-viewer detection cache: {e.Message}");
         }
     }
 
-    // Persist immediately if the throttle window has elapsed (leading edge); otherwise ensure a single trailing
-    // flush is queued for the remainder of the window so a burst of Puts collapses into one extra write.
+    // Leading edge: persist now if the window elapsed; otherwise queue a single trailing flush for the remainder.
     private void RequestSave()
     {
         lock (_saveGate)
@@ -179,8 +170,7 @@ public sealed class DetectionCache : IDetectionCache
         }
     }
 
-    // Fire-and-forget by design: the delay only coalesces writes and Save handles its own exceptions, so nothing
-    // escapes here. Any Put after this flush restarts the leading/trailing cycle, so no update is dropped.
+    // Fire-and-forget by design; Save handles its own exceptions. A Put after this flush restarts the cycle.
     private async Task ScheduleTrailingFlushAsync(int delayMs)
     {
         await Task.Delay(delayMs).ConfigureAwait(false);
@@ -194,8 +184,7 @@ public sealed class DetectionCache : IDetectionCache
 
     private void Save()
     {
-        // full-file write behind a lock: writes are coalesced to at most one per debounce window (see
-        // RequestSave), and a temp-then-move keeps the file intact if the process dies mid-write
+        // temp-then-move keeps the file intact if the process dies mid-write
         try
         {
             lock (_fileLock)
@@ -207,7 +196,7 @@ public sealed class DetectionCache : IDetectionCache
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not persist balance-viewer detection cache: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not persist portfolio-viewer detection cache: {e.Message}");
         }
     }
 }

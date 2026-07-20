@@ -3,7 +3,7 @@
 
 #nullable enable
 using System.IO;
-using Nethermind.BalanceViewer.Plugin;
+using Nethermind.PortfolioViewer.Plugin;
 using Nethermind.Logging;
 using NUnit.Framework;
 

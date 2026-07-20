@@ -16,18 +16,15 @@ using Nethermind.Facade.Find;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
-namespace Nethermind.BalanceViewer.Plugin;
+namespace Nethermind.PortfolioViewer.Plugin;
 
-/// <summary>Hooks the balance viewer middleware into the JSON-RPC web host.</summary>
+/// <summary>Hooks the portfolio viewer middleware into the JSON-RPC web host.</summary>
 /// <remarks>
-/// Registered in Autofac by <see cref="BalanceViewerModule"/>; called by
-/// <c>JsonRpcRunner</c> during web-host startup via <see cref="IJsonRpcServiceConfigurer"/>.
-/// The registry is built in the web host's MS DI container because
-/// <see cref="IJsonRpcUrlCollection"/> only exists there (it is created by the StartRpc step,
-/// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
+/// Services are registered in the web host's MS DI container (not Autofac) because
+/// <see cref="IJsonRpcUrlCollection"/> only exists there; the Autofac dependencies are bridged in.
 /// </remarks>
-public sealed class BalanceViewerConfigurer(
-    IBalanceViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
+public sealed class PortfolioViewerConfigurer(
+    IPortfolioViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
     ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
@@ -39,26 +36,26 @@ public sealed class BalanceViewerConfigurer(
         services.AddSingleton<IDetectionCache>(cache);
         services.AddSingleton<IPinnedCidStore>(new PinnedCidStore(initConfig.BaseDbPath, logManager));
         services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager));
-        services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
+        services.AddTransient<IStartupFilter, PortfolioViewerStartupFilter>();
     }
 }
 
-internal sealed class BalanceViewerStartupFilter : IStartupFilter
+internal sealed class PortfolioViewerStartupFilter : IStartupFilter
 {
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
         app =>
         {
-            app.UseMiddleware<BalanceViewerMiddleware>();
+            app.UseMiddleware<PortfolioViewerMiddleware>();
             next(app);
         };
 }
 
 /// <summary>
-/// Serves the embedded balance viewer page at <c>/portfolio</c> (plus its service worker), the
+/// Serves the embedded portfolio viewer page at <c>/portfolio</c> (plus its service worker), the
 /// sibling-node discovery list at <c>/portfolio-nodes</c>, and proxies JSON-RPC to discovered
 /// siblings via <c>/portfolio-rpc/{port}</c> so the multi-chain view works through a single port.
 /// </summary>
-public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
+public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
 {
     private static readonly PathString NodesPath = new("/portfolio-nodes");
     private static readonly PathString ProxyPathPrefix = new("/portfolio-rpc");
@@ -67,23 +64,18 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     private static readonly PathString IpfsPathPrefix = new("/portfolio-ipfs");
     private static readonly PathString PinPathPrefix = new("/portfolio-ipfs-pin");
 
-    // Opt-in only: the UI calls this exclusively after the user enables IPFS (with a privacy prompt). Forwards
-    // to a local Kubo gateway so off-chain NFT art can be rendered without the browser talking to a third party.
+    // Local Kubo gateway (art rendering) and RPC API (pin/add only). Opt-in from the UI after a privacy prompt.
     private const string IpfsGateway = "http://127.0.0.1:8080";
-    // Local Kubo RPC API, used only for the single hardcoded pin/add operation (auto-pin viewed art). Not a
-    // general proxy — only the CID is forwarded, so the browser can't drive arbitrary node-API commands.
     private const string IpfsApi = "http://127.0.0.1:5001";
     private static readonly HttpClient IpfsClient = new() { Timeout = TimeSpan.FromSeconds(30) };
-    // Per-request cap for a gateway GET. Long enough to give the local node a fair chance to find a provider and
-    // fetch, but bounded so an unresolvable CID doesn't hang the request indefinitely (the UI shows a retry, which
-    // re-triggers the node's provider search + fetch).
+    // Bounded so an unresolvable CID doesn't hang the request; the UI retries, re-triggering the node's fetch.
     private static readonly TimeSpan IpfsGetTimeout = TimeSpan.FromSeconds(10);
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
 
     private static readonly ManifestEmbeddedFileProvider FileProvider =
-        new(typeof(BalanceViewerMiddleware).Assembly, "wwwroot");
+        new(typeof(PortfolioViewerMiddleware).Assembly, "wwwroot");
 
     private static readonly Dictionary<PathString, (IFileInfo File, string ContentType)> Routes = new()
     {
@@ -118,11 +110,8 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
-        // CSRF guard for the state-changing routes: a drive-by page can issue CORS "simple" POSTs (e.g.
-        // text/plain, no preflight) to enqueue scans or pin arbitrary CIDs, and pin/unpin/proxy reach the
-        // local node. The browser always attaches an Origin on cross-origin requests, while same-origin
-        // fetches from the served page carry a matching Origin, so rejecting a mismatched Origin blocks
-        // CSRF without a token. Reads (static files, node list, IPFS/detect GET) are left untouched.
+        // CSRF guard: reject state-changing requests carrying a foreign Origin (browsers attach Origin on any
+        // cross-origin request, incl. CORS-simple POSTs), so a drive-by page can't enqueue scans or pin CIDs.
         bool isSideEffecting = isProxy || isDetectProxy || isDetectPost || isDetectDelete || isPin || isUnpinAll;
         if (isSideEffecting && IsCrossOrigin(context))
         {
@@ -140,8 +129,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         if (isDetectPost) return ServeDetectPostAsync(context);
         if (isDetectDelete)
         {
-            // ?chainId=<id>&address=<0x…> drops one account (the per-account rescan button, so it re-walks from
-            // head); with no params it drops everything (developer/diagnostic, e.g. bvClearDetectionCache).
+            // with chainId+address: drop one account (per-account rescan); with no params: drop everything (diagnostic)
             string? delAddress = context.Request.Query["address"];
             if (!string.IsNullOrEmpty(delAddress) && long.TryParse(context.Request.Query["chainId"], out long delChainId))
                 detection.Remove(delChainId, delAddress);
@@ -159,16 +147,13 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         }
 
         context.Response.ContentType = contentType;
-        // The UI is a single self-contained file that changes with each plugin build; without this a
-        // browser heuristically caches it and keeps running stale code after an upgrade (e.g. detection
-        // appearing broken on a device that visited an older version). Force a fresh fetch each load.
+        // force a fresh fetch each load, so a browser never runs a stale UI after a plugin upgrade
         context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         return context.Response.SendFileAsync(file);
     }
 
-    // True if the request carries an Origin that does not match the port it arrived on. Absent Origin (same-origin
-    // navigations, non-browser clients) is treated as same-origin; a present-but-unparseable Origin ("null" from a
-    // sandboxed context) is treated as cross-origin.
+    // Absent Origin (same-origin navigations, non-browser clients) counts as same-origin; an unparseable
+    // Origin ("null" from a sandboxed context) counts as cross-origin.
     private static bool IsCrossOrigin(HttpContext context)
     {
         string? origin = context.Request.Headers.Origin;
@@ -176,8 +161,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         return !Uri.TryCreate(origin, UriKind.Absolute, out Uri? parsed) || parsed.Authority != context.Request.Host.Value;
     }
 
-    // Accepts a CID, optionally with a subpath: base32/58 chars plus '/', '.', '-', '_'. Rejects any '.'/'..'
-    // segment so the value can't escape the '/ipfs/' prefix once placed in a gateway URL path.
+    // A CID (optionally with a subpath); rejects any '.'/'..' segment so it can't escape the '/ipfs/' URL prefix.
     private static bool IsSafeIpfsRef(string s) =>
         s.Length is > 0 and <= 256
         && s.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_')
@@ -193,8 +177,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             cancellationToken: context.RequestAborted);
     }
 
-    // GET /portfolio-ipfs/{cid}/{path} — forwards to the local IPFS gateway's /ipfs/ path so the browser can
-    // render off-chain NFT art same-origin (never contacting a third-party gateway). Opt-in from the UI only.
+    // Forwards to the local IPFS gateway so the browser renders off-chain NFT art same-origin.
     private async Task ServeIpfsAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(IpfsPathPrefix, out PathString remaining);
@@ -214,22 +197,19 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             context.Response.StatusCode = (int)resp.StatusCode;
             if (resp.Content.Headers.ContentType is not null)
                 context.Response.ContentType = resp.Content.Headers.ContentType.ToString();
-            // IPFS is content-addressed (the CID is the content hash), so a resolved response never changes —
-            // let the browser cache it permanently. Reopening art after a reload is then served from cache.
+            // IPFS is content-addressed, so a resolved response never changes — cache it permanently
             if (resp.IsSuccessStatusCode)
                 context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             await resp.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         }
         catch (Exception) when (!context.RequestAborted.IsCancellationRequested)
         {
-            // the local node couldn't resolve the CID in time — the UI shows a retry (which re-triggers a fetch)
             if (!context.Response.HasStarted) context.Response.StatusCode = StatusCodes.Status502BadGateway;
         }
     }
 
-    // POST /portfolio-ipfs-pin/{cid} — pins the CID on the user's own Kubo node (auto-pin viewed art). Opt-in
-    // from the UI, and only when Local IPFS is enabled. This is NOT a general node-API proxy: only pin/add is
-    // ever issued and only the URL-encoded CID is forwarded, so the browser can't reach other Kubo commands.
+    // Pins the CID on the user's own Kubo node (auto-pin viewed art). Only pin/add is ever issued — not a
+    // general node-API proxy.
     private Task ServePinAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(PinPathPrefix, out PathString remaining);
@@ -240,9 +220,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
-        // Fire-and-forget on the node: the pin must run to completion even if the browser navigates away (tying it
-        // to the request would cancel in-flight pins on reload/close), and Kubo may take a while to fetch the
-        // content, which shouldn't block the response. Auto-pin is best-effort, so acknowledge immediately.
+        // Fire-and-forget: the pin must survive the browser navigating away, and it's best-effort, so ack now.
         _ = PinAsync(cid);
         context.Response.StatusCode = StatusCodes.Status202Accepted;
         return Task.CompletedTask;
@@ -253,15 +231,14 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         try
         {
             using HttpResponseMessage resp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null);
-            // record only pins we actually added, so unpin-all can reclaim exactly these and nothing else
+            // track only pins we added, so unpin-all reclaims exactly these
             if (resp.IsSuccessStatusCode) pins.Add(cid);
         }
         catch { /* best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved */ }
     }
 
-    // DELETE /portfolio-ipfs-pin — unpins only the CIDs this plugin pinned and reclaims the space. Issued when the
-    // user turns auto-pin off, so disabling pinning frees the art it accumulated without touching the user's other
-    // pins. Detached (may unpin many + GC), 202.
+    // Unpins only the CIDs this plugin pinned (never the user's other pins) and reclaims the space. Issued when
+    // the user turns auto-pin off.
     private Task ServeUnpinAllAsync(HttpContext context)
     {
         _ = UnpinAllAsync();
@@ -279,7 +256,6 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             catch { /* best-effort per pin: no local Kubo RPC (5001), or already unpinned */ }
         }
         pins.Clear();
-        // reclaim the now-unpinned blocks from disk
         try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); } catch { }
     }
 
@@ -296,8 +272,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
-    // POST /portfolio-detect-rpc/{port} — forwards a detection request to a sibling node's /portfolio-detect,
-    // so the multi-chain view drives historical detection on sibling chains too (not only the connected one).
+    // Forwards a detection request to a sibling node, so the multi-chain view drives detection on sibling chains.
     private async Task ProxyDetectAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(DetectProxyPathPrefix, out PathString remaining);
@@ -311,7 +286,6 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await siblings.ProxyDetectAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
     }
 
-    // GET /portfolio-detect?chainId=<id>&address=<0x…> — the cached detection entry, or null.
     private async Task ServeDetectGetAsync(HttpContext context)
     {
         long chainId = long.TryParse(context.Request.Query["chainId"], out long parsed) ? parsed : 0;
@@ -321,8 +295,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
     }
 
-    // POST /portfolio-detect — trigger (or resume) an in-process detection scan for one account,
-    // then return the current cached progress so the client can start polling.
+    // Trigger (or resume) a detection scan for one account, returning the current cached progress to poll on.
     private async Task ServeDetectPostAsync(HttpContext context)
     {
         DetectPost? post = await JsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);
