@@ -102,6 +102,9 @@ jobs:
           - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
+          - runner: ubuntu-latest
+            project: Nethermind.Synchronization.Test
+            chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
@@ -120,6 +123,10 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }

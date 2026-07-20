@@ -218,10 +218,10 @@ jobs:
                   # Chunk counts are sized to keep every job under ~8 min wall (measured):
                   # engineTest fixtures run ~2x slower than blockTest, so engine gets more.
                   if [ "$type" = "engineTest" ]; then
-                    emit "$type" sequential   full      '' false false 4 5
-                    emit "$type" parallel     amsterdam '' true  false 1 2
+                    emit "$type" sequential   full      '' false false 4 7
+                    emit "$type" parallel     amsterdam '' true  false 1 4
                     emit "$type" batchread    amsterdam '' false true  4 2
-                    emit "$type" parallelfull amsterdam '' true  true  1 2
+                    emit "$type" parallelfull amsterdam '' true  true  1 4
                   else
                     emit "$type" sequential   full      '' false false 4 4
                     emit "$type" parallel     amsterdam '' true  false 1 1
