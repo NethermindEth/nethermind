@@ -607,13 +607,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? AsOwnedArray(substate.Output) : [];
+                    byte[] output = substate.ShouldRevert ? AsReadOnlyArray(substate.Output) : [];
                     tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, AsOwnedArray(substate.Output), logs, stateRoot);
+                    tracer.MarkAsSuccess(executingAccount, spentGas, AsReadOnlyArray(substate.Output), logs, stateRoot);
                 }
             }
 
@@ -623,11 +623,18 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Returns the receipt-tracer output as a <see cref="byte"/> array without copying when the memory
-        /// already wraps a whole standalone array (the common top-level RETURN/REVERT case), falling back to
-        /// a copy otherwise. Avoids a per-transaction returndata copy that is discarded when not tracing.
+        /// Returns the receipt-tracer output as a <see cref="byte"/> array, forwarding the backing array without
+        /// copying when the memory already spans a whole array, and copying otherwise.
         /// </summary>
-        private static byte[] AsOwnedArray(ReadOnlyMemory<byte> memory)
+        /// <remarks>
+        /// Avoids the per-transaction returndata copy that the default <see cref="Tracing.ITxTracer"/> discards when
+        /// not tracing. Top-level RETURN/REVERT already produce a freshly-allocated array (the opcode handlers call
+        /// <c>ToArray()</c>), so forwarding it is safe. The returned array is <b>not</b> guaranteed to be uniquely
+        /// owned: a top-level transaction to a precompile that yields a shared static array (e.g. KZG point
+        /// evaluation) forwards that shared instance. Callers must therefore treat the output as read-only — every
+        /// current tracer consumer does — and must never mutate it in place.
+        /// </remarks>
+        private static byte[] AsReadOnlyArray(ReadOnlyMemory<byte> memory)
         {
             if (memory.IsEmpty) return [];
             return MemoryMarshal.TryGetArray(memory, out ArraySegment<byte> segment)
