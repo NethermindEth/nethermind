@@ -206,8 +206,6 @@ jobs:
           CL_CLIENT: ${{ matrix.config.cl }}
           CL_IMAGE: ${{ matrix.config.cl_image }}
           CHECKPOINT_URL: ${{ matrix.config.checkpoint-sync-url }}
-          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
-          GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
           MAINNET_CONSENSUS_URL: ${{ secrets.MAINNET_CONSENSUS_URL }}
           MAINNET_EXECUTION_URL: ${{ secrets.MAINNET_EXECUTION_URL }}
         run: |
@@ -217,27 +215,20 @@ jobs:
           esac
 
           node_name="SyncMasterValidation-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}"
+          echo "node_name=$node_name" >> $GITHUB_ENV
 
           ./build/sedge deps install
 
           GENERIC_METRICS_FLAGS=(
             --el-extra-flag "Metrics.NodeName=${node_name}"
             --el-extra-flag Metrics.Enabled=true
-            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io"
-            --el-extra-flag "Seq.ApiKey=${SEQ_API_KEY}"
-            --el-extra-flag Seq.MinLevel=Info
             --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
-            --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}"
           )
 
           OP_METRICS_FLAGS=(
             --el-op-extra-flag "Metrics.NodeName=${node_name}"
             --el-op-extra-flag Metrics.Enabled=true
-            --el-op-extra-flag "Seq.ServerUrl=https://seq.nethermind.io"
-            --el-op-extra-flag "Seq.ApiKey=${SEQ_API_KEY}"
-            --el-op-extra-flag Seq.MinLevel=Info
             --el-op-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug"
-            --el-op-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}"
           )
 
           if [[ "$NETWORK" == op-* ]]; then
@@ -288,6 +279,18 @@ jobs:
           fi
 
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
+
+      - name: Start Grafana Alloy
+        uses: ./.github/actions/start-alloy
+        with:
+          network: ${{ matrix.config.network }}
+          node-name: ${{ env.node_name }}
+          loki-url: ${{ secrets.LOKI_URL }}
+          loki-username: ${{ secrets.LOKI_USERNAME }}
+          loki-password: ${{ secrets.LOKI_PASSWORD }}
+          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
+          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
+          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
 
       - name: Wait for sync
         env:

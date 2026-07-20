@@ -1,0 +1,103 @@
+name: Start Grafana Alloy
+description: >-
+  Launch a Grafana Alloy sidecar that scrapes the sedge-managed Nethermind
+  Prometheus endpoint and tails its container stdout, shipping metrics to
+  Prometheus remote_write and logs to Loki.
+
+inputs:
+  network:
+    description: Sedge network or network prefix (e.g. hoodi, op-sepolia, taiko-alethia). Drives the L1/L2 container mapping.
+    required: true
+  node-name:
+    description: Node name used as the Alloy Instance label (matches Metrics.NodeName).
+    required: true
+  client:
+    description: Execution client, used as the Client label.
+    required: false
+    default: nethermind
+  github-user:
+    description: Value for the Alloy User label.
+    required: false
+    default: ${{ github.actor }}
+  alloy-config:
+    description: Path to the Alloy config file to mount.
+    required: false
+    default: ${{ github.workspace }}/tests/nodes-monitoring/alloy-config.alloy
+  loki-url:
+    description: Loki push endpoint URL.
+    required: true
+  loki-username:
+    description: Loki basic-auth username.
+    required: true
+  loki-password:
+    description: Loki basic-auth password.
+    required: true
+  prometheus-url:
+    description: Prometheus remote_write endpoint URL.
+    required: true
+  prometheus-username:
+    description: Prometheus remote_write basic-auth username.
+    required: true
+  prometheus-password:
+    description: Prometheus remote_write basic-auth password.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Start Grafana Alloy
+      shell: bash
+      env:
+        NETWORK: ${{ inputs.network }}
+        NODE_NAME: ${{ inputs.node-name }}
+        CLIENT: ${{ inputs.client }}
+        GITHUB_USER: ${{ inputs.github-user }}
+        ALLOY_CONFIG: ${{ inputs.alloy-config }}
+        LOKI_URL: ${{ inputs.loki-url }}
+        LOKI_USERNAME: ${{ inputs.loki-username }}
+        LOKI_PASSWORD: ${{ inputs.loki-password }}
+        PROMETHEUS_URL: ${{ inputs.prometheus-url }}
+        PROMETHEUS_USERNAME: ${{ inputs.prometheus-username }}
+        PROMETHEUS_PASSWORD: ${{ inputs.prometheus-password }}
+      run: |
+        set -euo pipefail
+
+        # L1 execution always uses this container name; on L2-only networks the
+        # L1 log/scrape pipelines simply find no target and stay inert.
+        EXECUTION_CONTAINER_NAME="sedge-execution-client"
+
+        # The sentinel matches no container, so the L2 pipelines stay inert on
+        # L1-only networks.
+        L2_EXECUTION_CONTAINER_NAME="sedge-execution-l2-absent"
+        L2_NODE_NAME=""
+        case "$NETWORK" in
+          op-*|base-*|world-*) L2_EXECUTION_CONTAINER_NAME="sedge-execution-op-l2-client"; L2_NODE_NAME="$NODE_NAME" ;;
+          taiko-*)             L2_EXECUTION_CONTAINER_NAME="sedge-execution-taiko-client"; L2_NODE_NAME="$NODE_NAME" ;;
+          arbitrum-*)          L2_EXECUTION_CONTAINER_NAME="sedge-execution-arb-l2-client"; L2_NODE_NAME="$NODE_NAME" ;;
+        esac
+
+        docker pull grafana/alloy:latest
+        docker run -d \
+          --name grafana-alloy \
+          --restart=unless-stopped \
+          --net=host \
+          -e GITHUB_USER="$GITHUB_USER" \
+          -e CLIENT="$CLIENT" \
+          -e NODE_NAME="$NODE_NAME" \
+          -e SEDGE_NETWORK="$NETWORK" \
+          -e EXECUTION_CONTAINER_NAME="$EXECUTION_CONTAINER_NAME" \
+          -e L2_EXECUTION_CONTAINER_NAME="$L2_EXECUTION_CONTAINER_NAME" \
+          -e L2_NODE_NAME="$L2_NODE_NAME" \
+          -e L2_SEDGE_NETWORK="$NETWORK" \
+          -e L2_CLIENT="$CLIENT" \
+          -e LOKI_PUSH_URL="$LOKI_URL" \
+          -e LOKI_USERNAME="$LOKI_USERNAME" \
+          -e LOKI_PASSWORD="$LOKI_PASSWORD" \
+          -e PROMETHEUS_URL="$PROMETHEUS_URL" \
+          -e PROMETHEUS_USERNAME="$PROMETHEUS_USERNAME" \
+          -e PROMETHEUS_PASSWORD="$PROMETHEUS_PASSWORD" \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v "$ALLOY_CONFIG:/etc/alloy/config.alloy:ro" \
+          grafana/alloy:latest \
+          run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+        echo "Grafana Alloy started."
