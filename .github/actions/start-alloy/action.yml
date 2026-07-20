@@ -66,6 +66,11 @@ runs:
         # the vendored config here via the auto-set GITHUB_ACTION_PATH.
         ALLOY_CONFIG="${ALLOY_CONFIG:-$GITHUB_ACTION_PATH/alloy-config.alloy}"
 
+        # Without an endpoint Alloy scrapes/reads happily but ships nothing, so
+        # surface an empty URL loudly instead of failing silently.
+        [ -n "$LOKI_URL" ] || echo "::warning title=Alloy::LOKI_URL is empty — logs will not be shipped to Loki"
+        [ -n "$PROMETHEUS_URL" ] || echo "::warning title=Alloy::PROMETHEUS_URL is empty — metrics will not be shipped to Prometheus"
+
         # L1 execution always uses this container name; on L2-only networks the
         # L1 log/scrape pipelines simply find no target and stay inert.
         EXECUTION_CONTAINER_NAME="sedge-execution-client"
@@ -128,8 +133,8 @@ runs:
         echo "::endgroup::"
         echo "::group::Nethermind Prometheus endpoint reachability"
         for port in 8008 8018; do
-          if curl -sf "http://localhost:${port}/metrics" 2>/dev/null | head -n 1; then
-            echo "localhost:${port} reachable"
+          if body=$(curl -sf --max-time 5 "http://localhost:${port}/metrics" 2>/dev/null); then
+            echo "localhost:${port} reachable — $(printf '%s\n' "$body" | head -n 1)"
           else
             echo "localhost:${port} NOT reachable"
           fi
