@@ -1025,7 +1025,8 @@ public partial class EthRpcModule(
             return GetStateFailureResult<AccountProof>(header);
         }
 
-        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
         return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
