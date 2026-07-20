@@ -22,7 +22,7 @@ inputs:
   alloy-config:
     description: Path to the Alloy config file to mount.
     required: false
-    default: ${{ github.workspace }}/tests/nodes-monitoring/alloy-config.alloy
+    default: ${{ github.action_path }}/alloy-config.alloy
   loki-url:
     description: Loki push endpoint URL.
     required: true
