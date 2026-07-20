@@ -627,11 +627,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec)
     {
-        // Callers must validate intrinsic gas against gasLimit (ValidateIntrinsicGas / Eip8037.ExceedsCap)
-        // before calling; if they don't, the subtraction wraps silently.
-        Debug.Assert(gasLimit >= intrinsicGas.Value + (ulong)intrinsicGas.StateReservoir,
-            $"gasLimit ({gasLimit}) < intrinsicRegular ({intrinsicGas.Value}) + intrinsicState ({intrinsicGas.StateReservoir})");
-        ulong executionGas = gasLimit - intrinsicGas.Value - (ulong)intrinsicGas.StateReservoir;
+        ulong intrinsicTotal = intrinsicGas.Value + (ulong)intrinsicGas.StateReservoir;
+        if (gasLimit < intrinsicTotal)
+        {
+            return new EthereumGasPolicy { Value = 0, OutOfGas = true };
+        }
+
+        ulong executionGas = gasLimit - intrinsicTotal;
         ulong reservoir = 0;
 
         if (spec.IsEip8037Enabled)

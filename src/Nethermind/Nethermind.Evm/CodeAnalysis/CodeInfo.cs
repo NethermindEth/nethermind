@@ -9,7 +9,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -49,14 +49,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public CodeInfo(IPrecompile? precompile)
     {
         Precompile = precompile;
-        _analyzer = null;
-        _streamBuildState = StreamBuildUnavailable;
-    }
-
-    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Code = code;
         _analyzer = null;
         _streamBuildState = StreamBuildUnavailable;
     }
