@@ -193,6 +193,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Code deposit failure halts the child create frame after it merged into the parent;
         // spilled state gas is burned, so only the reservoir-funded portion returns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
+        parentGas.StateGasSpill -= childGas.StateGasSpill;
+        parentGas.StateGasSpillRefunded -= childGas.StateGasSpillRefunded;
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }

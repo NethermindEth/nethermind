@@ -494,20 +494,25 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((0L, 0L)));
     }
 
-    [Test]
-    public void Code_deposit_halt_keeps_refunded_child_spill_in_gas_left()
+    [TestCase(0, TestName = "Code_deposit_halt_does_not_inherit_unrefunded_child_spill")]
+    [TestCase(200, TestName = "Code_deposit_halt_does_not_inherit_refunded_child_spill")]
+    public void Code_deposit_halt_does_not_inherit_child_spill(long stateGasRefund)
     {
-        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
-        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 1_000);
-        EthereumGasPolicy.ConsumeStateGas(ref child, 200);
-        EthereumGasPolicy.RefundStateGas(ref child, 200, stateGasFloor: 0);
+        EthereumGasPolicy parent = new();
+        EthereumGasPolicy child = EthereumGasPolicy.FromULong(1_000);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, 200), Is.True);
+        if (stateGasRefund > 0)
+        {
+            EthereumGasPolicy.RefundStateGas(ref child, stateGasRefund, stateGasFloor: 0);
+        }
 
         EthereumGasPolicy.Refund(ref parent, in child);
+        EthereumGasPolicy.Consume(ref parent, child.Value);
         EthereumGasPolicy.RevertRefundToHalt(ref parent, in child);
 
-        // The child spill was fully refunded (net 0), so nothing returns to the reservoir.
-        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
-        Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(200L));
+        Assert.That(
+            (parent.Value, parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill, parent.StateGasSpillRefunded),
+            Is.EqualTo((0UL, 0L, 0L, 0L, 0L)));
     }
 
     [Test]
