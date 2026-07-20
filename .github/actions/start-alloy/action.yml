@@ -20,9 +20,9 @@ inputs:
     required: false
     default: ${{ github.actor }}
   alloy-config:
-    description: Path to the Alloy config file to mount.
+    description: Path to the Alloy config file to mount. Defaults to the copy vendored next to this action.
     required: false
-    default: ${{ github.action_path }}/alloy-config.alloy
+    default: ""
   loki-url:
     description: Loki push endpoint URL.
     required: true
@@ -61,6 +61,10 @@ runs:
         PROMETHEUS_PASSWORD: ${{ inputs.prometheus-password }}
       run: |
         set -euo pipefail
+
+        # github.action_path is not available in an input default, so resolve
+        # the vendored config here via the auto-set GITHUB_ACTION_PATH.
+        ALLOY_CONFIG="${ALLOY_CONFIG:-$GITHUB_ACTION_PATH/alloy-config.alloy}"
 
         # L1 execution always uses this container name; on L2-only networks the
         # L1 log/scrape pipelines simply find no target and stay inert.
