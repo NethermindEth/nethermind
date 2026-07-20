@@ -170,139 +170,86 @@ internal static partial class Eip2537
 
     internal static ulong DiscountForG2(ulong k) => k >= 128 ? _maxDiscountG2 : _discountTable[(int)k].g2;
 
-    internal static Result TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
+    // validates a raw point of `fieldElements` field elements (each a 16-byte zero pad + 48-byte
+    // value) and reports whether every value is zero (i.e. the point at infinity)
+    private static Result ValidateRawPoint(ReadOnlySpan<byte> raw, int fieldElements, out bool isInfinity)
     {
-        if (raw.Length != LenG1)
+        isInfinity = true;
+        if (raw.Length != fieldElements * LenFp)
             return Errors.InvalidFieldLength;
 
-        Result result = ValidRawFp(raw[..LenFp]) && ValidRawFp(raw[LenFp..]);
-
-        if (result)
+        for (int i = 0; i < fieldElements; i++)
         {
-            // set to infinity point by default
-            p.Zero();
-
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..];
-
-            bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
-
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1);
-
-            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+            ReadOnlySpan<byte> fe = raw.Slice(i * LenFp, LenFp);
+            Result valid = ValidRawFp(fe);
+            if (!valid)
+                return valid;
+            if (fe[LenFpPad..].ContainsAnyExcept((byte)0))
+                isInfinity = false;
         }
 
-        return result;
+        return Result.Success;
     }
 
-    // decodes to affine layout and checks point is on curve
+    internal static Result TryDecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
+    {
+        Result result = ValidateRawPoint(raw, 2, out bool isInfinity);
+        if (!result)
+            return result;
+
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
+
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
+    }
+
+    // as above, decoding into affine layout
     internal static Result TryDecodeRaw(this G1Affine p, ReadOnlySpan<byte> raw)
     {
-        if (raw.Length != LenG1)
-            return Errors.InvalidFieldLength;
+        Result result = ValidateRawPoint(raw, 2, out bool isInfinity);
+        if (!result)
+            return result;
 
-        Result result = ValidRawFp(raw[..LenFp]) && ValidRawFp(raw[LenFp..]);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-        if (result)
-        {
-            // set to infinity point by default
-            p.Zero();
-
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..];
-
-            bool isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
-
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1);
-
-            return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
-        }
-
-        return result;
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G1PointSubgroup;
     }
 
     // decodes and checks point is on curve
     internal static Result TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
-        if (raw.Length != LenG2)
-            return Errors.InvalidFieldLength;
+        Result result = ValidateRawPoint(raw, 4, out bool isInfinity);
+        if (!result)
+            return result;
 
-        Result result =
-            ValidRawFp(raw[..LenFp]) &&
-            ValidRawFp(raw[LenFp..(2 * LenFp)]) &&
-            ValidRawFp(raw[(2 * LenFp)..(3 * LenFp)]) &&
-            ValidRawFp(raw[(3 * LenFp)..]);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-        if (result)
-        {
-            // set to infinity point by default
-            p.Zero();
-
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..(2 * LenFp)];
-            ReadOnlySpan<byte> fp2 = raw[(2 * LenFp + LenFpPad)..(3 * LenFp)];
-            ReadOnlySpan<byte> fp3 = raw[(3 * LenFp + LenFpPad)..];
-
-            bool isInfinity =
-                !fp0.ContainsAnyExcept((byte)0) &&
-                !fp1.ContainsAnyExcept((byte)0) &&
-                !fp2.ContainsAnyExcept((byte)0) &&
-                !fp3.ContainsAnyExcept((byte)0);
-
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1, fp2, fp3);
-
-            return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
-        }
-
-        return result;
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
+            raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
     }
 
-    // decodes to affine layout and checks point is on curve
+    // as above, decoding into affine layout
     internal static Result TryDecodeRaw(this G2Affine p, ReadOnlySpan<byte> raw)
     {
-        if (raw.Length != LenG2)
-            return Errors.InvalidFieldLength;
+        Result result = ValidateRawPoint(raw, 4, out bool isInfinity);
+        if (!result)
+            return result;
 
-        Result result =
-            ValidRawFp(raw[..LenFp]) &&
-            ValidRawFp(raw[LenFp..(2 * LenFp)]) &&
-            ValidRawFp(raw[(2 * LenFp)..(3 * LenFp)]) &&
-            ValidRawFp(raw[(3 * LenFp)..]);
+        p.Zero(); // infinity by default
+        if (isInfinity)
+            return Result.Success;
 
-        if (result)
-        {
-            // set to infinity point by default
-            p.Zero();
-
-            ReadOnlySpan<byte> fp0 = raw[LenFpPad..LenFp];
-            ReadOnlySpan<byte> fp1 = raw[(LenFp + LenFpPad)..(2 * LenFp)];
-            ReadOnlySpan<byte> fp2 = raw[(2 * LenFp + LenFpPad)..(3 * LenFp)];
-            ReadOnlySpan<byte> fp3 = raw[(3 * LenFp + LenFpPad)..];
-
-            bool isInfinity =
-                !fp0.ContainsAnyExcept((byte)0) &&
-                !fp1.ContainsAnyExcept((byte)0) &&
-                !fp2.ContainsAnyExcept((byte)0) &&
-                !fp3.ContainsAnyExcept((byte)0);
-
-            if (isInfinity)
-                return Result.Success;
-
-            p.Decode(fp0, fp1, fp2, fp3);
-
-            return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
-        }
-
-        return result;
+        p.Decode(raw[LenFpPad..LenFp], raw[(LenFp + LenFpPad)..(2 * LenFp)],
+            raw[(2 * LenFp + LenFpPad)..(3 * LenFp)], raw[(3 * LenFp + LenFpPad)..]);
+        return p.OnCurve() ? Result.Success : Errors.G2PointSubgroup;
     }
 
     internal static byte[] EncodeRaw(this G1 p)
