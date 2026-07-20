@@ -23,7 +23,7 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     // The runtime splits totalSize as soh = total - loh; when lohSize is omitted it budgets the
     // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
     private static readonly long _lohSize = 64.MB;
-    private static readonly long _defaultSize = 256.MB + _lohSize;
+    private static readonly long _defaultSize = 512.MB + _lohSize;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
 
