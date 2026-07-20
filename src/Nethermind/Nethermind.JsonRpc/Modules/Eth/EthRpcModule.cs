@@ -1224,9 +1224,8 @@ public partial class EthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            // Unknown blocks yield a null result per execution-apis; other search failures
-            // (pruned history, non-canonical requireCanonical hash) keep their error.
-            return searchResult.ErrorCode == ErrorCodes.ResourceNotFound
+            // Unknown blocks yield null per execution-apis; pruned/non-canonical failures keep their error.
+            return searchResult.Error == BlockFinderExtensions.HeaderNotFound
                 ? ResultWrapper<AccountAccessForRpc[]?>.Success(null)
                 : ResultWrapper<AccountAccessForRpc[]?>.Fail(searchResult);
         }
@@ -1234,7 +1233,7 @@ public partial class EthRpcModule(
         Block block = searchResult.Object!;
         if (block.BlockAccessListHash is null)
         {
-            // Pre-EIP-7928 block: the access list resource does not exist.
+            // Pre-EIP-7928 block: the resource does not exist.
             return ResultWrapper<AccountAccessForRpc[]?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 

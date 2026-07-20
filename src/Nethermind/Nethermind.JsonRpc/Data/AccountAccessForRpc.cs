@@ -12,14 +12,9 @@ using Nethermind.Int256;
 namespace Nethermind.JsonRpc.Data;
 
 /// <summary>
-/// Single account entry of an EIP-7928 block access list as returned by
-/// <c>eth_getBlockAccessList</c>.
+/// Account entry of an EIP-7928 block access list as returned by <c>eth_getBlockAccessList</c>,
+/// matching the execution-apis <c>AccountAccess</c> schema.
 /// </summary>
-/// <remarks>
-/// Mirrors the execution-apis <c>AccountAccess</c> schema: storage keys, values, and reads are
-/// 32-byte zero-padded hex, indices and balance/nonce values are hex quantities, and the result
-/// is a bare array of these entries.
-/// </remarks>
 public class AccountAccessForRpc
 {
     public required Address Address { get; init; }
@@ -95,7 +90,7 @@ public class AccountAccessForRpc
         };
     }
 
-    // EvmWord already holds the 32 big-endian bytes, so this is a pure reinterpretation.
+    // EvmWord already holds the 32 big-endian bytes.
     private static ValueHash256 ToValueHash(in EvmWord word) => Unsafe.BitCast<EvmWord, ValueHash256>(word);
 }
 

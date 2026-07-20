@@ -188,11 +188,7 @@ internal static class PayloadBodiesDirectResponseWriter
         writer.Write("}"u8);
     }
 
-    /// <summary>
-    /// Writes the <c>blockAccessList</c> field for V2 payload bodies. The engine API requires
-    /// the key to be present with a literal <c>null</c> when the block has no access list;
-    /// V1 payload bodies must omit the key entirely.
-    /// </summary>
+    /// <summary>V2 bodies always carry the key (literal <c>null</c> when absent); V1 bodies omit it.</summary>
     private static void WriteBlockAccessList(
         IBufferWriter<byte> writer,
         MemoryManager<byte>? blockAccessList,
