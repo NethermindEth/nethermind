@@ -286,10 +286,10 @@ jobs:
         with:
           network: ${{ matrix.config.network }}
           node-name: ${{ env.node_name }}
-          loki-url: ${{ secrets.LOKI_PUSH_URL }}
+          loki-url: ${{ secrets.LOKI_URL }}
           loki-username: ${{ secrets.LOKI_USERNAME }}
           loki-password: ${{ secrets.LOKI_PASSWORD }}
-          prometheus-url: ${{ secrets.PROMETHEUS_RW_URL }}
+          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
           prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
           prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
 
