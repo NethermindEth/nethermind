@@ -81,7 +81,7 @@ public class KeyedNonceManagerTests
     {
         _state.SetNonce(TestItem.AddressA, 3);
 
-        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 99, Spec);
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 99);
 
         Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(4UL), "the account nonce must be incremented, not set to nonceSeq + 1");
     }
@@ -91,7 +91,7 @@ public class KeyedNonceManagerTests
     {
         _state.SetNonce(TestItem.AddressA, 3);
 
-        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42, Spec);
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42);
 
         Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(43UL));
         Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)9), Is.EqualTo(43UL));
@@ -103,9 +103,13 @@ public class KeyedNonceManagerTests
     {
         Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, (UInt256)7), Is.True);
 
-        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)7], nonceSeq: 0, Spec);
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)7], nonceSeq: 0);
 
         Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, (UInt256)7), Is.False);
         Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)7), Is.EqualTo(1UL));
     }
+
+    [Test]
+    public void IsFirstUse_for_key_zero_is_false() =>
+        Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, UInt256.Zero), Is.False);
 }
