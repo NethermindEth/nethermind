@@ -13,6 +13,12 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 {
     private const int NonceLength = 8;
 
+    // Encodes headers that aren't TH (e.g. plain BlockHeader test fixtures) using the base Ethereum
+    // shape, mirroring AuRaHeaderDecoder's seal-only fallback. Needed once this decoder is registered
+    // as the process-wide Rlp default (see XdcHeaderModule), so foreign headers still encode correctly
+    // instead of throwing.
+    private static readonly HeaderDecoder FallbackDecoder = new();
+
     protected static bool IsForSealing(RlpBehaviors beh)
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
 
@@ -91,7 +97,10 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         }
 
         if (header is not TH h)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(header));
+        {
+            FallbackDecoder.Encode(ref writer, header, rlpBehaviors);
+            return;
+        }
 
         writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
@@ -123,7 +132,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         }
 
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            return FallbackDecoder.Encode(item, rlpBehaviors);
+        }
 
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
         RlpWriter writer = new(bytes);
@@ -134,7 +145,9 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
     {
         if (item is not TH header)
-            throw new ArgumentException($"Must be {typeof(TH).Name}.", nameof(item));
+        {
+            return FallbackDecoder.GetLength(item, rlpBehaviors);
+        }
 
         return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
     }
