@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -13,6 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -306,6 +308,17 @@ public class Eip8037Tests : VirtualMachineTestsBase
         Assert.That(regularRefund, Is.Zero);
         Assert.That((gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((0L, 0L, GasCostOf.PerAuthBaseState, 0L)));
+    }
+
+    [Test]
+    public void Code_insert_refund_uses_legacy_rule_without_eip8037()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Cancun.Instance) { IsEip8038Enabled = true };
+        EthereumGasPolicy gas = default;
+
+        ulong regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, spec, stateGasFloor: 0);
+
+        Assert.That(regularRefund, Is.EqualTo(GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost));
     }
 
     [Test]

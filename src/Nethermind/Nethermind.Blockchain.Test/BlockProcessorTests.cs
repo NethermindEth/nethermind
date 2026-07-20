@@ -1445,7 +1445,7 @@ public class BlockProcessorTests
                     new(suggestedBlock.Header, "invalid BAL");
                 if (retryable)
                 {
-                    throw new BlockProcessor.RetryableBlockAccessListException(failure, failure);
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure);
                 }
 
                 throw failure;
