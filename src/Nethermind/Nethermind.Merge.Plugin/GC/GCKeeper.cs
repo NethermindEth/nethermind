@@ -24,9 +24,13 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
     private ulong _lastPayloadTimestamp;
+    private long _lastDecommitTick;
 
     /// <summary>Maximum age of the last payload, in seconds, for the decommit collection to run; older means we are catching up.</summary>
     internal const long MaxPayloadLagSecondsForDecommit = 60;
+
+    /// <summary>Maximum time the decommit may be deferred while catching up, in milliseconds.</summary>
+    internal const long MaxDecommitDeferralMs = 5 * 60_000;
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
@@ -195,13 +199,17 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 {
                     // the decommit's stop-the-world pause can exceed a second; while catching up
                     // (last payload far behind wall clock) payloads arrive back-to-back and the next
-                    // one would land mid-collection, so defer it until caught up
-                    if (ShouldDeferDecommit())
+                    // one would land mid-collection, so defer it — but at most for
+                    // MaxDecommitDeferralMs, so the heap does not park at its high-water mark
+                    // during long syncs (fast-blocks RSS ballooning)
+                    long timestamp = Environment.TickCount64;
+                    if (ShouldDeferDecommit() && timestamp - _lastDecommitTick < MaxDecommitDeferralMs)
                     {
                         Interlocked.Decrement(ref _forcedGcCount); // retry on the next scheduled collection
                     }
                     else
                     {
+                        _lastDecommitTick = timestamp;
                         // Also decommit memory back to O/S
                         mode = GCCollectionMode.Aggressive;
                         generation = GcLevel.Gen2;
