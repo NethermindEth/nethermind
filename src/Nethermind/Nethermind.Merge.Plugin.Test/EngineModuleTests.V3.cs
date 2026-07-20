@@ -445,6 +445,7 @@ public partial class EngineModuleTests
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                 Substitute.For<IHandler<Hash256, InclusionListBytes>>(),
                 new Nethermind.Consensus.Transactions.InclusionListTxSource(null, null, null),
+                Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IEngineRequestsTracker>(),
                 chain.SpecProvider,
@@ -577,10 +578,7 @@ public partial class EngineModuleTests
         const int BlockCount = 10;
         const int SyncingBlockNumber = 5;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         for (int i = 1; i < BlockCount; i++)
@@ -600,10 +598,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdatedV3_should_allow_lower_finalized_than_previous_when_building_payload()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         ExecutionPayloadV3 block1 = await AddNewBlockV3(rpcModule, chain);
@@ -635,10 +630,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         List<byte[]> request = new(requestSize);
@@ -664,10 +656,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV1_should_handle_empty_request()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
@@ -679,10 +668,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV1_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -704,10 +690,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV1_should_return_nulls_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         // we are not adding this tx
@@ -730,10 +713,7 @@ public partial class EngineModuleTests
     {
         int requestSize = 10 * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -830,26 +810,17 @@ public partial class EngineModuleTests
     public async Task Sync_proper_chain_when_header_fork_came_from_fcu_and_beacon_sync()
     {
         // fork A
-        MergeTestBlockchain chainA = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chainA = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModuleA = chainA.EngineRpcModule;
         await rpcModuleA.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
         // main fork B
-        MergeTestBlockchain chainB = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chainB = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModuleB = chainB.EngineRpcModule;
         await rpcModuleB.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
         // syncing chain
-        MergeTestBlockchain chainC = await CreateBlockchain(releaseSpec: Cancun.Instance, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
+        MergeTestBlockchain chainC = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModuleC = chainC.EngineRpcModule;
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!, chainA.BlockTree.Head!.Hash!), null);
 
@@ -1078,10 +1049,7 @@ public partial class EngineModuleTests
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000,
-        });
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Transaction[] txs = [];
 

@@ -18,6 +18,9 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
   build:
     uses: ./.github/workflows/build-test-artifacts.yml

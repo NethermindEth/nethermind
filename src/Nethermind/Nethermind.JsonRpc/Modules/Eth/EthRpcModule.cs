@@ -206,6 +206,11 @@ public partial class EthRpcModule(
         }
 
         BlockHeader? header = searchResult.Object;
+        if (!_blockchainBridge.HasStateForBlock(header!))
+        {
+            return GetStateFailureResult<byte[]>(header!);
+        }
+
         try
         {
             ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
