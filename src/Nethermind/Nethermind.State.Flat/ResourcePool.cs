@@ -49,7 +49,9 @@ public class ResourcePool : IResourcePool
             { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
         };
 
-        if (flatConfig.GcPaceIntervalMs > 0)
+        // Start when either the gen1 or the gen0 cadence is enabled - gen0 fission is a standalone
+        // option and must not be gated by the gen1 interval being left at its default 0.
+        if (flatConfig.GcPaceIntervalMs > 0 || flatConfig.GcPaceGen0IntervalMs > 0)
         {
             GcPacer.Start(flatConfig.GcPaceIntervalMs, flatConfig.GcPaceWarmupSeconds, flatConfig.GcPaceGen2IntervalMs, flatConfig.GcPaceGen0IntervalMs);
         }

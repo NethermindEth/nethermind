@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Nethermind.Core;
+using System.Runtime;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
@@ -26,17 +26,21 @@ public static class GcPacer
     {
         if (Interlocked.CompareExchange(ref s_started, 1, 0) != 0) return false;
 
-        // Thread.Sleep(TimeSpan) rejects millisecond values above int.MaxValue; clamp the sleep-driving
-        // intervals so an out-of-range setting can't turn a paced loop into a busy exception-retry loop.
-        intervalMs = Math.Clamp(intervalMs, 1, int.MaxValue);
-
-        Thread thread = new(() => Run(intervalMs, warmupSeconds * 1000, gen2IntervalMs))
+        // gen1 and gen0 pacing start independently: a gen0-only config (gen1 interval left at 0) must
+        // still start the gen0 fission thread. Thread.Sleep(TimeSpan) rejects millisecond values above
+        // int.MaxValue, so clamp each sleep-driving interval so an out-of-range setting can't turn a
+        // paced loop into a busy exception-retry loop.
+        if (intervalMs > 0)
         {
-            // Must stay at normal priority: below-normal starves under saturated block processing.
-            IsBackground = true,
-            Name = "GC Pacer",
-        };
-        thread.Start();
+            long gen1Interval = Math.Clamp(intervalMs, 1, int.MaxValue);
+            Thread thread = new(() => Run(gen1Interval, warmupSeconds * 1000, gen2IntervalMs))
+            {
+                // Must stay at normal priority: below-normal starves under saturated block processing.
+                IsBackground = true,
+                Name = "GC Pacer",
+            };
+            thread.Start();
+        }
 
         if (gen0IntervalMs > 0)
         {
@@ -52,6 +56,19 @@ public static class GcPacer
         return true;
     }
 
+    // Induces a paced collection unless a real no-GC region is active. Guards on GCSettings.LatencyMode
+    // (the runtime's authoritative no-GC-region flag) rather than the GCScheduler gate: GCKeeper holds
+    // that gate for the whole engine_newPayload even when no real region starts, so gating on it would
+    // suppress gen0 fission exactly when a gigagas payload needs it; and GCScheduler.GCCollect also runs
+    // a native MallocTrim that at a subsecond gen0 cadence stalls RocksDB. A real no-GC region is still
+    // preserved - the tick skips so a coincident induced collection can't end it. Returns whether it ran.
+    private static bool PacedCollect(int generation)
+    {
+        if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return false;
+        GC.Collect(generation, GCCollectionMode.Forced, blocking: false, compacting: false);
+        return true;
+    }
+
     private static void RunGen0(long gen0IntervalMs)
     {
         int lastGen0Count = GC.CollectionCount(0);
@@ -63,9 +80,9 @@ public static class GcPacer
 
                 if (GC.CollectionCount(0) == lastGen0Count)
                 {
-                    // Route through the scheduler so a paced tick can't induce a collection while block
-                    // processing holds a no-GC region (DisableGcOnNewPayload); it no-ops in that window.
-                    GCScheduler.Instance.GCCollect(0, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    // gen0 fission must run during payload processing (its whole point is to split a
+                    // gigagas payload's survivors), so it is guarded only against a real no-GC region.
+                    PacedCollect(0);
                 }
 
                 lastGen0Count = GC.CollectionCount(0);
@@ -96,11 +113,9 @@ public static class GcPacer
 
                 if (GC.CollectionCount(1) == lastGen1Count)
                 {
-                    // Route through the scheduler so a paced tick can't induce a collection while block
-                    // processing holds a no-GC region (DisableGcOnNewPayload); it no-ops in that window.
                     // Must stay blocking:false: a blocking induced collection waits behind an
                     // in-flight background gen2 and wedges this thread.
-                    GCScheduler.Instance.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false);
+                    PacedCollect(1);
                 }
 
                 lastGen1Count = GC.CollectionCount(1);
@@ -128,8 +143,7 @@ public static class GcPacer
                     {
                         long bgIndexBefore = background.Index;
                         int gen2Before = GC.CollectionCount(2);
-                        // Route through the scheduler so it no-ops inside a block-processing no-GC region.
-                        if (GCScheduler.Instance.GCCollect(2, GCCollectionMode.Forced, blocking: false, compacting: false))
+                        if (PacedCollect(2))
                         {
                             int gen2After = GC.CollectionCount(2);
                             lastGen2Count = gen2After;
