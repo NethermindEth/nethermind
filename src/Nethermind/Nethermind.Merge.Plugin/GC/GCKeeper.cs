@@ -23,36 +23,13 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _shutdownCts = new();
-    private ulong _lastPayloadTimestamp;
-    private long _lastDecommitTick;
-
-    /// <summary>Maximum age of the last payload, in seconds, for the decommit collection to run; older means we are catching up.</summary>
-    internal const long MaxPayloadLagSecondsForDecommit = 60;
-
-    /// <summary>Payload age, in seconds, beyond which we are in deep catch-up, where throughput matters more
-    /// than pause avoidance and heap compaction must keep running, so the decommit is no longer deferred.</summary>
-    internal const long DeepCatchUpLagSeconds = 300;
-
-    /// <summary>Maximum time the decommit may be deferred while catching up, in milliseconds.</summary>
-    internal const long MaxDecommitDeferralMs = 5 * 60_000;
 
     public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
 
-    public IDisposable TryStartNoGCRegion(ulong payloadTimestamp = 0)
+    public IDisposable TryStartNoGCRegion()
     {
         long size = _defaultSize;
-        if (payloadTimestamp != 0)
-        {
-            Volatile.Write(ref _lastPayloadTimestamp, payloadTimestamp);
-        }
-
         bool pausedGCScheduler = GCScheduler.MarkGCPaused();
-        if (!pausedGCScheduler)
-        {
-            // a GC is already in flight; starting a NoGC region would block until it completes
-            return new NoGCRegion(this, FailCause.GCInProgress, size, pausedGCScheduler, _logger);
-        }
-
         if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
@@ -91,7 +68,6 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
         GCFailedToStartNoGCRegion,
         TotalSizeExceededTheEphemeralSegmentSize,
         AlreadyInNoGCRegion,
-        GCInProgress,
         Exception
     }
 
@@ -141,15 +117,6 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
             else if (_logger.IsDebug) _logger.Debug($"Failed to start NoGCRegion with {_size} bytes with cause {_failCause.FastToString()}");
         }
     }
-
-    private bool ShouldDeferDecommit() =>
-        ShouldDeferDecommit(DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Volatile.Read(ref _lastPayloadTimestamp));
-
-    internal static bool ShouldDeferDecommit(long nowUnixSeconds, ulong lastPayloadTimestamp) =>
-        lastPayloadTimestamp != 0 &&
-        nowUnixSeconds - (long)lastPayloadTimestamp is > MaxPayloadLagSecondsForDecommit and <= DeepCatchUpLagSeconds;
-
-    internal ulong LastPayloadTimestamp => Volatile.Read(ref _lastPayloadTimestamp);
 
     private static long _lastGcTimeMs;
 
@@ -202,24 +169,10 @@ public class GCKeeper(IGCStrategy gcStrategy, ILogManager logManager) : IDisposa
                 GCCollectionMode mode = GCCollectionMode.Forced;
                 if (collectionsPerDecommit == 0 || (forcedGcCount % (ulong)collectionsPerDecommit == 0))
                 {
-                    // the decommit's stop-the-world pause can exceed a second; in the final stretch of
-                    // a catch-up (payload lag inside the deferral band) the next payload may be a live
-                    // head block that would land mid-collection, so defer it — but at most for
-                    // MaxDecommitDeferralMs. In deep catch-up the decommit runs as usual: throughput
-                    // and heap compaction matter there, not pause avoidance (fast-blocks RSS ballooning)
-                    long timestamp = Environment.TickCount64;
-                    if (ShouldDeferDecommit() && timestamp - _lastDecommitTick < MaxDecommitDeferralMs)
-                    {
-                        Interlocked.Decrement(ref _forcedGcCount); // retry on the next scheduled collection
-                    }
-                    else
-                    {
-                        _lastDecommitTick = timestamp;
-                        // Also decommit memory back to O/S
-                        mode = GCCollectionMode.Aggressive;
-                        generation = GcLevel.Gen2;
-                        compacting = GcCompaction.Full;
-                    }
+                    // Also decommit memory back to O/S
+                    mode = GCCollectionMode.Aggressive;
+                    generation = GcLevel.Gen2;
+                    compacting = GcCompaction.Full;
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
