@@ -80,8 +80,6 @@ namespace Nethermind.State
             }
             else
             {
-                // Encode straight into the leaf's persistent buffer, skipping the throwaway Rlp wrapper
-                // that Rlp.Encode(value) would allocate per changed slot on the block-commit flush path.
                 encodedValue = GC.AllocateUninitializedArray<byte>(Rlp.LengthOf(value));
                 Rlp.Encode(value, encodedValue);
             }
