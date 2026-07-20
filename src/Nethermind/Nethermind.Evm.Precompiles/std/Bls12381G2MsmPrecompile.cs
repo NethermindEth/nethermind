@@ -55,9 +55,7 @@ public partial class Bls12381G2MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // skip clear as whole buffer is filled in point decoding
-        // dest) is fully written by Zero()+Decode() during point decoding, so the pool's zero-clear
-        // is wasted. Dead infinity slots are never read.
+        // clearFirst: false — every slot MultiMultAffine reads is written during decode below
         using ArrayPoolList<long> pointBuffer = new(SafeArrayPool<long>.Shared, nItems * G2Affine.Sz, nItems * G2Affine.Sz, clearFirst: false);
         using ArrayPoolList<byte> scalarBuffer = new(SafeArrayPool<byte>.Shared, nItems * 32, nItems * 32, clearFirst: false);
         using ArrayPoolList<int> pointDestinations = new(nItems);

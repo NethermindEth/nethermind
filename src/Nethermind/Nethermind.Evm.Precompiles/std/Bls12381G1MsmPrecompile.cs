@@ -55,9 +55,7 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MultiMultAffine
-        // only reads the first npoints*G1Affine.Sz longs and npoints*32 scalar bytes, and every one of those
-        // slots is fully written by TryDecodeG1ToBuffer before MultiMultAffine runs, so a clear is wasted.
+        // rented without zero-init: every slot MultiMultAffine reads is written during decode below
         using ArrayPoolSpan<long> rawPoints = new(nItems * G1Affine.Sz);
         using ArrayPoolSpan<byte> rawScalars = new(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);

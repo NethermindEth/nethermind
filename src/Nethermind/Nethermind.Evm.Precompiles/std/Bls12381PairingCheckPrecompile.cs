@@ -25,16 +25,13 @@ public partial class Bls12381PairingCheckPrecompile
 
         int nItems = inputData.Length / PairSize;
 
-        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MillerLoopN
-        // only reads the first npairs slots of each buffer, and every one of those slots is fully
-        // written by TryDecodePairToBuffer before MillerLoopN runs, so a clear is wasted.
+        // rented without zero-init: every slot MillerLoopN reads is written during decode below
         using ArrayPoolSpan<long> g1Points = new(nItems * G1Affine.Sz);
         using ArrayPoolSpan<long> g2Points = new(nItems * G2Affine.Sz);
         using ArrayPoolList<int> pairDestinations = new(nItems);
 
-        // calculate where in the point buffers decoded pairs should go;
-        // x == inf || y == inf -> e(x, y) = 1, so such pairs are excluded from the Miller loop,
-        // but both points are still validated during decoding below
+        // assign each pair a compacted slot; a pair with an infinity point (e = 1) gets -1 to
+        // exclude it from the Miller loop, but is still validated during decode
         int npairs = 0;
         for (int i = 0; i < nItems; i++)
         {
@@ -48,8 +45,7 @@ public partial class Bls12381PairingCheckPrecompile
 
         Result result = Result.Success;
 
-        // decode pairs to point buffers
-        // n.b. on-curve and subgroup checks carried out as part of decoding
+        // decode + on-curve/subgroup-validate each pair into its slot
 #pragma warning disable CS0162 // Unreachable code detected
         if (Eip2537.DisableConcurrency)
         {
@@ -67,8 +63,7 @@ public partial class Bls12381PairingCheckPrecompile
                 Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
                 if (!local)
                 {
-                    // racy across workers, but every writer stores a failure and only the atomically
-                    // written ResultType is read below, so post-barrier result is a failure iff any pair failed
+                    // racy but safe: workers only ever store a failure, so post-barrier result fails iff any pair did
                     result = local;
                     state.Break();
                 }
@@ -79,7 +74,7 @@ public partial class Bls12381PairingCheckPrecompile
         if (!result)
             return result.Error!;
 
-        // every pair contained an infinity point, so the product is the empty product, one
+        // all pairs had an infinity point: empty product is one
         if (npairs == 0)
         {
             byte[] one = new byte[32];
@@ -87,7 +82,7 @@ public partial class Bls12381PairingCheckPrecompile
             return one;
         }
 
-        // acc = e(x_0, y_0) * e(x_1, y_1) * ... computed in one batched Miller loop
+        // batched product of the per-pair Miller loops
         GT acc = new(stackalloc long[GT.Sz]);
         acc.MillerLoopN(g2Points, g1Points, npairs);
 
@@ -108,8 +103,7 @@ public partial class Bls12381PairingCheckPrecompile
     {
         int offset = index * PairSize;
 
-        // pairs containing a point at infinity (dest == -1) are excluded from the Miller loop,
-        // but both encodings must still be validated and subgroup-checked, so decode to scratch
+        // dest == -1: pair has an infinity point (excluded from the loop) but still fully validated, so decode to scratch
         G1Affine x = new(dest == -1 ? stackalloc long[G1Affine.Sz] : g1Buffer.Span[(dest * G1Affine.Sz)..]);
         G2Affine y = new(dest == -1 ? stackalloc long[G2Affine.Sz] : g2Buffer.Span[(dest * G2Affine.Sz)..]);
 
