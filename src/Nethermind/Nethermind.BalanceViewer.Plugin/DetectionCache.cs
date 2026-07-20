@@ -54,12 +54,22 @@ public sealed class DetectionCache : IDetectionCache
     private const int DefaultMaxEntries = 10_000;
     private const int DefaultMaxContractsPerEntry = 2_000;
 
+    // Throttle bursty progress writes: an active scan calls Put on every persisted chunk (potentially several
+    // times a second across concurrently-scanned accounts), and each Save rewrites the whole file. A change is
+    // written immediately (leading edge, so a single Put is durable at once — restart resumability), and further
+    // changes within the window collapse into one trailing write. Only the trailing state within a window can be
+    // lost on an abrupt shutdown, which just costs a small re-scan on resume since ScannedFrom is a cursor.
+    private const int SaveThrottleMs = 2_000;
+
     private readonly ConcurrentDictionary<string, DetectionEntry> _entries = new();
     private readonly string _path;
     private readonly ILogger _logger;
     private readonly Lock _fileLock = new();
+    private readonly Lock _saveGate = new();
     private readonly int _maxEntries;
     private readonly int _maxContractsPerEntry;
+    private long _lastSaveTicks = long.MinValue;
+    private bool _flushScheduled;
 
     public DetectionCache(string dbPath, ILogManager logManager, int maxEntries = DefaultMaxEntries, int maxContractsPerEntry = DefaultMaxContractsPerEntry)
     {
@@ -87,12 +97,12 @@ public sealed class DetectionCache : IDetectionCache
         }
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();
-        Save();
+        RequestSave();
     }
 
     public void Remove(long chainId, string address)
     {
-        if (_entries.TryRemove(Key(chainId, address), out _)) Save();
+        if (_entries.TryRemove(Key(chainId, address), out _)) RequestSave();
     }
 
     public void Clear()
@@ -148,10 +158,44 @@ public sealed class DetectionCache : IDetectionCache
         }
     }
 
+    // Persist immediately if the throttle window has elapsed (leading edge); otherwise ensure a single trailing
+    // flush is queued for the remainder of the window so a burst of Puts collapses into one extra write.
+    private void RequestSave()
+    {
+        lock (_saveGate)
+        {
+            long now = Environment.TickCount64;
+            if (_lastSaveTicks == long.MinValue || now - _lastSaveTicks >= SaveThrottleMs)
+            {
+                _lastSaveTicks = now;
+                Save();
+                return;
+            }
+            if (!_flushScheduled)
+            {
+                _flushScheduled = true;
+                _ = ScheduleTrailingFlushAsync(SaveThrottleMs - (int)(now - _lastSaveTicks));
+            }
+        }
+    }
+
+    // Fire-and-forget by design: the delay only coalesces writes and Save handles its own exceptions, so nothing
+    // escapes here. Any Put after this flush restarts the leading/trailing cycle, so no update is dropped.
+    private async Task ScheduleTrailingFlushAsync(int delayMs)
+    {
+        await Task.Delay(delayMs).ConfigureAwait(false);
+        lock (_saveGate)
+        {
+            _flushScheduled = false;
+            _lastSaveTicks = Environment.TickCount64;
+            Save();
+        }
+    }
+
     private void Save()
     {
-        // full-file write behind a lock: writes are infrequent (a scan posts progress every few
-        // seconds), and a temp-then-move keeps the file intact if the process dies mid-write
+        // full-file write behind a lock: writes are coalesced to at most one per debounce window (see
+        // RequestSave), and a temp-then-move keeps the file intact if the process dies mid-write
         try
         {
             lock (_fileLock)
