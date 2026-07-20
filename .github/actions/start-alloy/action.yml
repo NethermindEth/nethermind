@@ -111,3 +111,27 @@ runs:
           "$ALLOY_IMAGE" \
           run --server.http.listen-addr=127.0.0.1:12345 /etc/alloy/config.alloy
         echo "Grafana Alloy started."
+
+        # Give Alloy a couple of scrape/push cycles, then surface its health so
+        # a silent "running but shipping nothing" state is visible in the logs.
+        sleep 20
+        echo "::group::grafana-alloy status"
+        docker ps -a --filter name=grafana-alloy --format '{{.Names}}: {{.Status}}'
+        echo "::endgroup::"
+        echo "::group::grafana-alloy logs"
+        docker logs --tail 200 grafana-alloy 2>&1 || true
+        echo "::endgroup::"
+        echo "::group::Alloy pipeline metrics (scrape + remote_write + loki)"
+        curl -sf http://localhost:12345/metrics 2>/dev/null \
+          | grep -E 'prometheus_remote_storage_samples_(total|failed_total|pending)|prometheus_remote_write_wal_samples_appended_total|prometheus_target_scrapes_sample|loki_write_(sent_entries|dropped_entries|request_duration)' \
+          || echo "could not read Alloy /metrics"
+        echo "::endgroup::"
+        echo "::group::Nethermind Prometheus endpoint reachability"
+        for port in 8008 8018; do
+          if curl -sf "http://localhost:${port}/metrics" 2>/dev/null | head -n 1; then
+            echo "localhost:${port} reachable"
+          else
+            echo "localhost:${port} NOT reachable"
+          fi
+        done
+        echo "::endgroup::"
