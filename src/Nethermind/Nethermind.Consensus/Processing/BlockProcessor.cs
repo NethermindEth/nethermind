@@ -97,6 +97,12 @@ public partial class BlockProcessor(
         {
             throw new BlockAccessListSequentialRetryException(ex);
         }
+        catch (BlockAccessListManager.ParallelExecutionException ex) when (
+            _balManager.ParallelExecutionEnabled &&
+            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        {
+            throw new BlockAccessListSequentialRetryException(blockAccessListException);
+        }
         finally
         {
             if (!processed) block.DisposeAccountChanges();
