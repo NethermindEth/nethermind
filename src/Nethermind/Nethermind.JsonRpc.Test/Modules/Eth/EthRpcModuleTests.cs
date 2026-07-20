@@ -508,18 +508,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_storage_at_missing_trie_node()
+    public async Task Eth_get_storage_at_no_state_reports_state_unavailable_like_sibling_methods()
     {
-        // Asserts the patricia "missing trie node" error, which has no equivalent in the flat backend.
+        // A block with no state must fail with -32002 "No state available", matching eth_getBalance/getCode/
+        // getTransactionCount/call — not surface a backend exception through the generic -32603 handler.
         using Context ctx = await Context.Create(useFlatDb: false);
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();
-        BlockParameter? blockParameter = null;
-        BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
         string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-        string expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";
-        Assert.That(serialized, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain("\"code\":-32002"));
+            Assert.That(serialized, Does.Contain("No state available for block"));
+        }
     }
 
     private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
@@ -1655,6 +1657,19 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", "true");
         Assert.That(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""), Is.True);
+    }
+
+    [Test]
+    public async Task Eth_get_block_by_number_returns_null_when_block_for_rpc_factory_returns_null()
+    {
+        IBlockForRpcFactory blockForRpcFactory = Substitute.For<IBlockForRpcFactory>();
+        blockForRpcFactory
+            .Create(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<ISpecProvider>(), Arg.Any<bool>())
+            .Returns((BlockForRpc)null!);
+
+        using Context ctx = await Context.Create(configurer: builder => builder.AddSingleton(blockForRpcFactory));
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "latest", "true");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
     [Test]

@@ -141,9 +141,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Account? Get(Address address)
     {
-        Account? account = _snapshotBundle.GetAccount(address);
+        Account? account = _snapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);
 
-        HintGet(address, account);
+        HintGet(address, account, promote: !isInCurrentSnapshot);
 
         if (_configuration.VerifyWithTrie)
         {
@@ -157,9 +157,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return account;
     }
 
-    public void HintGet(Address address, Account? account)
+    public void HintGet(Address address, Account? account) => HintGet(address, account, promote: true);
+
+    private void HintGet(Address address, Account? account, bool promote)
     {
-        _snapshotBundle.SetAccount(address, account);
+        if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
             if (_warmer.PushAddressJob(this, address, _hintSequenceId))
@@ -514,6 +516,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
                     if (logger.IsTrace) Trace(address, storageRoot, account);
                 }
+
+                OnAccountUpdated = null;
 
                 using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)

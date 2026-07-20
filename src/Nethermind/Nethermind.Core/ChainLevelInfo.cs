@@ -89,7 +89,7 @@ namespace Nethermind.Core
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
-        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain)
+        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain, bool keepExistingMetadata = false)
         {
             BlockInfo[] blockInfos = BlockInfos;
 
@@ -100,7 +100,9 @@ namespace Nethermind.Core
             }
             else
             {
-                if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
+                if (keepExistingMetadata)
+                    blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata;
+                else if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
                     blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
 
                 if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))

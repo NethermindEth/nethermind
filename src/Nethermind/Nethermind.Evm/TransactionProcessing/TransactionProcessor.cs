@@ -37,8 +37,6 @@ namespace Nethermind.Evm.TransactionProcessing
         : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options, in IntrinsicGas<TGasPolicy> intrinsicGas)
-            => ExecuteCore(transaction, txTracer, options, in intrinsicGas);
     }
 
     /// <summary>
@@ -73,6 +71,22 @@ namespace Nethermind.Evm.TransactionProcessing
     public abstract class TransactionProcessorBase
     {
         internal static bool ForceSimpleTransferDisabled;
+
+        private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
+        {
+            // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
+            // so the order-preserving journaled clear is required; the O(1) mark needs a commit after.
+            if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
+            else worldState.ClearStorage(toBeDestroyed);
+            worldState.DeleteAccount(toBeDestroyed);
+
+            // EIP-8246: preserve any remaining balance as a fresh nonce-0, code-less account;
+            // an empty account stays deleted via EIP-161.
+            if (removeSelfdestructBurn && !balance.IsZero)
+            {
+                worldState.CreateAccount(toBeDestroyed, balance);
+            }
+        }
     }
 
     public abstract class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
@@ -166,7 +180,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
+            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
             {
                 return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
             }
@@ -176,31 +191,11 @@ namespace Nethermind.Evm.TransactionProcessing
             return result;
         }
 
-        protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
-            {
-                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
-            }
-
-            TransactionResult result = Execute(tx, tracer, opts, in intrinsicGas);
-            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
-            return result;
-        }
-
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
-            return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
-        }
-
-        protected TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
-        {
-            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-            IReleaseSpec spec = GetSpec(header);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
 
@@ -312,7 +307,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // EIP-8037 top-frame charges. At most one applies: a delegated recipient has code and is
             // therefore never a dead account, hence the if/else-if.
-            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
+            bool recipientIsDelegated = spec.IsEip8037Enabled && spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
             // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the
@@ -380,16 +375,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
                     }
 
-                    if (commit) worldState.MarkStorageDestroyed(toBeDestroyed);
-                    else worldState.ClearStorage(toBeDestroyed);
-                    worldState.DeleteAccount(toBeDestroyed);
-
-                    // EIP-8246: preserve any remaining balance as a fresh nonce-0,
-                    // code-less account; an empty account stays deleted via EIP-161.
-                    if (removeSelfdestructBurn && !balance.IsZero)
-                    {
-                        worldState.CreateAccount(toBeDestroyed, balance);
-                    }
+                    DestroyAccount(worldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
                 }
             }
 
@@ -946,7 +932,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy standard = intrinsicGas.Standard;
-            TGasPolicy minimal = intrinsicGas.MinimalGas;
             TGasPolicy floorGas = intrinsicGas.FloorGas;
 
             ulong standardGasUsed = TGasPolicy.GetRemainingGas(in standard);
@@ -966,9 +951,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     $"{TxErrorMessages.GasBelowFloorDataCost}: have {tx.GasLimit}, want {floorGasUsed}");
             }
 
-            ulong minGasRequired = spec.IsEip8037Enabled
-                ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + (ulong)TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
-                : TGasPolicy.GetRemainingGas(in minimal);
+            ulong minGasRequired = intrinsicGas.MinRequiredGasLimit;
 
             return ValidateGas(tx, header, spec, in standard, minGasRequired, validate);
         }
@@ -1164,6 +1147,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (balance < balanceCheck)
             {
+                // A warm sender may be funded earlier in the block by another sender's
+                // transaction, which per-sender warm groups cannot see; charge best-effort
+                // instead of losing that sender's warming entirely.
+                if (opts.HasFlag(ExecutionOptions.Warmup))
+                {
+                    UInt256 warmCharge = UInt256.Min(senderReservedGasPayment, balance);
+                    if (!warmCharge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, warmCharge, spec);
+                    return TransactionResult.Ok;
+                }
+
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
@@ -1386,19 +1379,7 @@ namespace Nethermind.Evm.TransactionProcessing
                                 substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
                             }
 
-                            // Build-up rounds (!commit) span the whole block: later txs may
-                            // redeploy this address, so the order-preserving journaled clear
-                            // is required; the O(1) mark is only valid when a commit follows.
-                            if (commit) WorldState.MarkStorageDestroyed(toBeDestroyed);
-                            else WorldState.ClearStorage(toBeDestroyed);
-                            WorldState.DeleteAccount(toBeDestroyed);
-
-                            // EIP-8246: preserve any remaining balance as a fresh nonce-0,
-                            // code-less account; an empty account stays deleted via EIP-161.
-                            if (removeSelfdestructBurn && !balance.IsZero)
-                            {
-                                WorldState.CreateAccount(toBeDestroyed, balance);
-                            }
+                            DestroyAccount(WorldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
 
                             if (tracingRefunds)
                             {
@@ -1561,11 +1542,9 @@ namespace Nethermind.Evm.TransactionProcessing
             // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
             ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
-            long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-            // On an exceptional halt spilled state gas ends up in gas_left and is burned as regular;
-            // only the intrinsic state gas remaining after the reset stays in the state dimension.
-            long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
+            // Spilled state gas burns in gas_left as regular gas; the state dimension keeps
+            // only the post-reset intrinsic remainder.
+            long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
             // Block regular gas = before_refund - state (tx_regular_gas); refunds and the calldata
             // floor adjust only the sender charge, never this dimension.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
@@ -1632,7 +1611,18 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
-            if (!tx.ValueRef.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            if (tx.ValueRef.IsZero) return;
+
+            // Same best-effort rule as BuyGas: a warm sender funded earlier in the block has no
+            // parent-state balance to move, and failing here would abort its warming.
+            if (opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                UInt256 charge = UInt256.Min(tx.Value, WorldState.GetBalance(tx.SenderAddress!));
+                if (!charge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in charge, spec);
+                return;
+            }
+
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)

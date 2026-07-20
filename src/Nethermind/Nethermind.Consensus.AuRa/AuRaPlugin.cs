@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
@@ -51,7 +50,6 @@ namespace Nethermind.Consensus.AuRa
 
         public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
-        public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -72,7 +70,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
-                .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
+                .AddSingleton<AuRaTxPoolTxSourceFactory>()
+                .AddSingleton<AuRaBlockProducerEnvFactory>()
                 .AddSingleton<AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerFactory, AuRaBlockProducerFactory>()
                 .Bind<IBlockProducerRunnerFactory, AuRaBlockProducerFactory>()
@@ -82,8 +81,8 @@ namespace Nethermind.Consensus.AuRa
                 .AddSingleton<IValidatorStore, ValidatorStore>()
                 .AddSingleton<AuRaContractGasLimitOverride.Cache, AuRaContractGasLimitOverride.Cache>()
                 .AddSingleton<ReportingContractBasedValidator.Cache>()
-                .AddSingleton<IReportingValidator, IMainProcessingContext>((mainProcessingContext) =>
-                    ((AuRaBlockProcessor)mainProcessingContext.BlockProcessor).AuRaValidator.GetReportingValidator())
+                .AddSingleton<IReportingValidator, IMainProcessingContext, AuraStatefulComponents>(
+                    static (_, statefulComponents) => statefulComponents.MainProcessingReportingValidator)
                 .AddSource(new FallbackToFieldFromApi<AuRaNethermindApi>())
 
                 // Steps override

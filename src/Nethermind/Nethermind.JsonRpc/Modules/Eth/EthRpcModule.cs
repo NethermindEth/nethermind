@@ -206,6 +206,11 @@ public partial class EthRpcModule(
         }
 
         BlockHeader? header = searchResult.Object;
+        if (!_blockchainBridge.HasStateForBlock(header!))
+        {
+            return GetStateFailureResult<byte[]>(header!);
+        }
+
         try
         {
             ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
@@ -635,7 +640,12 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc? blockForRpc = _blockForRpcFactory.Create(block, returnFullTransactionObjects, _specProvider);
+        if (blockForRpc is null)
+        {
+            return ResultWrapper<BlockForRpc?>.Success(null);
+        }
+
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
