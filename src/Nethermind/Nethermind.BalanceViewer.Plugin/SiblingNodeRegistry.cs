@@ -49,7 +49,7 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     private volatile IReadOnlyList<SiblingNode> _siblings = [];
     private DateTimeOffset _refreshedAt = DateTimeOffset.MinValue;
 
-    public SiblingNodeRegistry(IPortfolioConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
+    public SiblingNodeRegistry(IBalanceViewerConfig config, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<SiblingNodeRegistry>();
         HashSet<int> ownPorts = [.. jsonRpcUrlCollection.Keys];

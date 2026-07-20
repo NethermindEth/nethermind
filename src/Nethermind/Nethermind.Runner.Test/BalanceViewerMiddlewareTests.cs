@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Nethermind.BalanceViewer.Plugin;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using NSubstitute;
@@ -76,7 +77,8 @@ public class BalanceViewerMiddlewareTests
             CreateUrlCollection(),
             Substitute.For<ISiblingNodeRegistry>(),
             Substitute.For<IDetectionCache>(),
-            Substitute.For<IDetectionScanner>());
+            Substitute.For<IDetectionScanner>(),
+            Substitute.For<IPinnedCidStore>());
         await middleware.InvokeAsync(ctx);
 
         Assert.That(nextCalled, Is.True);
@@ -130,19 +132,62 @@ public class BalanceViewerMiddlewareTests
         await siblings.DidNotReceive().ProxyAsync(Arg.Any<int>(), Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
     }
 
-    private static BalanceViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null) =>
-        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), Substitute.For<IDetectionScanner>());
+    [Test]
+    public async Task SideEffecting_CrossOriginRequest_Rejected()
+    {
+        (DefaultHttpContext ctx, _) = CreateContext(
+            Port, method: "POST", path: "/portfolio-detect", origin: "http://evil.example", host: $"localhost:{Port}");
+        IDetectionScanner scanner = Substitute.For<IDetectionScanner>();
+
+        await CreateMiddleware(scanner: scanner).InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status403Forbidden));
+        scanner.DidNotReceive().RequestScan(Arg.Any<long>(), Arg.Any<Address>());
+    }
+
+    [Test]
+    public async Task SideEffecting_SameOriginRequest_Allowed()
+    {
+        (DefaultHttpContext ctx, _) = CreateContext(
+            Port, method: "POST", path: "/portfolio-detect", origin: $"http://localhost:{Port}", host: $"localhost:{Port}",
+            body: """{"chainId":1,"address":"0xd8da6bf26964af9d7eed9e03e53415d37aa96045"}""");
+        IDetectionScanner scanner = Substitute.For<IDetectionScanner>();
+
+        await CreateMiddleware(scanner: scanner).InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status403Forbidden));
+        scanner.Received(1).RequestScan(1, Arg.Any<Address>());
+    }
+
+    [TestCase("/portfolio-ipfs/../portfolio")]
+    [TestCase("/portfolio-ipfs/foo%20bar")]
+    [TestCase("/portfolio-ipfs")]
+    public async Task Ipfs_InvalidRef_Returns400(string path)
+    {
+        (DefaultHttpContext ctx, _) = CreateContext(Port, path: path);
+
+        await CreateMiddleware().InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+    }
+
+    private static BalanceViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null) =>
+        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>());
 
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>
         new TestJsonRpcUrlCollection(new JsonRpcUrl("http", "127.0.0.1", Port, RpcEndpoint.Http, isAuthenticated, [ModuleType.Eth]));
 
-    private static (DefaultHttpContext Context, MemoryStream ResponseBody) CreateContext(int localPort, string method = "GET", string path = "/portfolio")
+    private static (DefaultHttpContext Context, MemoryStream ResponseBody) CreateContext(
+        int localPort, string method = "GET", string path = "/portfolio", string? origin = null, string? host = null, string? body = null)
     {
         DefaultHttpContext ctx = new()
         {
             Request = { Method = method, Path = path }
         };
         ctx.Connection.LocalPort = localPort;
+        if (host is not null) ctx.Request.Host = new HostString(host);
+        if (origin is not null) ctx.Request.Headers.Origin = origin;
+        if (body is not null) ctx.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
         return (ctx, responseBody);

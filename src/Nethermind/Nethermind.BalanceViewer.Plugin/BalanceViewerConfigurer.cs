@@ -27,7 +27,7 @@ namespace Nethermind.BalanceViewer.Plugin;
 /// not registered in Autofac); the plugin's Autofac dependencies are bridged in.
 /// </remarks>
 public sealed class BalanceViewerConfigurer(
-    IPortfolioConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
+    IBalanceViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
     ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
@@ -37,6 +37,7 @@ public sealed class BalanceViewerConfigurer(
         services.AddSingleton(logManager);
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
         services.AddSingleton<IDetectionCache>(cache);
+        services.AddSingleton<IPinnedCidStore>(new PinnedCidStore(initConfig.BaseDbPath, logManager));
         services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager));
         services.AddTransient<IStartupFilter, BalanceViewerStartupFilter>();
     }
@@ -57,7 +58,7 @@ internal sealed class BalanceViewerStartupFilter : IStartupFilter
 /// sibling-node discovery list at <c>/portfolio-nodes</c>, and proxies JSON-RPC to discovered
 /// siblings via <c>/portfolio-rpc/{port}</c> so the multi-chain view works through a single port.
 /// </summary>
-public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner)
+public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
 {
     private static readonly PathString NodesPath = new("/portfolio-nodes");
     private static readonly PathString ProxyPathPrefix = new("/portfolio-rpc");
@@ -117,6 +118,18 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
             return Task.CompletedTask;
         }
 
+        // CSRF guard for the state-changing routes: a drive-by page can issue CORS "simple" POSTs (e.g.
+        // text/plain, no preflight) to enqueue scans or pin arbitrary CIDs, and pin/unpin/proxy reach the
+        // local node. The browser always attaches an Origin on cross-origin requests, while same-origin
+        // fetches from the served page carry a matching Origin, so rejecting a mismatched Origin blocks
+        // CSRF without a token. Reads (static files, node list, IPFS/detect GET) are left untouched.
+        bool isSideEffecting = isProxy || isDetectProxy || isDetectPost || isDetectDelete || isPin || isUnpinAll;
+        if (isSideEffecting && IsCrossOrigin(context))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+
         if (isPin) return ServePinAsync(context);
         if (isUnpinAll) return ServeUnpinAllAsync(context);
         if (isIpfs) return ServeIpfsAsync(context);
@@ -153,6 +166,23 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         return context.Response.SendFileAsync(file);
     }
 
+    // True if the request carries an Origin that does not match the port it arrived on. Absent Origin (same-origin
+    // navigations, non-browser clients) is treated as same-origin; a present-but-unparseable Origin ("null" from a
+    // sandboxed context) is treated as cross-origin.
+    private static bool IsCrossOrigin(HttpContext context)
+    {
+        string? origin = context.Request.Headers.Origin;
+        if (string.IsNullOrEmpty(origin)) return false;
+        return !Uri.TryCreate(origin, UriKind.Absolute, out Uri? parsed) || parsed.Authority != context.Request.Host.Value;
+    }
+
+    // Accepts a CID, optionally with a subpath: base32/58 chars plus '/', '.', '-', '_'. Rejects any '.'/'..'
+    // segment so the value can't escape the '/ipfs/' prefix once placed in a gateway URL path.
+    private static bool IsSafeIpfsRef(string s) =>
+        s.Length is > 0 and <= 256
+        && s.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_')
+        && !s.Split('/').Any(segment => segment is "." or "..");
+
     private async Task ServeNodesAsync(HttpContext context)
     {
         IReadOnlyList<SiblingNode> nodes = await siblings.GetSiblingsAsync(context.RequestAborted);
@@ -169,7 +199,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     {
         context.Request.Path.StartsWithSegments(IpfsPathPrefix, out PathString remaining);
         string rel = remaining.Value?.TrimStart('/') ?? string.Empty;
-        if (rel.Length == 0)
+        if (!IsSafeIpfsRef(rel))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
@@ -204,8 +234,7 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
     {
         context.Request.Path.StartsWithSegments(PinPathPrefix, out PathString remaining);
         string cid = remaining.Value?.TrimStart('/') ?? string.Empty;
-        // accept only a CID (optionally with a subpath): base32/58 chars, '/', '.', '-', '_'; reject anything else
-        if (cid.Length is 0 or > 256 || !cid.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_'))
+        if (!IsSafeIpfsRef(cid))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return Task.CompletedTask;
@@ -219,14 +248,20 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         return Task.CompletedTask;
     }
 
-    private static async Task PinAsync(string cid)
+    private async Task PinAsync(string cid)
     {
-        try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null); }
+        try
+        {
+            using HttpResponseMessage resp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null);
+            // record only pins we actually added, so unpin-all can reclaim exactly these and nothing else
+            if (resp.IsSuccessStatusCode) pins.Add(cid);
+        }
         catch { /* best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved */ }
     }
 
-    // DELETE /portfolio-ipfs-pin — unpins every recursive pin and reclaims the space. Issued when the user turns
-    // auto-pin off, so disabling pinning frees the art it accumulated. Detached (may unpin thousands + GC), 202.
+    // DELETE /portfolio-ipfs-pin — unpins only the CIDs this plugin pinned and reclaims the space. Issued when the
+    // user turns auto-pin off, so disabling pinning frees the art it accumulated without touching the user's other
+    // pins. Detached (may unpin many + GC), 202.
     private Task ServeUnpinAllAsync(HttpContext context)
     {
         _ = UnpinAllAsync();
@@ -234,25 +269,18 @@ public sealed class BalanceViewerMiddleware(RequestDelegate next, IJsonRpcUrlCol
         return Task.CompletedTask;
     }
 
-    private static async Task UnpinAllAsync()
+    private async Task UnpinAllAsync()
     {
-        try
+        IReadOnlyCollection<string> ours = pins.Snapshot();
+        if (ours.Count == 0) return;
+        foreach (string cid in ours)
         {
-            using HttpResponseMessage lsResp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/ls?type=recursive", content: null);
-            if (!lsResp.IsSuccessStatusCode) return;
-            using JsonDocument doc = JsonDocument.Parse(await lsResp.Content.ReadAsStringAsync());
-            if (doc.RootElement.TryGetProperty("Keys", out JsonElement keys))
-            {
-                foreach (JsonProperty pin in keys.EnumerateObject())
-                {
-                    try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(pin.Name)}", content: null); }
-                    catch { /* best-effort per pin */ }
-                }
-            }
-            // reclaim the now-unpinned blocks from disk
-            try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); } catch { }
+            try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(cid)}", content: null); }
+            catch { /* best-effort per pin: no local Kubo RPC (5001), or already unpinned */ }
         }
-        catch { /* best-effort: no local Kubo RPC (5001) */ }
+        pins.Clear();
+        // reclaim the now-unpinned blocks from disk
+        try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); } catch { }
     }
 
     private async Task ProxyAsync(HttpContext context)

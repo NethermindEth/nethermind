@@ -3,8 +3,8 @@
 
 namespace Nethermind.BalanceViewer.Plugin;
 
-public class PortfolioConfig : IPortfolioConfig
+public class BalanceViewerConfig : IBalanceViewerConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public string SiblingProbePorts { get; set; } = "8545,8546,8547,8548,8549,8550";
 }

@@ -1,15 +1,22 @@
 # Nethermind.BalanceViewer.Plugin
 
-A self-contained balance-viewer UI served at the `/balances` path of the node's (unauthenticated)
+A self-contained balance-viewer UI served at the `/portfolio` path of the node's (unauthenticated)
 JSON-RPC HTTP endpoint. It shows native, ERC-20, and NFT (ERC-721 / ERC-1155) holdings for pinned
 addresses across every reachable Nethermind node on the machine, with fiat valuation via Chainlink
 feeds and automatic token/NFT detection.
 
 ## Configuration
 
+The plugin is **disabled by default**; enable it with:
+
+```
+--BalanceViewer.Enabled true
+```
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `BalanceViewer.Enabled` | bool | true | Serve the UI and detection endpoints |
+| `BalanceViewer.Enabled` | bool | false | Serve the UI and detection endpoints |
+| `BalanceViewer.SiblingProbePorts` | string | 8545,8546,8547,8548,8549,8550 | Localhost ports probed to discover sibling nodes for the multi-chain view |
 
 The page is only served on unauthenticated JSON-RPC ports (never the Engine API port).
 
