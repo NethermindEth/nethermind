@@ -307,7 +307,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // EIP-8037 top-frame charges. At most one applies: a delegated recipient has code and is
             // therefore never a dead account, hence the if/else-if.
-            bool recipientIsDelegated = spec.IsEip7702Enabled && tx.To is not null
+            bool recipientIsDelegated = spec.IsEip8037Enabled && spec.IsEip7702Enabled && tx.To is not null
                 && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
 
             // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the
