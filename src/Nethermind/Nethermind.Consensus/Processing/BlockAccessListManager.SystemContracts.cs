@@ -35,6 +35,16 @@ public partial class BlockAccessListManager
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
+    public void InstallExpiryVerifierCode(IReleaseSpec spec)
+    {
+        CheckInitialized();
+
+        // Probe the untraced parent state so a no-op block records nothing in the BAL; apply any
+        // change through the pre-execution (index 0) traced world state so it is captured there.
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        ExpiryVerifierInstaller.Install(stateProvider, preExecution.WorldState, spec);
+    }
+
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         CheckInitialized();

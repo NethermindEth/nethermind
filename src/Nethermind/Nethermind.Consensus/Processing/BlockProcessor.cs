@@ -61,7 +61,7 @@ public partial class BlockProcessor(
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -161,6 +161,10 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
+        if (spec.IsEip8141Enabled && !block.IsGenesis)
+        {
+            _systemContractHandler.InstallExpiryVerifierCode(spec);
+        }
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);

@@ -18,13 +18,18 @@ public partial class BlockProcessor
 {
     public interface ISystemContractHandler
         : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
-    { }
+    {
+        /// <summary>Installs the EIP-8141 expiry-verifier predeploy so its code + nonce are captured
+        /// in the computed state root (and, on the BAL path, the block-level access list).</summary>
+        void InstallExpiryVerifierCode(IReleaseSpec spec);
+    }
 
     public sealed class SystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
-        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        IWorldState stateProvider) : ISystemContractHandler
     {
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
@@ -46,5 +51,8 @@ public partial class BlockProcessor
 
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        public void InstallExpiryVerifierCode(IReleaseSpec spec)
+            => ExpiryVerifierInstaller.Install(stateProvider, stateProvider, spec);
     }
 }
