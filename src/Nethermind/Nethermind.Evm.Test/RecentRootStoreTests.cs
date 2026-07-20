@@ -63,7 +63,6 @@ public class RecentRootStoreTests
     {
         ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-        // Same source and slot value fed to both derivations must not collide (different domain separators).
         Assert.That(
             RecentRootStore.EntryHash(sourceId, 5, Root),
             Is.Not.EqualTo(RecentRootStore.StorageKey(sourceId, 5)));
@@ -79,15 +78,11 @@ public class RecentRootStoreTests
             RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            // age 1 (currentSlot - 1) -> valid
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + 1), Is.True);
-            // age 0 (same slot) -> invalid
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot), Is.False);
-            // age == usable window (8191) -> valid
             Assert.That(
                 RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow),
                 Is.True);
-            // age == window + 1 (8192) -> invalid
             Assert.That(
                 RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow + 1),
                 Is.False);
@@ -134,12 +129,10 @@ public class RecentRootStoreTests
         using (scope)
         {
             const ulong writtenSlot = 5;
-            // Same ring index as writtenSlot, different raw slot, still inside the usable window of aliasedSlot + 1.
             ulong aliasedSlot = writtenSlot + Eip8272Constants.RecentRootLength;
             RecentRootStore.Write(state, Source, Salt, Root, writtenSlot, Spec);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
-            // Sanity: both slots address the same ring-buffer cell.
             Assert.That(
                 RecentRootStore.StorageKey(sourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
                 Is.EqualTo(RecentRootStore.StorageKey(sourceId, writtenSlot % Eip8272Constants.RecentRootLength)));
