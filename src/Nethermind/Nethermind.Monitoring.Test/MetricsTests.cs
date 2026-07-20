@@ -185,6 +185,7 @@ public class MetricsTests
         TxPool.Metrics.AddNewPooledTransactionsAnnouncedByClient(client, 7);
         TxPool.Metrics.AddNewPooledTransactionsRequestedByClient(client, 5, TxPool.PooledTransactionRequestReason.Retry);
         TxPool.Metrics.AddPendingTransactionRetryHandlersSkippedOnReceived(3);
+        TxPool.Metrics.AddPendingTransactionOverflowRequestsAdmitted(1);
         metricsController.UpdateAllMetrics();
 
         using MemoryStream stream = new();
@@ -196,6 +197,17 @@ public class MetricsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scrape, Does.Contain("# TYPE nethermind_pending_transaction_retry_handlers_skipped_on_received gauge"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_requests_admitted"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_requests_rejected"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_duplicate_requests_suppressed"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_requests_released_on_received"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_requests_expired"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_overflow_requests_in_use"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_tracked_requests_in_use"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_retry_queue_entries"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_retry_stale_queue_entries_processed"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_tracked_request_limit_reached"));
+            Assert.That(scrape, Does.Contain("nethermind_pending_transaction_retry_physical_queue_limit_reached"));
             Assert.That(announced, Does.Contain($"client=\"{client}\""));
             Assert.That(announced, Does.EndWith(" 7"));
             Assert.That(requested, Does.Contain($"client=\"{client}\""));

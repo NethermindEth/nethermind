@@ -70,6 +70,50 @@ namespace Nethermind.TxPool
         [Description("Number of pending transaction announcements requested immediately because the retry queue was full.")]
         public static long PendingTransactionRetryQueueFull;
 
+        [GaugeMetric]
+        [Description("Number of pending transaction resources currently tracked with retry handlers.")]
+        public static long PendingTransactionTrackedRequestsInUse;
+
+        [GaugeMetric]
+        [Description("Number of physical pending transaction retry expiry queue entries, including lightweight stale entries.")]
+        public static long PendingTransactionRetryQueueEntries;
+
+        [GaugeMetric]
+        [Description("Number of handler-free pending transaction requests currently using shared overflow capacity.")]
+        public static long PendingTransactionOverflowRequestsInUse;
+
+        [CounterMetric]
+        [Description("Number of pending transaction requests admitted to shared handler-free overflow capacity.")]
+        public static long PendingTransactionOverflowRequestsAdmitted;
+
+        [CounterMetric]
+        [Description("Number of pending transaction requests rejected because shared overflow capacity was full.")]
+        public static long PendingTransactionOverflowRequestsRejected;
+
+        [CounterMetric]
+        [Description("Number of duplicate pending transaction requests suppressed by shared overflow tracking.")]
+        public static long PendingTransactionOverflowDuplicateRequestsSuppressed;
+
+        [CounterMetric]
+        [Description("Number of shared overflow requests released when their transaction was received.")]
+        public static long PendingTransactionOverflowRequestsReleasedOnReceived;
+
+        [CounterMetric]
+        [Description("Number of shared overflow requests released by generation expiry.")]
+        public static long PendingTransactionOverflowRequestsExpired;
+
+        [CounterMetric]
+        [Description("Number of lightweight stale retry expiry queue entries drained after their tracked request had completed.")]
+        public static long PendingTransactionRetryStaleQueueEntriesProcessed;
+
+        [CounterMetric]
+        [Description("Number of pending transaction requests routed away from retry tracking because the live tracked limit was full.")]
+        public static long PendingTransactionTrackedRequestLimitReached;
+
+        [CounterMetric]
+        [Description("Number of pending transaction requests routed away from retry tracking because the physical expiry queue was full.")]
+        public static long PendingTransactionRetryPhysicalQueueLimitReached;
+
         [CounterMetric]
         [Description("Number of pending transaction hashes announced by peers, grouped by peer client.")]
         [KeyIsLabel("client")]
@@ -306,6 +350,39 @@ namespace Nethermind.TxPool
 
         public static void AddPendingTransactionRetryQueueFull(long count) =>
             Add(ref PendingTransactionRetryQueueFull, count);
+
+        public static void AddPendingTransactionTrackedRequestsInUse(long count) =>
+            Interlocked.Add(ref PendingTransactionTrackedRequestsInUse, count);
+
+        public static void AddPendingTransactionRetryQueueEntries(long count) =>
+            Interlocked.Add(ref PendingTransactionRetryQueueEntries, count);
+
+        public static void AddPendingTransactionOverflowRequestsInUse(long count) =>
+            Interlocked.Add(ref PendingTransactionOverflowRequestsInUse, count);
+
+        public static void AddPendingTransactionOverflowRequestsAdmitted(long count) =>
+            Add(ref PendingTransactionOverflowRequestsAdmitted, count);
+
+        public static void AddPendingTransactionOverflowRequestsRejected(long count) =>
+            Add(ref PendingTransactionOverflowRequestsRejected, count);
+
+        public static void AddPendingTransactionOverflowDuplicateRequestsSuppressed(long count) =>
+            Add(ref PendingTransactionOverflowDuplicateRequestsSuppressed, count);
+
+        public static void AddPendingTransactionOverflowRequestsReleasedOnReceived(long count) =>
+            Add(ref PendingTransactionOverflowRequestsReleasedOnReceived, count);
+
+        public static void AddPendingTransactionOverflowRequestsExpired(long count) =>
+            Add(ref PendingTransactionOverflowRequestsExpired, count);
+
+        public static void AddPendingTransactionRetryStaleQueueEntriesProcessed(long count) =>
+            Add(ref PendingTransactionRetryStaleQueueEntriesProcessed, count);
+
+        public static void AddPendingTransactionTrackedRequestLimitReached(long count) =>
+            Add(ref PendingTransactionTrackedRequestLimitReached, count);
+
+        public static void AddPendingTransactionRetryPhysicalQueueLimitReached(long count) =>
+            Add(ref PendingTransactionRetryPhysicalQueueLimitReached, count);
 
         private static void Add(ref long metric, long count)
         {

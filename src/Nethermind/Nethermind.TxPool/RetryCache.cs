@@ -27,7 +27,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private const int DefaultExpiringQueueLimit = DefaultMaxPendingResourcesPerHandler * DefaultTrackedHandlerCapacity;
     internal const int DefaultOverflowRequestLimit = 500_000;
     private const int MaxRetryResourcesPerTick = 256;
-    private const int MinQueueEntriesPerTick = 4096;
+    private const int MaxStaleQueueEntriesPerTick = 32_768;
     private const int AdmissionLockCount = 64;
 
     private readonly int _timeoutMs;
@@ -97,6 +97,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly record struct RetryRequestEntry(
         HandlerBag<TMessage> Handlers,
         long Generation,
+        long ActivatedAtTimestamp,
         IMessageHandler<TMessage> SourceHandler,
         long RequestGeneration);
 
@@ -139,12 +140,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         int maxPendingResourcesPerHandler = DefaultMaxPendingResourcesPerHandler,
         int overflowRequestLimit = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(requestingCacheSize);
         _logger = logManager.GetClassLogger(typeof(RetryCache<,>));
 
         _timeoutMs = timeoutMs;
         _timeout = TimeSpan.FromMilliseconds(timeoutMs);
-        _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        _token = _lifetimeCancellation.Token;
         _checkMs = Math.Max(1, _timeoutMs / 5);
         _requestingResources = new(requestingCacheSize);
         _expiringQueueLimit = expiringQueueLimit;
@@ -162,97 +162,105 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _maxPreferredRetryResourcesPerHandlerPerTick = Math.Max(
             1,
             MaxRetryResourcesPerTick / Math.Max(1, maxRetryRequests));
-        _maxQueueEntriesPerTick = (int)Math.Min(
-            int.MaxValue,
-            Math.Max(
-                MinQueueEntriesPerTick,
-                ((long)_expiringQueuePhysicalLimit + 4) / 5 + MaxRetryResourcesPerTick));
+        _maxQueueEntriesPerTick = MaxStaleQueueEntriesPerTick;
         _timeProvider = timeProvider;
-        _mainLoopTask = Task.Run(async () =>
+        _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _token = _lifetimeCancellation.Token;
+        try
         {
-            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
-
-            while (await timer.WaitForNextTickAsync(_token))
+            _mainLoopTask = Task.Run(async () =>
             {
-                Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
-                try
+                using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
+
+                while (await timer.WaitForNextTickAsync(_token))
                 {
-                    int retryResourcesProcessed = 0;
-                    int queueEntriesProcessed = 0;
-                    int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, _maxQueueEntriesPerTick);
-                    while (!_token.IsCancellationRequested
-                        && queueEntriesProcessed < queueEntriesToProcess
-                        && _expiringQueue.TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
-                        && _timeProvider.GetElapsedTime(item.EnqueuedAt) >= _timeout)
+                    Dictionary<IBatchMessageHandler<TMessage, TResourceId>, ArrayPoolList<TResourceId>>? batchedRetryRequests = null;
+                    try
                     {
-                        if (_expiringQueue.TryDequeue(out item))
+                        int retryResourcesProcessed = 0;
+                        int queueEntriesProcessed = 0;
+                        int queueEntriesToProcess = Math.Min(ResourcesInRetryQueue, _maxQueueEntriesPerTick);
+                        while (!_token.IsCancellationRequested
+                            && retryResourcesProcessed < MaxRetryResourcesPerTick
+                            && queueEntriesProcessed < queueEntriesToProcess
+                            && _expiringQueue.TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+                            && _timeProvider.GetElapsedTime(item.EnqueuedAt) >= _timeout)
                         {
-                            queueEntriesProcessed++;
-                            bool queueSlotTransferred = false;
-
-                            try
+                            if (_expiringQueue.TryDequeue(out item))
                             {
-                                if (_retryRequests.TryGetValue(item.ResourceId, out RetryRequestEntry currentEntry)
-                                    && currentEntry.RequestGeneration == item.RequestGeneration)
-                                {
-                                    if (retryResourcesProcessed >= MaxRetryResourcesPerTick)
-                                    {
-                                        Enqueue(item.ResourceId, currentEntry);
-                                        queueSlotTransferred = true;
-                                        continue;
-                                    }
+                                queueEntriesProcessed++;
+                                bool queueSlotTransferred = false;
 
-                                    BatchedHandlerPreference handlerPreference = new(
-                                        batchedRetryRequests,
-                                        _maxPreferredRetryResourcesPerHandlerPerTick);
-                                    if (currentEntry.Handlers.TryTake(
-                                        currentEntry.Generation,
-                                        ref handlerPreference,
-                                        out IMessageHandler<TMessage>? retryHandler,
-                                        out _))
+                                try
+                                {
+                                    if (_retryRequests.TryGetValue(item.ResourceId, out RetryRequestEntry currentEntry)
+                                        && currentEntry.RequestGeneration == item.RequestGeneration)
                                     {
-                                        retryResourcesProcessed++;
-                                        ReleaseHandlerSlot(retryHandler!);
-                                        Enqueue(item.ResourceId, currentEntry);
-                                        queueSlotTransferred = true;
-                                        CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
+                                        BatchedHandlerPreference handlerPreference = new(
+                                            batchedRetryRequests,
+                                            _maxPreferredRetryResourcesPerHandlerPerTick);
+                                        if (currentEntry.Handlers.TryTake(
+                                            currentEntry.Generation,
+                                            ref handlerPreference,
+                                            out IMessageHandler<TMessage>? retryHandler,
+                                            out _))
+                                        {
+                                            retryResourcesProcessed++;
+                                            Metrics.AddPendingTransactionRetryHandlersCalledOnTimeout(1);
+                                            Metrics.AddPendingTransactionRetryResourcesTimedOutWithHandlers(1);
+                                            Metrics.AddPendingTransactionRetryResourcesTimedOutWithHandlersAgeMilliseconds(
+                                                GetElapsedMilliseconds(currentEntry.ActivatedAtTimestamp));
+                                            ReleaseHandlerSlot(retryHandler!);
+                                            Enqueue(item.ResourceId, currentEntry);
+                                            queueSlotTransferred = true;
+                                            CollectRetryRequest(item.ResourceId, retryHandler!, ref batchedRetryRequests);
+                                        }
+                                        else
+                                        {
+                                            _requestingResources.Set(item.ResourceId);
+                                            if (!TryRemove(item.ResourceId, currentEntry))
+                                            {
+                                                _requestingResources.Delete(item.ResourceId);
+                                            }
+                                        }
                                     }
                                     else
                                     {
-                                        _requestingResources.Set(item.ResourceId);
-                                        if (!TryRemove(item.ResourceId, currentEntry))
-                                        {
-                                            _requestingResources.Delete(item.ResourceId);
-                                        }
+                                        Metrics.AddPendingTransactionRetryStaleQueueEntriesProcessed(1);
+                                    }
+                                }
+                                finally
+                                {
+                                    if (!queueSlotTransferred)
+                                    {
+                                        ReleaseExpiringQueueSlot();
                                     }
                                 }
                             }
-                            finally
-                            {
-                                if (!queueSlotTransferred)
-                                {
-                                    Interlocked.Decrement(ref _expiringQueueCounter);
-                                }
-                            }
                         }
+
+                        SendBatchedRetryRequests(batchedRetryRequests);
+                        batchedRetryRequests = null;
                     }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
+                        Clear();
+                    }
+                    finally
+                    {
+                        DisposeBatchedRetryRequests(batchedRetryRequests);
+                    }
+                }
 
-                    SendBatchedRetryRequests(batchedRetryRequests);
-                    batchedRetryRequests = null;
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Unexpected error in {typeof(TResourceId)} retry cache loop", ex);
-                    Clear();
-                }
-                finally
-                {
-                    DisposeBatchedRetryRequests(batchedRetryRequests);
-                }
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
-        }, _token);
+                if (_logger.IsDebug) _logger.Debug($"{typeof(TResourceId)} retry cache stopped");
+            }, _token);
+        }
+        catch
+        {
+            _lifetimeCancellation.Dispose();
+            throw;
+        }
     }
 
     public AnnounceResult Announced(in TResourceId resourceId, IMessageHandler<TMessage> handler)
@@ -281,6 +289,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (IsOverflowRequestPending(resourceId))
         {
+            Metrics.AddPendingTransactionOverflowDuplicateRequestsSuppressed(1);
             return AnnounceResult.Delayed;
         }
 
@@ -296,6 +305,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 bool candidateSlotReserved = TryReserveHandlerSlot(handler);
                 if (!candidateSlotReserved)
                 {
+                    Metrics.AddPendingTransactionRetryHandlersRejectedByLimit(1);
                     _logger.TraceWarn($"{handler} has reached the pending {typeof(TResourceId)} limit, suppressing request");
                     return AnnounceResult.Delayed;
                 }
@@ -319,6 +329,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
                 if (addResult is not HandlerBagAddResult.Inactive)
                 {
+                    if (addResult is HandlerBagAddResult.Full)
+                    {
+                        Metrics.AddPendingTransactionRetryHandlersRejectedByLimit(1);
+                    }
+
                     return AnnounceResult.Delayed;
                 }
 
@@ -338,6 +353,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             bool handlerSlotReserved = TryReserveHandlerSlot(handler);
             if (!handlerSlotReserved)
             {
+                Metrics.AddPendingTransactionRetryHandlersRejectedByLimit(1);
                 if (TryReserveOverflowRequest(resourceId))
                 {
                     return AnnounceResult.RequestRequired;
@@ -353,24 +369,21 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 if (!trackedSlotReserved)
                 {
                     _logger.TraceWarn($"{typeof(TResourceId)} tracked request limit is full, bypassing retry tracking");
-                    return _overflowRequestStripes is null || TryReserveOverflowRequest(resourceId)
-                        ? AnnounceResult.RequestRequired
-                        : AnnounceResult.Delayed;
+                    return HandleRetryTrackingCapacityReached(resourceId);
                 }
 
                 queueSlotReserved = TryReserveExpiringQueueSlot();
                 if (!queueSlotReserved)
                 {
                     _logger.TraceWarn($"{typeof(TResourceId)} expiry queue is full, bypassing retry tracking");
-                    return _overflowRequestStripes is null || TryReserveOverflowRequest(resourceId)
-                        ? AnnounceResult.RequestRequired
-                        : AnnounceResult.Delayed;
+                    return HandleRetryTrackingCapacityReached(resourceId);
                 }
 
                 newBag = _handlerBagsPool.Get();
                 RetryRequestEntry newEntry = new(
                     newBag,
                     newBag.Activate(),
+                    _timeProvider.GetTimestamp(),
                     handler,
                     Interlocked.Increment(ref _requestGeneration));
                 published = TryPublishTrackedRequest(resourceId, newEntry);
@@ -391,12 +404,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             {
                 if (queueSlotReserved)
                 {
-                    Interlocked.Decrement(ref _expiringQueueCounter);
+                    ReleaseExpiringQueueSlot();
                 }
 
                 if (trackedSlotReserved)
                 {
-                    Interlocked.Decrement(ref _trackedRequestsCounter);
+                    ReleaseTrackedSlot();
                 }
 
                 if (handlerSlotReserved)
@@ -412,6 +425,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             if (IsOverflowRequestPending(resourceId))
             {
+                Metrics.AddPendingTransactionOverflowDuplicateRequestsSuppressed(1);
                 return AnnounceResult.Delayed;
             }
         }
@@ -423,6 +437,17 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     private void Enqueue(TResourceId resourceId, RetryRequestEntry entry) =>
         _expiringQueue.Enqueue((resourceId, entry.RequestGeneration, _timeProvider.GetTimestamp()));
+
+    private AnnounceResult HandleRetryTrackingCapacityReached(in TResourceId resourceId)
+    {
+        if (_overflowRequestStripes is not null && !TryReserveOverflowRequest(resourceId))
+        {
+            return AnnounceResult.Delayed;
+        }
+
+        Metrics.AddPendingTransactionRetryQueueFull(1);
+        return AnnounceResult.RequestRequired;
+    }
 
     public void Received(in TResourceId resourceId)
     {
@@ -447,8 +472,15 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_retryRequests.TryRemove(resourceId, out RetryRequestEntry entry))
         {
-            Interlocked.Decrement(ref _trackedRequestsCounter);
-            Return(entry);
+            ReleaseTrackedSlot();
+            int skippedHandlers = Return(entry);
+            Metrics.AddPendingTransactionRetryHandlersSkippedOnReceived(skippedHandlers);
+            if (skippedHandlers > 0)
+            {
+                Metrics.AddPendingTransactionRetryResourcesSkippedOnReceived(1);
+                Metrics.AddPendingTransactionRetryResourcesSkippedOnReceivedAgeMilliseconds(
+                    GetElapsedMilliseconds(entry.ActivatedAtTimestamp));
+            }
         }
 
         ReleaseOverflowRequest(resourceId);
@@ -460,7 +492,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     {
         while (_expiringQueue.TryDequeue(out _))
         {
-            Interlocked.Decrement(ref _expiringQueueCounter);
+            ReleaseExpiringQueueSlot();
         }
 
         _requestingResources.Clear();
@@ -470,7 +502,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             if (_retryRequests.TryRemove(kvp))
             {
-                Interlocked.Decrement(ref _trackedRequestsCounter);
+                ReleaseTrackedSlot();
                 Return(kvp.Value);
             }
         }
@@ -560,6 +592,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             try
             {
+                Metrics.AddPendingTransactionRetryBatchHandlersCalledOnTimeout(1);
+                Metrics.AddPendingTransactionRetryBatchResourcesCalledOnTimeout(resourceIds.Count);
                 retryHandler.HandleMessages(resourceIds.AsSpan());
             }
             catch (Exception ex)
@@ -598,6 +632,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         try
         {
+            Metrics.AddPendingTransactionRetryFallbackHandlersCalledOnTimeout(1);
             retryHandler.HandleMessage(TMessage.New(resourceId));
         }
         catch (Exception ex)
@@ -606,9 +641,47 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
     }
 
-    private bool TryReserveTrackedSlot() => TryReserveSlot(ref _trackedRequestsCounter, _expiringQueueLimit);
+    private bool TryReserveTrackedSlot()
+    {
+        bool reserved = TryReserveSlot(ref _trackedRequestsCounter, _expiringQueueLimit);
+        if (reserved)
+        {
+            Metrics.AddPendingTransactionTrackedRequestsInUse(1);
+        }
+        else
+        {
+            Metrics.AddPendingTransactionTrackedRequestLimitReached(1);
+        }
 
-    private bool TryReserveExpiringQueueSlot() => TryReserveSlot(ref _expiringQueueCounter, _expiringQueuePhysicalLimit);
+        return reserved;
+    }
+
+    private bool TryReserveExpiringQueueSlot()
+    {
+        bool reserved = TryReserveSlot(ref _expiringQueueCounter, _expiringQueuePhysicalLimit);
+        if (reserved)
+        {
+            Metrics.AddPendingTransactionRetryQueueEntries(1);
+        }
+        else
+        {
+            Metrics.AddPendingTransactionRetryPhysicalQueueLimitReached(1);
+        }
+
+        return reserved;
+    }
+
+    private void ReleaseTrackedSlot()
+    {
+        Interlocked.Decrement(ref _trackedRequestsCounter);
+        Metrics.AddPendingTransactionTrackedRequestsInUse(-1);
+    }
+
+    private void ReleaseExpiringQueueSlot()
+    {
+        Interlocked.Decrement(ref _expiringQueueCounter);
+        Metrics.AddPendingTransactionRetryQueueEntries(-1);
+    }
 
     private static bool TryReserveSlot(ref int counter, int limit)
     {
@@ -690,15 +763,23 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 OverflowRequestStripe stripe = GetOverflowRequestStripe(resourceId);
                 PrepareOverflowStripe(stripe, epoch);
                 if (_retryRequests.ContainsKey(resourceId)
-                    || IsOverflowRequestPendingCore(stripe, resourceId, epoch)
-                    || !TryReserveSlot(ref _overflowRequestsInUse, _overflowRequestLimit))
+                    || IsOverflowRequestPendingCore(stripe, resourceId, epoch))
                 {
+                    Metrics.AddPendingTransactionOverflowDuplicateRequestsSuppressed(1);
+                    return false;
+                }
+
+                if (!TryReserveSlot(ref _overflowRequestsInUse, _overflowRequestLimit))
+                {
+                    Metrics.AddPendingTransactionOverflowRequestsRejected(1);
                     return false;
                 }
 
                 int generation = (int)(epoch & 1);
                 stripe.Generations[generation].Add(resourceId);
                 Interlocked.Increment(ref _overflowRequestGenerationCounts![generation]);
+                Metrics.AddPendingTransactionOverflowRequestsAdmitted(1);
+                Metrics.AddPendingTransactionOverflowRequestsInUse(1);
                 return true;
             }
             finally
@@ -721,7 +802,12 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             long epoch = Volatile.Read(ref _overflowEpoch);
             OverflowRequestStripe stripe = GetOverflowRequestStripe(resourceId);
             PrepareOverflowStripe(stripe, epoch);
-            return !IsOverflowRequestPendingCore(stripe, resourceId, epoch) && _retryRequests.TryAdd(resourceId, entry);
+            if (IsOverflowRequestPendingCore(stripe, resourceId, epoch))
+            {
+                return false;
+            }
+
+            return _retryRequests.TryAdd(resourceId, entry);
         }
     }
 
@@ -748,6 +834,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     {
                         Interlocked.Decrement(ref _overflowRequestGenerationCounts![generation]);
                         Interlocked.Decrement(ref _overflowRequestsInUse);
+                        Metrics.AddPendingTransactionOverflowRequestsReleasedOnReceived(1);
+                        Metrics.AddPendingTransactionOverflowRequestsInUse(-1);
                         return;
                     }
                 }
@@ -812,17 +900,23 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
             _overflowGenerationStartedAt + completedPeriods * _overflowGenerationPeriodTimestampTicks);
         if (completedPeriods >= 2)
         {
+            int expired = _overflowRequestsInUse;
             _overflowRequestGenerationCounts![0] = 0;
             _overflowRequestGenerationCounts[1] = 0;
             _overflowRequestsInUse = 0;
+            Metrics.AddPendingTransactionOverflowRequestsExpired(expired);
+            Metrics.AddPendingTransactionOverflowRequestsInUse(-expired);
             Volatile.Write(ref _overflowEpoch, _overflowEpoch + completedPeriods);
             return;
         }
 
         long nextEpoch = _overflowEpoch + 1;
         int nextGeneration = (int)(nextEpoch & 1);
-        _overflowRequestsInUse -= _overflowRequestGenerationCounts![nextGeneration];
+        int expiredGenerationCount = _overflowRequestGenerationCounts![nextGeneration];
+        _overflowRequestsInUse -= expiredGenerationCount;
         _overflowRequestGenerationCounts[nextGeneration] = 0;
+        Metrics.AddPendingTransactionOverflowRequestsExpired(expiredGenerationCount);
+        Metrics.AddPendingTransactionOverflowRequestsInUse(-expiredGenerationCount);
         Volatile.Write(ref _overflowEpoch, nextEpoch);
     }
 
@@ -872,9 +966,11 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _overflowGenerationLock.EnterWriteLock();
         try
         {
+            int cleared = _overflowRequestsInUse;
             _overflowRequestGenerationCounts![0] = 0;
             _overflowRequestGenerationCounts[1] = 0;
             _overflowRequestsInUse = 0;
+            Metrics.AddPendingTransactionOverflowRequestsInUse(-cleared);
             Volatile.Write(ref _overflowGenerationStartedAt, _timeProvider.GetTimestamp());
             Volatile.Write(ref _overflowEpoch, _overflowEpoch + 2);
         }
@@ -943,11 +1039,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     private void ExitOperation() => Interlocked.Decrement(ref _activeOperations);
 
+    private long GetElapsedMilliseconds(long startTimestamp) =>
+        (long)_timeProvider.GetElapsedTime(startTimestamp).TotalMilliseconds;
+
     private bool TryRemove(TResourceId resourceId, RetryRequestEntry entry)
     {
         if (_retryRequests.TryRemove(new KeyValuePair<TResourceId, RetryRequestEntry>(resourceId, entry)))
         {
-            Interlocked.Decrement(ref _trackedRequestsCounter);
+            ReleaseTrackedSlot();
             Return(entry);
             return true;
         }
@@ -955,7 +1054,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         return false;
     }
 
-    private void Return(RetryRequestEntry entry)
+    private int Return(RetryRequestEntry entry)
     {
         ReleaseHandlerSlot(entry.SourceHandler);
         HandlerSlotReleaser releaser = new(this);
@@ -963,11 +1062,19 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             _handlerBagsPool.Return(entry.Handlers);
         }
+
+        return releaser.Count;
     }
 
     private struct HandlerSlotReleaser(RetryCache<TMessage, TResourceId> cache) : IHandlerBagProcessor<TMessage>
     {
-        public void Process(IMessageHandler<TMessage> handler) => cache.ReleaseHandlerSlot(handler);
+        public int Count { get; private set; }
+
+        public void Process(IMessageHandler<TMessage> handler)
+        {
+            Count++;
+            cache.ReleaseHandlerSlot(handler);
+        }
     }
 
     internal readonly struct BatchedHandlerPreference(
