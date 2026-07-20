@@ -43,6 +43,18 @@ public partial struct PayloadStatusWire
     [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
 }
 
+// EIP-7805 (FOCIL): result of engine_newPayloadV6. Adds the optional inclusion-list compliance
+// flag as List[byte, 1] (0/1 = false/true, empty = null), matching the LatestValidHash/ValidationError
+// Optional[T] = List[T, 1] pattern already used above.
+[SszContainer]
+public partial struct PayloadStatusV2Wire
+{
+    public byte Status { get; set; }
+    [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
+    [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
+    [SszList(1)] public byte[]? InclusionListSatisfied { get; set; }
+}
+
 [SszContainer]
 public partial struct ForkchoiceStateWire
 {
@@ -100,6 +112,24 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
 }
 
+// EIP-7805 (FOCIL) inclusion-list transaction lists below are bounded by
+// Eip7805Constants.MaxTransactionsPerInclusionList. That SszList limit only affects hash-tree-root
+// (which the REST wire never computes — its bytes aren't merkleized), so it acts purely as a
+// transport decode bound derived from MAX_BYTES_PER_INCLUSION_LIST, pending a formal FOCIL SSZ
+// transport spec.
+[SszContainer]
+public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
+{
+    public ulong Timestamp { get; set; }
+    public Hash256 PrevRandao { get; set; }
+    public Address SuggestedFeeRecipient { get; set; }
+    [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
+    public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
+    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? InclusionListTransactions { get; set; }
+}
+
 [SszContainer]
 public partial struct ForkchoiceUpdatedV1RequestWire
 {
@@ -126,6 +156,14 @@ public partial struct ForkchoiceUpdatedRequestWire
 {
     public ForkchoiceStateWire ForkchoiceState { get; set; }
     [SszList(1)] public PayloadAttributesWire[]? PayloadAttributes { get; set; }
+    [SszList(1)] public SszCustodyColumns[]? CustodyColumns { get; set; }
+}
+
+[SszContainer]
+public partial struct ForkchoiceUpdatedV5RequestWire
+{
+    public ForkchoiceStateWire ForkchoiceState { get; set; }
+    [SszList(1)] public PayloadAttributesV5Wire[]? PayloadAttributes { get; set; }
     [SszList(1)] public SszCustodyColumns[]? CustodyColumns { get; set; }
 }
 
@@ -181,6 +219,22 @@ public partial struct NewPayloadV5RequestWire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+}
+
+[SszContainer]
+public partial struct NewPayloadV6RequestWire
+{
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
+    [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? InclusionListTransactions { get; set; }
+}
+
+// EIP-7805 (FOCIL): response of engine_getInclusionListV1 — the pending inclusion-list transactions.
+[SszContainer]
+public partial struct InclusionListResponseWire
+{
+    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? Transactions { get; set; }
 }
 
 [SszContainer]

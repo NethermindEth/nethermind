@@ -103,6 +103,15 @@ internal static class ForkchoiceUpdatedHelpers
     public static ulong? FirstTimestamp<TAttr>(TAttr[]? attrs)
         where TAttr : struct, ISszPayloadAttributesWire
         => attrs is { Length: > 0 } a ? a[0].Timestamp : null;
+
+    /// <summary>Packs the optional custody-columns bitfield (EIP-7805 FCU V5) into its byte representation, or <c>null</c>.</summary>
+    public static byte[]? CustodyColumnsToBytes(SszCustodyColumns[]? custody)
+    {
+        if (custody is not { Length: > 0 } c || c[0].Bits is not { } bits) return null;
+        byte[] bytes = new byte[(bits.Length + 7) / 8];
+        bits.CopyTo(bytes, 0);
+        return bytes;
+    }
 }
 
 public readonly struct ForkchoiceUpdatedDescriptorV1 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV1RequestWire>
@@ -155,6 +164,20 @@ public readonly struct ForkchoiceUpdatedDescriptorV4 : IForkchoiceUpdatedVersion
         return engine.engine_forkchoiceUpdatedV4(state, attrs, custody);
     }
     public static ulong? GetTimestamp(in ForkchoiceUpdatedRequestWire wire) =>
+        ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
+}
+
+public readonly struct ForkchoiceUpdatedDescriptorV5 : IForkchoiceUpdatedVersion<ForkchoiceUpdatedV5RequestWire>
+{
+    public static int VersionNumber => EngineApiVersions.Fcu.V5;
+    public static Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Call(IEngineRpcModule engine, in ForkchoiceUpdatedV5RequestWire wire)
+    {
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
+        PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
+        byte[]? custody = ForkchoiceUpdatedHelpers.CustodyColumnsToBytes(wire.CustodyColumns);
+        return engine.engine_forkchoiceUpdatedV5(state, attrs, custody);
+    }
+    public static ulong? GetTimestamp(in ForkchoiceUpdatedV5RequestWire wire) =>
         ForkchoiceUpdatedHelpers.FirstTimestamp(wire.PayloadAttributes);
 }
 
