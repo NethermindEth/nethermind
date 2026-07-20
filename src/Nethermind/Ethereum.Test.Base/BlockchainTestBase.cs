@@ -529,8 +529,7 @@ public abstract class BlockchainTestBase
     private static PayloadStatusV1 GetPayloadStatus(JsonRpcResponse response, int payloadVersion) =>
         response switch
         {
-            // newPayloadV6 (EIP-7805) returns PayloadStatusV2; it derives from PayloadStatusV1 so the
-            // runtime type is preserved and AssertPayloadStatus can read inclusionListSatisfied.
+            // newPayloadV6 returns PayloadStatusV2 (derives from V1), preserving inclusionListSatisfied.
             ResultWrapper<PayloadStatusV2> { Result.ResultType: ResultType.Success } v2Wrapper => v2Wrapper.Data,
             ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success } resultWrapper => resultWrapper.Data,
             JsonRpcSuccessResponse { Result: PayloadStatusV1 payloadStatus } => payloadStatus,
@@ -546,9 +545,8 @@ public abstract class BlockchainTestBase
         // otherwise fall back to the legacy validation-error → INVALID convention.
         string expectedStatus = explicitStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
 
-        // execution-apis#609: newPayloadV6 reports a censoring payload as VALID with
-        // inclusionListSatisfied=false rather than the legacy INCLUSION_LIST_UNSATISFIED status.
-        // Fixtures authored against the old status still expect it, so normalize for comparison.
+        // Normalize V6's VALID + inclusionListSatisfied=false (execution-apis#609) back to the legacy
+        // INCLUSION_LIST_UNSATISFIED that the FOCIL fixtures still assert.
         string actualStatus = payloadStatus is PayloadStatusV2 { Status: PayloadStatus.Valid, InclusionListSatisfied: false }
             ? PayloadStatus.InclusionListUnsatisfied
             : payloadStatus.Status;

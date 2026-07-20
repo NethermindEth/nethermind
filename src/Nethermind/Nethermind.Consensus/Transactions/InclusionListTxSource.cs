@@ -20,10 +20,8 @@ public class InclusionListTxSource(
     // Lazy<T> defaults to ExecutionAndPublication — once-only construction even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
 
-    // EIP-7805 (FOCIL): the decoded IL is scoped to the build that supplied it, keyed by the exact
-    // PayloadAttributes.InclusionListTransactions array. Replaces a shared last-write-wins singleton
-    // where a concurrent FCU could hand a running build another build's IL. Weak keys let entries be
-    // collected once the build's PayloadAttributes is gone.
+    // EIP-7805 (FOCIL): scope the decoded IL to its build, keyed by the build's PayloadAttributes
+    // array, so a concurrent FCU can't leak another build's IL. Weak keys collect with the build.
     private readonly ConditionalWeakTable<byte[][], Transaction[]> _decodedByAttributes = [];
 
     // gasLimit is ignored — the downstream producer-side tx selection pipeline enforces it.

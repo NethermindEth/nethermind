@@ -46,7 +46,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             LimboLogs.Instance);
         byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
         il.Set(ilBytes, Bogota.Instance);
-        // The IL is scoped to the build via its PayloadAttributes (review r3595551678).
+        // IL is keyed by the build's PayloadAttributes array.
         PayloadAttributes payloadAttributes = new() { InclusionListTransactions = ilBytes };
 
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();

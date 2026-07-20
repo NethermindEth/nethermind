@@ -74,8 +74,7 @@ public static class InclusionListValidator
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
 
-        // Mirror TransactionProcessor.BuyGas: a required balance exceeding 256 bits can never be met,
-        // so the tx is not appendable. Blocks an adversarial huge MaxFeePerGas from wrapping the cost.
+        // Mirror TransactionProcessor.BuyGas: overflow-checked so an adversarial MaxFeePerGas can't wrap the cost below the balance.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
             return false;

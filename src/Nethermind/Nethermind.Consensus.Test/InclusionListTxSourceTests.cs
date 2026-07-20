@@ -51,8 +51,7 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
-    // Regression (review r3595551678): a concurrent FCU writing another IL must not leak into a
-    // running build. The list is scoped by the build's PayloadAttributes, so each build sees only its own.
+    // Each build sees only its own IL (scoped by PayloadAttributes) — a concurrent FCU can't leak another's.
     [Test]
     public void Inclusion_list_is_scoped_per_build()
     {

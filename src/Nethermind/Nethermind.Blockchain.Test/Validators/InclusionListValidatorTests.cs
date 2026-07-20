@@ -52,12 +52,10 @@ public class InclusionListValidatorTests
             // Non-self recipient so we hit the full 21_000 floor (self-transfers collapse into
             // TX_BASE_COST=12_000 post-EIP-2780; the point of the case is intrinsic > gasLimit).
             yield return Case("Intrinsic gas too low", [BuildTx(gasLimit: 20_999, to: TestItem.AddressB)], true);
-            // EIP-2780 (review r3595551666): with 12000–20999 gas remaining the old 21000-gas full-block
-            // shortcut wrongly reported "satisfied". A data-free self-transfer (intrinsic 12000, sender == to)
-            // still fits and is appendable, so the per-tx check must run → unsatisfied.
+            // EIP-2780: a data-free self-transfer costs 12000 intrinsic, so with 12000–20999 gas left it
+            // still fits — the 21000-gas full-block shortcut must not report "satisfied".
             yield return Case("Self-transfer fits under EIP-2780 12000 base", [BuildTx(gasLimit: 15_000, to: TestItem.AddressA)], false, gasUsed: 29_985_000);
-            // Overflow (review r3595551672): gasLimit * MaxFeePerGas must not wrap. 65536 * 2^240 = 2^256
-            // wraps to 0, faking an affordable cost; the overflow-checked path treats it as not appendable.
+            // 65536 * 2^240 wraps UInt256 to 0, faking an affordable cost; the overflow-checked path rejects it.
             yield return Case("Tx cost overflows 256 bits", [BuildTx(gasLimit: 65_536, gasPrice: new UInt256(0, 0, 0, 1UL << 48), value: UInt256.One, to: TestItem.AddressB)], true);
             // Spec disallows duplicates, but adversarial input must not cause false rejection:
             // the duplicate correctly fails the appendability check (nonce advanced).
