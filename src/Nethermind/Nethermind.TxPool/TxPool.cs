@@ -152,20 +152,19 @@ namespace Nethermind.TxPool
                 new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
-                new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
-                new MalformedTxFilter(_specProvider, validator, _logger)
+                new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger)
             ];
 
             List<IIncomingTxFilter> postHashFilters =
             [
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
-                new UnknownSenderFilter(ecdsa, _logger),
+                new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
                 new TxTypeTxFilter(_transactions,
-                    _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
+                    _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
                 new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
-                new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
+                new LowNonceFilter(_logger), // has to be after MalformedTxFilter as it uses the recovered sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
