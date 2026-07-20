@@ -72,8 +72,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return false;
         }
 
-        _decodedBlockAccessListSource = encodedBlockAccessList;
         _decodedBlockAccessList = blockAccessList;
+        _decodedBlockAccessListSource = encodedBlockAccessList;
         return true;
     }
 

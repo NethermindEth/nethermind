@@ -70,10 +70,9 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    internal sealed class RetryableBlockAccessListException(
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException,
-        Exception executionException)
-        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, executionException);
+    internal sealed class BlockAccessListSequentialRetryException(
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, blockAccessListException);
 
     public event Action? TransactionsExecuted;
 
@@ -88,21 +87,25 @@ public partial class BlockProcessor(
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts;
+        bool processed = false;
         try
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            processed = true;
         }
-        catch (Exception ex)
+        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
-            block.DisposeAccountChanges();
-            if (_balManager.ParallelExecutionEnabled && TryGetBlockAccessListFailure(
-                ex,
-                out BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException? blockAccessListException))
-            {
-                throw new RetryableBlockAccessListException(blockAccessListException!, ex);
-            }
-
-            throw;
+            throw new BlockAccessListSequentialRetryException(ex);
+        }
+        catch (BlockAccessListManager.ParallelExecutionException ex) when (
+            _balManager.ParallelExecutionEnabled &&
+            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+        {
+            throw new BlockAccessListSequentialRetryException(blockAccessListException);
+        }
+        finally
+        {
+            if (!processed) block.DisposeAccountChanges();
         }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
@@ -223,9 +226,9 @@ public partial class BlockProcessor(
 
             _balManager.SetBlockAccessList(block);
         }
-        catch
+        finally
         {
-            if (bloomsAndReceiptsRootTask is not null)
+            if (bloomsAndReceiptsRootTask is { IsCompletedSuccessfully: false })
             {
                 try
                 {
@@ -236,30 +239,11 @@ public partial class BlockProcessor(
                     // Preserve the processing failure while ensuring the background task is observed.
                 }
             }
-
-            throw;
         }
 
         header.Hash = header.CalculateHash();
 
         return receipts;
-    }
-
-    private static bool TryGetBlockAccessListFailure(
-        Exception exception,
-        out BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException? blockAccessListException)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure)
-            {
-                blockAccessListException = failure;
-                return true;
-            }
-        }
-
-        blockAccessListException = null;
-        return false;
     }
 
     private void CommitState(IReleaseSpec spec)

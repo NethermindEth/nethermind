@@ -37,7 +37,7 @@ public class ExecutionPayloadV4Tests
     }
 
     [Test]
-    public void TryGetBlock_reuses_cached_wire_hash_for_block_access_list_hash()
+    public void TryGetBlock_reuses_cached_block_access_list_for_wire_hash()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
@@ -57,9 +57,12 @@ public class ExecutionPayloadV4Tests
         };
 
         Result<Block> result = payload.TryGetBlock();
+        Result<Block> cachedResult = payload.TryGetBlock();
 
         Assert.That(result.Data, Is.Not.Null);
+        Assert.That(cachedResult.Data, Is.Not.Null);
         Block block = result.Data!;
+        Assert.That(cachedResult.Data!.BlockAccessList, Is.SameAs(block.BlockAccessList));
         Hash256 expected = new(ValueKeccak.Compute(encoded).Bytes);
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(expected));
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));

@@ -41,7 +41,7 @@ public static class Eip8037BlockGasInclusionCheck
     }
 
     /// <summary>
-    /// Calculates EIP-11908 regular block gas after removing state gas and applying the calldata floor.
+    /// Calculates EIP-8037 regular block gas after removing state gas and applying the EIP-7976 calldata floor.
     /// </summary>
     public static ulong CalculateBlockRegularGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)
         => Math.Max(preRefundGas.SaturatingSub(blockStateGas), calldataFloor);

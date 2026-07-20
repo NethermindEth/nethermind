@@ -193,6 +193,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Code deposit failure halts the child create frame after it merged into the parent;
         // spilled state gas is burned, so only the reservoir-funded portion returns.
         long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
+        parentGas.StateGasSpill -= childGas.StateGasSpill;
+        parentGas.StateGasSpillRefunded -= childGas.StateGasSpillRefunded;
         parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
@@ -495,7 +497,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds == 0UL) return 0;
         if (spec.IsEip8037Enabled) return 0;
-        if (spec.IsEip8038Enabled) return Eip8038Constants.AccountWrite * codeInsertRefunds;
         return (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
     }
 
@@ -608,8 +609,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                           + eip2780ExtraGas;
         ulong floorBase = spec.IsEip2780Enabled ? baseCost + createCost + eip2780ExtraGas : baseCost;
         ulong floorCost = IntrinsicGasCalculator.CalculateFloorCost(tx, spec, floorBase, tokensInCallData, floorTokensInAccessList);
-        long createStateCost = CreateStateCost(tx, spec);
-        long totalStateCost = authStateCost + createStateCost;
+        long totalStateCost = authStateCost;
         return spec.IsEip8037Enabled
             ? new IntrinsicGas<EthereumGasPolicy>(
                 new EthereumGasPolicy
@@ -658,9 +658,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                 : spec.IsEip8037Enabled ? GasCostOf.CreateRegular
                 : GasCostOf.TxCreate)
             : 0;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long CreateStateCost(Transaction tx, IReleaseSpec spec) => 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong DataCost(Transaction tx, IReleaseSpec spec, ulong tokensInCallData) =>
