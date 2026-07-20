@@ -415,6 +415,51 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        [Test]
+        public void IntrinsicGasMemo_WhenEip2780SenderIsResolved_RecomputesSelfTransfer()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithValue(0)
+                .WithTo(TestItem.AddressA)
+                .Signed(TestItem.PrivateKeyA)
+                .TestObject;
+            Assert.That(tx.SenderAddress, Is.Null, "precondition: txpool validation runs before sender recovery");
+
+            IntrinsicGas<EthereumGasPolicy> unresolved = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+            object? unresolvedMemo = tx.IntrinsicGasMemo;
+            tx.SenderAddress = TestItem.AddressA;
+            IntrinsicGas<EthereumGasPolicy> resolved = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unresolved.Standard.Value, Is.EqualTo(TxBaseEip2780 + Eip8038Constants.ColdAccountAccess));
+                Assert.That(unresolved.FloorGas.Value, Is.EqualTo(TxBaseEip2780));
+                Assert.That(resolved.Standard.Value, Is.EqualTo(TxBaseEip2780));
+                Assert.That(resolved.FloorGas.Value, Is.EqualTo(TxBaseEip2780));
+                Assert.That(tx.IntrinsicGasMemo, Is.Not.SameAs(unresolvedMemo));
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void IntrinsicGasMemo_WhenEip2780ClassificationIsUnchanged_IsReused(bool contractCreation)
+        {
+            Transaction tx = (contractCreation
+                    ? Build.A.Transaction.WithTo(null)
+                    : Build.A.Transaction.WithTo(TestItem.AddressB))
+                .WithValue(0)
+                .Signed(TestItem.PrivateKeyA)
+                .TestObject;
+
+            EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+            object? unresolvedMemo = tx.IntrinsicGasMemo;
+            Assert.That(unresolvedMemo, Is.Not.Null);
+            tx.SenderAddress = TestItem.AddressA;
+            EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+
+            Assert.That(tx.IntrinsicGasMemo, Is.SameAs(unresolvedMemo));
+        }
+
         [TestCase(true, TestName = "Memo_WhenNewBytesArrive_IsInvalidated")]
         [TestCase(false, TestName = "Memo_WhenTheHashIsReassigned_IsInvalidated")]
         public void IntrinsicGasMemo_WhenTheTransactionChanges_IsInvalidated(bool viaPreHash)

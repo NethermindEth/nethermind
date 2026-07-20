@@ -10,6 +10,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
+[assembly: InternalsVisibleTo("Nethermind.TxPool")]
+
 namespace Nethermind.Evm.GasPolicy;
 
 /// <summary>
@@ -491,17 +493,28 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
-        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo && ReferenceEquals(memo.Spec, spec))
+        bool isEip2780SelfTransfer = spec.IsEip2780Enabled && tx.To is not null && tx.SenderAddress == tx.To;
+        if (Volatile.Read(ref tx.IntrinsicGasMemo) is IntrinsicGasMemo memo
+            && ReferenceEquals(memo.Spec, spec)
+            && memo.IsEip2780SelfTransfer == isEip2780SelfTransfer)
         {
             return memo.Gas;
         }
 
         IntrinsicGas<EthereumGasPolicy> gas = Calculate(tx, spec, blockGasLimit);
-        Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, gas));
+        Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, isEip2780SelfTransfer, gas));
         return gas;
     }
 
-    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
+    internal static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGasAsEip2780SelfTransfer(Transaction tx, IReleaseSpec spec)
+    {
+        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGas(tx, spec);
+        EthereumGasPolicy standard = gas.Standard;
+        standard.Value -= Eip2780ExtraGas(tx, spec);
+        return new IntrinsicGas<EthereumGasPolicy>(standard, gas.FloorGas);
+    }
+
+    private sealed record IntrinsicGasMemo(IReleaseSpec Spec, bool IsEip2780SelfTransfer, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
 
     private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
     {
