@@ -5,7 +5,13 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 public unsafe interface IArenaManager : IDisposable
 {
-    void Initialize(IReadOnlyList<CatalogEntry> entries);
+    /// <summary>
+    /// Reconcile the durable catalog against the slices this manager can back and return the loadable
+    /// subset. On-disk managers back every catalogued entry (returning it unchanged; a missing file is
+    /// surfaced later on <see cref="Open"/>); a session-ephemeral RAM manager backs nothing across a
+    /// restart and returns an empty set so the loader skips — and purges — the orphaned catalog rows.
+    /// </summary>
+    IReadOnlyList<CatalogEntry> Initialize(IReadOnlyList<CatalogEntry> entries);
 
     /// <summary>
     /// Create an <see cref="ArenaWriter"/> for a new snapshot slice.

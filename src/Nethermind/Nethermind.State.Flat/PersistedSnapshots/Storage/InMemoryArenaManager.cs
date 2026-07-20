@@ -25,8 +25,22 @@ public sealed class InMemoryArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    /// <summary>No-op: the RAM tier holds nothing across a restart, so there is nothing to rehydrate.</summary>
-    public void Initialize(IReadOnlyList<CatalogEntry> entries) { }
+    /// <summary>
+    /// Reconciles the durable catalog against this session's RAM slices and returns the loadable subset.
+    /// The tier is session-ephemeral: at load <see cref="_arenas"/> is empty (nothing survived the
+    /// restart), so every catalog entry is orphaned and the returned set is empty. That makes the loader
+    /// skip — and purge — the orphaned rows instead of throwing on <see cref="Open"/> for an id this
+    /// manager never minted.
+    /// </summary>
+    public IReadOnlyList<CatalogEntry> Initialize(IReadOnlyList<CatalogEntry> entries)
+    {
+        // Keep only entries this manager actually backs. At restart-load that is none; a live re-init would
+        // keep whatever slices are still registered.
+        List<CatalogEntry> loadable = [];
+        foreach (CatalogEntry entry in entries)
+            if (_arenas.ContainsKey(entry.Location.ArenaId)) loadable.Add(entry);
+        return loadable;
+    }
 
     public ArenaWriter CreateWriter(long estimatedSize, bool small = false)
     {

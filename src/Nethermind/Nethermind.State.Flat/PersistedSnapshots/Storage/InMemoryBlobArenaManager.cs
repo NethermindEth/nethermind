@@ -9,8 +9,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 /// RAM-backed <see cref="IBlobArenaManager"/>: trie-node RLP for a snapshot lives in its own
 /// growable native buffer (<see cref="BlobArenaFile.CreateInMemory"/>) — an "in-memory blob arena
 /// per snapshot" — instead of packed into on-disk blob files. Selected by
-/// <c>FlatNodeStorageInMemoryArena</c>. Files are not packed or reused: each <see cref="CreateWriter"/>
-/// mints a fresh id, and a file is freed as soon as its last snapshot lease drops. The tier is
+/// <c>FlatNodeStorageInMemoryArena</c>. Files are not packed: each <see cref="CreateWriter"/> takes a
+/// dedicated file, and a file is freed as soon as its last snapshot lease drops. Its id is then reclaimed
+/// onto a free-list and reused before a fresh one is minted, so the ushort space caps the number of
+/// concurrently live base snapshots (not the cumulative count over a session). The tier is
 /// session-ephemeral (nothing survives a restart, so <see cref="Initialize"/> /
 /// <see cref="SweepUnreferenced"/> are no-ops).
 /// </summary>
@@ -19,6 +21,9 @@ public sealed class InMemoryBlobArenaManager(long maxFileSize) : IBlobArenaManag
     private readonly Lock _lock = new();
     // Indexed by blob arena id (same O(1) layout as the disk pool). Null slot = no file.
     private readonly BlobArenaFile?[] _files = new BlobArenaFile?[ushort.MaxValue + 1];
+    // Ids freed when a file's last lease drops, reused before minting new ones so the cap is on live
+    // (not cumulative) files. Only ever touched under _lock, on the same paths that null the slot.
+    private readonly Stack<ushort> _freeIds = new();
     private int _nextFileId;
     private bool _disposed;
 
@@ -29,12 +34,20 @@ public sealed class InMemoryBlobArenaManager(long maxFileSize) : IBlobArenaManag
     {
         using Lock.Scope scope = _lock.EnterScope();
         if (_disposed) throw new ObjectDisposedException(nameof(InMemoryBlobArenaManager));
-        // One file per snapshot, so ids are never reused — the ushort space caps the number of live +
-        // historical base snapshots in a session (ample for the intended experimental use).
-        if (_nextFileId > ushort.MaxValue)
-            throw new InvalidOperationException(
-                $"In-memory blob arena id space exhausted ({ushort.MaxValue + 1} files).");
-        ushort id = (ushort)_nextFileId++;
+        // Reuse a freed id before minting a new one; the ushort space then caps the number of
+        // concurrently live base snapshots (ample for the intended experimental use).
+        ushort id;
+        if (_freeIds.TryPop(out ushort reused))
+        {
+            id = reused;
+        }
+        else
+        {
+            if (_nextFileId > ushort.MaxValue)
+                throw new InvalidOperationException(
+                    $"In-memory blob arena id space exhausted ({ushort.MaxValue + 1} live files).");
+            id = (ushort)_nextFileId++;
+        }
         BlobArenaFile file = BlobArenaFile.CreateInMemory(id, maxFileSize, Math.Max(estimatedSize, 1));
         _files[id] = file;
         if (!file.TryAcquireLease())
@@ -81,6 +94,7 @@ public sealed class InMemoryBlobArenaManager(long maxFileSize) : IBlobArenaManag
         BlobArenaFile? file = _files[blobArenaId];
         if (file is null) return;
         _files[blobArenaId] = null;
+        _freeIds.Push(blobArenaId);
         file.Dispose();
     }
 
@@ -93,6 +107,7 @@ public sealed class InMemoryBlobArenaManager(long maxFileSize) : IBlobArenaManag
         if (_files[file.BlobArenaId] != file) return;
         if (!file.HasOnlyManagerLease) return;
         _files[file.BlobArenaId] = null;
+        _freeIds.Push(file.BlobArenaId);
         file.Dispose();
     }
 

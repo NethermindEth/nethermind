@@ -130,6 +130,19 @@ public class InMemoryArenaRoundTripTests
     }
 
     [Test]
+    public void BlobArena_FreedId_IsReusedBeforeMintingNew()
+    {
+        // A cancelled writer frees its slot; the id must return to the free-list and be reused, so the
+        // ushort cap counts concurrently live files, not the cumulative count over the session.
+        ushort first;
+        using (BlobArenaWriter w0 = _blobs.CreateWriter(64))
+            first = w0.BlobArenaId; // disposed without Complete -> OnWriteCancelled frees the id
+
+        using BlobArenaWriter w1 = _blobs.CreateWriter(64);
+        Assert.That(w1.BlobArenaId, Is.EqualTo(first), "a freed blob id must be reused before a fresh one is minted");
+    }
+
+    [Test]
     public void Arena_RawWriteReadRoundTrip_ThroughReservation()
     {
         byte[] payload = new byte[8000];

@@ -70,7 +70,7 @@ public class PageResidencyTrackerTests
         public PageResidencyTracker PageTracker => tracker;
         public void QueueEviction(int arenaId, uint pageIdx) => handler.OnPageEvicted(arenaId, (int)pageIdx);
         public ArenaWriter CreateWriter(long estimatedSize, bool small = false) => throw new NotSupportedException();
-        public void Initialize(IReadOnlyList<CatalogEntry> entries) => throw new NotSupportedException();
+        public IReadOnlyList<CatalogEntry> Initialize(IReadOnlyList<CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location) => throw new NotSupportedException();
         public void OnWriteCompleted(ArenaFile file, long newFrontier, bool hasHeadroom) => throw new NotSupportedException();
         public void OnWriteCancelledShared(ArenaFile file) => throw new NotSupportedException();

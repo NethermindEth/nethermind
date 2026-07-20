@@ -25,6 +25,9 @@ internal sealed unsafe class NativeArenaBuffer : IDisposable
         _ptr = (byte*)NativeMemory.AllocZeroed((nuint)_capacity);
     }
 
+    // Safety net: free the native block if a buffer is leaked without Dispose, so the RAM isn't lost.
+    ~NativeArenaBuffer() => FreeBuffer();
+
     /// <summary>Base pointer to the first byte. Stable once the buffer is frozen (no further appends).</summary>
     public byte* Pointer => _ptr;
     public long Length => _length;
@@ -43,7 +46,17 @@ internal sealed unsafe class NativeArenaBuffer : IDisposable
     {
         if (required <= _capacity) return;
         long newCap = _capacity;
-        while (newCap < required) newCap *= 2;
+        // Grow by doubling, but never below `required` and never overflow long: once doubling would
+        // wrap past long.MaxValue, jump straight to `required` (the true minimum).
+        while (newCap < required)
+        {
+            if (newCap > long.MaxValue / 2)
+            {
+                newCap = required;
+                break;
+            }
+            newCap *= 2;
+        }
         _ptr = (byte*)NativeMemory.Realloc(_ptr, (nuint)newCap);
         // Zero the grown tail so any unwritten padding reads back as zero, mirroring the sparse-file
         // zeros the disk arena relies on.
@@ -63,10 +76,19 @@ internal sealed unsafe class NativeArenaBuffer : IDisposable
 
     public void Dispose()
     {
-        if (_ptr is not null)
+        FreeBuffer();
+        GC.SuppressFinalize(this);
+    }
+
+    // Idempotent, thread-agnostic (NativeMemory.Free needs no managed state) so it is safe to run from
+    // either Dispose or the finalizer. Null the pointer before freeing so a double-call can't double-free.
+    private void FreeBuffer()
+    {
+        byte* p = _ptr;
+        if (p is not null)
         {
-            NativeMemory.Free(_ptr);
             _ptr = null;
+            NativeMemory.Free(p);
         }
     }
 }

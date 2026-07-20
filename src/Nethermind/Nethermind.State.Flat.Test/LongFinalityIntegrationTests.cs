@@ -222,6 +222,45 @@ public class LongFinalityIntegrationTests
     }
 
 
+    // With the RAM-backed arena a durable catalog row outlives the slice that backed it: on the next
+    // boot the arena is empty. Reload must reconcile — no crash on Open for a never-minted id — yield an
+    // empty persisted tier, and purge the orphaned catalog row so a further restart has nothing to trip on.
+    [Test]
+    public void Restart_InMemoryArena_DropsOrphanedCatalogAndReloadsEmpty()
+    {
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+        MemDb catalogDb = new();
+
+        static FlatDbConfig RamConfig() => new()
+        {
+            EnableLongFinality = true,
+            FlatNodeStorageInMemoryArena = true,
+            CompactSize = 16,
+        };
+
+        using (FlatTestContainer tier1 = new(config: RamConfig(), baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            tier1.ConvertToPersistedBase(CreateSnapshot(s0, s1, c =>
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject)).Dispose();
+            Assert.That(tier1.Repository.PersistedSnapshotCount, Is.EqualTo(1));
+        }
+
+        // A durable catalog row survived session 1; its RAM arena did not.
+        Assert.That(new SnapshotCatalog(catalogDb).Load(), Is.Not.Empty,
+            "session 1 must leave a durable catalog row");
+
+        using (FlatTestContainer tier2 = new(config: RamConfig(), baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            // Reaching this line at all proves Load() did not throw on the unbacked catalog row.
+            Assert.That(tier2.Repository.PersistedSnapshotCount, Is.EqualTo(0),
+                "RAM tier is session-ephemeral; the persisted tier must reload empty");
+        }
+
+        Assert.That(new SnapshotCatalog(catalogDb).Load(), Is.Empty,
+            "orphaned catalog rows must be purged on reload, not accumulate across restarts");
+    }
+
     [Test]
     public void MergeSnapshotData_AllEntryTypes()
     {

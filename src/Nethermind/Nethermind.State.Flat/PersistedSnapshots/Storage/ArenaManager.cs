@@ -79,7 +79,7 @@ public sealed class ArenaManager : IArenaManager
     /// Initialize from existing arena files and catalog entries.
     /// Computes allocation frontiers and dead bytes per arena.
     /// </summary>
-    public void Initialize(IReadOnlyList<CatalogEntry> entries)
+    public IReadOnlyList<CatalogEntry> Initialize(IReadOnlyList<CatalogEntry> entries)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Open existing arena files. Defer the per-file metric push until after frontier
@@ -139,6 +139,12 @@ public sealed class ArenaManager : IArenaManager
             kv.Value.DeadBytes = kv.Value.Frontier - live;
             kv.Value.ReportAdded();
         }
+
+        // Loadable set = the whole catalog. The on-disk arena files are the durable backing, so an entry
+        // whose file is missing is genuine drift the loader must surface (it throws on Open) — unchanged
+        // from before this method returned a set. The frontier reconcile above only excludes a missing
+        // arena from byte accounting; it does not decide what the loader attempts.
+        return entries;
     }
 
     /// <summary>

@@ -60,19 +60,45 @@ public sealed class PersistedSnapshotLoader(
 
         // Can be millions of entries on a long-running node — materialised once and shared by the
         // arena init and the parallel load below.
-        List<CatalogEntry> entries = [.. _catalog.Load()];
-        arena.Initialize(entries);
+        List<CatalogEntry> catalogued = [.. _catalog.Load()];
+        // The arena reconciles the catalog against the slices it can back and hands back the loadable
+        // subset. The on-disk arena returns the whole catalog (a missing file surfaces on Open); the RAM
+        // arena is session-ephemeral and backs nothing across a restart, so it returns an empty set. Purge
+        // the dropped rows so orphaned entries don't accumulate — and, for the RAM tier, don't re-trip a
+        // later restart.
+        IReadOnlyList<CatalogEntry> loadable = arena.Initialize(catalogued);
+        if (loadable.Count != catalogued.Count) PurgeOrphanedEntries(catalogued, loadable);
 
-        LoadSnapshotsParallel(entries);
+        LoadSnapshotsParallel(loadable);
 
         // Delete any blob arena file no loaded snapshot referenced — recoverable
         // orphans from a mid-write crash.
         blobs.SweepUnreferenced();
 
-        ReconstructBloom(entries);
+        ReconstructBloom(loadable);
     }
 
-    private void LoadSnapshotsParallel(List<CatalogEntry> entries)
+    /// <summary>
+    /// Remove the durable catalog rows for entries the arena could not back (present in
+    /// <paramref name="catalogued"/> but not <paramref name="loadable"/>), so they don't accumulate — and,
+    /// for the session-ephemeral RAM tier where every row is orphaned on restart, so a later reload has
+    /// nothing to trip over.
+    /// </summary>
+    private void PurgeOrphanedEntries(IReadOnlyList<CatalogEntry> catalogued, IReadOnlyList<CatalogEntry> loadable)
+    {
+        HashSet<CatalogEntry> keep = [.. loadable];
+        int purged = 0;
+        foreach (CatalogEntry entry in catalogued)
+        {
+            if (keep.Contains(entry)) continue;
+            _catalog.Remove(entry.To, (long)(entry.To.BlockNumber - entry.From.BlockNumber));
+            purged++;
+        }
+        if (purged > 0 && _logger.IsInfo)
+            _logger.Info($"Dropped {purged} persisted-snapshot catalog row(s) with no backing arena slice.");
+    }
+
+    private void LoadSnapshotsParallel(IReadOnlyList<CatalogEntry> entries)
     {
         if (entries.Count == 0) return;
 
@@ -158,7 +184,7 @@ public sealed class PersistedSnapshotLoader(
     /// oldest loaded snapshot's <c>From</c>. The few wide blooms are rebuilt in parallel; chain ranges are
     /// disjoint, so the per-range <see cref="ISnapshotRepository.ShareBloomAcrossRange"/> calls don't collide.
     /// </remarks>
-    private void ReconstructBloom(List<CatalogEntry> entries)
+    private void ReconstructBloom(IReadOnlyList<CatalogEntry> entries)
     {
         if (!BloomEnabled || entries.Count == 0) return;
         if (repository.GetLastSnapshotId() is not StateId head) return;
