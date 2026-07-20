@@ -21,8 +21,7 @@ namespace Nethermind.Facade.Find
         IReceiptFinder? receiptFinder,
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
-        IReceiptsRecovery? receiptsRecovery,
-        int maxBlockDepth = 1000)
+        IReceiptsRecovery? receiptsRecovery)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -75,7 +74,7 @@ namespace Nethermind.Facade.Find
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
             RunParallel(blockNumbers,
                 number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
@@ -131,13 +130,18 @@ namespace Nethermind.Facade.Find
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            static IEnumerable<long> BlockNumbers(long from, long count)
+            if (toBlock.Number < fromBlock.Number)
             {
-                for (long i = 0; i < count; i++) yield return from + i;
+                return [];
             }
 
-            long rangeSize = Math.Min(maxBlockDepth, toBlock.Number - fromBlock.Number + 1);
-            bool tryParallel = rangeSize >= _rpcConfigGetLogsThreads;
+            static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
+            {
+                for (ulong i = 0; i < count; i++) yield return from + i;
+            }
+
+            ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
+            bool tryParallel = rangeSize >= (ulong)_rpcConfigGetLogsThreads;
             return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
 
@@ -146,7 +150,7 @@ namespace Nethermind.Facade.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -183,7 +187,7 @@ namespace Nethermind.Facade.Find
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;
 
-                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
+                                topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
@@ -218,9 +222,9 @@ namespace Nethermind.Facade.Find
             return logList ?? (IEnumerable<FilterLog>)[];
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
-            TxReceipt[]? GetReceipts(Hash256 hash, long number)
+            TxReceipt[]? GetReceipts(Hash256 hash, ulong number)
             {
                 bool canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)
@@ -285,7 +289,7 @@ namespace Nethermind.Facade.Find
             }
         }
 
-        protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
+        protected BlockHeader? FindHeaderOrLogError(ulong blockNumber, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
 

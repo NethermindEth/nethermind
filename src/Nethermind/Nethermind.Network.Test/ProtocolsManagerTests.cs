@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Net;
 using System.Numerics;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -64,7 +67,9 @@ public class ProtocolsManagerTests
             rlpxHost,
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
             Substitute.For<INetworkStorage>(),
+            [],
             [],
             LimboLogs.Instance);
 
@@ -81,6 +86,62 @@ public class ProtocolsManagerTests
         Assert.That(session.AddedDisconnectedHandler, Is.Null);
         Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
         Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+    }
+
+    [Test]
+    public void Advertised_capabilities_apply_resolver_additions_and_removals()
+    {
+        ProtocolsManager manager = BuildManagerWithResolvers(
+            new FakeCapabilityResolver(caps => caps.Add(new Capability(Protocol.Eth, 69))),
+            new FakeCapabilityResolver(caps => caps.Remove(new Capability(Protocol.Eth, 68))));
+
+        // Default eth/68 removed, eth/69 added by the resolvers.
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Eth), Is.EqualTo(69));
+    }
+
+    [Test]
+    public void Advertised_capabilities_are_cached_and_rebuilt_on_resolver_change()
+    {
+        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, 1)));
+        ProtocolsManager manager = BuildManagerWithResolvers(resolver);
+
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+
+        resolver.RaiseChanged();
+
+        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+        Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+    }
+
+    private static ProtocolsManager BuildManagerWithResolvers(params IP2PCapabilityResolver[] resolvers) =>
+        new(
+            Substitute.For<ISyncPeerPool>(),
+            Substitute.For<ITxPool>(),
+            Substitute.For<IDiscoveryApp>(),
+            Substitute.For<IRlpxHost>(),
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IProtocolValidator>(),
+            Substitute.For<IPeerManager>(),
+            Substitute.For<INetworkStorage>(),
+            [],
+            [new DefaultP2PCapabilityResolver(), .. resolvers],
+            LimboLogs.Instance);
+
+    private sealed class FakeCapabilityResolver(Action<ISet<Capability>> resolve) : IP2PCapabilityResolver
+    {
+        public int ResolveCount { get; private set; }
+
+        public void Resolve(ISet<Capability> capabilities)
+        {
+            ResolveCount++;
+            resolve(capabilities);
+        }
+
+        public event Action? Changed;
+
+        public void RaiseChanged() => Changed?.Invoke();
     }
 
     public class Context
@@ -135,7 +196,6 @@ public class ProtocolsManagerTests
 
             _rlpxHost = Substitute.For<IRlpxHost>();
             _rlpxHost.LocalPort.Returns(_localPort);
-            _rlpxHost.LocalNodeId.Returns(TestItem.PublicKeyA);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
@@ -145,7 +205,7 @@ public class ProtocolsManagerTests
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
@@ -158,14 +218,16 @@ public class ProtocolsManagerTests
                 _rlpxHost,
                 _nodeStatsManager,
                 _protocolValidator,
+                _peerManager,
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
+                [new DefaultP2PCapabilityResolver()],
                 LimboLogs.Instance);
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
                 new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
-                    session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
+                    session => new P2PProtocolHandler(session, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
                     Protocol.P2P),
                 new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
                     session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),

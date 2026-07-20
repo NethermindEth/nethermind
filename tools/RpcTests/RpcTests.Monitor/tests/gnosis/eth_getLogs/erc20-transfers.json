@@ -8,8 +8,8 @@
       "jsonrpc":"2.0",
       "method":"eth_getLogs",
       "params":[{
-        "fromBlock":"{{Hex(RecentBlock)}}",
-        "toBlock":"{{Hex(RecentBlock)}}",
+        "fromBlock":"{{Hex(Recent.Number)}}",
+        "toBlock":"{{Hex(Recent.Number)}}",
         "topics": [
           "{{Topic.Transfer}}"
         ]

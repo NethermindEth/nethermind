@@ -4,9 +4,11 @@
   <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Api/Nethermind.Api.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
@@ -21,6 +23,7 @@
   <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Flashbots/Nethermind.Flashbots.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
@@ -35,7 +38,10 @@
   <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Optimism/Nethermind.Optimism.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Seq/Nethermind.Seq.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
@@ -45,7 +51,9 @@
   <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.StateDiffsWriter/Nethermind.StateDiffsWriter.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
+  <Project Path="../../src/Nethermind/Nethermind.Taiko/Nethermind.Taiko.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />

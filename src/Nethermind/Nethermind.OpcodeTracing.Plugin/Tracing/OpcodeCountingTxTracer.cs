@@ -30,7 +30,7 @@ internal sealed class OpcodeCountingTxTracer(OpcodeTraceBuilder? builder = null)
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
         _opcodeCounters[(byte)opcode]++;
 
     public void AccumulateInto(long[] aggregate)

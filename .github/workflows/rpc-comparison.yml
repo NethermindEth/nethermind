@@ -17,14 +17,19 @@ on:
         description: "IP of an already-synced Nethermind node, used as the daemon under test (-H) when node_type is 'full' or 'archive'. Ignored for 'pruned' (a node is spawned instead)."
         default: ""
         required: false
-      geth_url:
+      reference_url:
         type: string
-        description: "Geth RPC URL used as the rpc_int -e (external reference) when 'spawn_geth' is false. Ignored when 'spawn_geth' is true."
+        description: "RPC URL of any reference node (Geth, another Nethermind, reth, ...) used as the rpc_int -e reference. Ignored when 'spawn_geth' is true or 'reference_ref' is set."
+        default: ""
+        required: false
+      reference_ref:
+        type: string
+        description: "Git ref (branch/tag/SHA) of a second Nethermind to spawn and snap-sync as the reference node (NM-vs-NM). Leave empty to use 'reference_url' or 'spawn_geth' instead. Ignored when 'spawn_geth' is true."
         default: ""
         required: false
       spawn_geth:
         type: boolean
-        description: "Spawn a fresh pruned Geth node (snap sync) and use it as the rpc_int -e reference, instead of 'geth_url'."
+        description: "Spawn a fresh pruned Geth node (snap sync) and use it as the rpc_int -e reference, instead of 'reference_url'."
         default: false
         required: false
       network:
@@ -35,12 +40,17 @@ on:
       exclude_apis:
         type: string
         description: "APIs to exclude from rpc_int (-x), comma-separated. Empty to exclude nothing."
-        default: "erigon_,bor_,ots_,parity_"
+        default: "erigon_,bor_,ots_,parity_,eth_protocolVersion"
         required: false
       max_failures:
         type: string
         description: "Stop rpc_int after this many failures (-M); 0 = unlimited."
         default: "0"
+        required: false
+      ignore_error_messages:
+        type: boolean
+        description: "When comparing against a reference node, compare only error codes and ignore error messages (rpc_int -E) — avoids failures on error.message wording differences. Has no effect in regression mode (no reference), where code AND message are always checked against the fixtures."
+        default: true
         required: false
       allowed_ips:
         type: string
@@ -73,6 +83,9 @@ jobs:
           NODE_TYPE: ${{ inputs.node_type }}
           NETHERMIND_IP: ${{ inputs.nethermind_ip }}
           CONVERT_TO_PAPRIKA: ${{ inputs.convert_to_paprika }}
+          SPAWN_GETH: ${{ inputs.spawn_geth }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
+          REFERENCE_URL: ${{ inputs.reference_url }}
         run: |
           set -euo pipefail
           # Map node_type to the rpc_int flag and decide whether to spawn a node.
@@ -109,6 +122,17 @@ jobs:
             exit 1
           fi
 
+          # At most one reference source: spawned Geth, spawned reference Nethermind, or a provided URL.
+          # (Leaving all three empty runs rpc_int in regression mode against the committed fixtures.)
+          reference_sources=0
+          [ "$SPAWN_GETH" == "true" ] && reference_sources=$((reference_sources + 1))
+          [ -n "$REFERENCE_REF" ] && reference_sources=$((reference_sources + 1))
+          [ -n "$REFERENCE_URL" ] && reference_sources=$((reference_sources + 1))
+          if [ "$reference_sources" -gt 1 ]; then
+            echo "Error: set at most one reference source — 'spawn_geth', 'reference_ref', or 'reference_url'."
+            exit 1
+          fi
+
       - name: Compute Machine Type
         id: compute_machine_type
         run: |
@@ -142,7 +166,7 @@ jobs:
       network: ${{ inputs.network }}
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
 
-  # Spawn a pruned Geth node via the smoke-tests framework 
+  # Spawn a pruned Geth node via the smoke-tests framework
   create_geth_node:
     name: Spawn pruned Geth node
     uses: ./.github/workflows/run-a-geth-node.yml
@@ -161,22 +185,50 @@ jobs:
       custom_run_id: ${{ github.run_id }}
       cl_client: lighthouse
 
+  # Spawn a second Nethermind (at reference_ref) to act as the rpc_int -e reference (NM-vs-NM).
+  create_reference_node:
+    name: Spawn Nethermind reference node (NM-vs-NM)
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    needs: [verify_correctness_of_setup]
+    if: inputs.reference_ref != ''
+    secrets: inherit
+    with:
+      additional_options: >-
+        {
+          "timeout": "${{ inputs.timeout }}",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "",
+          "allowed_ips": "${{ inputs.allowed_ips }}",
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
+        }
+      non_validator_mode: true
+      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      nethermind_repo_ref: ${{ inputs.reference_ref }}
+      custom_run_id: ${{ github.run_id }}-ref
+      network: ${{ inputs.network }}
+      convert_to_paprika: "${{ inputs.convert_to_paprika }}"
+
   resolve_urls:
-    name: Resolve Nethermind and Geth RPC URLs
+    name: Resolve Nethermind and reference RPC URLs
     runs-on: ubuntu-latest
-    needs: [verify_correctness_of_setup, create_main_node, create_geth_node]
-    if: always() && needs.verify_correctness_of_setup.result == 'success' && (needs.create_main_node.result == 'success' || needs.create_main_node.result == 'skipped') && (needs.create_geth_node.result == 'success' || needs.create_geth_node.result == 'skipped')
+    needs: [verify_correctness_of_setup, create_main_node, create_geth_node, create_reference_node]
+    if: always() && needs.verify_correctness_of_setup.result == 'success' && (needs.create_main_node.result == 'success' || needs.create_main_node.result == 'skipped') && (needs.create_geth_node.result == 'success' || needs.create_geth_node.result == 'skipped') && (needs.create_reference_node.result == 'success' || needs.create_reference_node.result == 'skipped')
     outputs:
       nm_url: ${{ steps.resolve.outputs.nm_url }}
-      geth_url: ${{ steps.resolve.outputs.geth_url }}
+      reference_url: ${{ steps.resolve.outputs.reference_url }}
     steps:
       - name: Prepare clean refs
         id: prepare_refs
+        env:
+          GITHUB_REF_RAW: ${{ github.ref }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
         run: |
-          REF_NAME=${{ github.ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          CLEAN_REF=$(echo "${GITHUB_REF_RAW/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
           echo "CLEAN_GETH_REF=geth-$CLEAN_REF" >> $GITHUB_ENV
+          CLEAN_REFERENCE_REF=$(echo "${REFERENCE_REF/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_REFERENCE_REF=$CLEAN_REFERENCE_REF" >> $GITHUB_ENV
 
       - name: Download RPC Artifact for current branch
         if: needs.verify_correctness_of_setup.outputs.spawn_nm == 'true'
@@ -192,13 +244,21 @@ jobs:
           name: rpc-url___${{ env.CLEAN_GETH_REF }}___${{ github.run_id }}
           path: artifacts
 
+      - name: Download RPC Artifact for reference Nethermind
+        if: inputs.reference_ref != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: rpc-url___${{ env.CLEAN_REFERENCE_REF }}___${{ github.run_id }}-ref
+          path: artifacts
+
       - name: Assemble URLs
         id: resolve
         env:
           SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
           SPAWN_GETH: ${{ inputs.spawn_geth }}
           NETHERMIND_IP: ${{ inputs.nethermind_ip }}
-          GETH_URL_INPUT: ${{ inputs.geth_url }}
+          REFERENCE_URL_INPUT: ${{ inputs.reference_url }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
         run: |
           # Nethermind: spawned -> read its uploaded rpc-url artifact; else use the IP.
           if [ "$SPAWN_NM" == "true" ]; then
@@ -218,28 +278,40 @@ jobs:
           echo "Nethermind URL: $nm_url"
           echo "nm_url=$nm_url" >> "$GITHUB_OUTPUT"
 
+          # Reference precedence: spawned Geth -> spawned reference Nethermind -> provided URL.
           if [ "$SPAWN_GETH" == "true" ]; then
             geth_file="rpc_url%${{ env.CLEAN_GETH_REF }}%${{ github.run_id }}.txt"
             if [ ! -f "artifacts/$geth_file" ]; then
               echo "Error: spawned Geth RPC URL artifact not found (artifacts/$geth_file)."
               exit 1
             fi
-            geth_url=$(cat "artifacts/$geth_file")
-            if [ -z "$geth_url" ]; then
+            reference_url=$(cat "artifacts/$geth_file")
+            if [ -z "$reference_url" ]; then
               echo "Error: spawned Geth node did not report an RPC URL."
               exit 1
             fi
+          elif [ -n "$REFERENCE_REF" ]; then
+            reference_file="rpc_url%${{ env.CLEAN_REFERENCE_REF }}%${{ github.run_id }}-ref.txt"
+            if [ ! -f "artifacts/$reference_file" ]; then
+              echo "Error: spawned reference Nethermind RPC URL artifact not found (artifacts/$reference_file)."
+              exit 1
+            fi
+            reference_url=$(cat "artifacts/$reference_file")
+            if [ -z "$reference_url" ]; then
+              echo "Error: spawned reference Nethermind node did not report an RPC URL."
+              exit 1
+            fi
           else
-            geth_url="$GETH_URL_INPUT"
+            reference_url="$REFERENCE_URL_INPUT"
           fi
-          echo "Geth URL: ${geth_url:-<none>}"
-          echo "geth_url=$geth_url" >> "$GITHUB_OUTPUT"
+          echo "Reference URL: ${reference_url:-<none>}"
+          echo "reference_url=$reference_url" >> "$GITHUB_OUTPUT"
 
   wait_for_node_to_sync:
     name: Wait for spawned nodes to finish syncing
     runs-on: [vpn]
-    needs: [verify_correctness_of_setup, resolve_urls, create_geth_node]
-    if: always() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth)
+    needs: [verify_correctness_of_setup, resolve_urls, create_geth_node, create_reference_node]
+    if: always() && needs.resolve_urls.result == 'success' && (needs.verify_correctness_of_setup.outputs.spawn_nm == 'true' || inputs.spawn_geth || inputs.reference_ref != '')
     timeout-minutes: 1440
     steps:
       - name: Wait for the nodes to sync
@@ -248,7 +320,9 @@ jobs:
           SPAWN_NM: ${{ needs.verify_correctness_of_setup.outputs.spawn_nm }}
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
           SPAWN_GETH: ${{ inputs.spawn_geth }}
-          GETH_URL: ${{ needs.resolve_urls.outputs.geth_url }}
+          GETH_URL: ${{ needs.resolve_urls.outputs.reference_url }}
+          REFERENCE_REF: ${{ inputs.reference_ref }}
+          REFERENCE_NM_URL: ${{ needs.resolve_urls.outputs.reference_url }}
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         shell: bash
         run: |
@@ -261,8 +335,10 @@ jobs:
           # Nethermind gets the snap-sync-stage gate; Geth gets eth_syncing only.
           nm_urls=()
           geth_urls=()
-          [ "$SPAWN_NM" == "true" ] && [ -n "$NM_URL" ] && nm_urls=("$NM_URL")
-          [ "$SPAWN_GETH" == "true" ] && [ -n "$GETH_URL" ] && geth_urls=("$GETH_URL")
+          [ "$SPAWN_NM" == "true" ] && [ -n "$NM_URL" ] && nm_urls+=("$NM_URL")
+          # The spawned reference Nethermind is an NM too -> wait on it via the NM sync checks.
+          [ -n "$REFERENCE_REF" ] && [ -n "$REFERENCE_NM_URL" ] && nm_urls+=("$REFERENCE_NM_URL")
+          [ "$SPAWN_GETH" == "true" ] && [ -n "$GETH_URL" ] && geth_urls+=("$GETH_URL")
 
           # ------------------------------------------------------------
           # Helper: guarded curl POST with timeouts/retries and JSON header
@@ -525,12 +601,13 @@ jobs:
       - name: Run rpc_int
         env:
           NM_URL: ${{ needs.resolve_urls.outputs.nm_url }}
-          # Prefer the spawned Geth URL; fall back to the provided geth_url.
-          GETH_URL: ${{ needs.resolve_urls.outputs.geth_url }}
+          # Resolved reference: spawned Geth / spawned reference Nethermind / provided URL.
+          REFERENCE_URL: ${{ needs.resolve_urls.outputs.reference_url }}
           RPC_FLAG: ${{ needs.verify_correctness_of_setup.outputs.rpc_flag }}
           NETWORK: ${{ inputs.network }}
           EXCLUDE_APIS: ${{ inputs.exclude_apis }}
           MAX_FAILURES: ${{ inputs.max_failures }}
+          IGNORE_ERROR_MESSAGES: ${{ inputs.ignore_error_messages }}
         run: |
           set -euo pipefail
           mkdir -p rpc-results
@@ -543,19 +620,46 @@ jobs:
           [ "$port" == "$host" ] && port=8545
 
           ext=()
-          [ -n "$GETH_URL" ] && ext=(-e "$GETH_URL")
+          [ -n "$REFERENCE_URL" ] && ext=(-e "$REFERENCE_URL")
 
           # Exclude APIs only when a non-empty list is provided.
           exclude=()
           [ -n "$EXCLUDE_APIS" ] && exclude=(-x "$EXCLUDE_APIS")
 
+          # Ignore error-message text only when comparing against a live reference node.
+          # Regression mode (no reference, comparing against the committed fixtures) always
+          # checks code AND message, since we authored both — so -E never applies there.
+          err_opt=()
+          [ -n "$REFERENCE_URL" ] && [ "$IGNORE_ERROR_MESSAGES" == "true" ] && err_opt=(-E)
+
+          # Default pass: historical (non-latest) tests, which pin explicit block numbers.
           set +e
           ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
-            "${exclude[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
+            "${exclude[@]}" "${err_opt[@]}" -M "$MAX_FAILURES" -c -f -R rpc-results/report.csv | tee rpc-results/output.txt
           rc=${PIPESTATUS[0]}
           set -e
           echo "rpc_int exit code: $rc"
-          exit $rc
+
+          # Latest-block pass (-L): head-dependent tests (eth_baseFee, eth_gasPrice,
+          # eth_blockNumber, eth_maxPriorityFeePerGas, ...). rpc_int first waits until the node
+          # under test and the reference agree on the latest block (GetConsistentLatestBlock),
+          # then queries both at that same head, so the comparison is deterministic instead of
+          # racing on a one-block head skew. Only meaningful against a live reference, so it is
+          # skipped in regression mode (no REFERENCE_URL; latest fixtures carry no expected result).
+          rc_latest=0
+          if [ -n "$REFERENCE_URL" ]; then
+            set +e
+            ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
+              "${exclude[@]}" "${err_opt[@]}" -L -M "$MAX_FAILURES" -c -f -R rpc-results/report-latest.csv | tee rpc-results/output-latest.txt
+            rc_latest=${PIPESTATUS[0]}
+            set -e
+            echo "rpc_int (latest) exit code: $rc_latest"
+          fi
+
+          if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
+            echo "rpc_int failed (default=$rc, latest=$rc_latest)"
+            exit 1
+          fi
 
       - name: Upload rpc_int results
         if: always()
@@ -572,8 +676,8 @@ jobs:
   cleanup_spawned_nodes:
     name: Destroy spawned nodes
     runs-on: ubuntu-latest
-    needs: [create_main_node, create_geth_node, compare]
-    if: always() && (needs.create_main_node.outputs.run_id != '' || needs.create_geth_node.outputs.run_id != '')
+    needs: [create_main_node, create_geth_node, create_reference_node, compare]
+    if: always() && (needs.create_main_node.outputs.run_id != '' || needs.create_geth_node.outputs.run_id != '' || needs.create_reference_node.outputs.run_id != '')
     steps:
       - name: Authenticate App
         id: gh-app
@@ -601,4 +705,14 @@ jobs:
           gh workflow run manual-destroy-smoketests.yml \
             --repo NethermindEth/post-merge-smoke-tests --ref main \
             -f workflow_run_id="${{ needs.create_geth_node.outputs.run_id }}" \
+            -f timeout="0"
+
+      - name: Destroy reference Nethermind node
+        if: needs.create_reference_node.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          gh workflow run manual-destroy-smoketests.yml \
+            --repo NethermindEth/post-merge-smoke-tests --ref main \
+            -f workflow_run_id="${{ needs.create_reference_node.outputs.run_id }}" \
             -f timeout="0"

@@ -29,8 +29,9 @@ public class Witness : IDisposable
 
 public static class WitnessExtensions
 {
-    private static readonly IRlpDecoder<BlockHeader> _decoder =
-        Rlp.GetDecoder<BlockHeader>() ?? new HeaderDecoder();
+    // Resolved per use, not cached at static-init: a consensus plugin (e.g. AuRa) may register its
+    // header decoder after this type is first touched, and caching would pin the base decoder.
+    private static IRlpDecoder<BlockHeader> Decoder => Rlp.GetDecoderOrThrow<BlockHeader>();
 
     extension(Witness witness)
     {
@@ -77,9 +78,9 @@ public static class WitnessExtensions
 
                 for (int i = 0; i < headersSpan.Length; i++)
                 {
-                    Rlp.ValueDecoderContext stream = new(headersSpan[i]);
+                    RlpReader reader = new(headersSpan[i]);
 
-                    decodedHeaders[i] = _decoder.Decode(ref stream)
+                    decodedHeaders[i] = Decoder.Decode(ref reader)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))

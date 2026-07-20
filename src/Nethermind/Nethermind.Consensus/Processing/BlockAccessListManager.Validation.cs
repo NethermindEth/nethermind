@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -38,8 +39,8 @@ public partial class BlockAccessListManager
         MergeAndReturnBal(0u);
         ValidateBlockAccessList(block, 0u);
 
-        long totalRegularGas = 0;
-        long totalStateGas = 0;
+        ulong totalRegularGas = 0;
+        ulong totalStateGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
@@ -53,10 +54,7 @@ public partial class BlockAccessListManager
                 Transaction tx = block.Transactions[j];
 
                 GasValidationResult gasResult = gasResults[j].GetResult();
-                // The worker precomputes intrinsic gas once and carries it here to avoid
-                // recalculating dynamic state-byte costs on the validation thread.
-                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -83,12 +81,12 @@ public partial class BlockAccessListManager
         }
 
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
-        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
+        _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
 
-        static void CheckGasUsed(int index, Block block, long totalRegularGas, long totalStateGas)
+        static void CheckGasUsed(int index, Block block, ulong totalRegularGas, ulong totalStateGas)
         {
             // EIP-8037: block gasUsed = max(sum_regular, sum_state)
-            long effectiveGas = Math.Max(totalRegularGas, totalStateGas);
+            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
@@ -96,30 +94,17 @@ public partial class BlockAccessListManager
         }
     }
 
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
-    {
-        if (!spec.IsEip8037Enabled) return;
-
-        IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
-        CheckPerTxInclusion(block, index, tx, spec, cumulativeRegular, cumulativeState, in intrinsic);
-    }
-
     // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
     // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, ulong cumulativeRegular, ulong cumulativeState)
     {
         if (!spec.IsEip8037Enabled) return;
-
-        long intrinsicRegular = intrinsic.Standard.Value;
-        long intrinsicState = intrinsic.Standard.StateReservoir;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             block.Header.GasLimit,
             cumulativeRegular,
             cumulativeState,
-            tx.GasLimit,
-            intrinsicRegular,
-            intrinsicState);
+            tx.GasLimit);
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {
@@ -127,7 +112,7 @@ public partial class BlockAccessListManager
                 $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
                 $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
                 $"state_available={block.Header.GasLimit - cumulativeState}, " +
-                $"tx.gas={tx.GasLimit}, intrinsic.regular={intrinsicRegular}, intrinsic.state={intrinsicState}.");
+                $"tx.gas={tx.GasLimit}.");
         }
     }
 
@@ -165,7 +150,8 @@ public partial class BlockAccessListManager
             return false;
         }
 
-        ThrowIfStorageReadBudgetExceeded(block, _suggestedChargeableStorageReads - _generatedChargeableStorageReads, validateStorageReads);
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
         return true;
     }
 
@@ -179,20 +165,23 @@ public partial class BlockAccessListManager
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
 
-        int generatedReads = 0;
-        int suggestedReads = 0;
+        ulong generatedReads = 0;
+        ulong suggestedReads = 0;
 
         // Pass 1: every account generated touched must match suggested at this index (O(1)
         // dictionary lookup) or be a tolerated generated-only entry.
         foreach (GeneratedAccountChanges gen in generated.AccountChanges)
         {
             int genReads = IsSystemContract(gen.Address) ? 0 : gen.StorageReads.Count;
-            generatedReads += genReads;
+            generatedReads += (ulong)genReads;
 
             ReadOnlyAccountChanges? sug = suggested.GetAccountChanges(gen.Address);
             if (sug is not null)
             {
-                if (!gen.ChangesAtIndexEqual(sug, index)) ThrowIncorrectChanges(block, gen.Address, index);
+                if (!gen.ChangesAtIndexEqual(sug, index))
+                {
+                    ThrowIncorrectChanges(block, gen.Address, index);
+                }
                 continue;
             }
 
@@ -205,14 +194,15 @@ public partial class BlockAccessListManager
         // Tally suggested reads here for the storage-read gas-budget check below.
         foreach (ReadOnlyAccountChanges sug in suggested.AccountChanges)
         {
-            suggestedReads += IsSystemContract(sug.Address) ? 0 : sug.StorageReads.Length;
+            suggestedReads += IsSystemContract(sug.Address) ? 0ul : (ulong)sug.StorageReads.Length;
 
             if (generated.HasAccount(sug.Address)) continue;
 
             if (!sug.HasNoChangesAtIndex(index)) ThrowSurplusChanges(block, sug.Address, index);
         }
 
-        ThrowIfStorageReadBudgetExceeded(block, suggestedReads - generatedReads, validateStorageReads);
+        ulong surplusReads = suggestedReads.SaturatingSub(generatedReads);
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
     /// <summary>
@@ -258,7 +248,8 @@ public partial class BlockAccessListManager
         }
 
         // Storage-read gas budget — counts already tracked block-cumulative on both sides.
-        ThrowIfStorageReadBudgetExceeded(block, _suggestedChargeableStorageReads - _generatedChargeableStorageReads, validateStorageReads);
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
+        ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
     }
 
     /// <summary>
@@ -284,7 +275,7 @@ public partial class BlockAccessListManager
         {
             if (!IsSystemContract(ac.Address))
             {
-                _generatedChargeableStorageReads += ac.StorageReads.Count;
+                _generatedChargeableStorageReads += (ulong)ac.StorageReads.Count;
             }
         }
 
@@ -325,15 +316,17 @@ public partial class BlockAccessListManager
 
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
-        || address == Eip7251Constants.ConsolidationRequestPredeployAddress;
+        || address == Eip7251Constants.ConsolidationRequestPredeployAddress
+        || address == Eip8282Constants.BuilderDepositRequestPredeployAddress
+        || address == Eip8282Constants.BuilderExitRequestPredeployAddress;
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
         => hasNoChangesAtIndex
         && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
 
-    private void ThrowIfStorageReadBudgetExceeded(Block block, int surplusReads, bool validateStorageReads)
+    private void ThrowIfStorageReadBudgetExceeded(Block block, ulong surplusReads, bool validateStorageReads)
     {
-        if (validateStorageReads && surplusReads > 0 && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
+        if (validateStorageReads && surplusReads > 0ul && _gasRemaining < surplusReads * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }

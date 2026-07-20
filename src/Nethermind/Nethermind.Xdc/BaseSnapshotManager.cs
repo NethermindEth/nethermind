@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -55,9 +56,10 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     protected IMasternodeVotingContract VotingContract => _votingContract;
 
     // Explicit interface implementation to return base Snapshot type
-    Snapshot? ISnapshotManager.GetSnapshotByGapNumber(long gapNumber) => GetSnapshotByGapNumber(gapNumber);
+    Snapshot? ISnapshotManager.GetSnapshotByGapNumber(ulong gapNumber) => GetSnapshotByGapNumber(gapNumber);
 
-    Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
+    Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
+    public abstract Snapshot CreateInitialSnapshot(ulong number, Hash256 hash, Address[] genesisMasterNodes);
 
     void ISnapshotManager.StoreSnapshot(Snapshot snapshot)
     {
@@ -71,7 +73,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         }
     }
 
-    public TSnapshot? GetSnapshotByGapNumber(long gapNumber)
+    public TSnapshot? GetSnapshotByGapNumber(ulong gapNumber)
     {
         if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
@@ -96,16 +98,17 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (value.IsEmpty)
             return null;
 
-        Rlp.ValueDecoderContext context = value.AsRlpValueContext();
+        RlpReader context = new(value);
         TSnapshot decoded = _snapshotDecoder.Decode(ref context);
         snapshot = decoded;
         _snapshotCache.Set(headerHash, snapshot);
         return snapshot;
     }
 
-    public TSnapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    public TSnapshot? GetSnapshotByBlockNumber(ulong blockNumber, IXdcReleaseSpec spec)
     {
-        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        ulong epochBase = blockNumber - blockNumber % spec.EpochLength;
+        ulong gapBlockNum = epochBase.SaturatingSub(spec.Gap);
         return GetSnapshotByGapNumber(gapBlockNum);
     }
 

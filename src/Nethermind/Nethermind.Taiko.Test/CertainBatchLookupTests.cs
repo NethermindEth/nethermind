@@ -259,7 +259,7 @@ public class CertainBatchLookupTests
     public void TestBatchLookup_MainnetScanPathBelowThresholdReturnsNull()
     {
         UInt256 batchId = 1;
-        long blockNumber = (long)(BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1);
+        ulong blockNumber = BatchLookupThresholds.TaikoMainnetBatchLookupThreshold - 1;
 
         // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=batchId, 6 bytes big-endian].
         byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
@@ -282,7 +282,7 @@ public class CertainBatchLookupTests
 
         // Write the L1Origin so a missing gate would yield a non-null Data on lastL1OriginByBatchID,
         // proving the gate (not a missing record) is what produces the null result.
-        UInt256 blockId = (UInt256)(ulong)blockNumber;
+        UInt256 blockId = (UInt256)blockNumber;
         _store.WriteL1Origin(blockId, new L1Origin(blockId, Hash256.Zero, 3, Hash256.Zero, null));
         // Deliberately do NOT WriteBatchToLastBlockID — forces the scan fallback.
 
@@ -325,12 +325,14 @@ public class CertainBatchLookupTests
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
         Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-        Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
+        Substitute.For<IHandler<HashSet<string>, IReadOnlyList<string>>>(),
         Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
         Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
         Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+        Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
+        Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
         Substitute.For<IEngineRequestsTracker>(),
         specProvider,
         null!,
@@ -338,7 +340,7 @@ public class CertainBatchLookupTests
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),
         Substitute.For<IShareableTxProcessorSource>(),
-        Substitute.For<IRlpDecoder<Transaction>>(),
+        TxDecoder.Instance,
         l1OriginStore,
         new SurgeConfig()
     );

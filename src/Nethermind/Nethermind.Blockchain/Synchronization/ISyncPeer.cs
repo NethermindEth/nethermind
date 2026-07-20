@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         void Disconnect(DisconnectReason reason, string details);
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
-        Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);

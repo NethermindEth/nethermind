@@ -6,7 +6,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -60,7 +59,8 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            witnessMode: true
+            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
+            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -93,7 +93,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor),
+            new StatelessExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }
@@ -104,7 +104,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new CodeInfoRepository(state, new EthereumPrecompileProvider()),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
             logManager
         );
 }

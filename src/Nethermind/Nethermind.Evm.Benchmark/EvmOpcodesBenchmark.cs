@@ -132,7 +132,7 @@ public unsafe class EvmOpcodesBenchmark
     public void Setup()
     {
         (_stackBuffer, _stackOffset, _stackLength) = CreateStackBuffer();
-        _gas = EthereumGasPolicy.FromLong(long.MaxValue);
+        _gas = EthereumGasPolicy.FromULong(ulong.MaxValue);
 
         // Pre-fill 20 stack slots with unique values for DUP/SWAP tests
         for (int i = 0; i < 20; i++)
@@ -199,7 +199,7 @@ public unsafe class EvmOpcodesBenchmark
             inputData: default);
 
         _vmState = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(long.MaxValue),
+            EthereumGasPolicy.FromULong(ulong.MaxValue),
             ExecutionType.TRANSACTION,
             _env,
             new StackAccessTracker(),
@@ -313,7 +313,8 @@ public unsafe class EvmOpcodesBenchmark
     public void CleanupStack()
     {
         _stateProvider.Reset(resetBlockChanges: true);
-        CacheCodeInfoRepository.Clear();
+        StaticCodeCache.Instance.Clear();
+        InstructionStreamCache.Clear();
     }
 
     [IterationSetup]
@@ -644,7 +645,7 @@ public unsafe class EvmOpcodesBenchmark
         _ = _opcodes[(int)Opcode](_vm, ref stack, ref gas, ref pc);
         DisposeNestedReturnFrame();
 
-        return _gas.Value - gas.Value;
+        return (long)(_gas.Value - gas.Value);
     }
 
     private void DisposeNestedReturnFrame()
@@ -907,7 +908,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private class NoOpBlockhashProvider : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec) => Keccak.Zero;
+        public Hash256 GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec) => Keccak.Zero;
         public Task Prefetch(BlockHeader currentBlock, CancellationToken token) => Task.CompletedTask;
     }
 

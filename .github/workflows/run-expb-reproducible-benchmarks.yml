@@ -26,6 +26,7 @@ on:
         options:
           - realblocks
           - superblocks
+          - fusaka
         default: superblocks
       delay_seconds:
         description: Value used to replace <<DELAY>> placeholder (integer)
@@ -50,6 +51,16 @@ on:
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
         required: false
         default: "67108864"
+      expb_env:
+        description: >-
+          Optional environment variables passed to the expb process (KEY=VALUE,
+          comma- or newline-separated). Applies to both single-image and
+          multi-image runs. Enables expb env-gated options, e.g.
+          EXPB_EVM_WARMUP=1 (per-block eth_simulateV1 warmup). Values that
+          themselves contain commas must use the newline-separated form, since
+          commas are treated as entry separators.
+        required: false
+        default: ""
       rebuild_docker:
         description: Rebuild Nethermind Docker image before running benchmarks
         required: false
@@ -87,6 +98,22 @@ on:
         required: false
         type: boolean
         default: false
+      trace_blocks:
+        description: >-
+          Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
+          implies dottrace=true and passes the list to the client as NETHERMIND_PROFILE_BLOCKS (so its
+          BlockProfiler plugin brackets each block). Produces one .dtp workspace containing one
+          snapshot per traced block (open in the dotTrace UI; the numbered .dtp.NNNN files are storage
+          segments, not per-block files); the parsed XML report aggregates all traced windows, so trace
+          a single block per run when isolated XML matters. Leave empty for whole-run profiling.
+        required: false
+        default: ""
+      client_env:
+        description: >-
+          Extra environment variables for the Nethermind client container (KEY=VALUE, comma-separated),
+          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Single-image runs only.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -119,6 +146,7 @@ jobs:
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
+      expb_env: ${{ steps.resolve.outputs.expb_env }}
       cleanup_grace_seconds: ${{ steps.resolve.outputs.cleanup_grace_seconds }}
       scenario_name: ${{ steps.resolve.outputs.scenario_name }}
       run_count: ${{ steps.resolve.outputs.run_count }}
@@ -129,6 +157,8 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
+      client_env: ${{ steps.resolve.outputs.client_env }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -148,6 +178,7 @@ jobs:
           DISPATCH_AMOUNT: ${{ inputs.amount }}
           DISPATCH_ADDITIONAL_EXTRA_FLAGS: ${{ inputs.additional_extra_flags }}
           DISPATCH_FLAT_WRITE_BUFFER_FLOOR: ${{ inputs.flat_write_buffer_floor }}
+          DISPATCH_EXPB_ENV: ${{ inputs.expb_env }}
           DISPATCH_REBUILD_DOCKER: ${{ inputs.rebuild_docker }}
           DISPATCH_RUN_COUNT: ${{ inputs.run_count }}
           DISPATCH_DOCKER_IMAGES: ${{ inputs.docker_images }}
@@ -155,6 +186,8 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
+          DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
           set -euo pipefail
 
@@ -162,6 +195,7 @@ jobs:
           mode="single"
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
+          expb_env=""
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
@@ -172,13 +206,19 @@ jobs:
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
-            elif [[ "${payload_set}" == "realblocks" ]]; then
+            elif [[ "${payload_set}" == "realblocks" || "${payload_set}" == "fusaka" ]]; then
               amount="1000"
             else
               amount="100"
             fi
             additional_extra_flags="${DISPATCH_ADDITIONAL_EXTRA_FLAGS:-}"
             flat_write_buffer_floor="${DISPATCH_FLAT_WRITE_BUFFER_FLOOR-67108864}"
+            # "off" disables the floor injection entirely (an empty dispatch input falls back to the default,
+            # so it cannot express "no floor"; needed to benchmark images predating the config key).
+            if [[ "${flat_write_buffer_floor}" == "off" ]]; then
+              flat_write_buffer_floor=""
+            fi
+            expb_env="${DISPATCH_EXPB_ENV:-}"
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
@@ -190,6 +230,15 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            trace_blocks="$(printf '%s' "${DISPATCH_TRACE_BLOCKS:-}" | tr -d '[:space:]')"
+            if [[ -n "${trace_blocks}" ]]; then
+              if ! [[ "${trace_blocks}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+                echo "trace_blocks must be a comma-separated list of block numbers, got '${trace_blocks}'."
+                exit 1
+              fi
+              dottrace="true"   # tracing specific blocks implies dotTrace
+            fi
+            client_env="${DISPATCH_CLIENT_ENV:-}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -203,7 +252,7 @@ jobs:
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -214,11 +263,13 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            trace_blocks=""
+            client_env=""
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
             payload_set="superblocks"
-            payload_sets='["superblocks","realblocks"]'
+            payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             expb_data_dir="/mnt/sda/expb-data"
@@ -229,6 +280,8 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            trace_blocks=""
+            client_env=""
           fi
 
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
@@ -297,8 +350,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${state_layout}" == "flat" && "${payload_set}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${state_layout}" == "flat" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${state_layout}" == "halfpath" && "${payload_set}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -330,8 +387,13 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "trace_blocks=${trace_blocks}"
+            echo "client_env=${client_env}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
+            echo "EOF"
+            echo "expb_env<<EOF"
+            printf '%s\n' "${expb_env}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
@@ -493,8 +555,12 @@ jobs:
             config_file="github-action-compressed-mainnet-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "realblocks" ]]; then
             config_file="github-action-mainnet-flat.yaml"
+          elif [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka-flat.yaml"
           elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet.yaml"
+          elif [[ "${STATE_LAYOUT}" == "halfpath" && "${PAYLOAD_SET}" == "fusaka" ]]; then
+            config_file="github-action-mainnet-fusaka.yaml"
           else
             config_file="github-action-mainnet.yaml"
           fi
@@ -553,10 +619,12 @@ jobs:
           PAYLOAD_SET: ${{ matrix.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
-            if [[ "${PAYLOAD_SET}" == "realblocks" ]]; then
+            if [[ "${PAYLOAD_SET}" == "realblocks" || "${PAYLOAD_SET}" == "fusaka" ]]; then
               AMOUNT="1000"
             else
               AMOUNT="100"
@@ -629,6 +697,29 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
+          fi
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -664,10 +755,26 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."
@@ -1041,6 +1148,16 @@ jobs:
           restore-keys: |
             expb-master-metrics-v3-realblocks-
 
+      - name: Restore master metrics (fusaka)
+        id: restore-master-fusaka
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka
+          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v3-fusaka-
+
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
@@ -1048,6 +1165,7 @@ jobs:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
           MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
           MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
+          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
           PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
@@ -1183,11 +1301,11 @@ jobs:
             current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
 
             # Master metrics from cache
-            if [[ "${ps}" == "superblocks" ]]; then
-              master_metrics="${MASTER_SUPERBLOCKS}"
-            else
-              master_metrics="${MASTER_REALBLOCKS}"
-            fi
+            case "${ps}" in
+              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
+              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
+              *) master_metrics="${MASTER_REALBLOCKS}" ;;
+            esac
 
             build_table "${ps}" "${current_metrics}" "${master_metrics}"
           done
@@ -1488,13 +1606,11 @@ jobs:
             page_size=100
             remaining="${LAST}"
 
+            # Always request full pages: Docker Hub paginates by page_size x page, so shrinking
+            # page_size on the last page shifts the window (duplicating mid-range tags and
+            # dropping the oldest ones). Trim to LAST after collecting.
             while [[ "${remaining}" -gt 0 ]]; do
-              fetch_size="${page_size}"
-              if [[ "${remaining}" -lt "${page_size}" ]]; then
-                fetch_size="${remaining}"
-              fi
-
-              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${fetch_size}&page=${page}&name=master-"
+              url="https://hub.docker.com/v2/repositories/nethermindeth/nethermind/tags?page_size=${page_size}&page=${page}&name=master-"
               response=$(curl -sf "${url}" || echo '{"results":[]}')
 
               mapfile -t page_tags < <(echo "${response}" | jq -r '.results[] | select(.name | test("^master-[0-9a-f]{7}$")) | .name')
@@ -1514,6 +1630,12 @@ jobs:
               remaining=$(( remaining - page_size ))
               page=$(( page + 1 ))
             done
+
+            if [[ "${#all_tags[@]}" -gt "${LAST}" ]]; then
+              all_tags=("${all_tags[@]:0:LAST}")
+              all_images=("${all_images[@]:0:LAST}")
+              all_dates=("${all_dates[@]:0:LAST}")
+            fi
 
             echo "Found ${#all_tags[@]} master-* images on Docker Hub."
 
@@ -1630,6 +1752,7 @@ jobs:
           AMOUNT: ${{ needs.resolve.outputs.amount }}
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
+          TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -1695,6 +1818,13 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
+          if [[ -n "${TRACE_BLOCKS:-}" ]]; then
+            SK="${scenario_key}" V="${TRACE_BLOCKS}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
+            echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -1727,10 +1857,26 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
           expb_pid=""
           : > "${RAW_RUN_LOG}"
+
+          # Export caller-provided expb env tuning (comma- or newline-separated KEY=VALUE;
+          # values containing commas must use the newline-separated form).
+          if [[ -n "${EXPB_ENV_PASSTHROUGH:-}" ]]; then
+            while IFS= read -r _kv; do
+              _kv="$(printf '%s' "${_kv}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+              [[ -z "${_kv}" ]] && continue
+              if [[ "${_kv}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+                export "${_kv}"
+                echo "Exported expb env: ${_kv%%=*}=<value>"
+              else
+                echo "::warning::Skipping invalid expb_env entry (expected KEY=VALUE): ${_kv}"
+              fi
+            done < <(printf '%s\n' "${EXPB_ENV_PASSTHROUGH}" | tr ',' '\n')
+          fi
 
           on_terminate() {
             echo "Termination signal received. Waiting up to ${CLEANUP_GRACE_SECONDS}s for expb cleanup."

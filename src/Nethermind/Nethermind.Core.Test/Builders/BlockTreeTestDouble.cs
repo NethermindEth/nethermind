@@ -20,10 +20,9 @@ public class BlockTreeTestDouble : IBlockTree
 {
     private Block? _head;
     private BlockHeader? _bestSuggestedHeader;
-    private long? _bestPersistedState;
     private BlockHeader? _lowestInsertedHeader;
     private BlockHeader? _lowestInsertedBeaconHeader;
-    private (long BlockNumber, Hash256 BlockHash) _syncPivot;
+    private (ulong BlockNumber, Hash256 BlockHash) _syncPivot;
     private bool _isProcessingBlock;
 
     protected IBlockTree? Inner { get; }
@@ -83,6 +82,11 @@ public class BlockTreeTestDouble : IBlockTree
         add { if (Inner is not null) Inner.OnForkChoiceUpdated += value; }
         remove { if (Inner is not null) Inner.OnForkChoiceUpdated -= value; }
     }
+    public event EventHandler<FinalizeEventArgs>? BlocksFinalized
+    {
+        add { if (Inner is not null) Inner.BlocksFinalized += value; }
+        remove { if (Inner is not null) Inner.BlocksFinalized -= value; }
+    }
 
     public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => _blockAddedToMain?.Invoke(this, args);
 
@@ -91,29 +95,25 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual Hash256? PendingHash => Inner?.PendingHash;
     public virtual Hash256? FinalizedHash => Inner?.FinalizedHash;
     public virtual Hash256? SafeHash => Inner?.SafeHash;
-    public virtual long? BestPersistedState
-    {
-        get => Inner?.BestPersistedState ?? _bestPersistedState;
-        set => _bestPersistedState = value;
-    }
+    public virtual ulong LastFinalizedBlockLevel => Inner?.LastFinalizedBlockLevel ?? 0UL;
 
     public virtual BlockHeader FindBestSuggestedHeader() =>
         Inner?.FindBestSuggestedHeader() ?? throw new NotImplementedException();
 
-    public virtual Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+    public virtual Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         Inner?.FindBlock(blockHash, options, blockNumber);
-    public virtual Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+    public virtual Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) =>
         Inner?.FindBlock(blockNumber, options);
-    public virtual bool HasBlock(long blockNumber, Hash256 blockHash) => Inner?.HasBlock(blockNumber, blockHash) ?? false;
-    public virtual BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+    public virtual bool HasBlock(ulong blockNumber, Hash256 blockHash) => Inner?.HasBlock(blockNumber, blockHash) ?? false;
+    public virtual BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         Inner?.FindHeader(blockHash, options, blockNumber);
-    public virtual BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
+    public virtual BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options) =>
         Inner?.FindHeader(blockNumber, options);
-    public virtual Hash256? FindBlockHash(long blockNumber) => Inner?.FindBlockHash(blockNumber);
+    public virtual Hash256? FindBlockHash(ulong blockNumber) => Inner?.FindBlockHash(blockNumber);
     public virtual bool IsMainChain(BlockHeader blockHeader) => Inner?.IsMainChain(blockHeader) ?? false;
     public virtual bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) =>
         Inner?.IsMainChain(blockHash, throwOnMissingHash) ?? false;
-    public virtual long GetLowestBlock() => Inner?.GetLowestBlock() ?? 0;
+    public virtual ulong GetLowestBlock() => Inner?.GetLowestBlock() ?? 0;
 
     public virtual ulong NetworkId => Inner?.NetworkId ?? 1;
     public virtual ulong ChainId => Inner?.ChainId ?? 1;
@@ -138,10 +138,10 @@ public class BlockTreeTestDouble : IBlockTree
             _lowestInsertedBeaconHeader = value;
         }
     }
-    public virtual long BestKnownNumber => Inner?.BestKnownNumber ?? Head?.Number ?? 0;
-    public virtual long BestKnownBeaconNumber => Inner?.BestKnownBeaconNumber ?? 0;
+    public virtual ulong BestKnownNumber => Inner?.BestKnownNumber ?? Head?.Number ?? 0UL;
+    public virtual ulong BestKnownBeaconNumber => Inner?.BestKnownBeaconNumber ?? 0UL;
     public virtual bool CanAcceptNewBlocks => Inner?.CanAcceptNewBlocks ?? true;
-    public virtual (long BlockNumber, Hash256 BlockHash) SyncPivot
+    public virtual (ulong BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => Inner?.SyncPivot ?? _syncPivot;
         set => _syncPivot = value;
@@ -167,7 +167,7 @@ public class BlockTreeTestDouble : IBlockTree
         Inner?.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
 
     public virtual void UpdateHeadBlock(Hash256 blockHash) => Inner?.UpdateHeadBlock(blockHash);
-    public virtual void NewOldestBlock(long oldestBlock) => Inner?.NewOldestBlock(oldestBlock);
+    public virtual void NewOldestBlock(ulong oldestBlock) => Inner?.NewOldestBlock(oldestBlock);
 
     public virtual AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
         Inner?.SuggestBlock(block, options) ?? AddBlockResult.Added;
@@ -176,9 +176,9 @@ public class BlockTreeTestDouble : IBlockTree
         Inner?.SuggestBlockAsync(block, options) ?? ValueTask.FromResult(SuggestBlock(block, options));
 
     public virtual AddBlockResult SuggestHeader(BlockHeader header) => Inner?.SuggestHeader(header) ?? AddBlockResult.Added;
-    public virtual bool IsKnownBlock(long number, Hash256 blockHash) => Inner?.IsKnownBlock(number, blockHash) ?? false;
-    public virtual bool IsKnownBeaconBlock(long number, Hash256 blockHash) => Inner?.IsKnownBeaconBlock(number, blockHash) ?? false;
-    public virtual bool WasProcessed(long number, Hash256 blockHash) => Inner?.WasProcessed(number, blockHash) ?? false;
+    public virtual bool IsKnownBlock(ulong number, Hash256 blockHash) => Inner?.IsKnownBlock(number, blockHash) ?? false;
+    public virtual bool IsKnownBeaconBlock(ulong number, Hash256 blockHash) => Inner?.IsKnownBeaconBlock(number, blockHash) ?? false;
+    public virtual bool WasProcessed(ulong number, Hash256 blockHash) => Inner?.WasProcessed(number, blockHash) ?? false;
 
     public virtual bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks) =>
         Inner?.TryUpdateMainChain(newHead, wereProcessed, forceUpdateHeadBlock, preloadedBlocks) ?? true;
@@ -186,22 +186,22 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => Inner?.MarkChainAsProcessed(blocks);
     public virtual Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) =>
         Inner?.Accept(blockTreeVisitor, cancellationToken) ?? Task.CompletedTask;
-    public virtual (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash) =>
+    public virtual (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(ulong number, Hash256 blockHash) =>
         Inner?.GetInfo(number, blockHash) ?? (null, null);
-    public virtual ChainLevelInfo? FindLevel(long number) => Inner?.FindLevel(number);
-    public virtual BlockInfo FindCanonicalBlockInfo(long blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber) ?? null!;
-    public virtual Hash256? FindHash(long blockNumber) => Inner?.FindHash(blockNumber);
+    public virtual ChainLevelInfo? FindLevel(ulong number) => Inner?.FindLevel(number);
+    public virtual BlockInfo FindCanonicalBlockInfo(ulong blockNumber) => Inner?.FindCanonicalBlockInfo(blockNumber) ?? null!;
+    public virtual Hash256? FindHash(ulong blockNumber) => Inner?.FindHash(blockNumber);
     public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
         Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
-    public virtual void DeleteOldBlock(long blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);
+    public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);
     public virtual void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         Inner?.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
-    public virtual int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
+    public virtual int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false) =>
         Inner?.DeleteChainSlice(startNumber, endNumber, force) ?? 0;
     public virtual bool IsBetterThanHead(BlockHeader? header) => Inner?.IsBetterThanHead(header) ?? false;
-    public virtual void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) =>
+    public virtual void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, ulong clearBeaconMainChainStartPoint) =>
         Inner?.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
     public virtual void RecalculateTreeLevels() => Inner?.RecalculateTreeLevels();
 }

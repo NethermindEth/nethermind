@@ -328,7 +328,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             Assert.That(rawAccount, Is.Not.Null);
 
             // Decode and verify
-            Rlp.ValueDecoderContext ctx = new(rawAccount);
+            RlpReader ctx = new(rawAccount);
             Assert.That(AccountDecoder.Instance.Decode(ref ctx), Is.EqualTo(acc));
         }
 
@@ -733,6 +733,95 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             // The manually created hashes should still exist (they weren't self-destructed)
             Assert.That(reader.TryLoadStorageRlp(account1Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp1));
             Assert.That(reader.TryLoadStorageRlp(account2Hash, in shortPath, ReadFlags.None), Is.EqualTo(rlp2));
+        }
+    }
+
+    // Each case: the value range [from, to] (the subtree of some root path) and nodes spread across all columns
+    // (top 0-5 / shortened 6-15 / fallback 16+), tagged with whether their whole subtree is contained in the range.
+    private static IEnumerable<TestCaseData> SubtreeDeleteCases()
+    {
+        // Shallow "ab" subtree: everything under ab is fully contained; aa/ac neighbours are not.
+        yield return Case("ab", new (string, bool)[]
+        {
+            ("ab00", true), ("abffff", true), ("ab00000000", true), ("abffffffffffff", true),
+            ("ab".PadRight(32, '0'), true), ("ab".PadRight(32, 'f'), true),
+            ("ab".PadRight(64, '0'), true), ("ab".PadRight(64, 'f'), true),
+            ("aa00", false), ("ac00", false), ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Deep subtree (depth 20): ancestors on the zero tail (depths 2/10/16/18) only partially overlap the range
+        // (their subtree overflows `to`), so they are preserved; the root (depth 20) and its descendants are removed.
+        yield return Case("ab".PadRight(20, '0'), new (string, bool)[]
+        {
+            ("ab", false), ("ab".PadRight(10, '0'), false), ("ab".PadRight(16, '0'), false), ("ab".PadRight(18, '0'), false),
+            ("ab".PadRight(20, '0'), true), ("ab".PadRight(20, '0') + "cccc", true), ("ab".PadRight(32, '0'), true), ("ab".PadRight(64, '0'), true),
+            ("aa".PadRight(20, '0'), false), ("ac".PadRight(20, '0'), false), ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Shortened-depth subtree (depth 10): top ancestor (depth 2) and shortened ancestors (depths 6/8) preserved;
+        // root (depth 10) and descendants removed.
+        yield return Case("ab".PadRight(10, '0'), new (string, bool)[]
+        {
+            ("ab", false), ("ab".PadRight(6, '0'), false), ("ab".PadRight(8, '0'), false),
+            ("ab".PadRight(10, '0'), true), ("ab".PadRight(12, '0'), true), ("ab".PadRight(32, '0'), true), ("ab".PadRight(64, '0'), true),
+            ("aa".PadRight(64, '0'), false), ("ac".PadRight(64, '0'), false),
+        });
+
+        // Whole trie: [Zero, MaxValue] contains every node.
+        yield return new TestCaseData(ValueKeccak.Zero, ValueKeccak.MaxValue, new (string, bool)[]
+        {
+            ("ab", true), ("ab".PadRight(10, '0'), true), ("ab".PadRight(64, '0'), true), ("cd".PadRight(64, 'f'), true),
+        }).SetName("Whole trie");
+
+        static TestCaseData Case(string rootHex, (string, bool)[] nodes)
+        {
+            TreePath root = TreePath.FromHexString(rootHex);
+            return new TestCaseData(root.ToLowerBoundPath(), root.ToUpperBoundPath(), nodes).SetName($"Subtree depth {rootHex.Length}");
+        }
+    }
+
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStateTrieNodeRange(ValueHash256 from, ValueHash256 to, (string Path, bool Deleted)[] nodes)
+    {
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in nodes) writer.SetStateTrieNode(TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStateTrieNodeRange(from, to);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in nodes)
+            {
+                byte[]? node = reader.TryLoadStateRlp(TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void TestDeleteStorageTrieNodeRange(ValueHash256 from, ValueHash256 to, (string Path, bool Deleted)[] nodes)
+    {
+        Hash256 account = TestItem.KeccakA;
+        byte[] rlp = [0xc1, 0x11];
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            foreach ((string p, _) in nodes) writer.SetStorageTrieNode(account, TreePath.FromHexString(p), rlp);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.DeleteStorageTrieNodeRange(new ValueHash256(account.Bytes), from, to);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string p, bool del) in nodes)
+            {
+                byte[]? node = reader.TryLoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
+                Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
+            }
         }
     }
 
