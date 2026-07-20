@@ -72,6 +72,7 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider) : IEthRpcModule
@@ -98,6 +99,7 @@ public partial class EthRpcModule(
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
+    private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -899,6 +901,9 @@ public partial class EthRpcModule(
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
 
+            if (EnsureBlockRangeWithinLimit(filter, fromBlockHeader, toBlockHeader) is { } rangeError)
+                return rangeError;
+
             LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
 
             // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
@@ -1193,5 +1198,26 @@ public partial class EthRpcModule(
                 );
             }
         }
+    }
+
+    // cap block range of a logs query against unbounded sequential scans, skip if log index is enabled
+    private ResultWrapper<IEnumerable<FilterLog>>? EnsureBlockRangeWithinLimit(Filter filter, BlockHeader fromBlock, BlockHeader toBlock)
+    {
+        int maxBlockDepth = _receiptConfig.MaxBlockDepth;
+        bool usingLogIndex = logIndexConfig?.Enabled is true && filter.UseIndex;
+
+        if (usingLogIndex || maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
+            return null;
+
+        long rangeSize = toBlock.Number - fromBlock.Number + 1;
+        if (rangeSize > maxBlockDepth)
+        {
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(
+                $"Block range {rangeSize} exceeds the maximum of {maxBlockDepth} blocks per logs request. " +
+                $"Use a narrower fromBlock/toBlock range or increase Receipt.{nameof(IReceiptConfig.MaxBlockDepth)}.",
+                ErrorCodes.InvalidParams);
+        }
+
+        return null;
     }
 }

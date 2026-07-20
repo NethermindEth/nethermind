@@ -948,6 +948,41 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
+    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, true, TestName = "range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, false, TestName = "range 4 within limit 4 -> allowed")]
+    [TestCase(0, """{"fromBlock":"0x0","toBlock":"0x3"}""", false, false, TestName = "limit disabled -> allowed")]
+    [TestCase(2, """{"toBlock":"0x3"}""", false, true, TestName = "fromBlock omitted -> Earliest (0x0), range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"toBlock":"0x3"}""", false, false, TestName = "fromBlock omitted -> Earliest (0x0), range 4 within limit 4 -> allowed")]
+    [TestCase(2, """{"fromBlock":"0x0"}""", false, true, TestName = "toBlock omitted -> Latest (0x3), range 4 exceeds limit 2 -> rejected")]
+    [TestCase(4, """{"fromBlock":"0x0"}""", false, false, TestName = "toBlock omitted -> Latest (0x3), range 4 within limit 4 -> allowed")]
+    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3"}""", true, false, TestName = "log index enabled, useIndex default -> limit skipped -> allowed")]
+    [TestCase(2, """{"fromBlock":"0x0","toBlock":"0x3","useIndex":false}""", true, true, TestName = "log index enabled but useIndex=false -> limit enforced -> rejected")]
+    public async Task Eth_get_logs_enforces_max_block_depth(int maxBlockDepth, string parameter, bool logIndexEnabled, bool shouldReject)
+    {
+        using Context ctx = await Context.Create();
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns([CreateTestFilterLog()]);
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false)
+            .WithBlockchainBridge(bridge)
+            .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
+            .Build();
+        ctx.Test.LogIndexConfig.Enabled = logIndexEnabled;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
+
+        if (shouldReject)
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
+            Assert.That(serialized, Does.Contain(nameof(IReceiptConfig.MaxBlockDepth)));
+        }
+        else
+        {
+            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogResponse));
+        }
+    }
+
     [TestCase("eth_getLogs", "{}")]
     [TestCase("eth_getFilterLogs", "0x01")]
     public async Task Eth_logs_ignore_max_logs_response_body_size_when_stream_mode_disabled(string method, string parameter)
