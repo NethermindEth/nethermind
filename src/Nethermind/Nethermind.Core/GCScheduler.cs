@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.Tracing;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,8 +22,8 @@ public sealed class GCScheduler
     private const int MinSecondsBetweenForcedGC = 120;
     // 4 GiB ≈ 256 typical 30 MGas mainnet blocks
     internal const long SustainedSweepAllocationBytes = 4L * 1024 * 1024 * 1024;
-    // Far above any observed background gen2 duration; only guards against a missed completion.
-    private const long PendingSweepTimeoutMs = 60_000;
+    // Far above any observed background gen2 duration; only guards against a missed GCEnd event.
+    private const long BackgroundGCTimeoutMs = 300_000;
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
@@ -42,11 +43,11 @@ public sealed class GCScheduler
     private long _sweepBaselineAllocatedBytes;
     private int _forcedGCExclusions;
 
-    // Gen2 GC indices captured just before the last issued sweep; either kind advancing past its
-    // baseline means that sweep's collection has completed. -1 = no sweep in flight.
-    private long _pendingSweepBackgroundIndex = -1;
-    private long _pendingSweepFullBlockingIndex = -1;
-    private long _pendingSweepIssuedAtMs;
+    // TickCount64 when the in-flight background gen2 started; -1 = none. Written by the tracker.
+    private static long _backgroundGCStartedAtMs = -1;
+
+    // Rooted for the process lifetime; keeps _backgroundGCStartedAtMs current.
+    private readonly BackgroundGCTracker? _backgroundGCTracker;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -62,7 +63,57 @@ public sealed class GCScheduler
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
         if (sustainedSweepEnabled)
         {
+            _backgroundGCTracker = new BackgroundGCTracker();
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    /// <summary>
+    /// Tracks whether a background gen2 collection is currently running via runtime GCStart/GCEnd events.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GC.GetGCMemoryInfo(GCKind)"/> cannot provide this: its background record is published
+    /// at the final-mark pause while the concurrent sweep phase keeps running for tens of seconds.
+    /// The GCEnd event for the background collection's count fires only at true completion.
+    /// </remarks>
+    private sealed class BackgroundGCTracker : EventListener
+    {
+        private const EventKeywords GCKeyword = (EventKeywords)0x1;
+        private const int GCStartEventId = 1;
+        private const int GCEndEventId = 2;
+        private const uint BackgroundGCType = 1;
+
+        private long _backgroundGCCount = -1;
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "Microsoft-Windows-DotNETRuntime")
+            {
+                EnableEvents(eventSource, EventLevel.Informational, GCKeyword);
+            }
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            // GCStart payload: Count, Depth, Reason, Type; GCEnd payload: Count, Depth
+            if (eventData.EventId == GCStartEventId)
+            {
+                if (eventData.Payload is { Count: >= 4 } payload
+                    && payload[3] is uint type && type == BackgroundGCType
+                    && payload[0] is uint count)
+                {
+                    _backgroundGCCount = count;
+                    Volatile.Write(ref _backgroundGCStartedAtMs, Environment.TickCount64);
+                }
+            }
+            else if (eventData.EventId == GCEndEventId)
+            {
+                if (eventData.Payload is { Count: >= 1 } payload
+                    && payload[0] is uint count && count == _backgroundGCCount)
+                {
+                    Volatile.Write(ref _backgroundGCStartedAtMs, -1);
+                }
+            }
         }
     }
 
@@ -244,36 +295,18 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        // An induced gen2 while the previous sweep's background collection is still in flight is
-        // escalated by the runtime to a full blocking collection (~1s+ stop-the-world on replay-sized
+        // An induced gen2 while a background collection is still in flight is escalated by the
+        // runtime to a full blocking collection (observed 1-2s stop-the-world on replay-sized
         // heaps). Stay armed and retry on a later tick instead; the budget check above keeps firing.
-        if (IsLastSweepStillRunning()) return;
+        if (IsBackgroundGCInFlight()) return;
 
-        long backgroundIndex = GC.GetGCMemoryInfo(GCKind.Background).Index;
-        long fullBlockingIndex = GC.GetGCMemoryInfo(GCKind.FullBlocking).Index;
-        if (GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false))
-        {
-            _pendingSweepBackgroundIndex = backgroundIndex;
-            _pendingSweepFullBlockingIndex = fullBlockingIndex;
-            _pendingSweepIssuedAtMs = Environment.TickCount64;
-        }
+        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
     }
 
-    private bool IsLastSweepStillRunning()
+    private static bool IsBackgroundGCInFlight()
     {
-        if (_pendingSweepBackgroundIndex < 0) return false;
-
-        // Only one gen2 collection can be in flight, so either kind completing past its baseline
-        // proves the issued sweep is done. The timeout is a safety valve against a missed completion.
-        if (GC.GetGCMemoryInfo(GCKind.Background).Index > _pendingSweepBackgroundIndex
-            || GC.GetGCMemoryInfo(GCKind.FullBlocking).Index > _pendingSweepFullBlockingIndex
-            || Environment.TickCount64 - _pendingSweepIssuedAtMs > PendingSweepTimeoutMs)
-        {
-            _pendingSweepBackgroundIndex = -1;
-            return false;
-        }
-
-        return true;
+        long startedAt = Volatile.Read(ref _backgroundGCStartedAtMs);
+        return startedAt >= 0 && Environment.TickCount64 - startedAt <= BackgroundGCTimeoutMs;
     }
 
     internal long SweepBaselineAllocatedBytes
@@ -282,10 +315,9 @@ public sealed class GCScheduler
         set => Volatile.Write(ref _sweepBaselineAllocatedBytes, value);
     }
 
-    internal void SetPendingSweep(long backgroundIndex, long fullBlockingIndex, long issuedAtMs)
+    internal static long BackgroundGCStartedAtMs
     {
-        _pendingSweepBackgroundIndex = backgroundIndex;
-        _pendingSweepFullBlockingIndex = fullBlockingIndex;
-        _pendingSweepIssuedAtMs = issuedAtMs;
+        get => Volatile.Read(ref _backgroundGCStartedAtMs);
+        set => Volatile.Write(ref _backgroundGCStartedAtMs, value);
     }
 }

@@ -14,12 +14,12 @@ public class GCSchedulerTests
     private readonly GCScheduler _scheduler = new(sustainedSweepEnabled: false);
 
     // Disarm the singleton's sweep so its timer cannot hold the shared static guard mid-test,
-    // and clear pending-sweep state left by a previous test on the shared fixture instance.
+    // and clear background-GC tracking state that the singleton's tracker may have recorded.
     [SetUp]
     public void SetUp()
     {
         GCScheduler.Instance.SweepBaselineAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
-        _scheduler.SetPendingSweep(-1, -1, 0);
+        GCScheduler.BackgroundGCStartedAtMs = -1;
     }
 
     [Test]
@@ -75,32 +75,25 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Sweep_stays_armed_while_issued_sweep_is_in_flight_then_fires_after_completion()
+    public void Sweep_stays_armed_while_background_gc_is_in_flight_then_fires_after_completion()
     {
         long armed = ArmBudget();
-        _scheduler.SetPendingSweep(
-            GC.GetGCMemoryInfo(GCKind.Background).Index,
-            GC.GetGCMemoryInfo(GCKind.FullBlocking).Index,
-            Environment.TickCount64);
+        GCScheduler.BackgroundGCStartedAtMs = Environment.TickCount64;
 
         _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.EqualTo(armed));
 
-        // A completed gen2 advances the FullBlocking index past the pending baseline.
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: false);
+        GCScheduler.BackgroundGCStartedAtMs = -1;
 
         _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
     }
 
     [Test]
-    public void Sweep_pending_state_expires_after_timeout()
+    public void Sweep_in_flight_state_expires_after_timeout()
     {
         long armed = ArmBudget();
-        _scheduler.SetPendingSweep(
-            GC.GetGCMemoryInfo(GCKind.Background).Index,
-            GC.GetGCMemoryInfo(GCKind.FullBlocking).Index,
-            Environment.TickCount64 - 61_000);
+        GCScheduler.BackgroundGCStartedAtMs = Environment.TickCount64 - 301_000;
 
         _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
