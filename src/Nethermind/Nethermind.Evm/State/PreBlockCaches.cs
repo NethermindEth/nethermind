@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -18,12 +19,14 @@ namespace Nethermind.Evm.State;
 public class PreBlockCaches
 {
     private const int InitialCapacity = 4096 * 8;
+    private const int StorageLoadLockCount = 1024;
 
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
+    private readonly Lock[] _storageLoadLocks = CreateStorageLoadLocks();
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
@@ -59,6 +62,45 @@ public class PreBlockCaches
         set => _mainScope = value;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public byte[]? GetOrAddStorage<TState>(
+        in StorageCell storageCell,
+        TState state,
+        SeqlockCache<StorageCell, byte[]>.ValueFactory<TState> valueFactory,
+        out bool cacheHit)
+    {
+        if (_storageCache.TryGetValue(in storageCell, out byte[]? value))
+        {
+            cacheHit = true;
+            return value;
+        }
+
+        return GetOrAddStorageMiss(in storageCell, state, valueFactory, out cacheHit);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private byte[]? GetOrAddStorageMiss<TState>(
+        in StorageCell storageCell,
+        TState state,
+        SeqlockCache<StorageCell, byte[]>.ValueFactory<TState> valueFactory,
+        out bool cacheHit)
+    {
+        Lock missLock = _storageLoadLocks[(int)((ulong)storageCell.GetHashCode64() & (StorageLoadLockCount - 1))];
+        lock (missLock)
+        {
+            if (_storageCache.TryGetValue(in storageCell, out byte[]? value))
+            {
+                cacheHit = true;
+                return value;
+            }
+
+            cacheHit = false;
+            value = valueFactory(in storageCell, state);
+            _storageCache.Set(in storageCell, value);
+            return value;
+        }
+    }
+
     public CacheType ClearCaches()
     {
         CacheType isDirty = CacheType.None;
@@ -68,6 +110,17 @@ public class PreBlockCaches
         }
 
         return isDirty;
+    }
+
+    private static Lock[] CreateStorageLoadLocks()
+    {
+        Lock[] locks = new Lock[StorageLoadLockCount];
+        for (int i = 0; i < locks.Length; i++)
+        {
+            locks[i] = new Lock();
+        }
+
+        return locks;
     }
 
     public readonly struct PrecompileCacheKey(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<PrecompileCacheKey>

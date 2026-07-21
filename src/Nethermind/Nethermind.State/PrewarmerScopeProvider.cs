@@ -88,7 +88,7 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
-                storageCache,
+                preBlockCaches,
                 address,
                 isPrewarmer,
                 _metrics);
@@ -212,13 +212,13 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, byte[]> preBlockCache,
+        PreBlockCaches preBlockCaches,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
+        private readonly PreBlockCaches preBlockCaches = preBlockCaches;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -232,7 +232,12 @@ public class PrewarmerScopeProvider(
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
+            byte[] value = preBlockCaches.GetOrAddStorage(
+                in storageCell,
+                this,
+                static (in StorageCell cell, StorageTreeWrapper wrapper) => wrapper.LoadFromTreeStorage(in cell),
+                out bool cacheHit)!;
+            if (cacheHit)
             {
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
@@ -240,9 +245,6 @@ public class PrewarmerScopeProvider(
             }
             else
             {
-                value = LoadFromTreeStorage(in storageCell);
-                // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
-                preBlockCache.Set(in storageCell, value);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
             }
             return value;
