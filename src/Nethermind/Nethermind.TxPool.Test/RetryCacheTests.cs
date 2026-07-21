@@ -1128,6 +1128,50 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task ExpiryQueue_ReleasesStorageAfterCumulativeChurn()
+    {
+        const int batchCount = 64;
+        const int resourcesPerBatch = 256;
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            expiringQueueLimit: resourcesPerBatch,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: resourcesPerBatch);
+
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            object initialQueueStorage = cache.ExpiringQueueStorage;
+            TestHandler source = new();
+            for (int batch = 0; batch < batchCount; batch++)
+            {
+                for (int resource = 0; resource < resourcesPerBatch; resource++)
+                {
+                    int resourceId = batch * resourcesPerBatch + resource;
+                    cache.Announced(resourceId, source);
+                    cache.Received(resourceId);
+                }
+
+                Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(resourcesPerBatch));
+                timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+                Assert.That(() => cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
+            }
+
+            Assert.That(cache.ExpiringQueueReservationsSinceReset, Is.Zero);
+            Assert.That(cache.ExpiringQueueStorage, Is.Not.SameAs(initialQueueStorage));
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task Announced_OverflowResourceIsNotPromotedWhenTrackedSlotBecomesAvailable()
     {
         using CancellationTokenSource cancellationTokenSource = new();
@@ -1312,6 +1356,44 @@ public class RetryCacheTests
                 Assert.That(cache.OverflowRequestsInUse, Is.EqualTo(1));
                 Assert.That(cache.OverflowRetainedCapacity, Is.LessThan(retainedCapacityAtLimit));
             }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task OverflowStorage_ReleasesLargeExpiredGenerationWithoutNewAnnouncement()
+    {
+        const int resourceCount = 2_048;
+        ManualTimeProvider timeProvider = new();
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<CollisionRequestMessage, CollisionResourceId> cache = new(
+            TestLogManager.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 0,
+            overflowRequestLimit: RetryCache<CollisionRequestMessage, CollisionResourceId>.DefaultOverflowRequestLimit);
+
+        try
+        {
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            CollisionHandler handler = new();
+            for (int resourceId = 0; resourceId < resourceCount; resourceId++)
+            {
+                Assert.That(cache.Announced(new CollisionResourceId(resourceId), handler), Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+
+            int retainedCapacityAtPeak = cache.OverflowRetainedCapacity;
+            Assert.That(retainedCapacityAtPeak, Is.GreaterThan(resourceCount));
+
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+
+            Assert.That(() => cache.OverflowRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+            Assert.That(() => cache.OverflowRetainedCapacity, Is.Zero.After(AssertTimeoutMs, 10));
         }
         finally
         {
