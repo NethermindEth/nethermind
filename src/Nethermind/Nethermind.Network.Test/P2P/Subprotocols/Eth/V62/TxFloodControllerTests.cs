@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -24,6 +25,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private Eth62ProtocolHandler _handler;
         private ISession _session;
         private ITimestamper _timestamper;
+        private DateTime _now;
 
         private readonly AcceptTxResult Flooding = AcceptTxResult.NonceGap;
 
@@ -42,8 +44,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 LimboLogs.Instance);
 
             _timestamper = Substitute.For<ITimestamper>();
-            _timestamper.UtcNow.Returns(static c => DateTime.UtcNow);
-            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
+            _now = DateTime.UtcNow;
+            _timestamper.UtcNow.Returns(_ => _now);
+            _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance, new Random(0));
         }
 
         [TearDown]
@@ -117,6 +120,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Clearing_pooled_requests_preserves_transaction_flood_downgrade()
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                _controller.Report(Flooding);
+            }
+
+            _controller.ClearPooledTransactionRequests();
+
+            Assert.That(_controller.IsDowngraded, Is.True);
+        }
+
+        [Test]
         public void Enabled_by_default() => Assert.That(_controller.IsEnabled, Is.True);
 
         [Test]
@@ -141,9 +157,155 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
 
             Assert.That(_controller.IsDowngraded, Is.True);
-            _timestamper.UtcNow.Returns(DateTime.UtcNow.AddSeconds(61));
+            AdvanceWindow();
             _controller.Report(false);
             Assert.That(_controller.IsDowngraded, Is.False);
+        }
+
+        [TestCase(4_095, 0, false)]
+        [TestCase(4_096, 327, true)]
+        [TestCase(4_096, 328, false)]
+        public void Pooled_hash_gate_requires_large_unproductive_sample(int requested, int returned, bool downgraded)
+        {
+            ReportPooledHashWindow(requested, returned);
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.EqualTo(downgraded));
+        }
+
+        [Test]
+        public void Repeated_unproductive_pooled_hash_windows_disconnect()
+        {
+            ReportPooledHashWindow(4_096, 0);
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+
+            ReportPooledHashWindow(4_096, 0);
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+
+            ClosePooledHashWindow();
+
+            _session.Received(1).InitiateDisconnect(
+                DisconnectReason.TxFlooding,
+                Arg.Is<string>(details => details.Contains("returned 0 of 4096 sampled")));
+        }
+
+        [Test]
+        public void Productive_pooled_hash_window_clears_disconnect_strike()
+        {
+            ReportPooledHashWindow(4_096, 0);
+            ClosePooledHashWindow();
+            ReportPooledHashWindow(4_096, 410, 4_096);
+            ClosePooledHashWindow();
+            ReportPooledHashWindow(4_096, 0, 8_192);
+            ClosePooledHashWindow();
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            Assert.That(_controller.IsDowngraded, Is.True);
+        }
+
+        [Test]
+        public void Unrequested_and_duplicate_pooled_transactions_do_not_receive_credit()
+        {
+            Hash256[] requested = GenerateHashes(4_096);
+            Hash256[] unrequested = GenerateHashes(409, requested.Length);
+            Transaction[] transactions = new Transaction[410];
+            transactions[0] = new Transaction { Hash = requested[0] };
+            for (int i = 1; i < transactions.Length; i++)
+            {
+                transactions[i] = new Transaction { Hash = i % 2 == 0 ? requested[0] : unrequested[i - 1] };
+            }
+
+            _controller.ReportPooledTransactionRequests(requested);
+            _controller.ReportPooledTransactionsReturned(transactions);
+            ClosePooledHashWindow();
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.True);
+        }
+
+        [Test]
+        public void Pooled_transactions_returned_in_grace_window_receive_credit()
+        {
+            Hash256[] requested = GenerateHashes(4_096);
+
+            _controller.ReportPooledTransactionRequests(requested);
+            ClosePooledHashWindow();
+            _controller.ReportPooledTransactionsReturned(CreateTransactions(requested, 410));
+            ClosePooledHashWindow();
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            Assert.That(_controller.IsDowngraded, Is.False);
+        }
+
+        [Test]
+        public void Pooled_hash_sample_is_not_limited_to_first_requests()
+        {
+            Hash256[] requested = GenerateHashes(8_192);
+
+            _controller.ReportPooledTransactionRequests(requested);
+            _controller.ReportPooledTransactionsReturned(CreateTransactions(requested, 410));
+            ClosePooledHashWindow();
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.True);
+        }
+
+        [Test]
+        public void Unevaluated_pooled_hash_window_preserves_disconnect_strike()
+        {
+            ReportPooledHashWindow(4_096, 0);
+            ClosePooledHashWindow();
+            ReportPooledHashWindow(4_095, 0);
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.True);
+
+            ReportPooledHashWindow(4_096, 0);
+
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+
+            ClosePooledHashWindow();
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Response_for_hash_requested_across_window_boundary_credits_both_samples()
+        {
+            Hash256[] requested = GenerateHashes(4_096);
+
+            _controller.ReportPooledTransactionRequests(requested);
+            ClosePooledHashWindow();
+            _controller.ReportPooledTransactionRequests(requested);
+            _controller.ReportPooledTransactionsReturned(CreateTransactions(requested, 410));
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.False);
+        }
+
+        [Test]
+        public void Ignored_pooled_response_clears_outstanding_samples()
+        {
+            _controller.ReportPooledTransactionRequests(GenerateHashes(4_096));
+            ClosePooledHashWindow();
+
+            _controller.ClearPooledTransactionRequests();
+            ClosePooledHashWindow();
+
+            Assert.That(_controller.IsDowngraded, Is.False);
+        }
+
+        [Test]
+        public void Clearing_pooled_requests_preserves_evaluated_pooled_downgrade()
+        {
+            ReportPooledHashWindow(4_096, 0);
+            ClosePooledHashWindow();
+
+            _controller.ClearPooledTransactionRequests();
+
+            Assert.That(_controller.IsDowngraded, Is.True);
         }
 
         [Test]
@@ -154,5 +316,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Received(1)
                 .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
+
+        private void ReportPooledHashWindow(int requested, int returned, int offset = 0)
+        {
+            Hash256[] hashes = GenerateHashes(requested, offset);
+
+            _controller.ReportPooledTransactionRequests(hashes);
+            _controller.ReportPooledTransactionsReturned(CreateTransactions(hashes, returned));
+            ClosePooledHashWindow();
+        }
+
+        private static Transaction[] CreateTransactions(Hash256[] hashes, int count)
+        {
+            Transaction[] transactions = new Transaction[count];
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                transactions[i] = new Transaction { Hash = hashes[i] };
+            }
+
+            return transactions;
+        }
+
+        private void ClosePooledHashWindow()
+        {
+            AdvanceWindow();
+            _controller.IsAllowed();
+        }
+
+        private static Hash256[] GenerateHashes(int count, int offset = 0)
+        {
+            Hash256[] hashes = new Hash256[count];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = new Hash256((i + offset).ToString("X64"));
+            }
+
+            return hashes;
+        }
+
+        private void AdvanceWindow() => _now += TimeSpan.FromSeconds(61);
     }
 }

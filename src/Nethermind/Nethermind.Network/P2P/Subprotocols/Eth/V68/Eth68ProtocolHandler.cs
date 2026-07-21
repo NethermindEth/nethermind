@@ -66,10 +66,18 @@ public class Eth68ProtocolHandler(ISession session,
             case Eth68MessageCode.NewPooledTransactionHashes:
                 if (CanReceiveTransactions)
                 {
-                    NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                        Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
-                    ReportIn(newPooledTxHashesMsg, size);
-                    Handle(newPooledTxHashesMsg);
+                    if (IsTransactionGossipAllowed())
+                    {
+                        NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
+                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                        ReportIn(newPooledTxHashesMsg, size);
+                        Handle(newPooledTxHashesMsg);
+                    }
+                    else
+                    {
+                        const string txFlooding = $"Ignoring {nameof(NewPooledTransactionHashesMessage68)} because of transaction flooding.";
+                        ReportIn(txFlooding, size);
+                    }
                 }
                 else
                 {
@@ -184,6 +192,7 @@ public class Eth68ProtocolHandler(ISession session,
         {
             ArrayPoolList<Hash256> request = hashesToRequest!;
             hashesToRequest = null;
+            ReportPooledTransactionRequests(request.AsSpan());
             Send(V66.Messages.GetPooledTransactionsMessage.New(request));
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
             toRequestCount = 0;

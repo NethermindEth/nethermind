@@ -56,9 +56,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
                     {
-                        using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
-                        ReportIn(newPooledTxMsg, size);
-                        Handle(newPooledTxMsg);
+                        if (IsTransactionGossipAllowed())
+                        {
+                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                            ReportIn(newPooledTxMsg, size);
+                            Handle(newPooledTxMsg);
+                        }
+                        else
+                        {
+                            const string txFlooding = $"Ignoring {nameof(NewPooledTransactionHashesMessage)} because of transaction flooding.";
+                            ReportIn(txFlooding, size);
+                        }
                     }
                     else
                     {
@@ -75,10 +83,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        Handle(pooledTxMsg);
+                        HandlePooledTransactions(pooledTxMsg);
                     }
                     else
                     {
+                        IgnorePooledTransactionResponse();
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }

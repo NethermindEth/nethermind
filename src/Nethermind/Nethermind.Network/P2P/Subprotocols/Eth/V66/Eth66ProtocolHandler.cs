@@ -90,10 +90,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        Handle(pooledTxMsg.EthMessage);
+                        HandlePooledTransactions(pooledTxMsg.EthMessage);
                     }
                     else
                     {
+                        IgnorePooledTransactionResponse();
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
                     }
